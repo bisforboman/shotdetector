@@ -5,7 +5,7 @@ and AdaptiveDetector (ported from scenedetect 0.7.1). Frames are decoded by pipi
 `ffmpeg -f rawvideo -pix_fmt bgr24`; all detection logic is plain C#.
 
 ```
-dotnet run -c Release --project src/ShotDetector -- -i video.mp4 [-d adaptive|content] [--csv shots.csv] [--json shots.json] [--cv-resize]
+dotnet run -c Release --project src/ShotDetector -- -i video.mp4 [-d adaptive|content] [--csv shots.csv] [--json shots.json] [--ffmpeg-resize]
 ```
 
 Output matches `scenedetect -i video.mp4 detect-adaptive list-scenes`: the start frame is 1-based,
@@ -15,7 +15,7 @@ content threshold 27, adaptive threshold 3, min-content-val 15, frame window 2, 
 ## Verifying against PySceneDetect
 
 ```
-python tools/compare.py video.mp4 --detector adaptive --tolerance 2 [--cv-resize]
+python tools/compare.py video.mp4 --detector adaptive --tolerance 2 [--ffmpeg-resize]
 dotnet test
 ```
 
@@ -24,20 +24,20 @@ Test clips used during development (all in the gitignored `samples/`):
 - [Sintel trailer 480p](https://download.blender.org/durian/trailer/sintel_trailer-480p.mp4) and
   [Big Buck Bunny trailer 480p](https://download.blender.org/peach/trailer/trailer_480p.mov), both Blender open movies (CC-BY).
 
-With `--cv-resize`, per-frame content_val is identical to scenedetect's stats file on all three, and
-both detectors produce exactly the same cuts. With the default ffmpeg downscale, the synthetic clip
-still matches, but on the trailers 2–6 cuts per run differ.
+By default, per-frame content_val is identical to scenedetect's stats file on all three, and both
+detectors produce exactly the same cuts. With `--ffmpeg-resize`, the synthetic clip still matches,
+but on the trailers 2–6 cuts per run differ.
 
 ## Where this differs from PySceneDetect
 
-- **Downscaling (default):** frames are resized to the same size PySceneDetect picks
-  (`max(w,h)/256`), but by ffmpeg's bilinear scaler. This averages over the whole footprint, while
-  `cv2.resize(INTER_LINEAR)` samples only 2x2 pixels and aliases. Content_val therefore comes out
-  lower on fine detail, which can move ContentDetector cuts. `--cv-resize` makes ffmpeg send
-  full-size frames and replicates cv2's resize bit for bit (`CvResize.cs`). It's slower because a
-  1080p frame is 6 MB through the pipe.
+- **Downscaling:** by default ffmpeg sends full-size frames and `CvResize.cs` replicates
+  `cv2.resize(INTER_LINEAR)` bit for bit, at the size PySceneDetect picks (`max(w,h)/256`). That's
+  slow for big video because a 1080p frame is 6 MB through the pipe. `--ffmpeg-resize` lets
+  ffmpeg's bilinear scaler downscale instead. It's faster and averages over the whole footprint,
+  whereas cv2 samples only 2x2 pixels and aliases. Content_val therefore comes out lower on fine
+  detail, and cuts can differ.
 - **Colour conversion:** ffmpeg is told to ignore the stream's colour tags and use BT.601 (with
-  bicubic chroma for `--cv-resize`), because that's what OpenCV's ffmpeg backend does. Converting
+  bicubic chroma for the default exact resize), because that's what OpenCV's ffmpeg backend does. Converting
   BT.709-tagged video "correctly" shifts content_val enough to flip borderline cuts.
 - **No edge component:** `delta_edges` (Canny + dilate) is not ported. Its default weight is 0, so
   default scores are unaffected.

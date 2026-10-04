@@ -19,10 +19,10 @@ public readonly record struct Fps(int Num, int Den)
 /// <summary>
 /// Reads frames by piping ffmpeg's rawvideo bgr24 output. Frames are downscaled the same way
 /// PySceneDetect does it by default: factor = max(width, height) / 256 when that side is >= 256.
-/// Differs (default): ffmpeg's swscale bilinear does the resize instead of cv2.resize(INTER_LINEAR).
-/// It averages over the whole footprint, so content_val is lower on fine detail than PySceneDetect's.
-/// With cvResize, ffmpeg sends full-size frames and <see cref="CvResize"/> replicates cv2 exactly
-/// (slower: a 1080p frame is 6 MB through the pipe). YUV→BGR conversion is ffmpeg's either way.
+/// By default ffmpeg sends full-size frames and <see cref="CvResize"/> replicates cv2.resize exactly
+/// (a 1080p frame is 6 MB through the pipe). With ffmpegResize, ffmpeg's swscale bilinear downscales
+/// instead: faster, but it averages over the whole footprint, so content_val is lower on fine detail
+/// and cuts can differ from PySceneDetect's.
 /// </summary>
 public sealed class VideoReader
 {
@@ -35,12 +35,12 @@ public sealed class VideoReader
     public long FrameCountHint { get; }
 
     readonly string _path;
-    readonly bool _cvResize;
+    readonly bool _ffmpegResize;
 
-    public VideoReader(string path, bool cvResize = false)
+    public VideoReader(string path, bool ffmpegResize = false)
     {
         _path = path;
-        _cvResize = cvResize;
+        _ffmpegResize = ffmpegResize;
         string[] f = Run("ffprobe", ["-v", "error", "-select_streams", "v:0",
             "-show_entries", "stream=width,height,r_frame_rate,nb_frames", "-of", "csv=p=0:nk=1", path])
             .Trim().Split(',');
@@ -65,7 +65,7 @@ public sealed class VideoReader
     /// <summary>Yields every decoded frame. The same buffer is reused for each frame.</summary>
     public IEnumerable<byte[]> Frames()
     {
-        bool resizeHere = _cvResize && (Width, Height) != (SourceWidth, SourceHeight);
+        bool resizeHere = !_ffmpegResize && (Width, Height) != (SourceWidth, SourceHeight);
         var psi = new ProcessStartInfo("ffmpeg") { RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in new[] { "-v", "error", "-nostdin", "-i", _path, "-map", "0:v:0",
                      // Emit every decoded frame once, like OpenCV does (no CFR dup/drop).
