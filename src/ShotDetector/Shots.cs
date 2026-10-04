@@ -4,48 +4,29 @@ using System.Text.Json;
 
 namespace ShotDetector;
 
-/// <summary>A shot spanning frames [Start, End), 0-based, like PySceneDetect's scene list.</summary>
-public readonly record struct Shot(int Number, long Start, long End);
+/// <summary>A shot from Start up to (not including) End, like PySceneDetect's scene list.</summary>
+public readonly record struct Shot(int Number, PyTime Start, PyTime End)
+{
+    public PyTime Duration => End.Minus(Start);
+}
 
 public static class Shots
 {
     /// <summary>Port of get_scenes_from_cuts with start_in_scene=True (what the CLI uses).</summary>
-    public static List<Shot> FromCuts(IReadOnlyList<int> cuts, long frameCount)
+    public static List<Shot> FromCuts(IEnumerable<PyTime> cuts, PyTime start, PyTime end)
     {
         var shots = new List<Shot>();
-        if (frameCount == 0)
-            return shots;
-        long start = 0;
-        foreach (int cut in cuts.Distinct().Order())
+        foreach (var cut in cuts.DistinctBy(c => c.FrameNum).OrderBy(c => c.FrameNum))
         {
             shots.Add(new(shots.Count + 1, start, cut));
             start = cut;
         }
-        shots.Add(new(shots.Count + 1, start, frameCount));
+        shots.Add(new(shots.Count + 1, start, end));
         return shots;
     }
 
-    public static double Seconds(long frame, Fps fps) => frame * (double)fps.Den / fps.Num;
-
-    /// <summary>HH:MM:SS.nnn, port of FrameTimecode.get_timecode (rounded to ms).</summary>
-    public static string Timecode(long frame, Fps fps)
-    {
-        double secs = Seconds(frame, fps);
-        long hrs = (long)(secs / 3600);
-        secs -= hrs * 3600;
-        long mins = (long)(secs / 60);
-        secs = Math.Max(0.0, secs - mins * 60);
-        secs = Math.Min(60.0, Math.Round(secs, 3));
-        if ((int)secs == 60)
-        {
-            secs = 0;
-            if (++mins >= 60) { mins = 0; hrs++; }
-        }
-        return string.Create(CultureInfo.InvariantCulture, $"{hrs:00}:{mins:00}:{secs:00.000}");
-    }
-
     /// <summary>Same layout as `scenedetect list-scenes`: start frame 1-based, end frame inclusive.</summary>
-    public static string Table(IEnumerable<Shot> shots, Fps fps)
+    public static string Table(IEnumerable<Shot> shots)
     {
         const string rule = "-----------------------------------------------------------------------";
         var sb = new StringBuilder();
@@ -54,35 +35,35 @@ public static class Shots
           .AppendLine(rule);
         foreach (var s in shots)
             sb.AppendLine(string.Create(CultureInfo.InvariantCulture,
-                $" |  {s.Number,5}  | {s.Start + 1,11} | {Timecode(s.Start, fps)} | {s.End,11} | {Timecode(s.End, fps)} |"));
+                $" |  {s.Number,5}  | {s.Start.FrameNum + 1,11} | {s.Start.Timecode()} | {s.End.FrameNum,11} | {s.End.Timecode()} |"));
         return sb.Append(rule).ToString();
     }
 
     /// <summary>Same columns as PySceneDetect's scene list CSV (without its leading "Timecode List" row).</summary>
-    public static string Csv(IEnumerable<Shot> shots, Fps fps)
+    public static string Csv(IEnumerable<Shot> shots)
     {
         var sb = new StringBuilder(
             "Scene Number,Start Frame,Start Timecode,Start Time (seconds),End Frame,End Timecode," +
             "End Time (seconds),Length (frames),Length (timecode),Length (seconds)\n");
         foreach (var s in shots)
         {
-            long len = s.End - s.Start;
+            var d = s.Duration;
             sb.Append(string.Create(CultureInfo.InvariantCulture,
-                $"{s.Number},{s.Start + 1},{Timecode(s.Start, fps)},{Seconds(s.Start, fps):F3},{s.End},{Timecode(s.End, fps)},{Seconds(s.End, fps):F3},{len},{Timecode(len, fps)},{Seconds(len, fps):F3}\n"));
+                $"{s.Number},{s.Start.FrameNum + 1},{s.Start.Timecode()},{s.Start.SecondsText()},{s.End.FrameNum},{s.End.Timecode()},{s.End.SecondsText()},{d.FrameNum},{d.Timecode()},{d.SecondsText()}\n"));
         }
         return sb.ToString();
     }
 
-    public static string Json(IEnumerable<Shot> shots, Fps fps) => JsonSerializer.Serialize(
+    public static string Json(IEnumerable<Shot> shots) => JsonSerializer.Serialize(
         shots.Select(s => new
         {
             shot = s.Number,
-            startFrame = s.Start + 1,
-            endFrame = s.End,
-            startTimecode = Timecode(s.Start, fps),
-            endTimecode = Timecode(s.End, fps),
-            durationFrames = s.End - s.Start,
-            durationSeconds = Math.Round(Seconds(s.End - s.Start, fps), 3),
+            startFrame = s.Start.FrameNum + 1,
+            endFrame = s.End.FrameNum,
+            startTimecode = s.Start.Timecode(),
+            endTimecode = s.End.Timecode(),
+            durationFrames = s.Duration.FrameNum,
+            durationSeconds = double.Parse(s.Duration.SecondsText(), CultureInfo.InvariantCulture),
         }),
         new JsonSerializerOptions { WriteIndented = true });
 }

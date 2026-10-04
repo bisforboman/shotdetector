@@ -1,7 +1,7 @@
 """Run PySceneDetect and ShotDetector on the same video and report cuts that differ.
 
 Usage: python tools/compare.py <video>... [--detector adaptive|content|threshold|both|all] [--tolerance 2]
-                               [--ffmpeg-resize] [--report summary.md]
+                               [--ffmpeg-resize] [--report summary.md] [--stats]
 """
 
 import argparse
@@ -17,11 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def cuts_from_csv(path: Path) -> list[int]:
     """Cut frames (0-based first frame of each shot after the first) from a scene list CSV."""
-    with open(path, newline="") as f:
-        lines = f.read().splitlines()
-    if lines and lines[0].startswith("Timecode List"):  # PySceneDetect's extra first row
-        lines = lines[1:]
-    return [int(row["Start Frame"]) - 1 for row in csv.DictReader(lines)][1:]
+    return [int(row["Start Frame"]) - 1 for row in csv.DictReader(_scene_rows(path))][1:]
 
 
 def match(ref: list[int], ours: list[int], tol: int):
@@ -50,14 +46,47 @@ def timed(cmd: list[str]) -> float:
     return time.perf_counter() - start
 
 
-def compare(video: str, detector: str, tol: int, extra_args: list[str]) -> dict:
+def diff_scene_csv(ref_path: Path, our_path: Path) -> int:
+    """Number of cells that differ between two scene list CSVs (all columns, as text)."""
+    ref, ours = (list(csv.reader(_scene_rows(p))) for p in (ref_path, our_path))
+    cells = sum(x != y for a, b in zip(ref, ours) for x, y in zip(a, b))
+    return cells + sum(len(r) for r in (ref[len(ours):] + ours[len(ref):]))
+
+
+def _scene_rows(path: Path) -> list[str]:
+    with open(path, newline="") as f:
+        lines = f.read().splitlines()
+    return lines[1:] if lines and lines[0].startswith("Timecode List") else lines
+
+
+def diff_stats(ref_path: Path, our_path: Path) -> dict[str, int]:
+    """Mismatching cells per column shared by both stats files (compared as exact strings).
+    Rows only one side has count as mismatches of every shared column."""
+    with open(ref_path, newline="") as f:
+        ref = {row["Frame Number"]: row for row in csv.DictReader(f)}
+    with open(our_path, newline="") as f:
+        ours = {row["Frame Number"]: row for row in csv.DictReader(f)}
+    columns = [c for c in next(iter(ref.values()), {}) if c != "Frame Number" and c in next(iter(ours.values()), {})]
+    diffs = {c: 0 for c in columns}
+    for frame in ref.keys() | ours.keys():
+        for c in columns:
+            if ref.get(frame, {}).get(c) != ours.get(frame, {}).get(c):
+                diffs[c] += 1
+    return diffs
+
+
+def compare(video: str, detector: str, tol: int, extra_args: list[str], stats: bool) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         ref_csv, our_csv = Path(tmp, "ref.csv"), Path(tmp, "ours.csv")
+        ref_stats, our_stats = Path(tmp, "ref_stats.csv"), Path(tmp, "our_stats.csv")
         ref_secs = timed(
-            [sys.executable, "-m", "scenedetect", "-q", "-i", video, "-o", tmp, f"detect-{detector}",
-             "list-scenes", "-f", ref_csv.name])
-        our_secs = timed([str(EXE), "-i", video, "-d", detector, "--csv", str(our_csv), *extra_args])
+            [sys.executable, "-m", "scenedetect", "-q", "-i", video, "-o", tmp,
+             *(["-s", str(ref_stats)] if stats else []), f"detect-{detector}", "list-scenes", "-f", ref_csv.name])
+        our_secs = timed([str(EXE), "-i", video, "-d", detector, "--csv", str(our_csv), *extra_args,
+                          *(["--stats", str(our_stats)] if stats else [])])
         ref, ours = cuts_from_csv(ref_csv), cuts_from_csv(our_csv)
+        csv_cells = diff_scene_csv(ref_csv, our_csv)
+        stat_diffs = diff_stats(ref_stats, our_stats) if stats else None
 
     pairs, missing, extra = match(ref, ours, tol)
     print(f"{Path(video).name} [{detector}] scenedetect: {len(ref)} cuts ({ref_secs:.1f}s), "
@@ -71,18 +100,26 @@ def compare(video: str, detector: str, tol: int, extra_args: list[str]) -> dict:
         print(f"  missing (only scenedetect): {r}")
     for o in extra:
         print(f"  extra (only ShotDetector): {o}")
+    print(f"  scene list CSV cells that differ: {csv_cells}")
+    if stat_diffs is not None:
+        print("  stats cells that differ: " + ", ".join(f"{c} {n}" for c, n in stat_diffs.items()))
     return dict(video=Path(video).name, detector=detector, ref=len(ref), ours=len(ours), exact=exact,
-                off=len(pairs) - exact, missing=missing, extra=extra, ref_secs=ref_secs, our_secs=our_secs)
+                off=len(pairs) - exact, missing=missing, extra=extra, ref_secs=ref_secs, our_secs=our_secs,
+                csv_cells=csv_cells, stat_diffs=stat_diffs)
 
 
 def report(rows: list[dict], tol: int) -> str:
+    # With stats on, scenedetect also computes edges, so timings would not be comparable.
+    stats = rows[0]["stat_diffs"] is not None
     lines = [f"| Video | Detector | scenedetect cuts | ShotDetector cuts | Exact | Off by ≤{tol} | Missing | Extra "
-             "| scenedetect s | ShotDetector s |",
-             "|---|---|---|---|---|---|---|---|---|---|"]
+             "| CSV cells that differ |" + (" Stats cells that differ |" if stats else " scenedetect s | ShotDetector s |"),
+             "|---|---|---|---|---|---|---|---|---|" + ("---|" if stats else "---|---|")]
     for r in rows:
+        tail = (" " + (", ".join(f"{c}: {n}" for c, n in r["stat_diffs"].items() if n) or "none") + " |"
+                if stats else f" {r['ref_secs']:.1f} | {r['our_secs']:.1f} |")
         lines.append(f"| {r['video']} | {r['detector']} | {r['ref']} | {r['ours']} | {r['exact']} | {r['off']} "
                      f"| {', '.join(map(str, r['missing'])) or '–'} | {', '.join(map(str, r['extra'])) or '–'} "
-                     f"| {r['ref_secs']:.1f} | {r['our_secs']:.1f} |")
+                     f"| {r['csv_cells']} |" + tail)
     return "\n".join(lines) + "\n"
 
 
@@ -93,6 +130,8 @@ def main() -> int:
     ap.add_argument("--tolerance", type=int, default=2)
     ap.add_argument("--ffmpeg-resize", action="store_true", help="pass --ffmpeg-resize to ShotDetector")
     ap.add_argument("--report", help="also write a Markdown summary table to this file")
+    ap.add_argument("--stats", action="store_true",
+                    help="also diff per-frame stats files (slows scenedetect: it computes edges then)")
     a = ap.parse_args()
 
     subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", str(ROOT / "src" / "ShotDetector")],
@@ -100,14 +139,16 @@ def main() -> int:
     detectors = {"both": ["adaptive", "content"], "all": ["adaptive", "content", "threshold"]}.get(
         a.detector, [a.detector])
     extra_args = ["--ffmpeg-resize"] if a.ffmpeg_resize else []
-    rows = [compare(v, d, a.tolerance, extra_args) for v in a.videos for d in detectors]
+    rows = [compare(v, d, a.tolerance, extra_args, a.stats) for v in a.videos for d in detectors]
 
     if len(rows) > 1:
         print()
         print(report(rows, a.tolerance))
     if a.report:
         Path(a.report).write_text(report(rows, a.tolerance), encoding="utf-8")
-    return 0 if all(not r["missing"] and not r["extra"] for r in rows) else 1
+    return 0 if all(not r["missing"] and not r["extra"] and not r["csv_cells"]
+                    and not any((r["stat_diffs"] or {}).values())
+                    for r in rows) else 1
 
 
 if __name__ == "__main__":

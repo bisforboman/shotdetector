@@ -17,9 +17,10 @@ const string Usage = """
                                          cv2.resize (faster, but cuts can differ from PySceneDetect)
           --csv <file>                   Write shot list as CSV
           --json <file>                  Write shot list as JSON
+          --stats <file>                 Write per-frame metrics as CSV (like scenedetect -s)
     """;
 
-string? input = null, csvPath = null, jsonPath = null, minSceneLenArg = "0.6s";
+string? input = null, csvPath = null, jsonPath = null, statsPath = null, minSceneLenArg = "0.6s";
 string detectorName = "adaptive";
 double? threshold = null;
 double minContentVal = 15.0, fadeBias = 0;
@@ -45,6 +46,7 @@ try
             case "--ffmpeg-resize": ffmpegResize = true; break;
             case "--csv": csvPath = Next(); break;
             case "--json": jsonPath = Next(); break;
+            case "--stats": statsPath = Next(); break;
             case "-h" or "--help": Console.WriteLine(Usage); return 0;
             default: throw new ArgumentException($"Unknown option {args[i]}");
         }
@@ -81,24 +83,28 @@ IDetector detector = detectorName switch
     "threshold" => new ThresholdDetector(threshold ?? 12.0, minSceneLen, fadeBias),
     _ => new AdaptiveDetector(scorer, threshold ?? 3.0, minSceneLen, window, minContentVal),
 };
+if (statsPath is not null)
+    detector.Stats = new Stats();
 
 Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
     $"{Path.GetFileName(input)}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, " +
     $"~{video.FrameCountHint} frames, processing at {video.Width}x{video.Height}, " +
     $"detector={detectorName}, min-scene-len={minSceneLen} frames"));
 
-var cuts = new List<int>();
+// Cuts are kept as PySceneDetect keeps them: decoded-frame positions, except ThresholdDetector's
+// fade cuts, which it computes as bare frame numbers. This only affects how times are printed.
+var cuts = new List<PyTime>();
 int frameCount = 0;
 try
 {
     foreach (var frame in video.Frames())
     {
         if (detector.ProcessFrame(frameCount, frame) is int cut)
-            cuts.Add(cut);
+            cuts.Add(detector is ThresholdDetector ? PyTime.Frame(cut, video.Fps) : video.Position(cut));
         frameCount++;
     }
     if (frameCount > 0 && detector.PostProcess(frameCount - 1) is int last)
-        cuts.Add(last);
+        cuts.Add(video.Position(last));
 }
 catch (InvalidOperationException e)
 {
@@ -106,10 +112,14 @@ catch (InvalidOperationException e)
     return 1;
 }
 
-var shots = Shots.FromCuts(cuts, frameCount);
-Console.WriteLine(Shots.Table(shots, video.Fps));
+var shots = frameCount == 0
+    ? []
+    : Shots.FromCuts(cuts, video.Position(0), video.EndPosition(frameCount));
+Console.WriteLine(Shots.Table(shots));
 if (csvPath is not null)
-    File.WriteAllText(csvPath, Shots.Csv(shots, video.Fps));
+    File.WriteAllText(csvPath, Shots.Csv(shots));
 if (jsonPath is not null)
-    File.WriteAllText(jsonPath, Shots.Json(shots, video.Fps));
+    File.WriteAllText(jsonPath, Shots.Json(shots));
+if (detector.Stats is not null)
+    File.WriteAllText(statsPath!, detector.Stats.Csv(video.Position));
 return 0;

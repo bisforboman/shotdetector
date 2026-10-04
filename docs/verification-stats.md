@@ -1,0 +1,32 @@
+| Video | Detector | scenedetect cuts | ShotDetector cuts | Exact | Off by ≤2 | Missing | Extra | CSV cells that differ | Stats cells that differ |
+|---|---|---|---|---|---|---|---|---|---|
+| bbb_trailer_400p.ogg | adaptive | 15 | 15 | 15 | 0 | – | – | 0 | none |
+| bbb_trailer_400p.ogg | content | 16 | 16 | 16 | 0 | – | – | 0 | none |
+| bbb_trailer_400p.ogg | threshold | 5 | 5 | 5 | 0 | – | – | 0 | none |
+| bbb_trailer_480p.mov | adaptive | 13 | 13 | 13 | 0 | – | – | 0 | none |
+| bbb_trailer_480p.mov | content | 16 | 16 | 16 | 0 | – | – | 0 | none |
+| bbb_trailer_480p.mov | threshold | 5 | 5 | 5 | 0 | – | – | 0 | none |
+| bbb_trailer_iphone.m4v | adaptive | 13 | 13 | 13 | 0 | – | – | 0 | none |
+| bbb_trailer_iphone.m4v | content | 16 | 16 | 16 | 0 | – | – | 0 | none |
+| bbb_trailer_iphone.m4v | threshold | 5 | 5 | 5 | 0 | – | – | 0 | none |
+| sintel_retimed_24000_1001.mp4 | adaptive | 9 | 9 | 9 | 0 | – | – | 0 | none |
+| sintel_retimed_24000_1001.mp4 | content | 12 | 12 | 12 | 0 | – | – | 0 | none |
+| sintel_retimed_24000_1001.mp4 | threshold | 8 | 8 | 8 | 0 | – | – | 0 | none |
+| sintel_retimed_30000_1001.mp4 | adaptive | 9 | 9 | 9 | 0 | – | – | 0 | none |
+| sintel_retimed_30000_1001.mp4 | content | 10 | 10 | 10 | 0 | – | – | 0 | none |
+| sintel_retimed_30000_1001.mp4 | threshold | 8 | 8 | 8 | 0 | – | – | 0 | none |
+| sintel_retimed_60.mp4 | adaptive | 7 | 7 | 7 | 0 | – | – | 0 | none |
+| sintel_retimed_60.mp4 | content | 9 | 9 | 9 | 0 | – | – | 0 | none |
+| sintel_retimed_60.mp4 | threshold | 7 | 7 | 7 | 0 | – | – | 0 | none |
+| sintel_trailer-1080p.mp4 | adaptive | 7 | 7 | 7 | 0 | – | – | 0 | none |
+| sintel_trailer-1080p.mp4 | content | 10 | 10 | 10 | 0 | – | – | 0 | none |
+| sintel_trailer-1080p.mp4 | threshold | 8 | 8 | 8 | 0 | – | – | 0 | none |
+| sintel_trailer-480p.mp4 | adaptive | 9 | 9 | 9 | 0 | – | – | 0 | none |
+| sintel_trailer-480p.mp4 | content | 11 | 11 | 11 | 0 | – | – | 0 | none |
+| sintel_trailer-480p.mp4 | threshold | 8 | 8 | 8 | 0 | – | – | 0 | none |
+| sintel_trailer1_480p_divx.mkv | adaptive | 8 | 8 | 8 | 0 | – | – | 0 | none |
+| sintel_trailer1_480p_divx.mkv | content | 13 | 13 | 13 | 0 | – | – | 0 | none |
+| sintel_trailer1_480p_divx.mkv | threshold | 9 | 9 | 9 | 0 | – | – | 0 | none |
+| synthetic.mp4 | adaptive | 5 | 5 | 5 | 0 | – | – | 0 | none |
+| synthetic.mp4 | content | 6 | 6 | 6 | 0 | – | – | 0 | none |
+| synthetic.mp4 | threshold | 1 | 1 | 1 | 0 | – | – | 0 | none |

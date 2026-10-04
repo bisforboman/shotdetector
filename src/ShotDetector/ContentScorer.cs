@@ -10,6 +10,11 @@ public sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, do
 {
     public static ContentScorer LumaOnly() => new(0, 0, 1);
 
+    public bool IsLumaOnly => hueWeight == 0 && satWeight == 0 && lumWeight == 1;
+
+    /// <summary>Per-channel deltas behind the last score; null for the first frame.</summary>
+    public (double Hue, double Sat, double Lum)? LastDeltas { get; private set; }
+
     byte[] _h = [], _s = [], _v = [];
     byte[] _prevH = [], _prevS = [], _prevV = [];
     bool _hasPrev;
@@ -26,11 +31,12 @@ public sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, do
         Hsv.Convert(bgr, _h, _s, _v);
 
         double score = 0;
+        LastDeltas = null;
         if (_hasPrev)
         {
-            score = (hueWeight * MeanPixelDistance(_h, _prevH)
-                   + satWeight * MeanPixelDistance(_s, _prevS)
-                   + lumWeight * MeanPixelDistance(_v, _prevV))
+            var (dh, ds, dv) = (MeanPixelDistance(_h, _prevH), MeanPixelDistance(_s, _prevS), MeanPixelDistance(_v, _prevV));
+            LastDeltas = (dh, ds, dv);
+            score = (hueWeight * dh + satWeight * ds + lumWeight * dv)
                   / (Math.Abs(hueWeight) + Math.Abs(satWeight) + Math.Abs(lumWeight));
         }
 
@@ -39,6 +45,17 @@ public sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, do
         (_v, _prevV) = (_prevV, _v);
         _hasPrev = true;
         return score;
+    }
+
+    /// <summary>Records the last score's metrics like ContentDetector does (not for the first frame).</summary>
+    public void Record(Stats? stats, int frame, double score)
+    {
+        if (stats is null || LastDeltas is not { } d)
+            return;
+        stats.Set(frame, "content_val", score);
+        stats.Set(frame, "delta_hue", d.Hue);
+        stats.Set(frame, "delta_sat", d.Sat);
+        stats.Set(frame, "delta_lum", d.Lum);
     }
 
     public static double MeanPixelDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)

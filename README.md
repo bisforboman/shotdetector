@@ -5,18 +5,20 @@ AdaptiveDetector and ThresholdDetector (ported from scenedetect 0.7.1). Frames a
 `ffmpeg -f rawvideo -pix_fmt bgr24`; all detection logic is plain C#.
 
 ```
-dotnet run -c Release --project src/ShotDetector -- -i video.mp4 [-d adaptive|content|threshold] [--csv shots.csv] [--json shots.json] [--ffmpeg-resize]
+dotnet run -c Release --project src/ShotDetector -- -i video.mp4 [-d adaptive|content|threshold] [--csv shots.csv] [--json shots.json] [--stats stats.csv] [--ffmpeg-resize]
 ```
 
 Output matches `scenedetect -i video.mp4 detect-adaptive list-scenes`: the start frame is 1-based,
-the end frame is inclusive, and timecodes are `HH:MM:SS.mmm`. Defaults match the scenedetect CLI:
+the end frame is inclusive, and timecodes are `HH:MM:SS.mmm`. `--csv` writes the same scene list CSV
+as scenedetect (minus its leading "Timecode List" row), and `--stats` writes the per-frame metrics
+file that `scenedetect -s` writes. Defaults match the scenedetect CLI:
 content threshold 27, adaptive threshold 3, min-content-val 15, frame window 2, fade threshold 12,
 min scene length 0.6s.
 
 ## Verifying against PySceneDetect
 
 ```
-python tools/compare.py video.mp4 [more.mp4 ...] [--detector adaptive|content|threshold|both|all] [--tolerance 2] [--ffmpeg-resize] [--report table.md]
+python tools/compare.py video.mp4 [more.mp4 ...] [--detector adaptive|content|threshold|both|all] [--tolerance 2] [--ffmpeg-resize] [--report table.md] [--stats]
 dotnet test
 ```
 
@@ -26,10 +28,13 @@ dotnet test
   and resolutions (h264 mp4/mov/m4v/mkv, Theora ogg, 270p–1080p);
 - the Sintel trailer re-timed to 23.976, 29.97 and 60 fps.
 
-[docs/verification-table.md](docs/verification-table.md) shows the result: on all 10 clips, all three
-detectors produce exactly the same cuts as scenedetect 0.7.1. On the clips checked frame by frame, per-frame
-content_val is identical to scenedetect's stats file too. With `--ffmpeg-resize`, cuts on real
-footage differ (2–6 per trailer).
+Results on all 10 clips and all three detectors, against scenedetect 0.7.1:
+- the cuts are the same frames;
+- the scene list CSVs are identical cell for cell, timecodes and seconds included;
+- with `--stats`, every per-frame metric is printed identically ([docs/verification-stats.md](docs/verification-stats.md)).
+
+Timings are in [docs/verification-table.md](docs/verification-table.md). With `--ffmpeg-resize`,
+cuts on real footage differ (2–6 per trailer).
 
 Speed on a 1920x1080, 5012-frame clip: scenedetect 13.6 s, ShotDetector 12.9 s, and 3.3 s with
 `--ffmpeg-resize`. Exact mode is bound by ffmpeg converting full-size frames to BGR (about 9 s on its own).
@@ -46,7 +51,12 @@ Speed on a 1920x1080, 5012-frame clip: scenedetect 13.6 s, ShotDetector 12.9 s, 
   bicubic chroma for the default exact resize), because that's what OpenCV's ffmpeg backend does. Converting
   BT.709-tagged video "correctly" shifts content_val enough to flip borderline cuts.
 - **No edge component:** `delta_edges` (Canny + dilate) is not ported. Its default weight is 0, so
-  default scores are unaffected.
+  default scores are unaffected, but the `--stats` file has no `delta_edges` column.
+- **Timestamps:** scenedetect prints times from OpenCV's frame positions (container pts → ms →
+  rounded to µs, with Python's exact-binary rounding), not from frame/fps. `PyTime.cs` reproduces
+  that, taking the pts from an extra demux-only ffprobe pass. That assumes OpenCV's best-effort
+  timestamps equal the sorted packet pts, which held for every sample but may not for streams with
+  missing or broken timestamps.
 - **min_scene_len:** ContentDetector reproduces PySceneDetect's float-seconds comparison on
   µs-rounded frame times, so a gap of exactly min_scene_len frames is sometimes rejected (as it is
   there). It assumes constant frame rate starting at 0; variable frame rate isn't handled.

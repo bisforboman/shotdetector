@@ -194,9 +194,11 @@ public class CvResizeTests
     }
 }
 
-public class ShotsTests
+// Expected values come from scenedetect's own FrameTimecode.
+public class PyTimeTests
 {
-    static readonly Fps Ntsc = new(30000, 1001);
+    static readonly Fps Ntsc = new(30000, 1001), Fps24 = new(24, 1);
+    static PyTime Micros(long us, Fps fps) => PyTime.Pts(us, 1_000_000, fps);
 
     [Theory]
     [InlineData(0, 30000, 1001, "00:00:00.000")]
@@ -205,20 +207,73 @@ public class ShotsTests
     [InlineData(1499, 25, 1, "00:00:59.960")]
     [InlineData(90000, 25, 1, "01:00:00.000")]
     [InlineData(59999600, 1000000, 1, "00:01:00.000")] // 59.9996s rounds up into the next minute
-    public void TimecodeFormatting(long frame, int num, int den, string expected) =>
-        Assert.Equal(expected, Shots.Timecode(frame, new Fps(num, den)));
+    public void FrameNumberTimecode(long frame, int num, int den, string expected) =>
+        Assert.Equal(expected, PyTime.Frame(frame, new Fps(num, den)).Timecode());
+
+    [Theory]
+    [InlineData(3503500, "00:00:03.503")] // 3.5035 is really 3.50349999..., so it rounds down
+    [InlineData(4504500, "00:00:04.505")] // 4.5045 is really 4.50450000...1, so it rounds up
+    public void HalfMillisecondsRoundOnTheExactBinaryValue(long us, string expected) =>
+        Assert.Equal(expected, Micros(us, Ntsc).Timecode());
+
+    [Theory]
+    [InlineData(0.0625, 62)]  // exact tie → even
+    [InlineData(0.1875, 188)] // exact tie → even
+    [InlineData(3.5035, 3503)]
+    public void RoundScaledMatchesPythonRound(double x, long expected) =>
+        Assert.Equal(expected, PyTime.RoundScaled(x, 1000));
+
+    [Fact]
+    public void TimestampDifference()
+    {
+        var d = Micros(28000000, Fps24).Minus(Micros(27416667, Fps24));
+        Assert.Equal((14L, "00:00:00.583", "0.583"), (d.FrameNum, d.Timecode(), d.SecondsText()));
+    }
+
+    [Fact]
+    public void EndPlusOneFrameInFrameTimeBase()
+    {
+        var end = PyTime.Pts(1252, 24, Fps24).PlusFrames(1);
+        Assert.Equal((1253L, "00:00:52.208"), (end.FrameNum, end.Timecode()));
+        var d = end.Minus(Micros(52125000, Fps24)); // mixed time bases → the finer one (µs)
+        Assert.Equal((83333L, 2L, "00:00:00.083"), (d.Value, d.FrameNum, d.Timecode()));
+    }
+
+    [Fact]
+    public void MixedFrameNumberAndTimestamp()
+    {
+        var frame = PyTime.Frame(100, Ntsc);
+        var ts = Micros(3003000, Ntsc);
+        Assert.Equal((333667L, "00:00:00.334"), (frame.Minus(ts).Value, frame.Minus(ts).Timecode()));
+        Assert.Equal(0L, ts.Minus(frame).Value); // clamped at 0
+    }
+
+    [Theory]
+    [InlineData(1.0, "1.0")]
+    [InlineData(0.00001, "1e-05")]
+    [InlineData(1.3862395109953702, "1.3862395109953702")]
+    [InlineData(255.0, "255.0")]
+    public void StatsFloatsPrintLikePythonRepr(double x, string expected) => Assert.Equal(expected, Stats.PyFloat(x));
+}
+
+public class ShotsTests
+{
+    static readonly Fps Ntsc = new(30000, 1001);
+
+    static PyTime F(long n) => PyTime.Frame(n, Ntsc);
 
     [Fact]
     public void ShotsFromCutsAreContiguous() =>
-        Assert.Equal([new(1, 0, 30), new(2, 30, 60), new(3, 60, 100)], Shots.FromCuts([60, 30, 30], 100));
+        Assert.Equal([new(1, F(0), F(30)), new(2, F(30), F(60)), new(3, F(60), F(100))],
+            Shots.FromCuts([F(60), F(30), F(30)], F(0), F(100)));
 
     [Fact]
-    public void NoCutsGivesOneShot() => Assert.Equal([new Shot(1, 0, 100)], Shots.FromCuts([], 100));
+    public void NoCutsGivesOneShot() => Assert.Equal([new Shot(1, F(0), F(100))], Shots.FromCuts([], F(0), F(100)));
 
     [Fact]
     public void TableUsesOneBasedStartAndInclusiveEnd() =>
         Assert.Contains(" |      2  |          31 | 00:00:01.001 |          60 | 00:00:02.002 |",
-            Shots.Table(Shots.FromCuts([30], 60), Ntsc));
+            Shots.Table(Shots.FromCuts([F(30)], F(0), F(60))));
 
     [Theory]
     [InlineData(1920, 1080, 256, 144)]

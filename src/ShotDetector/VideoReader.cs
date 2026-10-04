@@ -38,21 +38,68 @@ public sealed class VideoReader
 
     readonly string _path;
     readonly bool _ffmpegResize;
+    readonly long[] _pts;        // presentation timestamps of the frames, in display order
+    readonly long _startPts;
+    readonly double _timeBase;   // seconds per pts unit, as OpenCV's r2d(time_base)
 
     public VideoReader(string path, bool ffmpegResize = false)
     {
         _path = path;
         _ffmpegResize = ffmpegResize;
-        string[] f = Run("ffprobe", ["-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=width,height,r_frame_rate,nb_frames", "-of", "csv=p=0:nk=1", path])
-            .Trim().Split(',');
-        // csv order follows the stream's field order: width,height,r_frame_rate,nb_frames
-        SourceWidth = int.Parse(f[0], CultureInfo.InvariantCulture);
-        SourceHeight = int.Parse(f[1], CultureInfo.InvariantCulture);
-        Fps = Fps.Parse(f[2]);
-        FrameCountHint = f.Length > 3 && long.TryParse(f[3], out var n) ? n : 0;
+        // One demux-only pass: stream properties plus every packet's pts (no decoding).
+        var stream = new Dictionary<string, string>();
+        var pts = new List<long>();
+        foreach (var line in Run("ffprobe", ["-v", "error", "-select_streams", "v:0",
+                     "-show_entries", "stream=width,height,r_frame_rate,time_base,start_pts,nb_frames:packet=pts",
+                     "-of", "default=nw=1", path]).Split('\n', StringSplitOptions.TrimEntries))
+        {
+            int eq = line.IndexOf('=');
+            if (eq < 0) continue;
+            string key = line[..eq], value = line[(eq + 1)..];
+            if (key == "pts")
+            {
+                if (long.TryParse(value, CultureInfo.InvariantCulture, out long p)) pts.Add(p);
+            }
+            else
+                stream[key] = value;
+        }
+        SourceWidth = int.Parse(stream["width"], CultureInfo.InvariantCulture);
+        SourceHeight = int.Parse(stream["height"], CultureInfo.InvariantCulture);
+        Fps = Fps.Parse(stream["r_frame_rate"]);
+        FrameCountHint = long.TryParse(stream.GetValueOrDefault("nb_frames"), out var n) ? n : 0;
         (Width, Height) = DownscaledSize(SourceWidth, SourceHeight);
+
+        var tb = Fps.Parse(stream["time_base"]);
+        _timeBase = tb.Num / (double)tb.Den;
+        _startPts = long.TryParse(stream.GetValueOrDefault("start_pts"), out var s) ? s : 0;
+        pts.Sort(); // packets come in decode order
+        _pts = [.. pts];
     }
+
+    /// <summary>
+    /// The decoded frame's position as PySceneDetect's OpenCV backend reports it: CAP_PROP_POS_MSEC
+    /// ((pts - start) * time_base * 1000) rounded to µs, or (frame - 1) / fps when that is not positive.
+    /// Assumes OpenCV's best-effort timestamps equal the sorted packet pts, which holds for the
+    /// sample clips (mp4, mov, m4v, mkv, ogg) but not for every stream (e.g. missing pts).
+    /// </summary>
+    public PyTime Position(int frame)
+    {
+        if (frame < _pts.Length)
+        {
+            double ms = (_pts[frame] - _startPts) * _timeBase * 1000;
+            long micros = (long)Math.Round(ms * 1000);
+            if (micros > 0)
+                return PyTime.Pts(micros, 1_000_000, Fps);
+        }
+        // PySceneDetect's fallback uses frame_number - 1 with frame_number already advanced, i.e. this frame.
+        return PyTime.Pts((long)frame * Fps.Den, Fps.Num, Fps);
+    }
+
+    /// <summary>
+    /// End of the last scene: PySceneDetect takes the position after decoding stops, plus one frame.
+    /// OpenCV reports CAP_PROP_POS_MSEC as 0 at that point, so it is always the frame-number fallback.
+    /// </summary>
+    public PyTime EndPosition(int frameCount) => PyTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps).PlusFrames(1);
 
     /// <summary>PySceneDetect's compute_downscale_factor + resize size (Python round = half to even).</summary>
     public static (int W, int H) DownscaledSize(int width, int height, int minWidth = 256)

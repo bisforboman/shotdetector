@@ -10,6 +10,9 @@ public interface IDetector
 
     /// <summary>Called once after the last frame (0-based index <paramref name="lastFrame"/>).</summary>
     int? PostProcess(int lastFrame) => null;
+
+    /// <summary>When set, per-frame metrics are recorded here (like `scenedetect -s`).</summary>
+    Stats? Stats { get; set; }
 }
 
 /// <summary>
@@ -21,6 +24,7 @@ public sealed class ContentDetector(ContentScorer scorer, Fps fps, double thresh
     int? _lastAbove, _mergeStart;
     bool _mergeEnabled, _mergeTriggered;
     readonly double _minSeconds = minSceneLen / fps.Value;
+    public Stats? Stats { get; set; }
 
     // Faithful quirk: FlashFilter compares in float seconds between frame positions that OpenCV
     // reports in ms and PySceneDetect rounds to µs. A gap of exactly minSceneLen frames can then
@@ -29,7 +33,12 @@ public sealed class ContentDetector(ContentScorer scorer, Fps fps, double thresh
     bool MinLengthMet(int frame, int since) => (Micros(frame) - Micros(since)) / 1e6 >= _minSeconds;
     long Micros(int frame) => (long)Math.Round(frame / fps.Value * 1000.0 * 1000.0);
 
-    public int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr) => ProcessScore(frame, scorer.Score(bgr));
+    public int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
+    {
+        double score = scorer.Score(bgr);
+        scorer.Record(Stats, frame, score);
+        return ProcessScore(frame, score);
+    }
 
     public int? ProcessScore(int frame, double score)
     {
@@ -80,9 +89,16 @@ public sealed class AdaptiveDetector(
     double minContentVal = 15.0) : IDetector
 {
     readonly List<(int Frame, double Score)> _buffer = [];
+    readonly string _ratioKey = $"adaptive_ratio{(scorer.IsLumaOnly ? "_lum" : "")} (w={windowWidth})";
     int? _lastCut;
+    public Stats? Stats { get; set; }
 
-    public int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr) => ProcessScore(frame, scorer.Score(bgr));
+    public int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
+    {
+        double score = scorer.Score(bgr);
+        scorer.Record(Stats, frame, score);
+        return ProcessScore(frame, score);
+    }
 
     public int? ProcessScore(int frame, double score)
     {
@@ -103,6 +119,7 @@ public sealed class AdaptiveDetector(
         double ratio = Math.Abs(average) < 0.00001
             ? (targetScore >= minContentVal ? 255.0 : 0.0)
             : Math.Min(targetScore / average, 255.0);
+        Stats?.Set(targetFrame, _ratioKey, ratio);
 
         bool thresholdMet = ratio >= adaptiveThreshold && targetScore >= minContentVal;
         // Faithful quirk: min length is measured from the *current* frame, not the target frame.
@@ -131,8 +148,14 @@ public sealed class ThresholdDetector(double threshold = 12, int minSceneLen = 1
     int? _lastSceneCut;
     int _lastFadeFrame;
     bool _fadedOut, _processed;
+    public Stats? Stats { get; set; }
 
-    public int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr) => ProcessAverage(frame, Average(bgr));
+    public int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
+    {
+        double average = Average(bgr);
+        Stats?.Set(frame, "average_rgb", average);
+        return ProcessAverage(frame, average);
+    }
 
     /// <summary>numpy.mean over all bytes; exact, since the integer sum fits a double.</summary>
     public static double Average(ReadOnlySpan<byte> bgr)
