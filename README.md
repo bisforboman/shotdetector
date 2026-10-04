@@ -15,18 +15,23 @@ content threshold 27, adaptive threshold 3, min-content-val 15, frame window 2, 
 ## Verifying against PySceneDetect
 
 ```
-python tools/compare.py video.mp4 --detector adaptive --tolerance 2 [--ffmpeg-resize]
+python tools/compare.py video.mp4 [more.mp4 ...] [--detector adaptive|content|both] [--tolerance 2] [--ffmpeg-resize] [--report table.md]
 dotnet test
 ```
 
-Test clips used during development (all in the gitignored `samples/`):
-- `synthetic.mp4`, made by `tools/make-sample.ps1`: hard cuts between ffmpeg test sources, including one 12-frame shot.
-- [Sintel trailer 480p](https://download.blender.org/durian/trailer/sintel_trailer-480p.mp4) and
-  [Big Buck Bunny trailer 480p](https://download.blender.org/peach/trailer/trailer_480p.mov), both Blender open movies (CC-BY).
+`tools/make-samples.ps1` recreates the test clips in the gitignored `samples/`:
+- a synthetic clip with hard cuts between ffmpeg test sources, including one 12-frame shot;
+- the Sintel and Big Buck Bunny trailers (Blender open movies, CC-BY) in several codecs, containers
+  and resolutions (h264 mp4/mov/m4v/mkv, Theora ogg, 270p–1080p);
+- the Sintel trailer re-timed to 23.976, 29.97 and 60 fps.
 
-By default, per-frame content_val is identical to scenedetect's stats file on all three, and both
-detectors produce exactly the same cuts. With `--ffmpeg-resize`, the synthetic clip still matches,
-but on the trailers 2–6 cuts per run differ.
+[docs/verification-table.md](docs/verification-table.md) shows the result: on all 10 clips, both detectors
+produce exactly the same cuts as scenedetect 0.7.1. On the clips checked frame by frame, per-frame
+content_val is identical to scenedetect's stats file too. With `--ffmpeg-resize`, cuts on real
+footage differ (2–6 per trailer).
+
+Speed on a 1920x1080, 5012-frame clip: scenedetect 13.6 s, ShotDetector 12.9 s, and 3.3 s with
+`--ffmpeg-resize`. Exact mode is bound by ffmpeg converting full-size frames to BGR (about 9 s on its own).
 
 ## Where this differs from PySceneDetect
 
