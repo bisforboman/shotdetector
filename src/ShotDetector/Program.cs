@@ -59,7 +59,13 @@ catch (Exception e) when (e is ArgumentException or FormatException)
     return 2;
 }
 
-var video = new VideoReader(input, ffmpegResize);
+VideoReader video;
+try { video = new VideoReader(input, ffmpegResize); }
+catch (InvalidOperationException e)
+{
+    Console.Error.WriteLine(e.Message);
+    return 1;
+}
 // "0.6s" → frames using Python's round-half-to-even, like FrameTimecode._seconds_to_frames.
 int minSceneLen = minSceneLenArg.EndsWith('s')
     ? (int)Math.Round(double.Parse(minSceneLenArg[..^1], CultureInfo.InvariantCulture) * video.Fps.Value)
@@ -77,11 +83,19 @@ Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
 
 var cuts = new List<int>();
 int frameCount = 0;
-foreach (var frame in video.Frames())
+try
 {
-    if (detector.ProcessFrame(frameCount, frame) is int cut)
-        cuts.Add(cut);
-    frameCount++;
+    foreach (var frame in video.Frames())
+    {
+        if (detector.ProcessFrame(frameCount, frame) is int cut)
+            cuts.Add(cut);
+        frameCount++;
+    }
+}
+catch (InvalidOperationException e)
+{
+    Console.Error.WriteLine(e.Message);
+    return 1;
 }
 
 var shots = Shots.FromCuts(cuts, frameCount);

@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO.Pipes;
 using System.Globalization;
 
 namespace ShotDetector;
@@ -62,12 +64,23 @@ public sealed class VideoReader
         return (Math.Max(1, (int)Math.Round(width / factor)), Math.Max(1, (int)Math.Round(height / factor)));
     }
 
-    /// <summary>Yields every decoded frame. The same buffer is reused for each frame.</summary>
+    /// <summary>
+    /// Yields every decoded frame. A background thread reads (and resizes) the next frames while
+    /// the caller processes the current one, so a yielded buffer is only valid until the next one.
+    /// </summary>
     public IEnumerable<byte[]> Frames()
     {
         bool resizeHere = !_ffmpegResize && (Width, Height) != (SourceWidth, SourceHeight);
-        var psi = new ProcessStartInfo("ffmpeg") { RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var a in new[] { "-v", "error", "-nostdin", "-i", _path, "-map", "0:v:0",
+        // On Windows, stdout redirection uses a 4 KB pipe, which makes full-size frames crawl
+        // (19 s vs 12 s for 5000 1080p frames), so ffmpeg writes to a named pipe with a big buffer.
+        string pipeName = $"shotdetector_{Guid.NewGuid():N}";
+        using var server = OperatingSystem.IsWindows()
+            ? new NamedPipeServerStream(pipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous, inBufferSize: 8 << 20, outBufferSize: 0)
+            : null;
+
+        var psi = new ProcessStartInfo("ffmpeg") { RedirectStandardOutput = server is null, RedirectStandardError = true };
+        foreach (var a in new[] { "-v", "error", "-nostdin", "-y", "-i", _path, "-map", "0:v:0",
                      // Emit every decoded frame once, like OpenCV does (no CFR dup/drop).
                      "-fps_mode", "passthrough",
                      // OpenCV converts to BGR with swscale's defaults (BT.601) and SWS_BICUBIC, ignoring
@@ -75,23 +88,73 @@ public sealed class VideoReader
                      "-vf", resizeHere
                          ? "scale=in_color_matrix=bt601:flags=bicubic,format=bgr24"
                          : $"scale={Width}:{Height}:in_color_matrix=bt601:flags=bilinear,format=bgr24",
-                     "-f", "rawvideo", "-pix_fmt", "bgr24", "-" })
+                     "-f", "rawvideo", "-pix_fmt", "bgr24", server is null ? "-" : $@"\\.\pipe\{pipeName}" })
             psi.ArgumentList.Add(a);
 
         using var proc = Process.Start(psi)!;
         var stderr = proc.StandardError.ReadToEndAsync();
-        var stdout = proc.StandardOutput.BaseStream;
-        var frame = new byte[Width * Height * 3];
-        var raw = resizeHere ? new byte[SourceWidth * SourceHeight * 3] : frame;
-        while (stdout.ReadAtLeast(raw, raw.Length, throwOnEndOfStream: false) == raw.Length)
+        Stream input = server ?? proc.StandardOutput.BaseStream;
+        if (server is not null)
         {
-            if (resizeHere)
-                CvResize.Linear(raw, SourceWidth, SourceHeight, frame, Width, Height);
-            yield return frame;
+            var connected = server.WaitForConnectionAsync();
+            if (Task.WhenAny(connected, proc.WaitForExitAsync()).Result != connected)
+                throw new InvalidOperationException($"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
         }
-        proc.WaitForExit();
-        if (proc.ExitCode != 0)
-            throw new InvalidOperationException($"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
+
+        // The reader thread only drains the pipe (the bottleneck); resizing happens on the caller's
+        // thread. Three buffers: one being filled, one queued, one being resized/processed.
+        using var cancel = new CancellationTokenSource();
+        using var free = new BlockingCollection<byte[]>();
+        using var full = new BlockingCollection<byte[]>();
+        int readSize = resizeHere ? SourceWidth * SourceHeight * 3 : Width * Height * 3;
+        for (int i = 0; i < 3; i++)
+            free.Add(new byte[readSize]);
+        var reader = Task.Run(() =>
+        {
+            try
+            {
+                while (true)
+                {
+                    var buffer = free.Take(cancel.Token);
+                    if (input.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false) != buffer.Length)
+                        break;
+                    full.Add(buffer);
+                }
+            }
+            catch (OperationCanceledException) { }
+            finally { full.CompleteAdding(); }
+        });
+
+        try
+        {
+            var small = resizeHere ? new byte[Width * Height * 3] : null;
+            byte[]? previous = null;
+            foreach (var buffer in full.GetConsumingEnumerable())
+            {
+                if (previous is not null)
+                    free.Add(previous);
+                if (small is not null)
+                {
+                    CvResize.Linear(buffer, SourceWidth, SourceHeight, small, Width, Height);
+                    free.Add(buffer);
+                }
+                else
+                    previous = buffer;
+                yield return small ?? buffer;
+            }
+            reader.Wait(); // rethrows read errors
+            proc.WaitForExit();
+            if (proc.ExitCode != 0)
+                throw new InvalidOperationException($"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
+        }
+        finally
+        {
+            // Caller stopped early (or we failed): stop the reader and ffmpeg before disposing.
+            cancel.Cancel();
+            if (!proc.HasExited)
+                proc.Kill();
+            try { reader.Wait(TimeSpan.FromSeconds(5)); } catch (AggregateException) { }
+        }
     }
 
     static string Run(string exe, string[] args)
