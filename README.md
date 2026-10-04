@@ -31,10 +31,14 @@ detectors' cuts.
   lower on fine detail, which can move ContentDetector cuts. `--cv-resize` makes ffmpeg send
   full-size frames and replicates cv2's resize bit for bit (`CvResize.cs`). It's slower because a
   1080p frame is 6 MB through the pipe.
+- **Colour conversion:** ffmpeg is told to ignore the stream's colour tags and use BT.601 (with
+  bicubic chroma for `--cv-resize`), because that's what OpenCV's ffmpeg backend does. Converting
+  BT.709-tagged video "correctly" shifts content_val enough to flip borderline cuts.
 - **No edge component:** `delta_edges` (Canny + dilate) is not ported. Its default weight is 0, so
   default scores are unaffected.
-- **min_scene_len in frames:** PySceneDetect converts it to seconds internally. For constant
-  frame rate video the result is the same; variable frame rate isn't handled.
+- **min_scene_len:** ContentDetector reproduces PySceneDetect's float-seconds comparison on
+  µs-rounded frame times, so a gap of exactly min_scene_len frames is sometimes rejected (as it is
+  there). It assumes constant frame rate starting at 0; variable frame rate isn't handled.
 - **Flash filter:** only MERGE mode (the default) is ported, not SUPPRESS.
 - **Faithfully kept quirks:** AdaptiveDetector measures min_scene_len from the current frame rather
   than the cut frame (so cuts are allowed `window` frames early), and a merge still pending at the

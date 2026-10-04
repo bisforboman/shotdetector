@@ -11,14 +11,20 @@ public interface IDetector
 
 /// <summary>
 /// Port of PySceneDetect's ContentDetector: cut when content_val >= threshold, with FlashFilter in
-/// MERGE mode (its default) enforcing min_scene_len.
-/// Differs: min_scene_len is in frames (PySceneDetect converts to seconds; same result for CFR video).
-/// SUPPRESS filter mode is not ported.
+/// MERGE mode (its default) enforcing min_scene_len. SUPPRESS filter mode is not ported.
 /// </summary>
-public sealed class ContentDetector(ContentScorer scorer, double threshold = 27.0, int minSceneLen = 15) : IDetector
+public sealed class ContentDetector(ContentScorer scorer, Fps fps, double threshold = 27.0, int minSceneLen = 15) : IDetector
 {
     int? _lastAbove, _mergeStart;
     bool _mergeEnabled, _mergeTriggered;
+    readonly double _minSeconds = minSceneLen / fps.Value;
+
+    // Faithful quirk: FlashFilter compares in float seconds between frame positions that OpenCV
+    // reports in ms and PySceneDetect rounds to µs. A gap of exactly minSceneLen frames can then
+    // fall just short (e.g. 14 frames at 24 fps: 0.583333 < 0.58333333).
+    // ponytail: assumes CFR with the first frame at pts 0, which is what CAP_PROP_POS_MSEC gives for those.
+    bool MinLengthMet(int frame, int since) => (Micros(frame) - Micros(since)) / 1e6 >= _minSeconds;
+    long Micros(int frame) => (long)Math.Round(frame / fps.Value * 1000.0 * 1000.0);
 
     public int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr) => ProcessScore(frame, scorer.Score(bgr));
 
@@ -29,14 +35,14 @@ public sealed class ContentDetector(ContentScorer scorer, double threshold = 27.
             return above ? frame : null;
 
         _lastAbove ??= frame;
-        bool minLengthMet = frame - _lastAbove >= minSceneLen;
+        bool minLengthMet = MinLengthMet(frame, _lastAbove.Value);
         if (above)
             _lastAbove = frame;
 
         if (_mergeTriggered)
         {
             // Keep merging until enough frames pass below the threshold.
-            if (minLengthMet && !above && _lastAbove - _mergeStart >= minSceneLen)
+            if (minLengthMet && !above && MinLengthMet(_lastAbove.Value, _mergeStart!.Value))
             {
                 _mergeTriggered = false;
                 return _lastAbove;

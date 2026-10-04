@@ -67,7 +67,7 @@ int minSceneLen = minSceneLenArg.EndsWith('s')
 
 var scorer = lumaOnly ? ContentScorer.LumaOnly() : new ContentScorer();
 IDetector detector = detectorName == "content"
-    ? new ContentDetector(scorer, threshold ?? 27.0, minSceneLen)
+    ? new ContentDetector(scorer, video.Fps, threshold ?? 27.0, minSceneLen)
     : new AdaptiveDetector(scorer, threshold ?? 3.0, minSceneLen, window, minContentVal);
 
 Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,

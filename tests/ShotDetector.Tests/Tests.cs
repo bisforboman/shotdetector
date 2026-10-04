@@ -57,9 +57,9 @@ public class ContentScorerTests
 
 public class DetectorTests
 {
-    static List<int> RunContent(double[] scores, int minSceneLen = 15)
+    static List<int> RunContent(double[] scores, int minSceneLen = 15, int fps = 25)
     {
-        var d = new ContentDetector(new ContentScorer(), 27, minSceneLen);
+        var d = new ContentDetector(new ContentScorer(), new Fps(fps, 1), 27, minSceneLen);
         return scores.Select((s, i) => d.ProcessScore(i, s)).OfType<int>().ToList();
     }
 
@@ -87,6 +87,15 @@ public class DetectorTests
     public void ContentMergeFilterSwallowsFlashThenEmitsLaterCut() =>
         // 25 is too close to 20, which arms merging; 45 is emitted once 15 quiet frames follow it.
         Assert.Equal([20, 45], RunContent(Scores(80, 2, (20, 40), (25, 40), (45, 40))));
+
+    [Fact]
+    public void ContentMinLengthUsesMicrosecondRoundedSeconds()
+    {
+        // Sintel trailer, 24 fps, min length 14: 672 - 658 is exactly 14 frames, but in µs-rounded
+        // seconds 28.0 - 27.416667 = 0.583333 < 14/24, so PySceneDetect rejects it. 20→34 rounds the other way.
+        Assert.Equal([658], RunContent(Scores(700, 2, (658, 40), (672, 40)), minSceneLen: 14, fps: 24));
+        Assert.Equal([20, 34], RunContent(Scores(60, 2, (20, 40), (34, 40)), minSceneLen: 14, fps: 24));
+    }
 
     [Fact]
     public void ContentWithoutMinLengthCutsEveryFrameAbove() =>
@@ -119,7 +128,7 @@ public class DetectorTests
     public void DetectorsFindCutInSyntheticFrames()
     {
         byte[] black = new byte[8 * 8 * 3], white = Enumerable.Repeat((byte)255, 8 * 8 * 3).ToArray();
-        foreach (IDetector d in new IDetector[] { new ContentDetector(new ContentScorer()), new AdaptiveDetector(new ContentScorer()) })
+        foreach (IDetector d in new IDetector[] { new ContentDetector(new ContentScorer(), new Fps(25, 1)),new AdaptiveDetector(new ContentScorer()) })
         {
             var cuts = new List<int>();
             for (int i = 0; i < 60; i++)

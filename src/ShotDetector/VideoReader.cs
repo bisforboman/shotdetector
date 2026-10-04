@@ -70,7 +70,11 @@ public sealed class VideoReader
         foreach (var a in new[] { "-v", "error", "-nostdin", "-i", _path, "-map", "0:v:0",
                      // Emit every decoded frame once, like OpenCV does (no CFR dup/drop).
                      "-fps_mode", "passthrough",
-                     "-vf", resizeHere ? "null" : $"scale={Width}:{Height}:flags=bilinear",
+                     // OpenCV converts to BGR with swscale's defaults (BT.601) and SWS_BICUBIC, ignoring
+                     // the stream's colour tags, so do the same.
+                     "-vf", resizeHere
+                         ? "scale=in_color_matrix=bt601:flags=bicubic,format=bgr24"
+                         : $"scale={Width}:{Height}:in_color_matrix=bt601:flags=bilinear,format=bgr24",
                      "-f", "rawvideo", "-pix_fmt", "bgr24", "-" })
             psi.ArgumentList.Add(a);
 
