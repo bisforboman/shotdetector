@@ -1,6 +1,6 @@
 """Run PySceneDetect and ShotDetector on the same video and report cuts that differ.
 
-Usage: python tools/compare.py <video>... [--detector adaptive|content|both] [--tolerance 2]
+Usage: python tools/compare.py <video>... [--detector adaptive|content|threshold|both|all] [--tolerance 2]
                                [--ffmpeg-resize] [--report summary.md]
 """
 
@@ -89,7 +89,7 @@ def report(rows: list[dict], tol: int) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("videos", nargs="+")
-    ap.add_argument("--detector", choices=["adaptive", "content", "both"], default="adaptive")
+    ap.add_argument("--detector", choices=["adaptive", "content", "threshold", "both", "all"], default="adaptive")
     ap.add_argument("--tolerance", type=int, default=2)
     ap.add_argument("--ffmpeg-resize", action="store_true", help="pass --ffmpeg-resize to ShotDetector")
     ap.add_argument("--report", help="also write a Markdown summary table to this file")
@@ -97,7 +97,8 @@ def main() -> int:
 
     subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", str(ROOT / "src" / "ShotDetector")],
                    check=True, stdout=subprocess.DEVNULL)
-    detectors = ["adaptive", "content"] if a.detector == "both" else [a.detector]
+    detectors = {"both": ["adaptive", "content"], "all": ["adaptive", "content", "threshold"]}.get(
+        a.detector, [a.detector])
     extra_args = ["--ffmpeg-resize"] if a.ffmpeg_resize else []
     rows = [compare(v, d, a.tolerance, extra_args) for v in a.videos for d in detectors]
 

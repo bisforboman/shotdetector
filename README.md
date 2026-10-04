@@ -1,21 +1,22 @@
 # ShotDetector
 
-A small C# port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s ContentDetector
-and AdaptiveDetector (ported from scenedetect 0.7.1). Frames are decoded by piping
+A small C# port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s ContentDetector,
+AdaptiveDetector and ThresholdDetector (ported from scenedetect 0.7.1). Frames are decoded by piping
 `ffmpeg -f rawvideo -pix_fmt bgr24`; all detection logic is plain C#.
 
 ```
-dotnet run -c Release --project src/ShotDetector -- -i video.mp4 [-d adaptive|content] [--csv shots.csv] [--json shots.json] [--ffmpeg-resize]
+dotnet run -c Release --project src/ShotDetector -- -i video.mp4 [-d adaptive|content|threshold] [--csv shots.csv] [--json shots.json] [--ffmpeg-resize]
 ```
 
 Output matches `scenedetect -i video.mp4 detect-adaptive list-scenes`: the start frame is 1-based,
 the end frame is inclusive, and timecodes are `HH:MM:SS.mmm`. Defaults match the scenedetect CLI:
-content threshold 27, adaptive threshold 3, min-content-val 15, frame window 2, min scene length 0.6s.
+content threshold 27, adaptive threshold 3, min-content-val 15, frame window 2, fade threshold 12,
+min scene length 0.6s.
 
 ## Verifying against PySceneDetect
 
 ```
-python tools/compare.py video.mp4 [more.mp4 ...] [--detector adaptive|content|both] [--tolerance 2] [--ffmpeg-resize] [--report table.md]
+python tools/compare.py video.mp4 [more.mp4 ...] [--detector adaptive|content|threshold|both|all] [--tolerance 2] [--ffmpeg-resize] [--report table.md]
 dotnet test
 ```
 
@@ -25,8 +26,8 @@ dotnet test
   and resolutions (h264 mp4/mov/m4v/mkv, Theora ogg, 270p–1080p);
 - the Sintel trailer re-timed to 23.976, 29.97 and 60 fps.
 
-[docs/verification-table.md](docs/verification-table.md) shows the result: on all 10 clips, both detectors
-produce exactly the same cuts as scenedetect 0.7.1. On the clips checked frame by frame, per-frame
+[docs/verification-table.md](docs/verification-table.md) shows the result: on all 10 clips, all three
+detectors produce exactly the same cuts as scenedetect 0.7.1. On the clips checked frame by frame, per-frame
 content_val is identical to scenedetect's stats file too. With `--ffmpeg-resize`, cuts on real
 footage differ (2–6 per trailer).
 
@@ -53,4 +54,7 @@ Speed on a 1920x1080, 5012-frame clip: scenedetect 13.6 s, ShotDetector 12.9 s, 
 - **Faithfully kept quirks:** AdaptiveDetector measures min_scene_len from the current frame rather
   than the cut frame (so cuts are allowed `window` frames early), and a merge still pending at the
   end of the video is dropped.
-- **Not ported:** ThresholdDetector (fades), Histogram/Hash detectors, frame skip, crop, stats file.
+- **ThresholdDetector:** only the FLOOR method (fades to black) is ported, which is all the CLI
+  uses. `--fade-bias` takes the detector's -1..1 meaning; the scenedetect CLI passes its value
+  through unscaled although its option accepts -100..100.
+- **Not ported:** Histogram/Hash detectors, frame skip, crop, stats file.

@@ -7,6 +7,9 @@ namespace ShotDetector;
 public interface IDetector
 {
     int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr);
+
+    /// <summary>Called once after the last frame (0-based index <paramref name="lastFrame"/>).</summary>
+    int? PostProcess(int lastFrame) => null;
 }
 
 /// <summary>
@@ -111,4 +114,66 @@ public sealed class AdaptiveDetector(
         }
         return null;
     }
+}
+
+/// <summary>
+/// Port of PySceneDetect's ThresholdDetector (FLOOR method, as the CLI uses): detects fades to and
+/// from black by comparing the mean of all B, G and R bytes against <c>threshold</c>. A cut is placed
+/// between the fade-out and the following fade-in, skewed by <c>fadeBias</c> (-1 = at the fade-out,
+/// 0 = midway, +1 = at the fade-in). If the video ends faded out, the fade-out frame becomes a cut
+/// (the CLI's add-last-scene, which cannot be turned off there).
+/// Differs: CEILING method is not ported. The scenedetect CLI passes --fade-bias through unscaled
+/// even though its option range is -100..100; here it takes the detector's -1..1 meaning.
+/// </summary>
+public sealed class ThresholdDetector(double threshold = 12, int minSceneLen = 15, double fadeBias = 0) : IDetector
+{
+    readonly int _threshold = (int)threshold; // PySceneDetect truncates it to an int
+    int? _lastSceneCut;
+    int _lastFadeFrame;
+    bool _fadedOut, _processed;
+
+    public int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr) => ProcessAverage(frame, Average(bgr));
+
+    /// <summary>numpy.mean over all bytes; exact, since the integer sum fits a double.</summary>
+    public static double Average(ReadOnlySpan<byte> bgr)
+    {
+        long sum = 0;
+        foreach (byte b in bgr)
+            sum += b;
+        return sum / (double)bgr.Length;
+    }
+
+    public int? ProcessAverage(int frame, double average)
+    {
+        _lastSceneCut ??= frame;
+        if (!_processed)
+        {
+            _processed = true;
+            _lastFadeFrame = frame;
+            _fadedOut = average < _threshold;
+            return null;
+        }
+
+        int? cut = null;
+        if (!_fadedOut && average < _threshold)
+        {
+            _fadedOut = true;
+            _lastFadeFrame = frame;
+        }
+        else if (_fadedOut && average >= _threshold)
+        {
+            if (frame - _lastSceneCut >= minSceneLen)
+            {
+                int duration = frame - _lastFadeFrame;
+                cut = _lastFadeFrame + (int)Math.Round(duration * (1.0 + fadeBias) / 2.0);
+                _lastSceneCut = frame;
+            }
+            _fadedOut = false;
+            _lastFadeFrame = frame;
+        }
+        return cut;
+    }
+
+    public int? PostProcess(int lastFrame) =>
+        _processed && _fadedOut && lastFrame - (_lastSceneCut ?? 0) >= minSceneLen ? _lastFadeFrame : null;
 }

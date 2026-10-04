@@ -138,6 +138,49 @@ public class DetectorTests
     }
 }
 
+public class ThresholdDetectorTests
+{
+    // Mean pixel level per frame: bright, then dark for frames [from, to), then bright again.
+    static double[] Fade(int count, int from, int to) =>
+        Enumerable.Range(0, count).Select(i => i >= from && i < to ? 3.0 : 100.0).ToArray();
+
+    static List<int> Run(double[] levels, double fadeBias = 0, int minSceneLen = 15)
+    {
+        var d = new ThresholdDetector(12, minSceneLen, fadeBias);
+        var cuts = levels.Select((v, i) => d.ProcessAverage(i, v)).OfType<int>().ToList();
+        if (d.PostProcess(levels.Length - 1) is int last) cuts.Add(last);
+        return cuts;
+    }
+
+    [Theory]
+    [InlineData(0.0, 25)]   // midway between fade-out (20) and fade-in (30)
+    [InlineData(-1.0, 20)]
+    [InlineData(1.0, 30)]
+    [InlineData(0.1, 26)]   // 20 + round(10 * 1.1 / 2) = 20 + round(5.5) = 26 (half to even)
+    public void CutIsPlacedByFadeBias(double bias, int expected) =>
+        Assert.Equal([expected], Run(Fade(60, 20, 30), bias));
+
+    [Fact]
+    public void FadeInBeforeMinLengthIsIgnored() => Assert.Empty(Run(Fade(60, 5, 10)));
+
+    [Fact]
+    public void EndingFadedOutAddsFadeOutFrameAsCut() => Assert.Equal([40], Run(Fade(60, 40, 60)));
+
+    [Fact]
+    public void ThresholdIsTruncatedAndComparedStrictly()
+    {
+        var d = new ThresholdDetector(12.9, minSceneLen: 0);
+        d.ProcessAverage(0, 50);
+        d.ProcessAverage(1, 12.0);              // not < 12, so no fade-out
+        Assert.Null(d.ProcessAverage(2, 50));
+        d.ProcessAverage(3, 11.99);             // fade-out
+        Assert.Equal(3, d.ProcessAverage(4, 12.0)); // >= 12 fades in; round(1 / 2) = 0 → cut at 3
+    }
+
+    [Fact]
+    public void AverageIsMeanOfAllBytes() => Assert.Equal(2.5, ThresholdDetector.Average([0, 1, 2, 3, 4, 5]));
+}
+
 public class CvResizeTests
 {
     [Fact]
