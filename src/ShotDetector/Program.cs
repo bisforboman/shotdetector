@@ -11,6 +11,8 @@ const string Usage = """
       -c, --min-content-val <n>          adaptive: minimum content_val for a cut (default 15)
       -w, --frame-window <n>             adaptive: frames on each side to average (default 2)
       -l, --luma-only                    Only use the V (brightness) channel
+          --cv-resize                    Downscale exactly like cv2.resize(INTER_LINEAR) instead of
+                                         ffmpeg bilinear (matches PySceneDetect closer, slower)
           --csv <file>                   Write shot list as CSV
           --json <file>                  Write shot list as JSON
     """;
@@ -20,7 +22,7 @@ string detectorName = "adaptive";
 double? threshold = null;
 double minContentVal = 15.0;
 int window = 2;
-bool lumaOnly = false;
+bool lumaOnly = false, cvResize = false;
 
 try
 {
@@ -37,6 +39,7 @@ try
             case "-c" or "--min-content-val": minContentVal = NextDouble(); break;
             case "-w" or "--frame-window": window = int.Parse(Next(), CultureInfo.InvariantCulture); break;
             case "-l" or "--luma-only": lumaOnly = true; break;
+            case "--cv-resize": cvResize = true; break;
             case "--csv": csvPath = Next(); break;
             case "--json": jsonPath = Next(); break;
             case "-h" or "--help": Console.WriteLine(Usage); return 0;
@@ -56,7 +59,7 @@ catch (Exception e) when (e is ArgumentException or FormatException)
     return 2;
 }
 
-var video = new VideoReader(input);
+var video = new VideoReader(input, cvResize);
 // "0.6s" → frames using Python's round-half-to-even, like FrameTimecode._seconds_to_frames.
 int minSceneLen = minSceneLenArg.EndsWith('s')
     ? (int)Math.Round(double.Parse(minSceneLenArg[..^1], CultureInfo.InvariantCulture) * video.Fps.Value)

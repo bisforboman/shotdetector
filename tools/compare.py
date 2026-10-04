@@ -1,6 +1,6 @@
 """Run PySceneDetect and ShotDetector on the same video and report cuts that differ.
 
-Usage: python tools/compare.py <video> [--detector adaptive|content] [--tolerance 2]
+Usage: python tools/compare.py <video> [--detector adaptive|content] [--tolerance 2] [--cv-resize]
 """
 
 import argparse
@@ -41,6 +41,7 @@ def main() -> int:
     ap.add_argument("video")
     ap.add_argument("--detector", choices=["adaptive", "content"], default="adaptive")
     ap.add_argument("--tolerance", type=int, default=2)
+    ap.add_argument("--cv-resize", action="store_true", help="pass --cv-resize to ShotDetector")
     a = ap.parse_args()
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -51,7 +52,8 @@ def main() -> int:
             check=True)
         subprocess.run(
             ["dotnet", "run", "-c", "Release", "--project", str(ROOT / "src" / "ShotDetector"), "--",
-             "-i", a.video, "-d", a.detector, "--csv", str(our_csv)],
+             "-i", a.video, "-d", a.detector, "--csv", str(our_csv),
+             *(["--cv-resize"] if a.cv_resize else [])],
             check=True, stdout=subprocess.DEVNULL)
         ref, ours = cuts_from_csv(ref_csv), cuts_from_csv(our_csv)
 

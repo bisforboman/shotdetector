@@ -129,6 +129,19 @@ public class DetectorTests
     }
 }
 
+public class CvResizeTests
+{
+    [Fact]
+    public void MatchesOpenCvInterLinear()
+    {
+        // 5x1 → 2x1; expected from cv2.resize(img, (2, 1), interpolation=cv2.INTER_LINEAR).
+        byte[] src = [0, 0, 0, 100, 100, 100, 200, 200, 200, 255, 255, 255, 10, 20, 30];
+        var dst = new byte[6];
+        CvResize.Linear(src, 5, 1, dst, 2, 1);
+        Assert.Equal([75, 75, 75, 194, 196, 199], dst);
+    }
+}
+
 public class ShotsTests
 {
     static readonly Fps Ntsc = new(30000, 1001);
