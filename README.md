@@ -19,9 +19,14 @@ python tools/compare.py video.mp4 --detector adaptive --tolerance 2 [--cv-resize
 dotnet test
 ```
 
-`tools/make-sample.ps1` generates the test clip used during development (`samples/synthetic.mp4`,
-hard cuts between ffmpeg test sources, including one 12-frame shot). On that clip, with `--cv-resize`, per-frame content_val matched scenedetect's stats file exactly, and so did both
-detectors' cuts.
+Test clips used during development (all in the gitignored `samples/`):
+- `synthetic.mp4`, made by `tools/make-sample.ps1`: hard cuts between ffmpeg test sources, including one 12-frame shot.
+- [Sintel trailer 480p](https://download.blender.org/durian/trailer/sintel_trailer-480p.mp4) and
+  [Big Buck Bunny trailer 480p](https://download.blender.org/peach/trailer/trailer_480p.mov), both Blender open movies (CC-BY).
+
+With `--cv-resize`, per-frame content_val is identical to scenedetect's stats file on all three, and
+both detectors produce exactly the same cuts. With the default ffmpeg downscale, the synthetic clip
+still matches, but on the trailers 2–6 cuts per run differ.
 
 ## Where this differs from PySceneDetect
 
