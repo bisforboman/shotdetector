@@ -23,15 +23,18 @@ const string Usage = """
           --csv <file>                   Write shot list as CSV
           --json <file>                  Write shot list as JSON
           --stats <file>                 Write per-frame metrics as CSV (like scenedetect -s)
+          --save-images <dir>            Save JPEG thumbnails per shot (like scenedetect save-images)
+          --num-images <n>               Thumbnails per shot (default 3)
+          --split-video <dir>            Cut the video into one mp4 per shot (like scenedetect split-video)
     """;
 
-string? input = null, csvPath = null, jsonPath = null, statsPath = null, minSceneLenArg = "0.6s";
+string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null, minSceneLenArg = "0.6s";
 string detectorName = "adaptive";
 double? threshold = null;
 double minContentVal = 15.0, fadeBias = 0;
 int window = 2;
 int? kernelSize = null;
-int decodeThreads = 0;
+int decodeThreads = 0, numImages = 3;
 double[] weights = [1, 1, 1, 0];
 bool lumaOnly = false, ffmpegResize = false;
 
@@ -60,6 +63,9 @@ try
             case "--csv": csvPath = Next(); break;
             case "--json": jsonPath = Next(); break;
             case "--stats": statsPath = Next(); break;
+            case "--save-images": imagesDir = Next(); break;
+            case "--num-images": numImages = int.Parse(Next(), CultureInfo.InvariantCulture); break;
+            case "--split-video": splitDir = Next(); break;
             case "-h" or "--help": Console.WriteLine(Usage); return 0;
             default: throw new ArgumentException($"Unknown option {args[i]}");
         }
@@ -70,6 +76,8 @@ try
         throw new ArgumentException($"Unknown detector '{detectorName}'");
     if (window < 1)
         throw new ArgumentException("--frame-window must be at least 1");
+    if (numImages < 1)
+        throw new ArgumentException("--num-images must be at least 1");
     if (kernelSize is -1)
         kernelSize = null; // scenedetect's spelling of "automatic"
     if (kernelSize is { } k && (k < 3 || k % 2 == 0))
@@ -140,4 +148,16 @@ if (jsonPath is not null)
     File.WriteAllText(jsonPath, Shots.Json(shots));
 if (detector.Stats is not null)
     File.WriteAllText(statsPath!, detector.Stats.Csv(video.Position));
+try
+{
+    if (imagesDir is not null && shots.Count > 0)
+        Console.Error.WriteLine($"Saved {Export.SaveImages(input, video, shots, frameCount, imagesDir, numImages).Count} images to {imagesDir}");
+    if (splitDir is not null && shots.Count > 0)
+        Console.Error.WriteLine($"Wrote {Export.SplitVideo(input, shots, splitDir).Count} clips to {splitDir}");
+}
+catch (InvalidOperationException e)
+{
+    Console.Error.WriteLine(e.Message);
+    return 1;
+}
 return 0;

@@ -15,6 +15,19 @@ file that `scenedetect -s` writes. Defaults match the scenedetect CLI:
 content threshold 27, adaptive threshold 3, min-content-val 15, frame window 2, fade threshold 12,
 min scene length 0.6s.
 
+## Using the shot list
+
+```
+dotnet run -c Release --project src/ShotDetector -- -i video.mp4 --save-images thumbs --split-video clips
+```
+
+- `--save-images <dir>` writes `{video}-Scene-{NNN}-{II}.jpg`, 3 per shot (`--num-images`): one a
+  frame in from the start, one mid-shot, one a frame before the end. They are the same frames
+  scenedetect's `save-images` picks (checked on 120 thumbnails), encoded by ffmpeg instead of
+  OpenCV, so similar but not byte-identical files.
+- `--split-video <dir>` writes `{video}-Scene-{NNN}.mp4` with scenedetect's `split-video` ffmpeg
+  command (libx264 veryfast CRF 22, AAC). The clips came out byte-identical to scenedetect's.
+
 ## Verifying against PySceneDetect
 
 ```

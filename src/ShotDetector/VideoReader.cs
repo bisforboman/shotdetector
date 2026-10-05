@@ -158,6 +158,15 @@ public sealed class VideoReader
     }
 
     /// <summary>
+    /// The frame PySceneDetect's OpenCV backend reads after seek(seconds): FrameTimecode(seconds).frame_num,
+    /// i.e. Python's round(seconds * fps), ties to even on the double product. Matched scenedetect on
+    /// all 120 thumbnails probed across 24, 25 and 29.97 fps clips.
+    /// Differs: for variable frame rate video OpenCV reads forward to correct its estimate; this
+    /// keeps the average-fps estimate, so thumbnails can be a few frames off there.
+    /// </summary>
+    public int FrameAt(double seconds) => (int)Math.Round(seconds * Fps.Value);
+
+    /// <summary>
     /// The position PySceneDetect reads once decoding has stopped. OpenCV reports CAP_PROP_POS_MSEC
     /// as 0 at that point, so it is always the frame-number fallback for the last frame.
     /// The last scene ends one frame after it.

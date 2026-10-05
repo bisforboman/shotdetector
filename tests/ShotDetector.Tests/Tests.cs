@@ -298,6 +298,23 @@ public class Yuv420Tests
     }
 }
 
+// Expected values from scenedetect's _generate_timecode_list / FrameTimecode.
+public class ExportTests
+{
+    static readonly Fps Fps25 = new(25, 1);
+    static PyTime F(long n) => PyTime.Frame(n, Fps25);
+
+    [Fact]
+    public void ImageTimesMatchScenedetect()
+    {
+        Shot[] shots = [new(1, F(0), F(100)), new(2, F(100), F(101)), new(3, F(101), F(101))];
+        var times = Export.ImageTimes(shots, Fps25, 3, 1);
+        Assert.Equal([0.04, 2.0, 3.96], times[0]);                                 // 1-frame margins at both ends
+        Assert.Equal([4.013333333333334, 4.02, 4.026666666666666], times[1]);      // margin capped by the segment
+        Assert.Equal([4.04, 4.04, 4.04], times[2]);                                // empty shot: its start
+    }
+}
+
 public class CvResizeTests
 {
     [Fact]
