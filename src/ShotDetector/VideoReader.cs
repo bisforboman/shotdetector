@@ -292,7 +292,7 @@ public sealed class VideoReader
             }
             catch (OperationCanceledException)
             {
-                proc.Kill();
+                Kill(proc);
                 throw;
             }
         }
@@ -320,8 +320,12 @@ public sealed class VideoReader
                     full.Add(buffer);
                 }
             }
-            catch (OperationCanceledException) { }
-            finally { full.CompleteAdding(); }
+            // Stopped: cancelled, or (if it ever outlived the grace period below) its buffers were disposed.
+            catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException) { }
+            finally
+            {
+                try { full.CompleteAdding(); } catch (ObjectDisposedException) { }
+            }
         });
 
         try
@@ -355,10 +359,15 @@ public sealed class VideoReader
         {
             // Caller stopped early (or we failed): stop the reader and ffmpeg before disposing.
             cancel.Cancel();
-            if (!proc.HasExited)
-                proc.Kill();
+            Kill(proc);
             try { reader.Wait(TimeSpan.FromSeconds(5)); } catch (AggregateException) { }
         }
+    }
+
+    /// <summary>Kills a process unless it has already exited (which can happen at any moment, so no check-then-kill).</summary>
+    static void Kill(Process proc)
+    {
+        try { proc.Kill(); } catch (InvalidOperationException) { }
     }
 
     static Process Start(ProcessStartInfo psi)
@@ -388,7 +397,7 @@ public sealed class VideoReader
         using var proc = Start(psi);
         using var kill = cancellationToken.Register(() =>
         {
-            try { proc.Kill(); } catch (InvalidOperationException) { } // already exited
+            Kill(proc);
         });
         var stderr = proc.StandardError.ReadToEndAsync(CancellationToken.None);
         string output = proc.StandardOutput.ReadToEnd();
