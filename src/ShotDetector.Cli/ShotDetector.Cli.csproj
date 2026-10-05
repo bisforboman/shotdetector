@@ -4,20 +4,32 @@
     <OutputType>Exe</OutputType>
     <!-- "shotdetect", like scenedetect; ShotDetector.exe would clash with the library's ShotDetector.dll. -->
     <AssemblyName>shotdetect</AssemblyName>
-    <IsPackable>false</IsPackable>
-    <!-- Native AOT: dotnet publish src/ShotDetector.Cli -c Release -r win-x64 (needs the MSVC C++ tools). -->
-    <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Trim/AOT analyzers on. Standalone binaries:
+         dotnet publish src/ShotDetector.Cli -c Release -r <rid> -p:PublishAot=true (needs a native toolchain). -->
+    <IsAotCompatible>true</IsAotCompatible>
+
+    <!-- Packed as a .NET tool: dotnet tool install -g ShotDetector.Cli, then run shotdetect. -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>shotdetect</ToolCommandName>
+    <PackageId>ShotDetector.Cli</PackageId>
+    <Description>shotdetect: shot/cut detection from the command line, with the same results as PySceneDetect's scenedetect (list-scenes, stats, save-images, split-video). Needs ffmpeg.</Description>
+    <PackageTags>video;scene-detection;shot-detection;cut-detection;ffmpeg;pyscenedetect;cli</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ShotDetector\ShotDetector.csproj" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <!-- Development only (the fast-yuv option of tools/compare.py): -p:WithFastYuv=true adds the LGPL fast path
-       and a matching command-line option. The default build contains no LGPL code. -->
+       and a matching command-line option. The default build, and the published tool, contain no LGPL code. -->
   <PropertyGroup Condition="'$(WithFastYuv)' == 'true'">
     <DefineConstants>$(DefineConstants);FASTYUV</DefineConstants>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup Condition="'$(WithFastYuv)' == 'true'">
     <ProjectReference Include="..\ShotDetector.FastYuv\ShotDetector.FastYuv.csproj" />
