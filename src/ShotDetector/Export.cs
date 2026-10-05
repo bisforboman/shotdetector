@@ -52,7 +52,7 @@ public static class Export
             string filterFile = Path.Combine(temp, "filter.txt");
             File.WriteAllText(filterFile,
                 $"select='{string.Join("+", frames.Select(f => $"eq(n\\,{f})"))}',scale='round(iw*sar)':ih,setsar=1");
-            VideoReader.Run("ffmpeg", ["-v", "error", "-nostdin", "-y", "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
+            VideoReader.Run(video.FfmpegExe, ["-v", "error", "-nostdin", "-y", "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
                 "-fps_mode", "passthrough", "-q:v", "2", Path.Combine(temp, "%06d.jpg")], cancellationToken);
             var byFrame = frames.Select((f, i) => (f, Path.Combine(temp, $"{i + 1:000000}.jpg"))).ToDictionary();
             foreach (var (frame, file) in wanted)
@@ -129,7 +129,7 @@ public static class Export
         foreach (var shot in shots)
         {
             string file = Path.Combine(outputDir, $"{name}-Scene-{SceneNumber(shot.Number, shots.Count)}.mp4");
-            VideoReader.Run("ffmpeg", ["-v", "error", "-nostdin", "-y",
+            VideoReader.Run(result.Video.FfmpegExe, ["-v", "error", "-nostdin", "-y",
                 "-ss", Stats.PyFloat(shot.Start.Seconds), "-i", videoPath, "-t", Stats.PyFloat(shot.Duration.Seconds),
                 "-map", "0:v:0", "-map", "0:a?", "-map", "0:s?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
                 "-c:a", "aac", .. (result.Video.Compatibility == PySceneDetectVersion.V0_6_4 ? ["-sn"] : Array.Empty<string>()),

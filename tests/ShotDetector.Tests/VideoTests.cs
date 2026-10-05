@@ -73,6 +73,42 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(Shots.Csv(core.Shots), Shots.Csv(fast.Shots));
     }
 
+    sealed class Recorder : IProgress<DetectionProgress>
+    {
+        public List<DetectionProgress> Reports { get; } = [];
+        public void Report(DetectionProgress value) => Reports.Add(value);
+    }
+
+    [Fact]
+    public void ReportsProgressUpToAllFrames()
+    {
+        var recorder = new Recorder();
+        var result = ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { Progress = recorder });
+        Assert.NotEmpty(recorder.Reports);
+        Assert.Equal(new DetectionProgress(150, 150), recorder.Reports[^1]);
+        Assert.Equal(1.0, recorder.Reports[^1].Fraction);
+        Assert.True(recorder.Reports.Zip(recorder.Reports.Skip(1)).All(p => p.First.FramesProcessed <= p.Second.FramesProcessed));
+        Assert.Equal(150, result.FrameCount);
+    }
+
+    [Fact]
+    public void FindsFfmpegInTheGivenDirectory()
+    {
+        string exe = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+        string dir = Environment.GetEnvironmentVariable("PATH")!.Split(Path.PathSeparator)
+            .First(d => File.Exists(Path.Combine(d, exe)));
+        var result = ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { FfmpegDirectory = dir });
+        Assert.Equal(3, result.Shots.Count);
+    }
+
+    [Fact]
+    public void MissingFfmpegSaysWhatToDo()
+    {
+        var e = Assert.Throws<InvalidOperationException>(() =>
+            ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { FfmpegDirectory = Path.GetTempPath() }));
+        Assert.Contains("FfmpegDirectory", e.Message);
+    }
+
     [Fact]
     public void AlreadyCancelledTokenThrowsImmediately() =>
         Assert.Throws<OperationCanceledException>(() => ShotDetection.Detect(clips.Long, cancellationToken: new CancellationToken(true)));

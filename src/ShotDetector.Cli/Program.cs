@@ -18,6 +18,7 @@ const string Usage = """
       -l, --luma-only                    Only use the V (brightness) channel (overrides --weights)
       -f, --fade-bias <-1..1>            threshold: cut position between fade-out (-1) and fade-in (+1)
           --compat <0.7.1|0.6.4>         Which PySceneDetect release to reproduce (default 0.7.1)
+          --ffmpeg-dir <dir>             Folder containing ffmpeg and ffprobe (default: found on PATH)
           --threads <n>                  ffmpeg decoder threads (default 4; 0 = ffmpeg's choice). Each
                                          costs ~25 MB at 1080p; more rarely helps since we decode in parallel
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
@@ -67,6 +68,7 @@ try
             case "-l" or "--luma-only": options = options with { LumaOnly = true }; break;
             case "--ffmpeg-resize": options = options with { FfmpegResize = true }; break;
             case "--threads": options = options with { DecodeThreads = NextInt() }; break;
+            case "--ffmpeg-dir": options = options with { FfmpegDirectory = Next() }; break;
             case "--compat":
                 options = options with
                 {
@@ -104,7 +106,13 @@ catch (Exception e) when (e is ArgumentException or FormatException)
 
 try
 {
+    // A live percentage on stderr, only when it's a terminal (not when output is redirected).
+    if (!Console.IsErrorRedirected)
+        options = options with { Progress = new SyncProgress<DetectionProgress>(p => Console.Error.Write(
+            p.Fraction is { } f ? $"\r{f:P0} ({p.FramesProcessed} frames)  " : $"\r{p.FramesProcessed} frames  ")) };
     var result = ShotDetection.Detect(input, options);
+    if (!Console.IsErrorRedirected)
+        Console.Error.Write("\r" + new string(' ', 40) + "\r");
     var video = result.Video;
     Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
         $"{Path.GetFileName(input)}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, " +
@@ -133,4 +141,10 @@ catch (InvalidOperationException e)
 {
     Console.Error.WriteLine(e.Message);
     return 1;
+}
+
+/// <summary>Reports on the calling thread (Progress&lt;T&gt; would post to the thread pool, out of order).</summary>
+sealed class SyncProgress<T>(Action<T> report) : IProgress<T>
+{
+    public void Report(T value) => report(value);
 }

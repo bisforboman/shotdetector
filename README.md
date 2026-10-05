@@ -32,6 +32,10 @@ var fast = ShotDetection.Detect("video.mp4", new DetectionOptions { Yuv420Conver
 `Detect`, `Export.SaveImages` and `Export.SplitVideo` take an optional `CancellationToken`: cancelling
 stops at the next frame (or clip), kills the ffmpeg process and throws `OperationCanceledException`.
 
+`DetectionOptions.Progress` (an `IProgress<DetectionProgress>`) reports frames done out of the
+expected total about 10 times a second. ffmpeg and ffprobe are found on `PATH`, or in
+`DetectionOptions.FfmpegDirectory` (CLI: `--ffmpeg-dir`).
+
 Runs wherever .NET 10 and ffmpeg do, including Alpine (`apk add ffmpeg`), which CI tests.
 
 To reproduce scenedetect 0.6.4 instead of 0.7.1 (for consistency with older results), set

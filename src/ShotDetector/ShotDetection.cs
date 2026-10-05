@@ -73,8 +73,26 @@ public sealed record DetectionOptions
     /// </summary>
     public IYuv420Converter? Yuv420Converter { get; init; }
 
+    /// <summary>Folder containing ffmpeg and ffprobe; null (default) finds them on PATH.</summary>
+    public string? FfmpegDirectory { get; init; }
+
+    /// <summary>
+    /// Receives progress while frames are decoded (about 10 times a second, and once at the end).
+    /// With <see cref="System.Progress{T}"/>, reports arrive on the thread that created it.
+    /// </summary>
+    public IProgress<DetectionProgress>? Progress { get; init; }
+
     /// <summary>Record per-frame metrics in <see cref="DetectionResult.Stats"/> (like scenedetect -s).</summary>
     public bool CollectStats { get; init; }
+}
+
+/// <summary>How far <see cref="ShotDetection.Detect"/> has got.</summary>
+/// <param name="FramesProcessed">Frames decoded and analysed so far.</param>
+/// <param name="ExpectedFrames">Frames the video is expected to have (from its packets); 0 if unknown.</param>
+public readonly record struct DetectionProgress(int FramesProcessed, int ExpectedFrames)
+{
+    /// <summary>0..1, or null when the frame count is unknown.</summary>
+    public double? Fraction => ExpectedFrames > 0 ? Math.Min(1.0, FramesProcessed / (double)ExpectedFrames) : null;
 }
 
 /// <summary>The outcome of <see cref="ShotDetection.Detect"/>.</summary>
@@ -100,7 +118,7 @@ public static class ShotDetection
         if (o.KernelSize is { } k && (k < 3 || k % 2 == 0))
             throw new ArgumentException("KernelSize must be an odd number >= 3.");
 
-        var video = new VideoReader(videoPath, o.FfmpegResize, o.DecodeThreads, o.Yuv420Converter, o.Compatibility, cancellationToken);
+        var video = new VideoReader(videoPath, o, cancellationToken);
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
 
         var w = o.Weights;
@@ -119,12 +137,19 @@ public static class ShotDetection
 
         var cuts = new List<FrameTime>();
         int frameCount = 0;
+        long lastReport = 0;
         foreach (var frame in video.Frames(cancellationToken))
         {
             if (detector.ProcessFrame(frameCount, frame) is { } cut)
                 cuts.Add(cut);
             frameCount++;
+            if (o.Progress is not null && Environment.TickCount64 - lastReport >= 100)
+            {
+                o.Progress.Report(new(frameCount, video.ExpectedFrames));
+                lastReport = Environment.TickCount64;
+            }
         }
+        o.Progress?.Report(new(frameCount, video.ExpectedFrames));
         if (frameCount > 0 && detector.PostProcess(video.PositionAfterDecoding(frameCount)) is { } last)
             cuts.Add(last);
 

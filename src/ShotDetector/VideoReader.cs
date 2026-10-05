@@ -99,6 +99,12 @@ public sealed class VideoReader
     /// <summary>Which PySceneDetect release's frame rate, downscaling and positions this reader reproduces.</summary>
     public PySceneDetectVersion Compatibility { get; }
 
+    /// <summary>Frames the stream is expected to have (from its packets), for progress; 0 if unknown.</summary>
+    public int ExpectedFrames => _pts.Length > 0 ? _pts.Length : (int)FrameCountHint;
+
+    /// <summary>The ffmpeg executable used (see <see cref="DetectionOptions.FfmpegDirectory"/>).</summary>
+    internal string FfmpegExe { get; }
+
     readonly string _path;
     readonly bool _ffmpegResize;
     readonly int _decodeThreads;
@@ -110,24 +116,22 @@ public sealed class VideoReader
     readonly IYuv420Converter? _yuv420ForVideo;   // _yuv420 configured for this video's colours
 
     /// <param name="path">Video file; ffprobe reads its properties right away.</param>
-    /// <param name="ffmpegResize">Let ffmpeg downscale (faster, results can differ from PySceneDetect).</param>
-    /// <param name="decodeThreads">ffmpeg decoder threads; 0 = ffmpeg's choice. Each frame thread
-    /// holds its own reference frames, so this trades memory (about 25 MB per thread at 1080p) for speed.</param>
-    /// <param name="yuv420Converter">Enables the yuv420p fast path (see <see cref="IYuv420Converter"/>).</param>
-    /// <param name="compatibility">Which PySceneDetect release to reproduce.</param>
+    /// <param name="options">Uses FfmpegResize, DecodeThreads, Yuv420Converter, Compatibility and FfmpegDirectory.</param>
     /// <param name="cancellationToken">Cancels the ffprobe run (the process is killed).</param>
-    public VideoReader(string path, bool ffmpegResize = false, int decodeThreads = 4, IYuv420Converter? yuv420Converter = null,
-        PySceneDetectVersion compatibility = PySceneDetectVersion.V0_7_1, CancellationToken cancellationToken = default)
+    public VideoReader(string path, DetectionOptions? options = null, CancellationToken cancellationToken = default)
     {
+        var o = options ?? new DetectionOptions();
+        var compatibility = o.Compatibility;
         Compatibility = compatibility;
-        _yuv420 = yuv420Converter;
+        _yuv420 = o.Yuv420Converter;
         _path = path;
-        _ffmpegResize = ffmpegResize;
-        _decodeThreads = decodeThreads;
+        _ffmpegResize = o.FfmpegResize;
+        _decodeThreads = o.DecodeThreads;
+        FfmpegExe = Executable(o.FfmpegDirectory, "ffmpeg");
         // One demux-only pass: stream properties plus every packet's pts (no decoding).
         var stream = new Dictionary<string, string>();
         var pts = new List<long>();
-        foreach (var line in Run("ffprobe", ["-v", "error", "-select_streams", "v:0",
+        foreach (var line in Run(Executable(o.FfmpegDirectory, "ffprobe"), ["-v", "error", "-select_streams", "v:0",
                      "-show_entries", "stream=width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,nb_frames:stream_side_data=rotation:packet=pts",
                      "-of", "default=nw=1", path], cancellationToken).Split('\n', StringSplitOptions.TrimEntries))
         {
@@ -258,7 +262,7 @@ public sealed class VideoReader
                 PipeOptions.Asynchronous, inBufferSize: 8 << 20, outBufferSize: 0)
             : null;
 
-        var psi = new ProcessStartInfo("ffmpeg") { RedirectStandardOutput = server is null, RedirectStandardError = true };
+        var psi = new ProcessStartInfo(FfmpegExe) { RedirectStandardOutput = server is null, RedirectStandardError = true };
         // Emit every decoded frame once, like OpenCV does (no CFR dup/drop).
         string[] args = ["-v", "error", "-nostdin", "-y", "-threads", $"{_decodeThreads}", "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough"];
         args = pipeline switch
@@ -275,7 +279,7 @@ public sealed class VideoReader
             psi.ArgumentList.Add(a);
         psi.ArgumentList.Add(server is null ? "-" : $@"\\.\pipe\{pipeName}");
 
-        using var proc = Process.Start(psi)!;
+        using var proc = Start(psi);
         var stderr = proc.StandardError.ReadToEndAsync();
         Stream input = server ?? proc.StandardOutput.BaseStream;
         if (server is not null)
@@ -357,12 +361,31 @@ public sealed class VideoReader
         }
     }
 
+    static Process Start(ProcessStartInfo psi)
+    {
+        try
+        {
+            return Process.Start(psi)!;
+        }
+        catch (System.ComponentModel.Win32Exception e)
+        {
+            throw new InvalidOperationException(
+                $"Could not start {psi.FileName}: {e.Message}. Install ffmpeg (which includes ffprobe) and put it on PATH, " +
+                "or set DetectionOptions.FfmpegDirectory.", e);
+        }
+    }
+
+    /// <summary>"ffmpeg" (found on PATH) or that executable in <paramref name="directory"/>.</summary>
+    static string Executable(string? directory, string name) => directory is null
+        ? name
+        : Path.Combine(directory, OperatingSystem.IsWindows() ? name + ".exe" : name);
+
     /// <summary>Runs ffmpeg/ffprobe to completion and returns its stdout; cancelling kills it.</summary>
     internal static string Run(string exe, IEnumerable<string> args, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var psi = new ProcessStartInfo(exe, args) { RedirectStandardOutput = true, RedirectStandardError = true };
-        using var proc = Process.Start(psi)!;
+        using var proc = Start(psi);
         using var kill = cancellationToken.Register(() =>
         {
             try { proc.Kill(); } catch (InvalidOperationException) { } // already exited
