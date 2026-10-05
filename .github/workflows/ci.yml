@@ -85,11 +85,14 @@ jobs:
         shell: pwsh
         run: ./tools/make-samples.ps1
 
+      # scenedetect 0.6.4's ThresholdDetector is nondeterministic on Linux (its decode thread can hand a
+      # frame over with the wrong frame number; repeated runs differ), so for 0.6.4 only the content
+      # and adaptive detectors are compared. On Windows all three matched 0.6.4 exactly.
       - name: Compare with scenedetect
         run: |
           status=0
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi \
-            --detector all --stats --report parity.md --compat ${{ matrix.scenedetect }} \
+            --detector ${{ matrix.scenedetect == '0.6.4' && 'both' || 'all' }} --stats --report parity.md --compat ${{ matrix.scenedetect }} \
             ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || status=$?
           { echo "### scenedetect ${{ matrix.scenedetect }}, ${{ matrix.path }} path"; cat parity.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status

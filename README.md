@@ -39,7 +39,9 @@ To reproduce scenedetect 0.6.4 instead of 0.7.1 (for consistency with older resu
 different size (a whole-number downscale factor from the width, e.g. 854x480 at 285x160), counts
 time in frames at OpenCV's average frame rate (no real timestamps, so variable frame rate video is
 treated as constant), and rounds fade cuts differently. Cuts, CSVs, stats and exports match 0.6.4
-exactly in that mode; CI checks both releases.
+exactly in that mode; CI checks both releases. (0.6.4's own threshold detector is nondeterministic
+on Linux, where repeated runs give different results, so CI compares 0.6.4 on the content and adaptive
+detectors; on Windows all three matched 0.6.4 exactly.)
 
 `Shot.Start`/`End` are `FrameTime`s: `FrameNum` (0-based; `End` is exclusive), `Seconds`,
 `Timecode()`. They print exactly as scenedetect prints them.
