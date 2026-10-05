@@ -42,6 +42,10 @@ try {
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -vf "settb=1/1000,setpts='N*40+mod(N*7,13)'" `
       -fps_mode passthrough -enc_time_base 1/1000 -c:v libx264 -crf 18 vfr_jitter.mp4
 
+    # Phone-style rotation tags (pixels stored sideways or upside down; decoders rotate them upright).
+    ffmpeg -v error -y -display_rotation 90 -i sintel_trailer-480p.mp4 -c copy sintel_rotated.mp4
+    ffmpeg -v error -y -display_rotation 180 -i sintel_trailer-480p.mp4 -c copy sintel_rotated180.mp4
+
     # Colour handling: full-range yuv420p (tagged "pc"), full-range MJPEG (yuvj420p) and 4:4:4.
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -vf "scale=out_range=full" -color_range pc -c:v libx264 -crf 18 -pix_fmt yuv420p sintel_fullrange.mp4
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mjpeg -q:v 4 -pix_fmt yuvj420p sintel_mjpeg_yuvj420p.avi

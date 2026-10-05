@@ -128,7 +128,7 @@ public sealed class VideoReader
         var stream = new Dictionary<string, string>();
         var pts = new List<long>();
         foreach (var line in Run("ffprobe", ["-v", "error", "-select_streams", "v:0",
-                     "-show_entries", "stream=width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,nb_frames:packet=pts",
+                     "-show_entries", "stream=width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,nb_frames:stream_side_data=rotation:packet=pts",
                      "-of", "default=nw=1", path], cancellationToken).Split('\n', StringSplitOptions.TrimEntries))
         {
             int eq = line.IndexOf('=');
@@ -143,6 +143,12 @@ public sealed class VideoReader
         }
         SourceWidth = int.Parse(stream["width"], CultureInfo.InvariantCulture);
         SourceHeight = int.Parse(stream["height"], CultureInfo.InvariantCulture);
+        // Phone video is often stored sideways with a rotation tag. ffmpeg and OpenCV both rotate it
+        // upright when decoding, so for ±90° the frames we get (and OpenCV's reported size) are
+        // height x width.
+        if (double.TryParse(stream.GetValueOrDefault("rotation"), CultureInfo.InvariantCulture, out double rotation)
+            && Math.Abs(Math.Round(rotation)) % 180 == 90)
+            (SourceWidth, SourceHeight) = (SourceHeight, SourceWidth);
         // OpenCV's CAP_PROP_FPS is the average frame rate (the nominal one only if that is unknown),
         // which matters for variable frame rate video.
         var avg = Fps.Parse(stream.GetValueOrDefault("avg_frame_rate", "0/0"));
