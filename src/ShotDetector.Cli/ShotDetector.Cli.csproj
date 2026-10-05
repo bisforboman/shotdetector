@@ -14,4 +14,13 @@
     <ProjectReference Include="..\ShotDetector\ShotDetector.csproj" />
   </ItemGroup>
 
+  <!-- Development only (the fast-yuv option of tools/compare.py): -p:WithFastYuv=true adds the LGPL fast path
+       and a matching command-line option. The default build contains no LGPL code. -->
+  <PropertyGroup Condition="'$(WithFastYuv)' == 'true'">
+    <DefineConstants>$(DefineConstants);FASTYUV</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(WithFastYuv)' == 'true'">
+    <ProjectReference Include="..\ShotDetector.FastYuv\ShotDetector.FastYuv.csproj" />
+  </ItemGroup>
+
 </Project>

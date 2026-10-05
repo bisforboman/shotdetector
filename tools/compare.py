@@ -1,7 +1,7 @@
 """Run PySceneDetect and ShotDetector on the same video and report cuts that differ.
 
 Usage: python tools/compare.py <video>... [--detector adaptive|content|threshold|both|all] [--tolerance 2]
-                               [--ffmpeg-resize] [--report summary.md] [--stats]
+                               [--ffmpeg-resize] [--fast-yuv] [--report summary.md] [--stats]
                                [--weights "1 1 1 1"] [--kernel-size 5]
 """
 
@@ -35,8 +35,10 @@ def match(ref: list[int], ours: list[int], tol: int):
     return pairs, missing, unused
 
 
-EXE = ROOT / "src" / "ShotDetector.Cli" / "bin" / "Release" / "net10.0" / (
-    "shotdetect.exe" if sys.platform == "win32" else "shotdetect")
+EXE_NAME = "shotdetect.exe" if sys.platform == "win32" else "shotdetect"
+EXE = ROOT / "src" / "ShotDetector.Cli" / "bin" / "Release" / "net10.0" / EXE_NAME
+# A separate build with the LGPL fast path (-p:WithFastYuv=true), for --fast-yuv.
+FAST_DIR = ROOT / "artifacts" / "cli-fastyuv"
 
 
 def timed(cmd: list[str]) -> float:
@@ -133,6 +135,7 @@ def main() -> int:
     ap.add_argument("--detector", choices=["adaptive", "content", "threshold", "both", "all"], default="adaptive")
     ap.add_argument("--tolerance", type=int, default=2)
     ap.add_argument("--ffmpeg-resize", action="store_true", help="pass --ffmpeg-resize to ShotDetector")
+    ap.add_argument("--fast-yuv", action="store_true", help="use the ShotDetector.FastYuv path")
     ap.add_argument("--report", help="also write a Markdown summary table to this file")
     ap.add_argument("--weights", help='content/adaptive weights for both tools, e.g. "1 1 1 1"')
     ap.add_argument("--kernel-size", help="edge kernel size for both tools")
@@ -140,11 +143,17 @@ def main() -> int:
                     help="also diff per-frame stats files (slows scenedetect: it computes edges then)")
     a = ap.parse_args()
 
-    subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", str(ROOT / "src" / "ShotDetector.Cli")],
-                   check=True, stdout=subprocess.DEVNULL)
+    global EXE
+    if a.fast_yuv:
+        subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", "-p:WithFastYuv=true", "-o", str(FAST_DIR),
+                        str(ROOT / "src" / "ShotDetector.Cli")], check=True, stdout=subprocess.DEVNULL)
+        EXE = FAST_DIR / EXE_NAME
+    else:
+        subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", str(ROOT / "src" / "ShotDetector.Cli")],
+                       check=True, stdout=subprocess.DEVNULL)
     detectors = {"both": ["adaptive", "content"], "all": ["adaptive", "content", "threshold"]}.get(
         a.detector, [a.detector])
-    extra_args = ["--ffmpeg-resize"] if a.ffmpeg_resize else []
+    extra_args = (["--ffmpeg-resize"] if a.ffmpeg_resize else []) + (["--fast-yuv"] if a.fast_yuv else [])
     shared = [*(["-w", *a.weights.split()] if a.weights else []), *(["-k", a.kernel_size] if a.kernel_size else [])]
     rows = [compare(v, d, a.tolerance, extra_args, a.stats, shared) for v in a.videos for d in detectors]
 

@@ -104,6 +104,7 @@ public sealed class VideoReader
     readonly long _startPts;
     readonly double _timeBase;   // seconds per pts unit, as OpenCV's r2d(time_base)
     readonly string _pixelFormat;
+    readonly IYuv420Converter? _yuv420ForVideo;   // _yuv420 configured for this video's colours
 
     /// <param name="path">Video file; ffprobe reads its properties right away.</param>
     /// <param name="ffmpegResize">Let ffmpeg downscale (faster, results can differ from PySceneDetect).</param>
@@ -120,7 +121,7 @@ public sealed class VideoReader
         var stream = new Dictionary<string, string>();
         var pts = new List<long>();
         foreach (var line in Run("ffprobe", ["-v", "error", "-select_streams", "v:0",
-                     "-show_entries", "stream=width,height,pix_fmt,r_frame_rate,avg_frame_rate,time_base,start_pts,nb_frames:packet=pts",
+                     "-show_entries", "stream=width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,nb_frames:packet=pts",
                      "-of", "default=nw=1", path]).Split('\n', StringSplitOptions.TrimEntries))
         {
             int eq = line.IndexOf('=');
@@ -142,6 +143,9 @@ public sealed class VideoReader
         FrameCountHint = long.TryParse(stream.GetValueOrDefault("nb_frames"), out var n) ? n : 0;
         (Width, Height) = DownscaledSize(SourceWidth, SourceHeight);
         _pixelFormat = stream.GetValueOrDefault("pix_fmt", "");
+        // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
+        bool fullRange = _pixelFormat == "yuvj420p" || stream.GetValueOrDefault("color_range") == "pc";
+        _yuv420ForVideo = _yuv420?.ForColor(stream.GetValueOrDefault("color_space", ""), fullRange);
 
         var tb = Fps.Parse(stream["time_base"]);
         _timeBase = tb.Num / (double)tb.Den;
@@ -198,7 +202,7 @@ public sealed class VideoReader
     /// <summary>How frames get from ffmpeg to the downscaled BGR the detectors see.</summary>
     public string Pipeline => !_ffmpegResize && (Width, Height) != (SourceWidth, SourceHeight)
         // swscale's unscaled yuv420p converter (what OpenCV gets) needs an even height.
-        ? (_yuv420 is not null && _pixelFormat == "yuv420p" && SourceHeight % 2 == 0 ? "yuv420p+sampled" : "bgr24+resize")
+        ? (_yuv420ForVideo is not null && _pixelFormat is "yuv420p" or "yuvj420p" && SourceHeight % 2 == 0 ? "yuv420p+sampled" : "bgr24+resize")
         : "ffmpeg-scale";
 
     /// <summary>
@@ -225,13 +229,12 @@ public sealed class VideoReader
         string[] args = ["-v", "error", "-nostdin", "-y", "-threads", $"{_decodeThreads}", "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough"];
         args = pipeline switch
         {
-            "yuv420p+sampled" => [.. args, "-f", "rawvideo", "-pix_fmt", "yuv420p"],
-            // OpenCV converts to BGR with swscale's defaults (BT.601) and SWS_BICUBIC, ignoring the
-            // stream's colour tags, so do the same. FFmpeg 8+ follows the frame's colorspace tag over
-            // in_color_matrix, so the frames are re-tagged as BT.601 first (range is left alone).
-            "bgr24+resize" => [.. args, "-vf", "setparams=colorspace=bt470bg,scale=in_color_matrix=bt601:flags=bicubic,format=bgr24",
+            // The source's own format, so ffmpeg passes the samples through untouched.
+            "yuv420p+sampled" => [.. args, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
+            // Like OpenCV: SWS_BICUBIC, colour matrix and range from the stream's tags (BT.601 if untagged).
+            "bgr24+resize" => [.. args, "-vf", "scale=flags=bicubic,format=bgr24",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
-            _ => [.. args, "-vf", $"setparams=colorspace=bt470bg,scale={Width}:{Height}:in_color_matrix=bt601:flags=bilinear,format=bgr24",
+            _ => [.. args, "-vf", $"scale={Width}:{Height}:flags=bilinear,format=bgr24",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
         };
         foreach (var a in args)
@@ -290,7 +293,7 @@ public sealed class VideoReader
                     continue;
                 }
                 if (yuv)
-                    resizer.ResizeYuv420(buffer, small, _yuv420!);
+                    resizer.ResizeYuv420(buffer, small, _yuv420ForVideo!);
                 else
                     resizer.Resize(buffer, small);
                 free.Add(buffer);

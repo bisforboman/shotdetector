@@ -280,6 +280,22 @@ public class Yuv420Tests
         Assert.Equal([b, g, r, b, g, r], row);
     }
 
+    // Expected BGR from ffmpeg with in_color_matrix / in_range set accordingly.
+    [Theory]
+    [InlineData("bt709", false, 81, 90, 240, 0, 23, 255)]
+    [InlineData("bt709", false, 200, 100, 150, 154, 207, 253)]
+    [InlineData("smpte170m", true, 81, 90, 240, 13, 14, 238)]
+    [InlineData("unknown", true, 200, 100, 150, 150, 193, 230)]
+    public void FollowsColourMatrixAndRange(string colorSpace, bool fullRange, byte y, byte u, byte v, byte b, byte g, byte r)
+    {
+        var row = new byte[6];
+        new SwscaleYuv420().ForColor(colorSpace, fullRange)!.RowToBgr([y, y, y, y, u, v], 2, 2, 0, [0, 1], row);
+        Assert.Equal([b, g, r, b, g, r], row);
+    }
+
+    [Fact]
+    public void UnsupportedColourMatrixFallsBack() => Assert.Null(new SwscaleYuv420().ForColor("ycgco", false));
+
     [Fact]
     public void FusedYuvResizeEqualsConvertingEverythingFirst()
     {

@@ -72,7 +72,8 @@ dotnet test
 - the Sintel trailer re-timed to 23.976, 29.97 and 60 fps, and two variable frame rate versions
   (24 → 48 fps, and phone-like jittery timestamps).
 
-Results on all 12 clips and all three detectors, against scenedetect 0.7.1:
+Results against scenedetect 0.7.1 (the tables in docs/ were made on Windows, before colour tags were
+followed; CI now checks every push on Linux, see .github/workflows/ci.yml):
 - the cuts are the same frames;
 - the scene list CSVs are identical cell for cell, timecodes and seconds included;
 - with `--stats`, every per-frame metric is printed identically, `delta_edges` included ([docs/verification-stats.md](docs/verification-stats.md));
@@ -114,9 +115,12 @@ slower path where ffmpeg converts whole frames, still with identical results.
   ffmpeg's bilinear scaler downscale instead. It's faster and averages over the whole footprint,
   whereas cv2 samples only 2x2 pixels and aliases. Content_val therefore comes out lower on fine
   detail, and cuts can differ.
-- **Colour conversion:** ffmpeg is told to ignore the stream's colour tags and use BT.601 (with
-  bicubic chroma for the default exact resize), because that's what OpenCV's ffmpeg backend does. Converting
-  BT.709-tagged video "correctly" shifts content_val enough to flip borderline cuts.
+- **Colour conversion follows the video's colour tags** (BT.709, BT.2020, full range, ...;
+  BT.601 limited range when untagged), as OpenCV does with FFmpeg 8. Note that scenedetect itself
+  is not consistent here: the opencv-python wheels for Linux bundle FFmpeg 8 and follow the tags,
+  while the Windows wheels (FFmpeg 7.1) convert everything as BT.601. ShotDetector matches
+  scenedetect on Linux; on Windows they differ only for tagged video, by enough to flip borderline
+  cuts. CI compares against scenedetect on Linux with the latest stable ffmpeg (9.0).
 - **Timestamps:** scenedetect prints times from OpenCV's frame positions (container pts → ms →
   rounded to µs, with Python's exact-binary rounding), not from frame/fps. `FrameTime.cs` reproduces
   that, taking the pts from an extra demux-only ffprobe pass. That assumes OpenCV's best-effort

@@ -66,6 +66,9 @@ try
             case "-l" or "--luma-only": options = options with { LumaOnly = true }; break;
             case "--ffmpeg-resize": options = options with { FfmpegResize = true }; break;
             case "--threads": options = options with { DecodeThreads = NextInt() }; break;
+#if FASTYUV
+            case "--fast-yuv": options = options with { Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420() }; break;
+#endif
             case "--csv": csvPath = Next(); break;
             case "--json": jsonPath = Next(); break;
             case "--stats": statsPath = Next(); options = options with { CollectStats = true }; break;

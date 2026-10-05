@@ -29,14 +29,16 @@ jobs:
           path: artifacts/*.nupkg
 
   # ShotDetector and scenedetect run on the same clips; cuts, scene list CSVs and per-frame stats must
-  # be identical. scenedetect decodes with the FFmpeg bundled in OpenCV, ShotDetector with the system
-  # ffmpeg, so this runs against several ffmpeg versions.
+  # be identical, for the core path and the FastYuv path. The reference is scenedetect on Linux, whose
+  # OpenCV wheel bundles FFmpeg 8 and so follows colour tags (the Windows wheel's FFmpeg 7.1 doesn't).
   parity:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        ffmpeg: [ubuntu, '8.1', '9.0']   # Ubuntu's package, and BtbN's static builds of the latest releases
+        path: [core, fast-yuv]
+    env:
+      FFMPEG: '9.0'   # the latest stable FFmpeg; BtbN's static build
     steps:
       - uses: actions/checkout@v7
 
@@ -48,15 +50,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install ffmpeg ${{ matrix.ffmpeg }}
+      - name: Install ffmpeg ${{ env.FFMPEG }}
         run: |
-          v='${{ matrix.ffmpeg }}'
-          if [ "$v" = ubuntu ]; then
-            sudo apt-get update && sudo apt-get install -y ffmpeg
-          else
-            curl -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n$v-latest-linux64-gpl-$v.tar.xz" | tar -xJ
-            echo "$PWD/ffmpeg-n$v-latest-linux64-gpl-$v/bin" >> "$GITHUB_PATH"
-          fi
+          curl -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG.tar.xz" | tar -xJ
+          echo "$PWD/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG/bin" >> "$GITHUB_PATH"
 
       - name: ffmpeg version
         run: ffmpeg -hide_banner -version | head -1
@@ -72,6 +69,6 @@ jobs:
         run: |
           status=0
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi \
-            --detector all --stats --report parity.md || status=$?
-          { echo "### ffmpeg ${{ matrix.ffmpeg }}"; cat parity.md; } >> "$GITHUB_STEP_SUMMARY"
+            --detector all --stats --report parity.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || status=$?
+          { echo "### ${{ matrix.path }} path"; cat parity.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status

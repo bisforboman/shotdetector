@@ -10,6 +10,13 @@ namespace ShotDetector;
 public interface IYuv420Converter
 {
     /// <summary>
+    /// A converter for video with this colour metadata, or null if it isn't supported (the normal
+    /// path is used then). <paramref name="colorSpace"/> is ffprobe's color_space ("bt709",
+    /// "smpte170m", "unknown", ...); full range means yuvj420p or color_range "pc".
+    /// </summary>
+    IYuv420Converter? ForColor(string colorSpace, bool fullRange);
+
+    /// <summary>
     /// Converts the pixels at <paramref name="cols"/> of row <paramref name="y"/> of a packed yuv420p
     /// frame into <paramref name="bgrRow"/> (a packed BGR row); other pixels are left untouched.
     /// Called concurrently for different rows.
