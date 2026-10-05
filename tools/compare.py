@@ -74,10 +74,16 @@ def diff_stats(ref_path: Path, our_path: Path) -> dict[str, int]:
         ours = {row["Frame Number"]: row for row in csv.DictReader(f)}
     columns = [c for c in next(iter(ref.values()), {}) if c != "Frame Number" and c in next(iter(ours.values()), {})]
     diffs = {c: 0 for c in columns}
-    for frame in ref.keys() | ours.keys():
+    examples = []
+    for frame in sorted(ref.keys() | ours.keys(), key=int):
         for c in columns:
-            if ref.get(frame, {}).get(c) != ours.get(frame, {}).get(c):
+            r, o = ref.get(frame, {}).get(c), ours.get(frame, {}).get(c)
+            if r != o:
                 diffs[c] += 1
+                if len(examples) < 3:
+                    examples.append(f"frame {frame} {c}: scenedetect {r}, ours {o}")
+    for e in examples:
+        print("    " + e)
     return diffs
 
 
