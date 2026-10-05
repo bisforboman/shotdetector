@@ -259,6 +259,45 @@ public class EdgeDetectorTests
         Assert.Equal(expected, EdgeDetector.EstimatedKernelSize(w, h));
 }
 
+public class Yuv420Tests
+{
+    // Expected BGR from ffmpeg (scale=in_color_matrix=bt601:flags=bicubic,format=bgr24) on yuv420p.
+    [Theory]
+    [InlineData(16, 128, 128, 0, 0, 0)]
+    [InlineData(235, 128, 128, 255, 255, 255)]
+    [InlineData(0, 0, 0, 0, 135, 0)]
+    [InlineData(255, 255, 255, 255, 124, 255)]
+    [InlineData(81, 90, 240, 0, 0, 253)]
+    [InlineData(145, 54, 34, 0, 254, 0)]
+    [InlineData(41, 240, 110, 254, 0, 0)]
+    [InlineData(128, 60, 200, 0, 97, 244)]
+    public void MatchesSwscale(byte y, byte u, byte v, byte b, byte g, byte r)
+    {
+        byte[] yuv = [y, y, y, y, u, v]; // 2x2 frame: 4 luma, 1 U, 1 V
+        var row = new byte[6];
+        Yuv420.RowToBgr(yuv, 2, 2, 0, [0, 1], row);
+        Assert.Equal([b, g, r, b, g, r], row);
+    }
+
+    [Fact]
+    public void FusedYuvResizeEqualsConvertingEverythingFirst()
+    {
+        const int w = 37, h = 22, dw = 11, dh = 6; // odd width, chroma width 19
+        var yuv = new byte[Yuv420.FrameSize(w, h)];
+        new Random(7).NextBytes(yuv);
+        var bgr = new byte[w * h * 3];
+        int[] all = Enumerable.Range(0, w).ToArray();
+        for (int y = 0; y < h; y++)
+            Yuv420.RowToBgr(yuv, w, h, y, all, bgr.AsSpan(y * w * 3, w * 3));
+
+        byte[] expected = new byte[dw * dh * 3], actual = new byte[dw * dh * 3];
+        var resize = new CvResize(w, h, dw, dh);
+        resize.Resize(bgr, expected);
+        resize.ResizeYuv420(yuv, actual);
+        Assert.Equal(expected, actual);
+    }
+}
+
 public class CvResizeTests
 {
     [Fact]
