@@ -109,6 +109,50 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Contains("FfmpegDirectory", e.Message);
     }
 
+    [Theory]
+    [InlineData(DetectorKind.Adaptive)]
+    [InlineData(DetectorKind.Content)]
+    [InlineData(DetectorKind.Threshold)]
+    public async Task StreamingGivesTheSameShotsAsDetect(DetectorKind kind)
+    {
+        var options = new DetectionOptions { Detector = kind, MinSceneLength = "5" };
+        var expected = ShotDetection.Detect(clips.ThreeShots, options).Shots;
+        var streamed = new List<Shot>();
+        await foreach (var shot in ShotDetection.DetectStreamAsync(clips.ThreeShots, options))
+            streamed.Add(shot);
+        Assert.Equal(expected, streamed);
+    }
+
+    [Fact]
+    public async Task StreamingYieldsShotsBeforeTheEnd()
+    {
+        // The long clip has no cuts, so use the three-shot clip and check the first shot arrives
+        // as its own item, then stop early: the background decoding must stop too.
+        await foreach (var shot in ShotDetection.DetectStreamAsync(clips.ThreeShots))
+        {
+            Assert.Equal(1, shot.Number);
+            Assert.Equal(50, shot.End.FrameNum);
+            break;
+        }
+    }
+
+    [Fact]
+    public async Task CancellingStopsStreaming()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var _ in ShotDetection.DetectStreamAsync(clips.Long, cancellationToken: cts.Token)) { }
+        });
+    }
+
+    [Fact]
+    public async Task StreamingReportsErrors() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in ShotDetection.DetectStreamAsync("does-not-exist.mp4")) { }
+        });
+
     [Fact]
     public void AlreadyCancelledTokenThrowsImmediately() =>
         Assert.Throws<OperationCanceledException>(() => ShotDetection.Detect(clips.Long, cancellationToken: new CancellationToken(true)));

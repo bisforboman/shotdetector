@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 
 namespace ShotDetector;
 
@@ -109,7 +111,50 @@ public static class ShotDetection
     /// <exception cref="ArgumentException">Invalid options.</exception>
     /// <exception cref="InvalidOperationException">ffprobe or ffmpeg failed (e.g. missing file).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; ffmpeg is stopped.</exception>
-    public static DetectionResult Detect(string videoPath, DetectionOptions? options = null, CancellationToken cancellationToken = default)
+    public static DetectionResult Detect(string videoPath, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
+        Run(videoPath, options, onShot: null, cancellationToken);
+
+    /// <summary>
+    /// Like <see cref="Detect"/>, but yields each shot as soon as it is known, while the rest of the
+    /// video is still being decoded (on a background thread). The shots are exactly those Detect
+    /// returns. A shot is known once the cut that ends it is confirmed, which can take a few frames
+    /// (the adaptive detector's window, the minimum shot length); the last shot comes at the end.
+    /// Stopping the enumeration early, or cancelling, stops ffmpeg.
+    /// </summary>
+    /// <exception cref="ArgumentException">Invalid options.</exception>
+    /// <exception cref="InvalidOperationException">ffprobe or ffmpeg failed (e.g. missing file).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; ffmpeg is stopped.</exception>
+    public static async IAsyncEnumerable<Shot> DetectStreamAsync(string videoPath, DetectionOptions? options = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var channel = Channel.CreateUnbounded<Shot>(new() { SingleReader = true, SingleWriter = true });
+        // Also cancelled when the caller stops enumerating, so the decoding thread and ffmpeg stop too.
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var producer = Task.Run(() =>
+        {
+            try
+            {
+                Run(videoPath, options, shot => channel.Writer.TryWrite(shot), stop.Token);
+                channel.Writer.Complete();
+            }
+            catch (Exception e)
+            {
+                channel.Writer.Complete(e);
+            }
+        }, CancellationToken.None);
+        try
+        {
+            await foreach (var shot in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                yield return shot;
+        }
+        finally
+        {
+            stop.Cancel();
+            await producer.ConfigureAwait(false); // never throws: errors go through the channel
+        }
+    }
+
+    static DetectionResult Run(string videoPath, DetectionOptions? options, Action<Shot>? onShot, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var o = options ?? new DetectionOptions();
@@ -135,13 +180,34 @@ public static class ShotDetection
         if (o.CollectStats)
             detector.Stats = new Stats();
 
-        var cuts = new List<FrameTime>();
+        // Shots are built as cuts arrive (detectors report them in frame order), which is what
+        // get_scenes_from_cuts does with the sorted, de-duplicated cut list.
+        var shots = new List<Shot>();
+        var start = video.Position(0);
+        FrameTime? lastCut = null;
+        void Cut(FrameTime cut)
+        {
+            // A cut at frame 0 still makes a (zero-length) first shot, as in scenedetect.
+            if (lastCut is { } previous)
+            {
+                if (cut.FrameNum == previous.FrameNum)
+                    return; // the same cut twice
+                if (cut.FrameNum < previous.FrameNum)
+                    throw new InvalidOperationException($"Cut at frame {cut.FrameNum} came after one at {previous.FrameNum}.");
+            }
+            lastCut = cut;
+            var shot = new Shot(shots.Count + 1, start, cut);
+            shots.Add(shot);
+            onShot?.Invoke(shot);
+            start = cut;
+        }
+
         int frameCount = 0;
         long lastReport = 0;
         foreach (var frame in video.Frames(cancellationToken))
         {
             if (detector.ProcessFrame(frameCount, frame) is { } cut)
-                cuts.Add(cut);
+                Cut(cut);
             frameCount++;
             if (o.Progress is not null && Environment.TickCount64 - lastReport >= 100)
             {
@@ -150,12 +216,14 @@ public static class ShotDetection
             }
         }
         o.Progress?.Report(new(frameCount, video.ExpectedFrames));
-        if (frameCount > 0 && detector.PostProcess(video.PositionAfterDecoding(frameCount)) is { } last)
-            cuts.Add(last);
-
-        var shots = frameCount == 0
-            ? []
-            : Shots.FromCuts(cuts, video.Position(0), video.PositionAfterDecoding(frameCount).PlusFrames(1));
+        if (frameCount > 0)
+        {
+            if (detector.PostProcess(video.PositionAfterDecoding(frameCount)) is { } last)
+                Cut(last);
+            var final = new Shot(shots.Count + 1, start, video.PositionAfterDecoding(frameCount).PlusFrames(1));
+            shots.Add(final);
+            onShot?.Invoke(final);
+        }
         return new(videoPath, video, shots, frameCount, minSceneLen, detector.Stats);
     }
 

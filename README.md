@@ -32,6 +32,15 @@ var fast = ShotDetection.Detect("video.mp4", new DetectionOptions { Yuv420Conver
 `Detect`, `Export.SaveImages` and `Export.SplitVideo` take an optional `CancellationToken`: cancelling
 stops at the next frame (or clip), kills the ffmpeg process and throws `OperationCanceledException`.
 
+To get shots while a long video is still being decoded, stream them (same results as `Detect`):
+
+```csharp
+await foreach (var shot in ShotDetection.DetectStreamAsync("video.mp4", options, cancellationToken))
+    Console.WriteLine($"{shot.Number}: {shot.Start.Timecode()} - {shot.End.Timecode()}");
+```
+
+A shot arrives once the cut that ends it is confirmed (a few frames later); the last one at the end.
+
 `DetectionOptions.Progress` (an `IProgress<DetectionProgress>`) reports frames done out of the
 expected total about 10 times a second. ffmpeg and ffprobe are found on `PATH`, or in
 `DetectionOptions.FfmpegDirectory` (CLI: `--ffmpeg-dir`).
