@@ -1,7 +1,7 @@
 # ShotDetector
 
 Shot/cut detection for video in C#: a faithful port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s
-ContentDetector, AdaptiveDetector and ThresholdDetector (scenedetect 0.7.1) that gives identical
+detectors (scenedetect 0.7.1: adaptive, content, threshold, histogram and hash) that gives identical
 results, about 1.5x faster than scenedetect at 1080p with the optional fast path. Video is decoded by [ffmpeg](https://ffmpeg.org), which must be
 installed and on `PATH`; all detection logic is plain C#.
 
@@ -40,6 +40,9 @@ await foreach (var shot in ShotDetection.DetectStreamAsync("video.mp4", options,
 ```
 
 A shot arrives once the cut that ends it is confirmed (a few frames later); the last one at the end.
+
+All five scenedetect detectors are available: `DetectorKind.Adaptive`, `Content`, `Threshold`,
+`Histogram` and `Hash` (CLI `-d adaptive|content|threshold|hist|hash`), with scenedetect's defaults.
 
 `DetectionOptions.Progress` (an `IProgress<DetectionProgress>`) reports frames done out of the
 expected total about 10 times a second. ffmpeg and ffprobe are found on `PATH`, or in
@@ -177,7 +180,12 @@ slower path where ffmpeg converts whole frames, still with identical results.
   when writing stats, because they cost time.
 - **CLI spelling:** `-w/--weights` takes four numbers and `-k/--kernel-size` matches scenedetect's
   options; `--frame-window` is long-only here because `-f` is `--fade-bias`.
-- **Not ported:** Histogram/Hash detectors, frame skip, crop.
+- **detect-hist and detect-hash:** `DetectorKind.Histogram` (`--detector hist`) is bit-exact
+  (`EdgeDetector`-style ports of calcHist, normalize and compareHist). `DetectorKind.Hash`
+  (`--detector hash`) ports the grayscale conversion and INTER_AREA resize bit-exactly but computes
+  the DCT in double precision, so on flat frames (fades to black), where the hash is DCT rounding
+  noise in scenedetect too, a few hash values and the odd cut inside a fade differ.
+- **Not ported:** frame skip, crop.
 
 ## License
 

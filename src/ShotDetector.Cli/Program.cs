@@ -4,10 +4,12 @@ using ShotDetector;
 const string Usage = """
     Usage: shotdetect -i <video> [options]
 
-      -d, --detector <name>              adaptive, content or threshold (default: adaptive)
+      -d, --detector <name>              adaptive, content, threshold, hist or hash (default: adaptive)
       -t, --threshold <n>                content: content_val threshold (default 27)
                                          adaptive: adaptive ratio threshold (default 3)
                                          threshold: mean pixel level of a fade (default 12)
+                                         hist: drop in histogram correlation (default 0.05)
+                                         hash: fraction of hash bits that differ (default 0.395)
       -m, --min-scene-len <n|Ns>         Minimum shot length, frames or seconds e.g. 0.6s (default 0.6s)
       -c, --min-content-val <n>          adaptive: minimum content_val for a cut (default 15)
           --frame-window <n>             adaptive: frames on each side to average (default 2)
@@ -16,6 +18,9 @@ const string Usage = """
       -k, --kernel-size <n>              content/adaptive: odd size >= 3 to widen edges by
                                          (default: from the resolution)
       -l, --luma-only                    Only use the V (brightness) channel (overrides --weights)
+      -b, --bins <n>                     hist: number of luma histogram bins (default 256)
+          --hash-size <n>                hash: hash is n x n bits (default 16)
+          --hash-lowpass <n>             hash: shrink frames to size*n pixels per side first (default 2)
       -f, --fade-bias <-1..1>            threshold: cut position between fade-out (-1) and fade-in (+1)
           --compat <0.7.1|0.6.4>         Which PySceneDetect release to reproduce (default 0.7.1)
           --ffmpeg-dir <dir>             Folder containing ffmpeg and ffprobe (default: found on PATH)
@@ -53,6 +58,8 @@ try
                         "adaptive" => DetectorKind.Adaptive,
                         "content" => DetectorKind.Content,
                         "threshold" => DetectorKind.Threshold,
+                        "hist" => DetectorKind.Histogram,
+                        "hash" => DetectorKind.Hash,
                         var d => throw new ArgumentException($"Unknown detector '{d}'"),
                     },
                 };
@@ -64,6 +71,9 @@ try
             case "-w" or "--weights": options = options with { Weights = (NextDouble(), NextDouble(), NextDouble(), NextDouble()) }; break;
             // -1 is scenedetect's spelling of "automatic".
             case "-k" or "--kernel-size": options = options with { KernelSize = NextInt() is var k and not -1 ? k : null }; break;
+            case "-b" or "--bins": options = options with { Bins = NextInt() }; break;
+            case "--hash-size": options = options with { HashSize = NextInt() }; break;
+            case "--hash-lowpass": options = options with { HashLowpass = NextInt() }; break;
             case "-f" or "--fade-bias": options = options with { FadeBias = NextDouble() }; break;
             case "-l" or "--luma-only": options = options with { LumaOnly = true }; break;
             case "--ffmpeg-resize": options = options with { FfmpegResize = true }; break;

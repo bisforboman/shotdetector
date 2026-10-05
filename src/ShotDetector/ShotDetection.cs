@@ -28,6 +28,10 @@ public enum DetectorKind
     Content,
     /// <summary>ThresholdDetector (detect-threshold): fades to and from black.</summary>
     Threshold,
+    /// <summary>HistogramDetector (detect-hist): changes in the luma histogram.</summary>
+    Histogram,
+    /// <summary>HashDetector (detect-hash): changes in a perceptual hash of the frame.</summary>
+    Hash,
 }
 
 /// <summary>Detection settings. Defaults match the scenedetect CLI.</summary>
@@ -39,7 +43,11 @@ public sealed record DetectionOptions
     /// <summary>Which detector to run (default adaptive).</summary>
     public DetectorKind Detector { get; init; } = DetectorKind.Adaptive;
 
-    /// <summary>Content: content_val threshold (27). Adaptive: ratio threshold (3). Threshold: fade level (12).</summary>
+    /// <summary>
+    /// Content: content_val threshold (27). Adaptive: ratio threshold (3). Threshold: fade level (12).
+    /// Histogram: how far the histogram correlation must drop below 1 (0.05).
+    /// Hash: fraction of hash bits that must differ (0.395).
+    /// </summary>
     public double? Threshold { get; init; }
 
     /// <summary>Minimum shot length: frames ("15") or seconds ("0.6s").</summary>
@@ -59,6 +67,15 @@ public sealed record DetectionOptions
 
     /// <summary>Content/adaptive: odd size >= 3 to widen edges by; null picks it from the resolution.</summary>
     public int? KernelSize { get; init; }
+
+    /// <summary>Histogram: number of luma histogram bins (1..256).</summary>
+    public int Bins { get; init; } = 256;
+
+    /// <summary>Hash: the hash is HashSize×HashSize bits.</summary>
+    public int HashSize { get; init; } = 16;
+
+    /// <summary>Hash: frames are shrunk to HashSize×HashLowpass pixels on each side before hashing.</summary>
+    public int HashLowpass { get; init; } = 2;
 
     /// <summary>Threshold: cut position between fade-out (-1) and fade-in (+1).</summary>
     public double FadeBias { get; init; }
@@ -162,6 +179,10 @@ public static class ShotDetection
             throw new ArgumentException("FrameWindow must be at least 1.");
         if (o.KernelSize is { } k && (k < 3 || k % 2 == 0))
             throw new ArgumentException("KernelSize must be an odd number >= 3.");
+        if (o.Bins is < 1 or > 256)
+            throw new ArgumentException("Bins must be between 1 and 256.");
+        if (o.HashSize < 1 || o.HashLowpass < 1)
+            throw new ArgumentException("HashSize and HashLowpass must be at least 1.");
 
         var video = new VideoReader(videoPath, o, cancellationToken);
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
@@ -169,16 +190,20 @@ public static class ShotDetection
         var w = o.Weights;
         var scorer = o.LumaOnly ? ContentScorer.LumaOnly() : new ContentScorer(w.Hue, w.Sat, w.Lum, w.Edges);
         // Like PySceneDetect, edges are computed when they're weighted or stats are collected.
-        if (o.Detector != DetectorKind.Threshold && (scorer.UsesEdges || o.CollectStats))
+        if (o.Detector is DetectorKind.Adaptive or DetectorKind.Content && (scorer.UsesEdges || o.CollectStats))
             scorer.Edges = new EdgeDetector(video.Width, video.Height, o.KernelSize);
         IDetector detector = o.Detector switch
         {
             DetectorKind.Content => new ContentDetector(scorer, video.Position, video.Fps, o.Threshold ?? 27.0, minSceneLen),
             DetectorKind.Threshold => new ThresholdDetector(video.Position, video.Fps, o.Threshold ?? 12.0, minSceneLen, o.FadeBias, o.Compatibility),
+            DetectorKind.Histogram => new HistogramDetector(video.Position, o.Threshold ?? 0.05, o.Bins, minSceneLen, o.Compatibility),
+            DetectorKind.Hash => new HashDetector(video.Position, o.Threshold ?? 0.395, o.HashSize, o.HashLowpass, minSceneLen),
             _ => new AdaptiveDetector(scorer, video.Position, o.Threshold ?? 3.0, minSceneLen, o.FrameWindow, o.MinContentVal),
         };
         if (o.CollectStats)
             detector.Stats = new Stats();
+        if (detector is HashDetector hash)
+            hash.SetFrameSize(video.Width, video.Height);
 
         // Shots are built as cuts arrive (detectors report them in frame order), which is what
         // get_scenes_from_cuts does with the sorted, de-duplicated cut list.

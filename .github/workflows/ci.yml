@@ -141,3 +141,12 @@ jobs:
             ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || status=$?
           { echo "### scenedetect ${{ matrix.scenedetect }}, ${{ matrix.path }} path"; cat parity.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
+
+      # detect-hash is informational: on flat frames (fades to black) the perceptual hash is DCT
+      # rounding noise, in scenedetect itself as much as here, so a few frames and the odd cut inside
+      # a fade differ. Everything else should match; eyeball the table if it changes.
+      - name: Compare detect-hash with scenedetect (informational)
+        if: matrix.scenedetect == '0.7.1'
+        run: |
+          python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi             --detector hash --stats --report hash.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
+          { echo "### detect-hash (informational), ${{ matrix.path }} path"; cat hash.md; } >> "$GITHUB_STEP_SUMMARY"

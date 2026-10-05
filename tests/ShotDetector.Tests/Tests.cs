@@ -445,3 +445,47 @@ public class ShotsTests
     public void DownscaleMatchesPySceneDetect(int w, int h, int ew, int eh) =>
         Assert.Equal((ew, eh), VideoReader.DownscaledSize(w, h));
 }
+
+// Expected values from cv2 (calcHist on the Y channel, normalize, compareHist HISTCMP_CORREL).
+public class HistogramDetectorTests
+{
+    static readonly byte[] Image =
+    [
+        34, 32, 204, 127, 151, 153, 182, 7, 124, 37, 102, 237, 140, 18, 138, 33, 193, 242, 250, 159, 222, 94, 37, 130,
+        113, 169, 254, 70, 219, 35, 89, 201, 63, 171, 117, 131, 240, 209, 214, 140, 251, 251, 34, 52, 78, 141, 210, 123,
+        251, 90, 237, 151, 184, 60, 151, 205, 226, 222, 247, 32, 199, 119, 175, 70, 3, 21, 249, 229, 77, 110, 61, 37,
+        219, 172, 19, 51, 144, 230, 254, 55, 156, 8, 44, 51, 113, 88, 186, 120, 86, 231, 160, 178, 190, 86, 228, 4,
+        78, 40, 1, 255, 22, 117, 209, 176, 219, 13, 127, 8, 49, 216, 18, 150, 5, 79, 238, 81, 79, 22, 198, 44,
+        127, 6, 5, 214, 2, 119, 109, 32, 165, 189, 252, 50, 236, 15, 36, 153, 222, 229, 189, 6, 106, 206, 135, 48,
+    ];
+
+    static byte[] Brighter() => Image.Select(b => (byte)Math.Min(255, b + 30)).ToArray();
+
+    [Fact]
+    public void HistogramMatchesOpenCv()
+    {
+        float[] expected = [0.10050377994775772f, 0.45226702094078064f, 0.30151134729385376f, 0.251259446144104f,
+            0.6532745957374573f, 0.4020151197910309f, 0.20100755989551544f, 0.05025188997387886f];
+        Assert.Equal(expected, HistogramDetector.Histogram(Image, 8));
+    }
+
+    [Fact]
+    public void CorrelationMatchesCompareHist()
+    {
+        var a = HistogramDetector.Histogram(Image, 8);
+        var b = HistogramDetector.Histogram(Brighter(), 8);
+        Assert.Equal(0.160816861389227, HistogramDetector.Correlation(a, b), 15);
+        Assert.Equal(1.0, HistogramDetector.Correlation(a, a));
+    }
+
+    [Fact]
+    public void CutsWhenTheHistogramChanges()
+    {
+        var fps = new Fps(25, 1);
+        var d = new HistogramDetector(i => FrameTime.Frame(i, fps), minSceneLen: 2);
+        var cuts = new List<long>();
+        for (int i = 0; i < 10; i++)
+            if (d.ProcessFrame(i, i < 5 ? Image : Brighter()) is { } cut) cuts.Add(cut.FrameNum);
+        Assert.Equal([5], cuts);
+    }
+}

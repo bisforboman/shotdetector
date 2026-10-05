@@ -6,7 +6,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
     <PackageId>ShotDetector</PackageId>
-    <Description>Shot/cut detection for video, a faithful C# port of PySceneDetect's ContentDetector, AdaptiveDetector and ThresholdDetector with identical results. Decodes with ffmpeg (must be on PATH).</Description>
+    <Description>Shot/cut detection for video, a faithful C# port of PySceneDetect's detectors (adaptive, content, threshold, histogram, hash) with identical results. Decodes with ffmpeg (must be on PATH).</Description>
     <PackageTags>video;scene-detection;shot-detection;cut-detection;ffmpeg;pyscenedetect</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>

@@ -231,3 +231,99 @@ public sealed class ThresholdDetector(
             ? position(_lastFadeFrame)
             : null;
 }
+
+/// <summary>
+/// Port of PySceneDetect 0.7.1's HistogramDetector (detect-hist): compares the luma (Y of YUV)
+/// histogram of each frame with the previous one using correlation, and cuts when it drops to
+/// 1 - threshold or below. Bit-exact with OpenCV: cvtColor BGR2YUV's fixed-point Y, calcHist's
+/// binning, normalize (L2, float32), and compareHist(HISTCMP_CORREL) summed in two double lanes
+/// as its 128-bit SIMD path does.
+/// </summary>
+public sealed class HistogramDetector(
+    Func<int, FrameTime> position,
+    double threshold = 0.05,
+    int bins = 256,
+    int minSceneLen = 15,
+    PySceneDetectVersion version = PySceneDetectVersion.V0_7_1) : IDetector
+{
+    readonly double _maxCorrelation = Math.Max(0.0, Math.Min(1.0, 1.0 - threshold));
+    readonly string _key = $"hist_diff [bins={bins}]";
+    float[]? _lastHist;
+    int? _lastCut;
+
+    /// <inheritdoc/>
+    public Stats? Stats { get; set; }
+
+    /// <inheritdoc/>
+    public FrameTime? ProcessFrame(int frame, byte[] bgr)
+    {
+        // 0.6.4 tests `if not self._last_scene_cut` on a plain frame number, which is false for 0, so
+        // it re-initialises at frame 1; 0.7.1's FrameTimecode is always truthy.
+        if (_lastCut is null || (version == PySceneDetectVersion.V0_6_4 && _lastCut == 0))
+            _lastCut = frame;
+        var hist = Histogram(bgr, bins);
+        FrameTime? cut = null;
+        if (_lastHist is not null)
+        {
+            double correlation = Correlation(_lastHist, hist);
+            if (correlation <= _maxCorrelation && position(frame).Minus(position(_lastCut.Value)).FrameNum >= minSceneLen)
+            {
+                cut = position(frame);
+                _lastCut = frame;
+            }
+            Stats?.Set(frame, _key, correlation);
+        }
+        _lastHist = hist;
+        return cut;
+    }
+
+    /// <summary>calculate_histogram: the L2-normalised histogram of the Y channel, as float32.</summary>
+    public static float[] Histogram(ReadOnlySpan<byte> bgr, int bins)
+    {
+        Span<int> binOf = stackalloc int[256];
+        for (int v = 0; v < 256; v++)
+            binOf[v] = Math.Min((int)Math.Floor(v * (bins / 256.0)), bins - 1);
+        var counts = new float[bins];
+        for (int p = 0; p < bgr.Length; p += 3)
+            counts[binOf[(bgr[p] * 1868 + bgr[p + 1] * 9617 + bgr[p + 2] * 4899 + 8192) >> 14]]++;
+        double sumSquares = 0;
+        foreach (float c in counts)
+            sumSquares += (double)c * c;
+        float scale = (float)(1.0 / Math.Sqrt(sumSquares));
+        for (int i = 0; i < bins; i++)
+            counts[i] *= scale;
+        return counts;
+    }
+
+    /// <summary>cv2.compareHist(a, b, HISTCMP_CORREL).</summary>
+    public static double Correlation(float[] a, float[] b)
+    {
+        int n = a.Length, paired = n - n % 2;
+        // Two lanes, as OpenCV's v_float64x2 accumulation, added together at the end.
+        Span<double> lane0 = stackalloc double[5], lane1 = stackalloc double[5];
+        for (int i = 0; i < paired; i += 2)
+        {
+            Accumulate(lane0, a[i], b[i]);
+            Accumulate(lane1, a[i + 1], b[i + 1]);
+        }
+        Span<double> s = stackalloc double[5];
+        for (int k = 0; k < 5; k++)
+            s[k] = lane0[k] + lane1[k];
+        for (int i = paired; i < n; i++)
+            Accumulate(s, a[i], b[i]);
+        double num = s[3] - s[0] * s[1] / n;
+        double denom2 = (s[2] - s[0] * s[0] / n) * (s[4] - s[1] * s[1] / n);
+        return Math.Abs(denom2) > DblEpsilon ? num / Math.Sqrt(denom2) : 1.0;
+    }
+
+    const double DblEpsilon = 2.220446049250313e-16; // C DBL_EPSILON (.NET double.Epsilon is the smallest denormal)
+
+    static void Accumulate(Span<double> s, double x, double y)
+    {
+        s[0] += x;
+        s[1] += y;
+        s[2] += x * x;
+        s[3] += x * y;
+        s[4] += y * y;
+    }
+}

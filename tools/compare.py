@@ -89,7 +89,7 @@ def diff_stats(ref_path: Path, our_path: Path) -> dict[str, int]:
 
 def compare(video: str, detector: str, tol: int, extra_args: list[str], stats: bool, shared: list[str]) -> dict:
     """`shared` options are passed to both tools (same spelling in both CLIs), except to detect-threshold."""
-    shared = shared if detector != "threshold" else []
+    shared = shared if detector in ("adaptive", "content") else []
     with tempfile.TemporaryDirectory() as tmp:
         ref_csv, our_csv = Path(tmp, "ref.csv"), Path(tmp, "ours.csv")
         ref_stats, our_stats = Path(tmp, "ref_stats.csv"), Path(tmp, "our_stats.csv")
@@ -140,7 +140,7 @@ def report(rows: list[dict], tol: int) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("videos", nargs="+")
-    ap.add_argument("--detector", choices=["adaptive", "content", "threshold", "both", "all"], default="adaptive")
+    ap.add_argument("--detector", choices=["adaptive", "content", "threshold", "hist", "hash", "both", "all"], default="adaptive")
     ap.add_argument("--tolerance", type=int, default=2)
     ap.add_argument("--ffmpeg-resize", action="store_true", help="pass --ffmpeg-resize to ShotDetector")
     ap.add_argument("--fast-yuv", action="store_true", help="use the ShotDetector.FastYuv path")
@@ -163,7 +163,9 @@ def main() -> int:
     else:
         subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", str(ROOT / "src" / "ShotDetector.Cli")],
                        check=True, stdout=subprocess.DEVNULL)
-    detectors = {"both": ["adaptive", "content"], "all": ["adaptive", "content", "threshold"]}.get(
+    # "all" is the detectors expected to match exactly; detect-hash is compared separately (it is
+    # numerical noise on flat frames, in scenedetect too).
+    detectors = {"both": ["adaptive", "content"], "all": ["adaptive", "content", "threshold", "hist"]}.get(
         a.detector, [a.detector])
     extra_args = ((["--ffmpeg-resize"] if a.ffmpeg_resize else []) + (["--fast-yuv"] if a.fast_yuv else [])
                   + (["--compat", a.compat] if a.compat else []))
