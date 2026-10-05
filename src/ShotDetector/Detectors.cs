@@ -1,15 +1,17 @@
 namespace ShotDetector;
 
 /// <summary>
-/// A cut detector fed frames in order. Returns the frame number of a new cut (the first frame of
-/// the new shot), which may lag behind <paramref name="frame"/>, or null.
+/// A cut detector fed frames in order (0-based decode index). Returns where a new shot starts, which
+/// may lag behind <paramref name="frame"/>, or null. Detectors measure lengths through
+/// <c>position</c> (frame index → time, as PySceneDetect's FrameTimecode positions), so variable
+/// frame rate video behaves as it does in PySceneDetect.
 /// </summary>
 public interface IDetector
 {
-    int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr);
+    PyTime? ProcessFrame(int frame, ReadOnlySpan<byte> bgr);
 
-    /// <summary>Called once after the last frame (0-based index <paramref name="lastFrame"/>).</summary>
-    int? PostProcess(int lastFrame) => null;
+    /// <summary>Called once after the last frame; <paramref name="end"/> is the position after decoding stopped.</summary>
+    PyTime? PostProcess(PyTime end) => null;
 
     /// <summary>When set, per-frame metrics are recorded here (like `scenedetect -s`).</summary>
     Stats? Stats { get; set; }
@@ -19,27 +21,31 @@ public interface IDetector
 /// Port of PySceneDetect's ContentDetector: cut when content_val >= threshold, with FlashFilter in
 /// MERGE mode (its default) enforcing min_scene_len. SUPPRESS filter mode is not ported.
 /// </summary>
-public sealed class ContentDetector(ContentScorer scorer, Fps fps, double threshold = 27.0, int minSceneLen = 15) : IDetector
+public sealed class ContentDetector(
+    ContentScorer scorer,
+    Func<int, PyTime> position,
+    Fps fps,
+    double threshold = 27.0,
+    int minSceneLen = 15) : IDetector
 {
     int? _lastAbove, _mergeStart;
     bool _mergeEnabled, _mergeTriggered;
     readonly double _minSeconds = minSceneLen / fps.Value;
     public Stats? Stats { get; set; }
 
-    // Faithful quirk: FlashFilter compares in float seconds between frame positions that OpenCV
-    // reports in ms and PySceneDetect rounds to µs. A gap of exactly minSceneLen frames can then
-    // fall just short (e.g. 14 frames at 24 fps: 0.583333 < 0.58333333).
-    // ponytail: assumes CFR with the first frame at pts 0, which is what CAP_PROP_POS_MSEC gives for those.
-    bool MinLengthMet(int frame, int since) => (Micros(frame) - Micros(since)) / 1e6 >= _minSeconds;
-    long Micros(int frame) => (long)Math.Round(frame / fps.Value * 1000.0 * 1000.0);
+    // FlashFilter compares the time between positions in float seconds against min_scene_len / fps.
+    // Faithful quirk: positions are µs-rounded, so a gap of exactly minSceneLen frames can fall just
+    // short (e.g. 14 frames at 24 fps: 0.583333 < 0.58333333).
+    bool MinLengthMet(int frame, int since) => position(frame).Minus(position(since)).Seconds >= _minSeconds;
 
-    public int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
+    public PyTime? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
     {
         double score = scorer.Score(bgr);
         scorer.Record(Stats, frame, score);
-        return ProcessScore(frame, score);
+        return ProcessScore(frame, score) is int cut ? position(cut) : null;
     }
 
+    /// <summary>Returns the frame index of a cut.</summary>
     public int? ProcessScore(int frame, double score)
     {
         bool above = score >= threshold;
@@ -83,6 +89,7 @@ public sealed class ContentDetector(ContentScorer scorer, Fps fps, double thresh
 /// </summary>
 public sealed class AdaptiveDetector(
     ContentScorer scorer,
+    Func<int, PyTime> position,
     double adaptiveThreshold = 3.0,
     int minSceneLen = 15,
     int windowWidth = 2,
@@ -93,13 +100,14 @@ public sealed class AdaptiveDetector(
     int? _lastCut;
     public Stats? Stats { get; set; }
 
-    public int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
+    public PyTime? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
     {
         double score = scorer.Score(bgr);
         scorer.Record(Stats, frame, score);
-        return ProcessScore(frame, score);
+        return ProcessScore(frame, score) is int cut ? position(cut) : null;
     }
 
+    /// <summary>Returns the frame index of a cut.</summary>
     public int? ProcessScore(int frame, double score)
     {
         _lastCut ??= frame;
@@ -122,8 +130,9 @@ public sealed class AdaptiveDetector(
         Stats?.Set(targetFrame, _ratioKey, ratio);
 
         bool thresholdMet = ratio >= adaptiveThreshold && targetScore >= minContentVal;
-        // Faithful quirk: min length is measured from the *current* frame, not the target frame.
-        bool minLengthMet = frame - _lastCut >= minSceneLen;
+        // Faithful quirk: min length is measured from the *current* frame, not the target frame,
+        // as a frame count derived from the time between them (round(seconds * fps)).
+        bool minLengthMet = position(frame).Minus(position(_lastCut.Value)).FrameNum >= minSceneLen;
         if (thresholdMet && minLengthMet)
         {
             _lastCut = targetFrame;
@@ -142,7 +151,12 @@ public sealed class AdaptiveDetector(
 /// Differs: CEILING method is not ported. The scenedetect CLI passes --fade-bias through unscaled
 /// even though its option range is -100..100; here it takes the detector's -1..1 meaning.
 /// </summary>
-public sealed class ThresholdDetector(double threshold = 12, int minSceneLen = 15, double fadeBias = 0) : IDetector
+public sealed class ThresholdDetector(
+    Func<int, PyTime> position,
+    Fps fps,
+    double threshold = 12,
+    int minSceneLen = 15,
+    double fadeBias = 0) : IDetector
 {
     readonly int _threshold = (int)threshold; // PySceneDetect truncates it to an int
     int? _lastSceneCut;
@@ -150,7 +164,7 @@ public sealed class ThresholdDetector(double threshold = 12, int minSceneLen = 1
     bool _fadedOut, _processed;
     public Stats? Stats { get; set; }
 
-    public int? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
+    public PyTime? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
     {
         double average = Average(bgr);
         Stats?.Set(frame, "average_rgb", average);
@@ -166,7 +180,7 @@ public sealed class ThresholdDetector(double threshold = 12, int minSceneLen = 1
         return sum / (double)bgr.Length;
     }
 
-    public int? ProcessAverage(int frame, double average)
+    public PyTime? ProcessAverage(int frame, double average)
     {
         _lastSceneCut ??= frame;
         if (!_processed)
@@ -177,7 +191,7 @@ public sealed class ThresholdDetector(double threshold = 12, int minSceneLen = 1
             return null;
         }
 
-        int? cut = null;
+        PyTime? cut = null;
         if (!_fadedOut && average < _threshold)
         {
             _fadedOut = true;
@@ -185,10 +199,12 @@ public sealed class ThresholdDetector(double threshold = 12, int minSceneLen = 1
         }
         else if (_fadedOut && average >= _threshold)
         {
-            if (frame - _lastSceneCut >= minSceneLen)
+            if (position(frame).Minus(position(_lastSceneCut.Value)).FrameNum >= minSceneLen)
             {
-                int duration = frame - _lastFadeFrame;
-                cut = _lastFadeFrame + (int)Math.Round(duration * (1.0 + fadeBias) / 2.0);
+                // The split is computed as a bare frame number from the (time-derived) frame numbers.
+                long fadeOut = position(_lastFadeFrame).FrameNum;
+                long duration = position(frame).FrameNum - fadeOut;
+                cut = PyTime.Frame(fadeOut + (long)Math.Round(duration * (1.0 + fadeBias) / 2.0), fps);
                 _lastSceneCut = frame;
             }
             _fadedOut = false;
@@ -197,6 +213,8 @@ public sealed class ThresholdDetector(double threshold = 12, int minSceneLen = 1
         return cut;
     }
 
-    public int? PostProcess(int lastFrame) =>
-        _processed && _fadedOut && lastFrame - (_lastSceneCut ?? 0) >= minSceneLen ? _lastFadeFrame : null;
+    public PyTime? PostProcess(PyTime end) =>
+        _processed && _fadedOut && end.Minus(position(_lastSceneCut ?? 0)).FrameNum >= minSceneLen
+            ? position(_lastFadeFrame)
+            : null;
 }

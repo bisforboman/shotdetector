@@ -35,5 +35,11 @@ try {
         $name = "sintel_retimed_" + ($fps -replace "/", "_") + ".mp4"
         ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -vf "setpts=N/($fps)/TB" -r $fps -c:v libx264 -crf 18 $name
     }
+
+    # Variable frame rate: 24 fps for 400 frames then 48 fps, and phone-like jittery timestamps (~25 fps).
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -vf "settb=1/1200,setpts='if(lt(N,400),N*50,20000+(N-400)*25)'" `
+      -fps_mode passthrough -enc_time_base 1/1200 -c:v libx264 -crf 18 vfr_24_48.mp4
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -vf "settb=1/1000,setpts='N*40+mod(N*7,13)'" `
+      -fps_mode passthrough -enc_time_base 1/1000 -c:v libx264 -crf 18 vfr_jitter.mp4
 }
 finally { Pop-Location }

@@ -1,11 +1,12 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Numerics;
 using System.Globalization;
 
 namespace ShotDetector;
 
-/// <summary>Frame rate as an exact fraction (e.g. 30000/1001), as reported by ffprobe.</summary>
+/// <summary>Frame rate as an exact fraction (e.g. 30000/1001).</summary>
 public readonly record struct Fps(int Num, int Den)
 {
     public double Value => (double)Num / Den;
@@ -15,6 +16,58 @@ public readonly record struct Fps(int Num, int Den)
         var parts = s.Split('/');
         return new(int.Parse(parts[0], CultureInfo.InvariantCulture),
                    parts.Length > 1 ? int.Parse(parts[1], CultureInfo.InvariantCulture) : 1);
+    }
+
+    /// <summary>
+    /// Port of PySceneDetect's framerate_to_fraction, applied to the float fps OpenCV reports:
+    /// whole numbers stay whole, N*1000/1001 rates become exact NTSC fractions, and anything else
+    /// (e.g. the average rate of a variable frame rate video) becomes Fraction(fps).limit_denominator(10000).
+    /// </summary>
+    public static Fps FromFloat(double fps)
+    {
+        if (fps == Math.Floor(fps))
+            return new((int)fps, 1);
+        double ntscBase = Math.Round(fps * 1001 / 1000);
+        if (ntscBase > 0 && Math.Abs(ntscBase * 1000 / 1001 - fps) < 1e-3)
+            return Reduce((long)ntscBase * 1000, 1001);
+        var (n, d) = LimitDenominator(fps, 10000);
+        return new((int)n, (int)d);
+    }
+
+    static Fps Reduce(long n, long d)
+    {
+        long g = (long)BigInteger.GreatestCommonDivisor(n, d);
+        return new((int)(n / g), (int)(d / g));
+    }
+
+    /// <summary>Python's Fraction(x).limit_denominator(max): the closest fraction with denominator ≤ max.</summary>
+    public static (long Num, long Den) LimitDenominator(double x, long maxDen)
+    {
+        // Exact value of the double as n/d.
+        long bits = BitConverter.DoubleToInt64Bits(x);
+        int exponent = (int)((bits >> 52) & 0x7FF) - 1075;
+        BigInteger n = (bits & 0xF_FFFF_FFFF_FFFF) | (1L << 52), d = BigInteger.One;
+        if (exponent > 0) n <<= exponent; else d <<= -exponent;
+        var g = BigInteger.GreatestCommonDivisor(n, d);
+        (n, d) = (n / g, d / g);
+        if (d <= maxDen)
+            return ((long)n, (long)d);
+
+        BigInteger num0 = n, den0 = d, p0 = 0, q0 = 1, p1 = 1, q1 = 0;
+        while (true)
+        {
+            var a = BigInteger.Divide(n, d);
+            var q2 = q0 + a * q1;
+            if (q2 > maxDen) break;
+            (p0, q0, p1, q1) = (p1, q1, p0 + a * p1, q2);
+            (n, d) = (d, n - a * d);
+        }
+        var k = (maxDen - q0) / q1;
+        var (bp, bq) = (p0 + k * p1, q0 + k * q1);
+        // Pick p1/q1 if it is at least as close to num0/den0 as bp/bq (exact comparison).
+        var err2 = BigInteger.Abs(p1 * den0 - num0 * q1) * bq;
+        var err1 = BigInteger.Abs(bp * den0 - num0 * bq) * q1;
+        return err2 <= err1 ? ((long)p1, (long)q1) : ((long)bp, (long)bq);
     }
 }
 
@@ -50,7 +103,7 @@ public sealed class VideoReader
         var stream = new Dictionary<string, string>();
         var pts = new List<long>();
         foreach (var line in Run("ffprobe", ["-v", "error", "-select_streams", "v:0",
-                     "-show_entries", "stream=width,height,r_frame_rate,time_base,start_pts,nb_frames:packet=pts",
+                     "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate,time_base,start_pts,nb_frames:packet=pts",
                      "-of", "default=nw=1", path]).Split('\n', StringSplitOptions.TrimEntries))
         {
             int eq = line.IndexOf('=');
@@ -65,7 +118,10 @@ public sealed class VideoReader
         }
         SourceWidth = int.Parse(stream["width"], CultureInfo.InvariantCulture);
         SourceHeight = int.Parse(stream["height"], CultureInfo.InvariantCulture);
-        Fps = Fps.Parse(stream["r_frame_rate"]);
+        // OpenCV's CAP_PROP_FPS is the average frame rate (the nominal one only if that is unknown),
+        // which matters for variable frame rate video.
+        var avg = Fps.Parse(stream.GetValueOrDefault("avg_frame_rate", "0/0"));
+        Fps = Fps.FromFloat(avg.Num > 0 && avg.Den > 0 ? avg.Value : Fps.Parse(stream["r_frame_rate"]).Value);
         FrameCountHint = long.TryParse(stream.GetValueOrDefault("nb_frames"), out var n) ? n : 0;
         (Width, Height) = DownscaledSize(SourceWidth, SourceHeight);
 
@@ -96,10 +152,11 @@ public sealed class VideoReader
     }
 
     /// <summary>
-    /// End of the last scene: PySceneDetect takes the position after decoding stops, plus one frame.
-    /// OpenCV reports CAP_PROP_POS_MSEC as 0 at that point, so it is always the frame-number fallback.
+    /// The position PySceneDetect reads once decoding has stopped. OpenCV reports CAP_PROP_POS_MSEC
+    /// as 0 at that point, so it is always the frame-number fallback for the last frame.
+    /// The last scene ends one frame after it.
     /// </summary>
-    public PyTime EndPosition(int frameCount) => PyTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps).PlusFrames(1);
+    public PyTime PositionAfterDecoding(int frameCount) => PyTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps);
 
     /// <summary>PySceneDetect's compute_downscale_factor + resize size (Python round = half to even).</summary>
     public static (int W, int H) DownscaledSize(int width, int height, int minWidth = 256)

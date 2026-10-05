@@ -79,9 +79,9 @@ int minSceneLen = minSceneLenArg.EndsWith('s')
 var scorer = lumaOnly ? ContentScorer.LumaOnly() : new ContentScorer();
 IDetector detector = detectorName switch
 {
-    "content" => new ContentDetector(scorer, video.Fps, threshold ?? 27.0, minSceneLen),
-    "threshold" => new ThresholdDetector(threshold ?? 12.0, minSceneLen, fadeBias),
-    _ => new AdaptiveDetector(scorer, threshold ?? 3.0, minSceneLen, window, minContentVal),
+    "content" => new ContentDetector(scorer, video.Position, video.Fps, threshold ?? 27.0, minSceneLen),
+    "threshold" => new ThresholdDetector(video.Position, video.Fps, threshold ?? 12.0, minSceneLen, fadeBias),
+    _ => new AdaptiveDetector(scorer, video.Position, threshold ?? 3.0, minSceneLen, window, minContentVal),
 };
 if (statsPath is not null)
     detector.Stats = new Stats();
@@ -91,20 +91,18 @@ Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
     $"~{video.FrameCountHint} frames, processing at {video.Width}x{video.Height}, " +
     $"detector={detectorName}, min-scene-len={minSceneLen} frames"));
 
-// Cuts are kept as PySceneDetect keeps them: decoded-frame positions, except ThresholdDetector's
-// fade cuts, which it computes as bare frame numbers. This only affects how times are printed.
 var cuts = new List<PyTime>();
 int frameCount = 0;
 try
 {
     foreach (var frame in video.Frames())
     {
-        if (detector.ProcessFrame(frameCount, frame) is int cut)
-            cuts.Add(detector is ThresholdDetector ? PyTime.Frame(cut, video.Fps) : video.Position(cut));
+        if (detector.ProcessFrame(frameCount, frame) is { } cut)
+            cuts.Add(cut);
         frameCount++;
     }
-    if (frameCount > 0 && detector.PostProcess(frameCount - 1) is int last)
-        cuts.Add(video.Position(last));
+    if (frameCount > 0 && detector.PostProcess(video.PositionAfterDecoding(frameCount)) is { } last)
+        cuts.Add(last);
 }
 catch (InvalidOperationException e)
 {
@@ -114,7 +112,7 @@ catch (InvalidOperationException e)
 
 var shots = frameCount == 0
     ? []
-    : Shots.FromCuts(cuts, video.Position(0), video.EndPosition(frameCount));
+    : Shots.FromCuts(cuts, video.Position(0), video.PositionAfterDecoding(frameCount).PlusFrames(1));
 Console.WriteLine(Shots.Table(shots));
 if (csvPath is not null)
     File.WriteAllText(csvPath, Shots.Csv(shots));

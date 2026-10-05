@@ -26,9 +26,10 @@ dotnet test
 - a synthetic clip with hard cuts between ffmpeg test sources, including one 12-frame shot;
 - the Sintel and Big Buck Bunny trailers (Blender open movies, CC-BY) in several codecs, containers
   and resolutions (h264 mp4/mov/m4v/mkv, Theora ogg, 270p–1080p);
-- the Sintel trailer re-timed to 23.976, 29.97 and 60 fps.
+- the Sintel trailer re-timed to 23.976, 29.97 and 60 fps, and two variable frame rate versions
+  (24 → 48 fps, and phone-like jittery timestamps).
 
-Results on all 10 clips and all three detectors, against scenedetect 0.7.1:
+Results on all 12 clips and all three detectors, against scenedetect 0.7.1:
 - the cuts are the same frames;
 - the scene list CSVs are identical cell for cell, timecodes and seconds included;
 - with `--stats`, every per-frame metric is printed identically ([docs/verification-stats.md](docs/verification-stats.md)).
@@ -57,6 +58,10 @@ Speed on a 1920x1080, 5012-frame clip: scenedetect 13.6 s, ShotDetector 12.9 s, 
   that, taking the pts from an extra demux-only ffprobe pass. That assumes OpenCV's best-effort
   timestamps equal the sorted packet pts, which held for every sample but may not for streams with
   missing or broken timestamps.
+- **Variable frame rate:** handled as PySceneDetect handles it. The fps is the *average* frame rate
+  (what OpenCV reports, through PySceneDetect's `framerate_to_fraction`), min-scene-len is measured
+  in time between frames, and printed frame numbers are `round(time × average fps)`, not decode
+  order, so they can repeat or skip on VFR video.
 - **min_scene_len:** ContentDetector reproduces PySceneDetect's float-seconds comparison on
   µs-rounded frame times, so a gap of exactly min_scene_len frames is sometimes rejected (as it is
   there). It assumes constant frame rate starting at 0; variable frame rate isn't handled.

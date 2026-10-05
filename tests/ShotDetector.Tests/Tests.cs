@@ -55,17 +55,25 @@ public class ContentScorerTests
         Assert.Equal(2.5, ContentScorer.MeanPixelDistance([0, 10, 5, 5], [0, 0, 5, 5]));
 }
 
+/// <summary>Frame positions as PySceneDetect's OpenCV backend reports them for constant frame rate video.</summary>
+static class Positions
+{
+    public static Func<int, PyTime> Cfr(int fps) => i => i == 0
+        ? PyTime.Pts(0, fps, new Fps(fps, 1)) // frame-number fallback, since POS_MSEC is 0
+        : PyTime.Pts((long)Math.Round(i * 1_000_000.0 / fps), 1_000_000, new Fps(fps, 1));
+}
+
 public class DetectorTests
 {
     static List<int> RunContent(double[] scores, int minSceneLen = 15, int fps = 25)
     {
-        var d = new ContentDetector(new ContentScorer(), new Fps(fps, 1), 27, minSceneLen);
+        var d = new ContentDetector(new ContentScorer(), Positions.Cfr(fps), new Fps(fps, 1), 27, minSceneLen);
         return scores.Select((s, i) => d.ProcessScore(i, s)).OfType<int>().ToList();
     }
 
-    static List<int> RunAdaptive(double[] scores, int minSceneLen = 15)
+    static List<int> RunAdaptive(double[] scores, int minSceneLen = 15, Func<int, PyTime>? position = null)
     {
-        var d = new AdaptiveDetector(new ContentScorer(), minSceneLen: minSceneLen);
+        var d = new AdaptiveDetector(new ContentScorer(), position ?? Positions.Cfr(25), minSceneLen: minSceneLen);
         return scores.Select((s, i) => d.ProcessScore(i, s)).OfType<int>().ToList();
     }
 
@@ -125,14 +133,31 @@ public class DetectorTests
     }
 
     [Fact]
+    public void AdaptiveMinLengthIsMeasuredInTimeForVariableFrameRate()
+    {
+        // 24 fps for frames 0-19, then 48 fps. A spike at 40 is evaluated at frame 42, which is 22
+        // frames but only 0.458 s (round(0.458 * 24) = 11 frames) after the cut at 20, so it is skipped.
+        var fps = new Fps(24, 1);
+        Func<int, PyTime> vfr = i => PyTime.Pts(
+            (long)Math.Round((i < 20 ? i / 24.0 : 20 / 24.0 + (i - 20) / 48.0) * 1_000_000), 1_000_000, fps);
+        Assert.Equal([20], RunAdaptive(Scores(80, 1, (20, 40), (40, 40)), position: vfr));
+        Assert.Equal([20, 40], RunAdaptive(Scores(80, 1, (20, 40), (40, 40)), position: Positions.Cfr(24)));
+    }
+
+    [Fact]
     public void DetectorsFindCutInSyntheticFrames()
     {
         byte[] black = new byte[8 * 8 * 3], white = Enumerable.Repeat((byte)255, 8 * 8 * 3).ToArray();
-        foreach (IDetector d in new IDetector[] { new ContentDetector(new ContentScorer(), new Fps(25, 1)),new AdaptiveDetector(new ContentScorer()) })
+        var position = Positions.Cfr(25);
+        foreach (IDetector d in new IDetector[]
+                 {
+                     new ContentDetector(new ContentScorer(), position, new Fps(25, 1)),
+                     new AdaptiveDetector(new ContentScorer(), position),
+                 })
         {
-            var cuts = new List<int>();
+            var cuts = new List<long>();
             for (int i = 0; i < 60; i++)
-                if (d.ProcessFrame(i, i < 30 ? black : white) is int c) cuts.Add(c);
+                if (d.ProcessFrame(i, i < 30 ? black : white) is { } c) cuts.Add(c.FrameNum);
             Assert.Equal([30], cuts);
         }
     }
@@ -144,11 +169,13 @@ public class ThresholdDetectorTests
     static double[] Fade(int count, int from, int to) =>
         Enumerable.Range(0, count).Select(i => i >= from && i < to ? 3.0 : 100.0).ToArray();
 
-    static List<int> Run(double[] levels, double fadeBias = 0, int minSceneLen = 15)
+    static readonly Fps Fps25 = new(25, 1);
+
+    static List<long> Run(double[] levels, double fadeBias = 0, int minSceneLen = 15)
     {
-        var d = new ThresholdDetector(12, minSceneLen, fadeBias);
-        var cuts = levels.Select((v, i) => d.ProcessAverage(i, v)).OfType<int>().ToList();
-        if (d.PostProcess(levels.Length - 1) is int last) cuts.Add(last);
+        var d = new ThresholdDetector(Positions.Cfr(25), Fps25, 12, minSceneLen, fadeBias);
+        var cuts = levels.Select((v, i) => d.ProcessAverage(i, v)).OfType<PyTime>().Select(c => c.FrameNum).ToList();
+        if (d.PostProcess(PyTime.Pts(levels.Length - 1, 25, Fps25)) is { } last) cuts.Add(last.FrameNum);
         return cuts;
     }
 
@@ -157,7 +184,7 @@ public class ThresholdDetectorTests
     [InlineData(-1.0, 20)]
     [InlineData(1.0, 30)]
     [InlineData(0.1, 26)]   // 20 + round(10 * 1.1 / 2) = 20 + round(5.5) = 26 (half to even)
-    public void CutIsPlacedByFadeBias(double bias, int expected) =>
+    public void CutIsPlacedByFadeBias(double bias, long expected) =>
         Assert.Equal([expected], Run(Fade(60, 20, 30), bias));
 
     [Fact]
@@ -169,12 +196,12 @@ public class ThresholdDetectorTests
     [Fact]
     public void ThresholdIsTruncatedAndComparedStrictly()
     {
-        var d = new ThresholdDetector(12.9, minSceneLen: 0);
+        var d = new ThresholdDetector(Positions.Cfr(25), Fps25, 12.9, minSceneLen: 0);
         d.ProcessAverage(0, 50);
         d.ProcessAverage(1, 12.0);              // not < 12, so no fade-out
         Assert.Null(d.ProcessAverage(2, 50));
         d.ProcessAverage(3, 11.99);             // fade-out
-        Assert.Equal(3, d.ProcessAverage(4, 12.0)); // >= 12 fades in; round(1 / 2) = 0 → cut at 3
+        Assert.Equal(3, d.ProcessAverage(4, 12.0)?.FrameNum); // >= 12 fades in; round(1 / 2) = 0 → cut at 3
     }
 
     [Fact]
@@ -247,6 +274,17 @@ public class PyTimeTests
         Assert.Equal((333667L, "00:00:00.334"), (frame.Minus(ts).Value, frame.Minus(ts).Timecode()));
         Assert.Equal(0L, ts.Minus(frame).Value); // clamped at 0
     }
+
+    [Theory]
+    [InlineData(24.0, 24, 1)]
+    [InlineData(29.97002997002997, 30000, 1001)]
+    [InlineData(59.94, 60000, 1001)]
+    [InlineData(6.993006993006993, 1000, 143)] // NTSC fraction, reduced
+    [InlineData(36.36275695284159, 30072, 827)] // average rate of a variable frame rate clip
+    [InlineData(23.5, 47, 2)]
+    [InlineData(12.345678, 122679, 9937)]     // limit_denominator(10000)
+    public void FpsFromFloatMatchesFramerateToFraction(double fps, int num, int den) =>
+        Assert.Equal(new Fps(num, den), Fps.FromFloat(fps));
 
     [Theory]
     [InlineData(1.0, "1.0")]

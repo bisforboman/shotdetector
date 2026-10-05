@@ -30,3 +30,9 @@
 | synthetic.mp4 | adaptive | 5 | 5 | 5 | 0 | – | – | 0 | none |
 | synthetic.mp4 | content | 6 | 6 | 6 | 0 | – | – | 0 | none |
 | synthetic.mp4 | threshold | 1 | 1 | 1 | 0 | – | – | 0 | none |
+| vfr_24_48.mp4 | adaptive | 7 | 7 | 7 | 0 | – | – | 0 | none |
+| vfr_24_48.mp4 | content | 9 | 9 | 9 | 0 | – | – | 0 | none |
+| vfr_24_48.mp4 | threshold | 8 | 8 | 8 | 0 | – | – | 0 | none |
+| vfr_jitter.mp4 | adaptive | 9 | 9 | 9 | 0 | – | – | 0 | none |
+| vfr_jitter.mp4 | content | 11 | 11 | 11 | 0 | – | – | 0 | none |
+| vfr_jitter.mp4 | threshold | 8 | 8 | 8 | 0 | – | – | 0 | none |
