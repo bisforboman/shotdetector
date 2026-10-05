@@ -10,9 +10,13 @@ const string Usage = """
                                          threshold: mean pixel level of a fade (default 12)
       -m, --min-scene-len <n|Ns>         Minimum shot length, frames or seconds e.g. 0.6s (default 0.6s)
       -c, --min-content-val <n>          adaptive: minimum content_val for a cut (default 15)
-      -w, --frame-window <n>             adaptive: frames on each side to average (default 2)
+          --frame-window <n>             adaptive: frames on each side to average (default 2)
+      -w, --weights <h> <s> <l> <e>      content/adaptive: weights of hue, saturation, luma and edge
+                                         differences in content_val (default 1 1 1 0)
+      -k, --kernel-size <n>              content/adaptive: odd size >= 3 to widen edges by
+                                         (default: from the resolution)
+      -l, --luma-only                    Only use the V (brightness) channel (overrides --weights)
       -f, --fade-bias <-1..1>            threshold: cut position between fade-out (-1) and fade-in (+1)
-      -l, --luma-only                    Only use the V (brightness) channel
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
                                          cv2.resize (faster, but cuts can differ from PySceneDetect)
           --csv <file>                   Write shot list as CSV
@@ -25,6 +29,8 @@ string detectorName = "adaptive";
 double? threshold = null;
 double minContentVal = 15.0, fadeBias = 0;
 int window = 2;
+int? kernelSize = null;
+double[] weights = [1, 1, 1, 0];
 bool lumaOnly = false, ffmpegResize = false;
 
 try
@@ -40,7 +46,11 @@ try
             case "-t" or "--threshold": threshold = NextDouble(); break;
             case "-m" or "--min-scene-len": minSceneLenArg = Next(); break;
             case "-c" or "--min-content-val": minContentVal = NextDouble(); break;
-            case "-w" or "--frame-window": window = int.Parse(Next(), CultureInfo.InvariantCulture); break;
+            case "--frame-window": window = int.Parse(Next(), CultureInfo.InvariantCulture); break;
+            case "-w" or "--weights":
+                weights = [NextDouble(), NextDouble(), NextDouble(), NextDouble()];
+                break;
+            case "-k" or "--kernel-size": kernelSize = int.Parse(Next(), CultureInfo.InvariantCulture); break;
             case "-f" or "--fade-bias": fadeBias = NextDouble(); break;
             case "-l" or "--luma-only": lumaOnly = true; break;
             case "--ffmpeg-resize": ffmpegResize = true; break;
@@ -57,6 +67,10 @@ try
         throw new ArgumentException($"Unknown detector '{detectorName}'");
     if (window < 1)
         throw new ArgumentException("--frame-window must be at least 1");
+    if (kernelSize is -1)
+        kernelSize = null; // scenedetect's spelling of "automatic"
+    if (kernelSize is { } k && (k < 3 || k % 2 == 0))
+        throw new ArgumentException("--kernel-size must be an odd number >= 3");
 }
 catch (Exception e) when (e is ArgumentException or FormatException)
 {
@@ -76,7 +90,10 @@ int minSceneLen = minSceneLenArg.EndsWith('s')
     ? (int)Math.Round(double.Parse(minSceneLenArg[..^1], CultureInfo.InvariantCulture) * video.Fps.Value)
     : int.Parse(minSceneLenArg, CultureInfo.InvariantCulture);
 
-var scorer = lumaOnly ? ContentScorer.LumaOnly() : new ContentScorer();
+var scorer = lumaOnly ? ContentScorer.LumaOnly() : new ContentScorer(weights[0], weights[1], weights[2], weights[3]);
+// Like PySceneDetect, edges are computed when they're weighted or a stats file is written.
+if (detectorName != "threshold" && (scorer.UsesEdges || statsPath is not null))
+    scorer.Edges = new EdgeDetector(video.Width, video.Height, kernelSize);
 IDetector detector = detectorName switch
 {
     "content" => new ContentDetector(scorer, video.Position, video.Fps, threshold ?? 27.0, minSceneLen),

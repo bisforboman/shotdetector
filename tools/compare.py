@@ -2,6 +2,7 @@
 
 Usage: python tools/compare.py <video>... [--detector adaptive|content|threshold|both|all] [--tolerance 2]
                                [--ffmpeg-resize] [--report summary.md] [--stats]
+                               [--weights "1 1 1 1"] [--kernel-size 5]
 """
 
 import argparse
@@ -75,14 +76,16 @@ def diff_stats(ref_path: Path, our_path: Path) -> dict[str, int]:
     return diffs
 
 
-def compare(video: str, detector: str, tol: int, extra_args: list[str], stats: bool) -> dict:
+def compare(video: str, detector: str, tol: int, extra_args: list[str], stats: bool, shared: list[str]) -> dict:
+    """`shared` options are passed to both tools (same spelling in both CLIs), except to detect-threshold."""
+    shared = shared if detector != "threshold" else []
     with tempfile.TemporaryDirectory() as tmp:
         ref_csv, our_csv = Path(tmp, "ref.csv"), Path(tmp, "ours.csv")
         ref_stats, our_stats = Path(tmp, "ref_stats.csv"), Path(tmp, "our_stats.csv")
         ref_secs = timed(
             [sys.executable, "-m", "scenedetect", "-q", "-i", video, "-o", tmp,
-             *(["-s", str(ref_stats)] if stats else []), f"detect-{detector}", "list-scenes", "-f", ref_csv.name])
-        our_secs = timed([str(EXE), "-i", video, "-d", detector, "--csv", str(our_csv), *extra_args,
+             *(["-s", str(ref_stats)] if stats else []), f"detect-{detector}", *shared, "list-scenes", "-f", ref_csv.name])
+        our_secs = timed([str(EXE), "-i", video, "-d", detector, "--csv", str(our_csv), *extra_args, *shared,
                           *(["--stats", str(our_stats)] if stats else [])])
         ref, ours = cuts_from_csv(ref_csv), cuts_from_csv(our_csv)
         csv_cells = diff_scene_csv(ref_csv, our_csv)
@@ -130,6 +133,8 @@ def main() -> int:
     ap.add_argument("--tolerance", type=int, default=2)
     ap.add_argument("--ffmpeg-resize", action="store_true", help="pass --ffmpeg-resize to ShotDetector")
     ap.add_argument("--report", help="also write a Markdown summary table to this file")
+    ap.add_argument("--weights", help='content/adaptive weights for both tools, e.g. "1 1 1 1"')
+    ap.add_argument("--kernel-size", help="edge kernel size for both tools")
     ap.add_argument("--stats", action="store_true",
                     help="also diff per-frame stats files (slows scenedetect: it computes edges then)")
     a = ap.parse_args()
@@ -139,7 +144,8 @@ def main() -> int:
     detectors = {"both": ["adaptive", "content"], "all": ["adaptive", "content", "threshold"]}.get(
         a.detector, [a.detector])
     extra_args = ["--ffmpeg-resize"] if a.ffmpeg_resize else []
-    rows = [compare(v, d, a.tolerance, extra_args, a.stats) for v in a.videos for d in detectors]
+    shared = [*(["-w", *a.weights.split()] if a.weights else []), *(["-k", a.kernel_size] if a.kernel_size else [])]
+    rows = [compare(v, d, a.tolerance, extra_args, a.stats, shared) for v in a.videos for d in detectors]
 
     if len(rows) > 1:
         print()

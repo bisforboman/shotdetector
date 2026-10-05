@@ -32,7 +32,8 @@ dotnet test
 Results on all 12 clips and all three detectors, against scenedetect 0.7.1:
 - the cuts are the same frames;
 - the scene list CSVs are identical cell for cell, timecodes and seconds included;
-- with `--stats`, every per-frame metric is printed identically ([docs/verification-stats.md](docs/verification-stats.md)).
+- with `--stats`, every per-frame metric is printed identically, `delta_edges` included ([docs/verification-stats.md](docs/verification-stats.md));
+- with edges weighted in (`--weights 1 1 1 1`), cuts, CSVs and stats are identical too ([docs/verification-edges.md](docs/verification-edges.md)).
 
 Timings are in [docs/verification-table.md](docs/verification-table.md). With `--ffmpeg-resize`,
 cuts on real footage differ (2–6 per trailer).
@@ -51,8 +52,6 @@ Speed on a 1920x1080, 5012-frame clip: scenedetect 13.6 s, ShotDetector 12.9 s, 
 - **Colour conversion:** ffmpeg is told to ignore the stream's colour tags and use BT.601 (with
   bicubic chroma for the default exact resize), because that's what OpenCV's ffmpeg backend does. Converting
   BT.709-tagged video "correctly" shifts content_val enough to flip borderline cuts.
-- **No edge component:** `delta_edges` (Canny + dilate) is not ported. Its default weight is 0, so
-  default scores are unaffected, but the `--stats` file has no `delta_edges` column.
 - **Timestamps:** scenedetect prints times from OpenCV's frame positions (container pts → ms →
   rounded to µs, with Python's exact-binary rounding), not from frame/fps. `PyTime.cs` reproduces
   that, taking the pts from an extra demux-only ffprobe pass. That assumes OpenCV's best-effort
@@ -72,4 +71,9 @@ Speed on a 1920x1080, 5012-frame clip: scenedetect 13.6 s, ShotDetector 12.9 s, 
 - **ThresholdDetector:** only the FLOOR method (fades to black) is ported, which is all the CLI
   uses. `--fade-bias` takes the detector's -1..1 meaning; the scenedetect CLI passes its value
   through unscaled although its option accepts -100..100.
-- **Not ported:** Histogram/Hash detectors, frame skip, crop, stats file.
+- **Edges:** `EdgeDetector.cs` ports cv2.Canny (aperture 3, L1 gradient) and cv2.dilate bit for bit.
+  As in PySceneDetect, edges are only computed when weighted (`-w h s l e`, `-k` kernel size) or
+  when writing stats, because they cost time.
+- **CLI spelling:** `-w/--weights` takes four numbers and `-k/--kernel-size` matches scenedetect's
+  options; `--frame-window` is long-only here because `-f` is `--fade-bias`.
+- **Not ported:** Histogram/Hash detectors, frame skip, crop.

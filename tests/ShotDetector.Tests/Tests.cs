@@ -208,6 +208,57 @@ public class ThresholdDetectorTests
     public void AverageIsMeanOfAllBytes() => Assert.Equal(2.5, ThresholdDetector.Average([0, 1, 2, 3, 4, 5]));
 }
 
+// Expected values from cv2.Canny / cv2.dilate / numpy.median / _estimated_kernel_size.
+public class EdgeDetectorTests
+{
+    static string[] Rows(byte[] img, int w) =>
+        img.Chunk(w).Select(r => string.Concat(r.Select(v => v == 255 ? '1' : '0'))).ToArray();
+
+    static byte[] StepImage()
+    {
+        var img = new byte[6 * 8];
+        for (int y = 0; y < 6; y++)
+            for (int x = 4; x < 8; x++)
+                img[y * 8 + x] = 200;
+        img[0] = 90;          // (0, 0)
+        img[5 * 8 + 1] = 120; // (1, 5)
+        return img;
+    }
+
+    [Fact]
+    public void CannyMatchesOpenCv()
+    {
+        var edges = new byte[6 * 8];
+        new EdgeDetector(8, 6).Canny(StepImage(), 50, 100, edges);
+        Assert.Equal(["10010000", "00010000", "00010000", "00010000", "01010000", "10010000"], Rows(edges, 8));
+    }
+
+    [Fact]
+    public void DilateMatchesOpenCv()
+    {
+        var det = new EdgeDetector(8, 6, kernelSize: 3);
+        byte[] canny = new byte[6 * 8], dilated = new byte[6 * 8];
+        det.Canny(StepImage(), 50, 100, canny);
+        det.Dilate(canny, dilated);
+        Assert.Equal(["11111000", "11111000", "00111000", "11111000", "11111000", "11111000"], Rows(dilated, 8));
+    }
+
+    [Fact]
+    public void MedianMatchesNumpy()
+    {
+        Assert.Equal(5.0, EdgeDetector.Median([5, 1, 9]));
+        Assert.Equal(2.5, EdgeDetector.Median([1, 2, 3, 10]));
+    }
+
+    [Theory]
+    [InlineData(256, 144, 5)]
+    [InlineData(256, 109, 5)]
+    [InlineData(1920, 1080, 13)]
+    [InlineData(64, 36, 5)]
+    public void KernelSizeFromResolution(int w, int h, int expected) =>
+        Assert.Equal(expected, EdgeDetector.EstimatedKernelSize(w, h));
+}
+
 public class CvResizeTests
 {
     [Fact]
