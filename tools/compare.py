@@ -57,7 +57,8 @@ def diff_scene_csv(ref_path: Path, our_path: Path) -> int:
 def _scene_rows(path: Path) -> list[str]:
     with open(path, newline="") as f:
         lines = f.read().splitlines()
-    return lines[1:] if lines and lines[0].startswith("Timecode List") else lines
+    # scenedetect's first row is "Timecode List:,..." (an empty line when there are no cuts).
+    return lines[1:] if lines and (lines[0].startswith("Timecode List") or not lines[0].strip()) else lines
 
 
 def diff_stats(ref_path: Path, our_path: Path) -> dict[str, int]:

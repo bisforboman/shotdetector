@@ -226,11 +226,12 @@ public sealed class VideoReader
         args = pipeline switch
         {
             "yuv420p+sampled" => [.. args, "-f", "rawvideo", "-pix_fmt", "yuv420p"],
-            // OpenCV converts to BGR with swscale's defaults (BT.601) and SWS_BICUBIC, ignoring
-            // the stream's colour tags, so do the same.
-            "bgr24+resize" => [.. args, "-vf", "scale=in_color_matrix=bt601:flags=bicubic,format=bgr24",
+            // OpenCV converts to BGR with swscale's defaults (BT.601) and SWS_BICUBIC, ignoring the
+            // stream's colour tags, so do the same. FFmpeg 8+ follows the frame's colorspace tag over
+            // in_color_matrix, so the frames are re-tagged as BT.601 first (range is left alone).
+            "bgr24+resize" => [.. args, "-vf", "setparams=colorspace=bt470bg,scale=in_color_matrix=bt601:flags=bicubic,format=bgr24",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
-            _ => [.. args, "-vf", $"scale={Width}:{Height}:in_color_matrix=bt601:flags=bilinear,format=bgr24",
+            _ => [.. args, "-vf", $"setparams=colorspace=bt470bg,scale={Width}:{Height}:in_color_matrix=bt601:flags=bilinear,format=bgr24",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
         };
         foreach (var a in args)
