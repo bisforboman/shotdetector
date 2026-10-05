@@ -51,8 +51,27 @@ Results on all 12 clips and all three detectors, against scenedetect 0.7.1:
 Timings are in [docs/verification-table.md](docs/verification-table.md). With `--ffmpeg-resize`,
 cuts on real footage differ (2–6 per trailer).
 
-Speed on a 1920x1080, 5012-frame clip: scenedetect 13.6 s, ShotDetector 12.9 s, and 3.3 s with
-`--ffmpeg-resize`. Exact mode is bound by ffmpeg converting full-size frames to BGR (about 9 s on its own).
+## Performance
+
+1920x1080, 5012 frames, 16-core machine (measured while another workload was using part of the CPU,
+so expect ±20%):
+
+| | Wall time | Peak memory (incl. ffmpeg) |
+|---|---|---|
+| scenedetect 0.7.1 | 15 s | 212 MB |
+| ShotDetector (exact, default) | 10 s | 205 MB (67 MB ours + ~140 MB ffmpeg) |
+| ShotDetector `--ffmpeg-resize` | 5 s | ~60 MB |
+
+What makes exact mode faster while giving identical results:
+- ffmpeg sends raw yuv420p (no colour conversion, half the bytes of BGR) through a named pipe with
+  an 8 MB buffer (Windows' redirected stdout uses 4 KB);
+- cv2.resize only reads ~150k of the 2M pixels of a 1080p frame, so only those are converted to
+  BGR (`Yuv420.cs`, a bit-exact port of swscale's converter), fused into the resize;
+- the resize and the HSV + difference scoring run on several cores; reading overlaps processing;
+- ffmpeg gets 4 decoder threads (`--threads`): more only adds ~25 MB each without making the run faster.
+
+Files in other pixel formats (10-bit, 4:2:2/4:4:4, full-range MJPEG) or with an odd height take a
+slower path where ffmpeg converts whole frames, still with identical results.
 
 ## Where this differs from PySceneDetect
 

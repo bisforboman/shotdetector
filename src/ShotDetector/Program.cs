@@ -17,7 +17,8 @@ const string Usage = """
                                          (default: from the resolution)
       -l, --luma-only                    Only use the V (brightness) channel (overrides --weights)
       -f, --fade-bias <-1..1>            threshold: cut position between fade-out (-1) and fade-in (+1)
-          --threads <n>                  ffmpeg decoder threads (default 0 = automatic); fewer use less memory
+          --threads <n>                  ffmpeg decoder threads (default 4; 0 = ffmpeg's choice). Each
+                                         costs ~25 MB at 1080p; more rarely helps since we decode in parallel
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
                                          cv2.resize (faster, but cuts can differ from PySceneDetect)
           --csv <file>                   Write shot list as CSV
@@ -34,7 +35,7 @@ double? threshold = null;
 double minContentVal = 15.0, fadeBias = 0;
 int window = 2;
 int? kernelSize = null;
-int decodeThreads = 0, numImages = 3;
+int decodeThreads = 4, numImages = 3;
 double[] weights = [1, 1, 1, 0];
 bool lumaOnly = false, ffmpegResize = false;
 

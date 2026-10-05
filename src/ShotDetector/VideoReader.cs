@@ -99,7 +99,7 @@ public sealed class VideoReader
 
     /// <param name="decodeThreads">ffmpeg decoder threads; 0 = ffmpeg's choice. Each frame thread
     /// holds its own reference frames, so this trades memory (about 25 MB per thread at 1080p) for speed.</param>
-    public VideoReader(string path, bool ffmpegResize = false, int decodeThreads = 0)
+    public VideoReader(string path, bool ffmpegResize = false, int decodeThreads = 4)
     {
         _path = path;
         _ffmpegResize = ffmpegResize;
