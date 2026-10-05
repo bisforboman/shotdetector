@@ -336,11 +336,12 @@ readonly record struct FrameRange(int Start, int? Count, bool ReadsToEnd)
         var fps = video.Fps;
         int total = video.ExpectedFrames;
         int start = o.StartTime is null ? 0 : video.SeekFrame(ShotDetection.TimecodeSeconds(o.StartTime, fps, oneBasedFrames: true));
-        // scenedetect turns the end/duration into a whole number of frames at the average rate first
-        // (FrameTimecode rounds half to even), which differs from the seconds on variable frame rate video.
-        static double Frames(string value, Fps fps) => Math.Round(ShotDetection.TimecodeSeconds(value, fps) * fps.Value);
-        double? end = o.EndTime is not null ? Frames(o.EndTime, fps) / fps.Value
-            : o.Duration is not null ? (Frames(o.Duration, fps) + start) / fps.Value
+        // scenedetect turns the end/duration into a whole number of frames at the average rate
+        // (FrameTimecode rounds half to even) and compares frame numbers: a frame-based end against
+        // a timestamp-based position falls back to round(seconds × fps) on both sides.
+        static long Frames(string value, Fps fps) => (long)Math.Round(ShotDetection.TimecodeSeconds(value, fps) * fps.Value);
+        long? end = o.EndTime is not null ? Frames(o.EndTime, fps)
+            : o.Duration is not null ? Frames(o.Duration, fps) + start
             : null;
         if (end is null || total == 0)
             return new(start, null, true);
@@ -355,7 +356,7 @@ readonly record struct FrameRange(int Start, int? Count, bool ReadsToEnd)
             int lastRead = Math.Min(processed + o.FrameSkip, total - 1);
             if (processed + o.FrameSkip > total - 1)
                 return new(start, total - start, true);
-            if (video.Position(lastRead).PlusFrames(1).Seconds >= end.Value)
+            if (video.Position(lastRead).PlusFrames(1).FrameNum >= end.Value)
                 return new(start, lastRead - start + 1, false);
         }
     }
