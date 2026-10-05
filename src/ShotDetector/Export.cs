@@ -57,13 +57,15 @@ public static class Export
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (result.VideoPath is null)
+            throw new InvalidOperationException("Saving images needs the video as a file path or URL; the input was a Stream.");
         var io = options ?? new ImageOptions();
         int numImages = io.NumImages, frameMargin = io.FrameMargin;
         if (numImages < 1 || frameMargin < 0)
             throw new ArgumentException("NumImages must be at least 1 and FrameMargin at least 0.");
         if (io.Format is not ("jpg" or "png" or "webp"))
             throw new ArgumentException("Format must be jpg, png or webp.");
-        var (videoPath, video, shots, frameCount) = (result.VideoPath, result.Video, result.Shots, result.FrameCount);
+        var (videoPath, video, shots, frameCount) = (result.VideoPath!, result.Video, result.Shots, result.FrameCount);
         if (shots.Count == 0)
             return [];
         Directory.CreateDirectory(outputDir);
@@ -166,6 +168,8 @@ public static class Export
     public static List<string> SplitVideo(DetectionResult result, string outputDir, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (result.VideoPath is null)
+            throw new InvalidOperationException("Splitting needs the video as a file path or URL; the input was a Stream.");
         var (videoPath, shots) = (result.VideoPath, result.Shots);
         Directory.CreateDirectory(outputDir);
         string name = Path.GetFileNameWithoutExtension(videoPath);

@@ -5,6 +5,9 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- Streamed input: `Detect(Stream)`, `DetectStreamAsync(Stream)`, URLs, `DetectionOptions.Streaming`
+  and `ProbeBytes`; the CLI reads standard input with `-i -`. `DetectionResult.VideoPath` is null for
+  a `Stream`.
 - Time range (`StartTime`, `EndTime`, `Duration`), `FrameSkip` and `Crop`, matching scenedetect's
   `time`, `--frame-skip` and `--crop`; `ImageOptions` for `SaveImages` (size, scale, format).
 - API: test-only members are internal; `VideoReader.Pipeline` is the `FramePipeline` enum;

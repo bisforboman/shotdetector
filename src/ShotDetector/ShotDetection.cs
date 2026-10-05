@@ -104,6 +104,16 @@ public sealed record DetectionOptions
     /// </summary>
     public (int X0, int Y0, int X1, int Y1)? Crop { get; init; }
 
+    /// <summary>
+    /// Read the input once, start to end, without probing all of it first (as a Stream or URL input
+    /// always is): for pipes and live feeds. Timestamps then come from ffmpeg as frames arrive,
+    /// the frame count is unknown and <see cref="StartTime"/> is not available.
+    /// </summary>
+    public bool Streaming { get; init; }
+
+    /// <summary>How many bytes of a Stream input to read for probing its container headers (16 MB).</summary>
+    public int ProbeBytes { get; init; } = 16 << 20;
+
     /// <summary>Let ffmpeg downscale (faster, but results can differ from PySceneDetect).</summary>
     public bool FfmpegResize { get; init; }
 
@@ -129,7 +139,7 @@ public sealed record DetectionOptions
     public bool CollectStats { get; init; }
 }
 
-/// <summary>How far <see cref="ShotDetection.Detect"/> has got.</summary>
+/// <summary>How far <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/> has got.</summary>
 /// <param name="FramesProcessed">Frames decoded and analysed so far.</param>
 /// <param name="ExpectedFrames">Frames the video is expected to have (from its packets); 0 if unknown.</param>
 public readonly record struct DetectionProgress(int FramesProcessed, int ExpectedFrames)
@@ -138,15 +148,15 @@ public readonly record struct DetectionProgress(int FramesProcessed, int Expecte
     public double? Fraction => ExpectedFrames > 0 ? Math.Min(1.0, FramesProcessed / (double)ExpectedFrames) : null;
 }
 
-/// <summary>The outcome of <see cref="ShotDetection.Detect"/>.</summary>
-/// <param name="VideoPath">The video analysed.</param>
+/// <summary>The outcome of <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/>.</summary>
+/// <param name="VideoPath">The video analysed: a path or URL, or null for a Stream input (exports need a path).</param>
 /// <param name="Video">Its properties (size, frame rate, ...).</param>
 /// <param name="Shots">The shots, in order, covering the whole video.</param>
 /// <param name="FrameCount">Frames decoded.</param>
 /// <param name="MinSceneLengthFrames"><see cref="DetectionOptions.MinSceneLength"/> in frames of this video.</param>
 /// <param name="Stats">Per-frame metrics when <see cref="DetectionOptions.CollectStats"/> was set, else null.</param>
 public sealed record DetectionResult(
-    string VideoPath, VideoReader Video, IReadOnlyList<Shot> Shots, int FrameCount, int MinSceneLengthFrames, Stats? Stats);
+    string? VideoPath, VideoReader Video, IReadOnlyList<Shot> Shots, int FrameCount, int MinSceneLengthFrames, Stats? Stats);
 
 /// <summary>Runs shot detection on a video file.</summary>
 public static class ShotDetection
@@ -159,10 +169,18 @@ public static class ShotDetection
     /// <exception cref="InvalidOperationException">ffprobe or ffmpeg failed (e.g. missing file).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; ffmpeg is stopped.</exception>
     public static DetectionResult Detect(string videoPath, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
-        Run(videoPath, options, onShot: null, cancellationToken);
+        Run(videoPath, null, options, onShot: null, cancellationToken);
 
     /// <summary>
-    /// Like <see cref="Detect"/>, but yields each shot as soon as it is known, while the rest of the
+    /// As <see cref="Detect(string, DetectionOptions?, CancellationToken)"/>, reading the video's bytes
+    /// from <paramref name="video"/> (piped straight into ffmpeg, no temporary file). The container
+    /// headers must come first: mkv, webm, ts, mov, or an mp4 written with "faststart".
+    /// </summary>
+    public static DetectionResult Detect(Stream video, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
+        Run(null, video, options, onShot: null, cancellationToken);
+
+    /// <summary>
+    /// Like <see cref="Detect(string, DetectionOptions?, CancellationToken)"/>, but yields each shot as soon as it is known, while the rest of the
     /// video is still being decoded (on a background thread). The shots are exactly those Detect
     /// returns. A shot is known once the cut that ends it is confirmed, which can take a few frames
     /// (the adaptive detector's window, the minimum shot length); the last shot comes at the end.
@@ -171,8 +189,18 @@ public static class ShotDetection
     /// <exception cref="ArgumentException">Invalid options.</exception>
     /// <exception cref="InvalidOperationException">ffprobe or ffmpeg failed (e.g. missing file).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; ffmpeg is stopped.</exception>
-    public static async IAsyncEnumerable<Shot> DetectStreamAsync(string videoPath, DetectionOptions? options = null,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public static IAsyncEnumerable<Shot> DetectStreamAsync(string videoPath, DetectionOptions? options = null,
+        CancellationToken cancellationToken = default) => StreamShots(videoPath, null, options, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="DetectStreamAsync(string, DetectionOptions?, CancellationToken)"/>, reading the
+    /// video's bytes from <paramref name="video"/>: bytes in, shots out, while both are in progress.
+    /// </summary>
+    public static IAsyncEnumerable<Shot> DetectStreamAsync(Stream video, DetectionOptions? options = null,
+        CancellationToken cancellationToken = default) => StreamShots(null, video, options, cancellationToken);
+
+    static async IAsyncEnumerable<Shot> StreamShots(string? videoPath, Stream? video, DetectionOptions? options,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var channel = Channel.CreateUnbounded<Shot>(new() { SingleReader = true, SingleWriter = true });
         // Also cancelled when the caller stops enumerating, so the decoding thread and ffmpeg stop too.
@@ -181,7 +209,7 @@ public static class ShotDetection
         {
             try
             {
-                Run(videoPath, options, shot => channel.Writer.TryWrite(shot), stop.Token);
+                Run(videoPath, video, options, shot => channel.Writer.TryWrite(shot), stop.Token);
                 channel.Writer.Complete();
             }
             catch (Exception e)
@@ -201,7 +229,7 @@ public static class ShotDetection
         }
     }
 
-    static DetectionResult Run(string videoPath, DetectionOptions? options, Action<Shot>? onShot, CancellationToken cancellationToken)
+    static DetectionResult Run(string? videoPath, Stream? videoStream, DetectionOptions? options, Action<Shot>? onShot, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var o = options ?? new DetectionOptions();
@@ -220,7 +248,9 @@ public static class ShotDetection
         if (o.EndTime is not null && o.Duration is not null)
             throw new ArgumentException("EndTime and Duration cannot both be set.");
 
-        var video = new VideoReader(videoPath, o, cancellationToken);
+        var video = videoStream is not null ? new VideoReader(videoStream, o, cancellationToken) : new VideoReader(videoPath!, o, cancellationToken);
+        if (o.StartTime is not null && video.Streaming)
+            throw new ArgumentException("StartTime isn't available for a streamed input (a Stream, a URL, or Streaming = true).");
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
 
         var w = o.Weights;
@@ -263,20 +293,34 @@ public static class ShotDetection
             start = cut;
         }
 
-        var range = FrameRange.For(video, o);
-        start = video.Position(range.Start);
+        // scenedetect's `time -s` seeks (1-based frame numbers); `-e`/`-d` become whole frames at the
+        // average rate (FrameTimecode rounds half to even) and are compared as frame numbers.
+        int startFrame = o.StartTime is null ? 0 : video.SeekFrame(TimecodeSeconds(o.StartTime, video.Fps, oneBasedFrames: true));
+        static long Frames(string value, Fps fps) => (long)Math.Round(TimecodeSeconds(value, fps) * fps.Value);
+        long? endFrame = o.EndTime is not null ? Frames(o.EndTime, video.Fps)
+            : o.Duration is not null ? Frames(o.Duration, video.Fps) + startFrame
+            : null;
+        start = video.Position(startFrame);
         int frameCount = 0, stride = o.FrameSkip + 1;
+        bool readToEnd = true;
         long lastReport = 0;
-        foreach (var frame in video.Frames(range.Start, range.Count, cancellationToken))
+        foreach (var frame in video.Frames(startFrame, null, cancellationToken))
         {
-            int index = range.Start + frameCount;
+            int index = startFrame + frameCount;
             if (frameCount % stride == 0 && detector.ProcessFrame(index, frame) is { } cut)
                 Cut(cut);
             frameCount++;
             if (o.Progress is not null && Environment.TickCount64 - lastReport >= 100)
             {
-                o.Progress.Report(new(frameCount, range.Count ?? video.ExpectedFrames - range.Start));
+                o.Progress.Report(new(frameCount, Math.Max(0, video.ExpectedFrames - startFrame)));
                 lastReport = Environment.TickCount64;
+            }
+            // scenedetect analyses a frame, skips the next FrameSkip frames, then stops if the last
+            // frame read plus one frame reaches the end (an end hit while skipping counts as EOF).
+            if (endFrame is { } e && frameCount % stride == 0 && video.Position(index).PlusFrames(1).FrameNum >= e)
+            {
+                readToEnd = false;
+                break;
             }
         }
         o.Progress?.Report(new(frameCount, frameCount));
@@ -284,7 +328,7 @@ public static class ShotDetection
         {
             // Where scenedetect finds the stream after the loop: past the end if it read until EOF,
             // otherwise at the last frame read (which may be a skipped one).
-            var last = range.ReadsToEnd ? video.PositionAfterDecoding(range.Start + frameCount) : video.Position(range.Start + frameCount - 1);
+            var last = readToEnd ? video.PositionAfterDecoding(startFrame + frameCount) : video.Position(startFrame + frameCount - 1);
             if (detector.PostProcess(last) is { } trailingCut)
                 Cut(trailingCut);
             var final = new Shot(shots.Count + 1, start, last.PlusFrames(1));
@@ -322,42 +366,5 @@ public static class ShotDetection
                 + double.Parse(parts[2], CultureInfo.InvariantCulture);
         }
         return double.Parse(value, CultureInfo.InvariantCulture);
-    }
-}
-
-/// <summary>
-/// Which frames to decode, as scenedetect's `time` and `--frame-skip` options select them: frames
-/// Start .. Start + Count - 1 (Count null: to the end), of which every (FrameSkip + 1)th is analysed.
-/// </summary>
-readonly record struct FrameRange(int Start, int? Count, bool ReadsToEnd)
-{
-    public static FrameRange For(VideoReader video, DetectionOptions o)
-    {
-        var fps = video.Fps;
-        int total = video.ExpectedFrames;
-        int start = o.StartTime is null ? 0 : video.SeekFrame(ShotDetection.TimecodeSeconds(o.StartTime, fps, oneBasedFrames: true));
-        // scenedetect turns the end/duration into a whole number of frames at the average rate
-        // (FrameTimecode rounds half to even) and compares frame numbers: a frame-based end against
-        // a timestamp-based position falls back to round(seconds × fps) on both sides.
-        static long Frames(string value, Fps fps) => (long)Math.Round(ShotDetection.TimecodeSeconds(value, fps) * fps.Value);
-        long? end = o.EndTime is not null ? Frames(o.EndTime, fps)
-            : o.Duration is not null ? Frames(o.Duration, fps) + start
-            : null;
-        if (end is null || total == 0)
-            return new(start, null, true);
-
-        // scenedetect analyses a frame, skips FrameSkip frames, then stops if the last frame read
-        // plus one frame reaches the end time (or if it hit the end of the video while skipping).
-        int stride = o.FrameSkip + 1;
-        for (int processed = start; ; processed += stride)
-        {
-            if (processed > total - 1)
-                return new(start, total - start, true);
-            int lastRead = Math.Min(processed + o.FrameSkip, total - 1);
-            if (processed + o.FrameSkip > total - 1)
-                return new(start, total - start, true);
-            if (video.Position(lastRead).PlusFrames(1).FrameNum >= end.Value)
-                return new(start, lastRead - start + 1, false);
-        }
     }
 }

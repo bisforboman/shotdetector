@@ -16,6 +16,10 @@ public sealed class Clips : IDisposable
     /// <summary>5 minutes of moving test pattern: a full run takes seconds, so it can be cancelled mid-run.</summary>
     public string Long { get; }
 
+    /// <summary><see cref="ThreeShots"/> as mkv and as an mp4 with its headers first: both can be piped.</summary>
+    public string ThreeShotsMkv { get; }
+    public string ThreeShotsFaststart { get; }
+
     public Clips()
     {
         ThreeShots = Make("three.mp4",
@@ -24,6 +28,10 @@ public sealed class Clips : IDisposable
         Rotated = Path.Combine(_dir, "rotated.mp4");
         Run($"-v error -y -display_rotation 90 -i {ThreeShots} -c copy {Rotated}");
         Long = Make("long.mp4", "-f lavfi -i testsrc2=s=640x360:r=25:d=300 -vf format=yuv420p");
+        ThreeShotsMkv = Path.Combine(_dir, "three.mkv");
+        Run($"-v error -y -i {ThreeShots} -c copy {ThreeShotsMkv}");
+        ThreeShotsFaststart = Path.Combine(_dir, "three-faststart.mp4");
+        Run($"-v error -y -i {ThreeShots} -c copy -movflags +faststart {ThreeShotsFaststart}");
     }
 
     string Make(string name, string input)
@@ -152,6 +160,93 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         {
             await foreach (var _ in ShotDetection.DetectStreamAsync("does-not-exist.mp4")) { }
         });
+
+    [Theory]
+    [InlineData("mkv")]
+    [InlineData("faststart")]
+    public void PipedInputGivesTheSameShotsAsTheFile(string container)
+    {
+        var expected = ShotDetection.Detect(clips.ThreeShots);
+        using var file = File.OpenRead(container == "mkv" ? clips.ThreeShotsMkv : clips.ThreeShotsFaststart);
+        var piped = ShotDetection.Detect(file);
+        Assert.True(piped.Video.Streaming);
+        Assert.Null(piped.VideoPath);
+        Assert.Equal(expected.Shots.Select(s => (s.Start.Timecode(), s.End.Timecode())), piped.Shots.Select(s => (s.Start.Timecode(), s.End.Timecode())));
+        Assert.Equal(expected.FrameCount, piped.FrameCount);
+    }
+
+    [Fact]
+    public async Task PipedInputStreamsShotsOut()
+    {
+        using var file = File.OpenRead(clips.ThreeShotsMkv);
+        var shots = new List<Shot>();
+        await foreach (var shot in ShotDetection.DetectStreamAsync(file))
+            shots.Add(shot);
+        Assert.Equal([0L, 50L, 100L], shots.Select(s => s.Start.FrameNum));
+    }
+
+    [Fact]
+    public void PipedInputHonoursTheEndTime()
+    {
+        using var file = File.OpenRead(clips.ThreeShotsMkv);
+        var r = ShotDetection.Detect(file, new() { EndTime = "3s" });
+        Assert.Equal(75, r.FrameCount);
+        Assert.Equal(75, r.Shots[^1].End.FrameNum);
+    }
+
+    [Fact]
+    public void PipedInputCannotSeek()
+    {
+        using var file = File.OpenRead(clips.ThreeShotsMkv);
+        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(file, new() { StartTime = "1s" }));
+    }
+
+    [Fact]
+    public void PipedMp4WithoutFaststartIsRefusedClearly()
+    {
+        using var file = File.OpenRead(clips.ThreeShots);
+        var e = Assert.Throws<InvalidOperationException>(() => ShotDetection.Detect(file));
+        Assert.Contains("faststart", e.Message);
+    }
+
+    [Fact]
+    public void UrlInputIsStreamed()
+    {
+        using var server = new System.Net.HttpListener();
+        int port = Random.Shared.Next(20000, 60000);
+        server.Prefixes.Add($"http://localhost:{port}/");
+        server.Start();
+        var serving = Task.Run(async () =>
+        {
+            while (server.IsListening)
+            {
+                var ctx = await server.GetContextAsync();
+                ctx.Response.ContentType = "video/mp4";
+                try
+                {
+                    await using var f = File.OpenRead(clips.ThreeShotsFaststart);
+                    await f.CopyToAsync(ctx.Response.OutputStream);
+                    ctx.Response.Close();
+                }
+                catch (System.Net.HttpListenerException) { } // ffprobe hangs up after the headers
+            }
+        });
+        try
+        {
+            var r = ShotDetection.Detect($"http://localhost:{port}/three.mp4");
+            Assert.True(r.Video.Streaming);
+            Assert.Equal([0L, 50L, 100L], r.Shots.Select(s => s.Start.FrameNum));
+        }
+        finally { server.Stop(); }
+    }
+
+    [Fact]
+    public void ExportsNeedAPath()
+    {
+        using var file = File.OpenRead(clips.ThreeShotsMkv);
+        var r = ShotDetection.Detect(file);
+        Assert.Throws<InvalidOperationException>(() => Export.SaveImages(r, Path.GetTempPath()));
+    }
 
     [Fact]
     public void AlreadyCancelledTokenThrowsImmediately() =>

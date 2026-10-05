@@ -4,6 +4,8 @@ using ShotDetector;
 const string Usage = """
     Usage: shotdetect -i <video> [options]
 
+      -i, --input <file|url|->           Video file, a URL (http, rtsp, ...), or - for standard input
+
       -d, --detector <name>              adaptive, content, threshold, hist or hash (default: adaptive)
       -t, --threshold <n>                content: content_val threshold (default 27)
                                          adaptive: adaptive ratio threshold (default 3)
@@ -135,12 +137,14 @@ try
     if (!Console.IsErrorRedirected)
         options = options with { Progress = new SyncProgress<DetectionProgress>(p => Console.Error.Write(
             p.Fraction is { } f ? $"\r{f:P0} ({p.FramesProcessed} frames)  " : $"\r{p.FramesProcessed} frames  ")) };
-    var result = ShotDetection.Detect(input, options);
+    var result = input == "-"
+        ? ShotDetection.Detect(Console.OpenStandardInput(), options)
+        : ShotDetection.Detect(input, options);
     if (!Console.IsErrorRedirected)
         Console.Error.Write("\r" + new string(' ', 40) + "\r");
     var video = result.Video;
     Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
-        $"{Path.GetFileName(input)}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, " +
+        $"{(input == "-" ? "stdin" : Path.GetFileName(input))}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, " +
         $"{result.FrameCount} frames, processed at {video.Width}x{video.Height}, " +
         $"detector={options.Detector.ToString().ToLowerInvariant()}, min-scene-len={result.MinSceneLengthFrames} frames"));
 
