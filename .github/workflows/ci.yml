@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test
+        run: dotnet test ShotDetector.slnx
+
+      - name: Pack
+        run: |
+          dotnet pack src/ShotDetector --output artifacts
+          dotnet pack src/ShotDetector.FastYuv --output artifacts
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nupkg
+          path: artifacts/*.nupkg
+
+  # ShotDetector and scenedetect run on the same clips; cuts, scene list CSVs and per-frame stats must
+  # be identical. scenedetect decodes with the FFmpeg bundled in OpenCV, ShotDetector with the system
+  # ffmpeg, so this runs against several ffmpeg versions.
+  parity:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ffmpeg: [ubuntu, '8.1', '9.0']   # Ubuntu's package, and BtbN's static builds of the latest releases
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install ffmpeg ${{ matrix.ffmpeg }}
+        run: |
+          v='${{ matrix.ffmpeg }}'
+          if [ "$v" = ubuntu ]; then
+            sudo apt-get update && sudo apt-get install -y ffmpeg
+          else
+            curl -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n$v-latest-linux64-gpl-$v.tar.xz" | tar -xJ
+            echo "$PWD/ffmpeg-n$v-latest-linux64-gpl-$v/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: ffmpeg version
+        run: ffmpeg -hide_banner -version | head -1
+
+      - name: Install scenedetect
+        run: pip install scenedetect==0.7.1 opencv-python-headless==5.0.0.93
+
+      - name: Make sample clips
+        shell: pwsh
+        run: ./tools/make-samples.ps1
+
+      - name: Compare with scenedetect
+        run: |
+          status=0
+          python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi \
+            --detector all --stats --report parity.md || status=$?
+          { echo "### ffmpeg ${{ matrix.ffmpeg }}"; cat parity.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status

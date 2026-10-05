@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <Authors>Jakob Boman</Authors>
+    <Copyright>Copyright (c) Jakob Boman</Copyright>
+    <PackageProjectUrl>https://github.com/bisforboman/shotdetector</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/bisforboman/shotdetector</RepositoryUrl>
+    <!-- Local builds; releases take the version from the git tag (see .github/workflows/release.yml). -->
+    <Version>0.1.0-alpha.1</Version>
+  </PropertyGroup>
+</Project>

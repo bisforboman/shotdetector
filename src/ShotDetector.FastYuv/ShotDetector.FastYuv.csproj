@@ -1,15 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <IsAotCompatible>true</IsAotCompatible>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
     <PackageId>ShotDetector.FastYuv</PackageId>
-    <Version>0.1.0</Version>
-    <Authors>Jakob Boman</Authors>
     <Description>Optional fast path for ShotDetector: a bit-exact port of FFmpeg's yuv420p to BGR conversion, so ffmpeg can send raw yuv420p and only the pixels needed are converted. About 1.7x faster on 1080p video, identical results. LGPL-2.1-or-later, as the FFmpeg code it ports.</Description>
     <PackageTags>video;scene-detection;shot-detection;ffmpeg;yuv</PackageTags>
     <PackageLicenseExpression>LGPL-2.1-or-later</PackageLicenseExpression>
