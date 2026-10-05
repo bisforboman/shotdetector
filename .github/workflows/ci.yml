@@ -142,6 +142,16 @@ jobs:
           { echo "### scenedetect ${{ matrix.scenedetect }}, ${{ matrix.path }} path"; cat parity.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
+      # Time range, frame skip and crop must give scenedetect's results too (constant frame rate clips).
+      - name: Compare with scenedetect's time, --frame-skip and --crop options
+        if: matrix.scenedetect == '0.7.1'
+        run: |
+          status=0
+          python tools/compare.py samples/sintel_trailer-480p.mp4 samples/bbb_trailer_400p.ogg samples/sintel_rotated.mp4             --detector both --stats --report options.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }}             --scenedetect-args "--crop 100 50 700 400 time -s 2s -e 00:00:20.000" --ours-args "--crop 100 50 700 400 -s 2s -e 00:00:20.000" || status=$?
+          python tools/compare.py samples/sintel_trailer-480p.mp4 samples/synthetic.mp4             --detector both --report skip.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }}             --scenedetect-args "-fs 2 time -s 241 -d 300" --ours-args "--frame-skip 2 -s 241 --duration 300" || status=$?
+          { echo "### time/crop and frame-skip options, ${{ matrix.path }} path"; cat options.md skip.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
       # detect-hash is informational: on flat frames (fades to black) the perceptual hash is DCT
       # rounding noise, in scenedetect itself as much as here, so a few frames and the odd cut inside
       # a fade differ. Everything else should match; eyeball the table if it changes.

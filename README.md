@@ -49,6 +49,14 @@ A shot arrives once the cut that ends it is confirmed (a few frames later); the 
 All five scenedetect detectors are available: `DetectorKind.Adaptive`, `Content`, `Threshold`,
 `Histogram` and `Hash` (CLI `-d adaptive|content|threshold|hist|hash`), with scenedetect's defaults.
 
+Like scenedetect's `time`, `--frame-skip` and `--crop`: `StartTime`, `EndTime` and `Duration`
+("HH:MM:SS.mmm", "12.5s", or a frame number; CLI `-s`, `-e`, `--duration`), `FrameSkip` (analyse
+every (n+1)th frame; CLI `--frame-skip`) and `Crop` (inclusive pixel corners; CLI `--crop x0 y0 x1 y1`)
+give the same shots as scenedetect with those options. On variable frame rate video a start time
+picks the first frame at or after it (scenedetect's own seek is an artifact of OpenCV's frame
+counting there). `Export.SaveImages` takes an `ImageOptions` (count, margin, width/height/scale,
+jpg/png/webp).
+
 `DetectionOptions.Progress` (an `IProgress<DetectionProgress>`) reports frames done out of the
 expected total about 10 times a second. ffmpeg and ffprobe are found on `PATH`, or in
 `DetectionOptions.FfmpegDirectory` (CLI: `--ffmpeg-dir`).

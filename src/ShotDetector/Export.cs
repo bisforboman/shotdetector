@@ -2,6 +2,38 @@ using System.Globalization;
 
 namespace ShotDetector;
 
+/// <summary>Settings for <see cref="Export.SaveImages"/>; the defaults are scenedetect's.</summary>
+public sealed record ImageOptions
+{
+    /// <summary>Images per shot.</summary>
+    public int NumImages { get; init; } = 3;
+
+    /// <summary>Frames to keep away from each end of a shot.</summary>
+    public int FrameMargin { get; init; } = 1;
+
+    /// <summary>Output width in pixels; with only one of Width/Height set, the other keeps the aspect ratio.</summary>
+    public int? Width { get; init; }
+
+    /// <summary>Output height in pixels.</summary>
+    public int? Height { get; init; }
+
+    /// <summary>Scale factor (ignored when Width or Height is set).</summary>
+    public double? Scale { get; init; }
+
+    /// <summary>"jpg", "png" or "webp".</summary>
+    public string Format { get; init; } = "jpg";
+
+    /// <summary>The ffmpeg scale filter for these settings (bilinear, as scenedetect's default scale-method).</summary>
+    internal string ScaleFilter() => (Width, Height, Scale) switch
+    {
+        ({ } w, { } h, _) => $",scale={w}:{h}:flags=bilinear",
+        ({ } w, null, _) => $",scale={w}:'trunc(ih*{w}/iw)':flags=bilinear",
+        (null, { } h, _) => $",scale='trunc(iw*{h}/ih)':{h}:flags=bilinear",
+        (null, null, { } s) => $",scale='round(iw*{s.ToString("R", CultureInfo.InvariantCulture)})':'round(ih*{s.ToString("R", CultureInfo.InvariantCulture)})':flags=bilinear",
+        _ => "",
+    };
+}
+
 /// <summary>
 /// Uses a shot list like scenedetect's save-images and split-video commands, with the same
 /// defaults and file names. Both run ffmpeg.
@@ -13,18 +45,24 @@ public static class Export
         number.ToString(new string('0', Math.Max(3, (int)Math.Floor(Math.Log10(count)) + 1)), CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// save-images: <paramref name="numImages"/> JPEGs per shot, named
+    /// save-images: NumImages images per shot (see <see cref="ImageOptions"/>), named
     /// "{video}-Scene-{NNN}-{II}.jpg". Frames are picked like scenedetect's _generate_timecode_list:
-    /// the shot is split into equal segments; the first image is <paramref name="frameMargin"/>
+    /// the shot is split into equal segments; the first image is FrameMargin
     /// frames in, the last that far from the end, the others mid-segment. Images are full size,
     /// stretched to square pixels if needed.
     /// Same frames as scenedetect (see <see cref="VideoReader.FrameAt"/>), but encoded by ffmpeg at
     /// -q:v 2 rather than OpenCV at JPEG quality 95, so files are similar, not byte-identical.
     /// </summary>
-    public static List<string> SaveImages(DetectionResult result, string outputDir, int numImages = 3, int frameMargin = 1,
+    public static List<string> SaveImages(DetectionResult result, string outputDir, ImageOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var io = options ?? new ImageOptions();
+        int numImages = io.NumImages, frameMargin = io.FrameMargin;
+        if (numImages < 1 || frameMargin < 0)
+            throw new ArgumentException("NumImages must be at least 1 and FrameMargin at least 0.");
+        if (io.Format is not ("jpg" or "png" or "webp"))
+            throw new ArgumentException("Format must be jpg, png or webp.");
         var (videoPath, video, shots, frameCount) = (result.VideoPath, result.Video, result.Shots, result.FrameCount);
         if (shots.Count == 0)
             return [];
@@ -41,7 +79,7 @@ public static class Export
         for (int i = 0; i < shots.Count; i++)
             for (int j = 0; j < numImages; j++)
                 wanted.Add((Math.Clamp(picked[i][j], 0, frameCount - 1), Path.Combine(outputDir,
-                    $"{name}-Scene-{SceneNumber(shots[i].Number, shots.Count)}-{(j + 1).ToString(imageFormat, CultureInfo.InvariantCulture)}.jpg")));
+                    $"{name}-Scene-{SceneNumber(shots[i].Number, shots.Count)}-{(j + 1).ToString(imageFormat, CultureInfo.InvariantCulture)}.{io.Format}")));
 
         // One ffmpeg pass: select the wanted frames (in order) into numbered temp files, then rename.
         int[] frames = wanted.Select(w => w.Frame).Distinct().Order().ToArray();
@@ -51,10 +89,16 @@ public static class Export
         {
             string filterFile = Path.Combine(temp, "filter.txt");
             File.WriteAllText(filterFile,
-                $"select='{string.Join("+", frames.Select(f => $"eq(n\\,{f})"))}',scale='round(iw*sar)':ih,setsar=1");
+                $"select='{string.Join("+", frames.Select(f => $"eq(n\\,{f})"))}',scale='round(iw*sar)':ih,setsar=1{io.ScaleFilter()}");
+            string[] quality = io.Format switch
+            {
+                "png" => ["-compression_level", "3"],   // scenedetect's defaults: jpeg 95, png 3, webp 100
+                "webp" => ["-quality", "100"],
+                _ => ["-q:v", "2"],
+            };
             VideoReader.Run(video.FfmpegExe, ["-v", "error", "-nostdin", "-y", "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
-                "-fps_mode", "passthrough", "-q:v", "2", Path.Combine(temp, "%06d.jpg")], cancellationToken);
-            var byFrame = frames.Select((f, i) => (f, Path.Combine(temp, $"{i + 1:000000}.jpg"))).ToDictionary();
+                "-fps_mode", "passthrough", .. quality, Path.Combine(temp, $"%06d.{io.Format}")], cancellationToken);
+            var byFrame = frames.Select((f, i) => (f, Path.Combine(temp, $"{i + 1:000000}.{io.Format}"))).ToDictionary();
             foreach (var (frame, file) in wanted)
                 File.Copy(byFrame[frame], file, overwrite: true);
         }

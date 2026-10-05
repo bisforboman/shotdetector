@@ -24,6 +24,11 @@ const string Usage = """
       -f, --fade-bias <-1..1>            threshold: cut position between fade-out (-1) and fade-in (+1)
           --compat <0.7.1|0.6.4>         Which PySceneDetect release to reproduce (default 0.7.1)
           --ffmpeg-dir <dir>             Folder containing ffmpeg and ffprobe (default: found on PATH)
+      -s, --start <time>                 Start here: HH:MM:SS[.mmm], seconds (12.5s) or 1-based frame (300)
+      -e, --end <time>                   Stop here (exclusive); same formats, frames 0-based
+          --duration <time>              Analyse this much from the start (not with --end)
+          --frame-skip <n>               Analyse every (n+1)th frame (not with --stats)
+          --crop <x0> <y0> <x1> <y1>     Only analyse this part of the frame (inclusive pixel corners)
           --threads <n>                  ffmpeg decoder threads (default 4; 0 = ffmpeg's choice). Each
                                          costs ~25 MB at 1080p; more rarely helps since we decode in parallel
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
@@ -33,12 +38,14 @@ const string Usage = """
           --stats <file>                 Write per-frame metrics as CSV (like scenedetect -s)
           --save-images <dir>            Save JPEG thumbnails per shot (like scenedetect save-images)
           --num-images <n>               Thumbnails per shot (default 3)
+          --frame-margin <n>             Frames to keep away from each end of a shot (default 1)
+          --image-width <px>, --image-height <px>, --image-scale <factor>, --image-format <jpg|png|webp>
           --split-video <dir>            Cut the video into one mp4 per shot (like scenedetect split-video)
     """;
 
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
 var options = new DetectionOptions();
-int numImages = 3;
+var images = new ImageOptions();
 
 try
 {
@@ -97,7 +104,17 @@ try
             case "--json": jsonPath = Next(); break;
             case "--stats": statsPath = Next(); options = options with { CollectStats = true }; break;
             case "--save-images": imagesDir = Next(); break;
-            case "--num-images": numImages = NextInt(); break;
+            case "--num-images": images = images with { NumImages = NextInt() }; break;
+            case "--frame-margin": images = images with { FrameMargin = NextInt() }; break;
+            case "--image-width": images = images with { Width = NextInt() }; break;
+            case "--image-height": images = images with { Height = NextInt() }; break;
+            case "--image-scale": images = images with { Scale = NextDouble() }; break;
+            case "--image-format": images = images with { Format = Next() }; break;
+            case "-s" or "--start": options = options with { StartTime = Next() }; break;
+            case "-e" or "--end": options = options with { EndTime = Next() }; break;
+            case "--duration": options = options with { Duration = Next() }; break;
+            case "--frame-skip": options = options with { FrameSkip = NextInt() }; break;
+            case "--crop": options = options with { Crop = (NextInt(), NextInt(), NextInt(), NextInt()) }; break;
             case "--split-video": splitDir = Next(); break;
             case "-h" or "--help": Console.WriteLine(Usage); return 0;
             default: throw new ArgumentException($"Unknown option {args[i]}");
@@ -105,8 +122,6 @@ try
     }
     if (input is null)
         throw new ArgumentException("Missing -i <video>");
-    if (numImages < 1)
-        throw new ArgumentException("--num-images must be at least 1");
 }
 catch (Exception e) when (e is ArgumentException or FormatException)
 {
@@ -137,7 +152,7 @@ try
     if (statsPath is not null)
         File.WriteAllText(statsPath, result.Stats!.Csv(video.Position));
     if (imagesDir is not null)
-        Console.Error.WriteLine($"Saved {Export.SaveImages(result, imagesDir, numImages).Count} images to {imagesDir}");
+        Console.Error.WriteLine($"Saved {Export.SaveImages(result, imagesDir, images).Count} images to {imagesDir}");
     if (splitDir is not null)
         Console.Error.WriteLine($"Wrote {Export.SplitVideo(result, splitDir).Count} clips to {splitDir}");
     return 0;

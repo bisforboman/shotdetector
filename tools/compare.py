@@ -87,6 +87,10 @@ def diff_stats(ref_path: Path, our_path: Path) -> dict[str, int]:
     return diffs
 
 
+REF_EXTRA: list[str] = []
+OUR_EXTRA: list[str] = []
+
+
 def compare(video: str, detector: str, tol: int, extra_args: list[str], stats: bool, shared: list[str]) -> dict:
     """`shared` options are passed to both tools (same spelling in both CLIs), except to detect-threshold."""
     shared = shared if detector in ("adaptive", "content") else []
@@ -95,8 +99,8 @@ def compare(video: str, detector: str, tol: int, extra_args: list[str], stats: b
         ref_stats, our_stats = Path(tmp, "ref_stats.csv"), Path(tmp, "our_stats.csv")
         ref_secs = timed(
             [SCENEDETECT_PYTHON, "-m", "scenedetect", "-q", "-i", video, "-o", tmp,
-             *(["-s", str(ref_stats)] if stats else []), f"detect-{detector}", *shared, "list-scenes", "-f", ref_csv.name])
-        our_secs = timed([str(EXE), "-i", video, "-d", detector, "--csv", str(our_csv), *extra_args, *shared,
+             *(["-s", str(ref_stats)] if stats else []), *REF_EXTRA, f"detect-{detector}", *shared, "list-scenes", "-f", ref_csv.name])
+        our_secs = timed([str(EXE), "-i", video, "-d", detector, "--csv", str(our_csv), *extra_args, *shared, *OUR_EXTRA,
                           *(["--stats", str(our_stats)] if stats else [])])
         ref, ours = cuts_from_csv(ref_csv), cuts_from_csv(our_csv)
         csv_cells = diff_scene_csv(ref_csv, our_csv)
@@ -150,12 +154,15 @@ def main() -> int:
     ap.add_argument("--report", help="also write a Markdown summary table to this file")
     ap.add_argument("--weights", help='content/adaptive weights for both tools, e.g. "1 1 1 1"')
     ap.add_argument("--kernel-size", help="edge kernel size for both tools")
+    ap.add_argument("--scenedetect-args", default="", help='extra scenedetect options/commands, e.g. "-fs 2 -c 0 0 400 300 time -s 10s -e 20s"')
+    ap.add_argument("--ours-args", default="", help='extra shotdetect options, e.g. "--frame-skip 2 --crop 0 0 400 300 -s 10s -e 20s"')
     ap.add_argument("--stats", action="store_true",
                     help="also diff per-frame stats files (slows scenedetect: it computes edges then)")
     a = ap.parse_args()
 
-    global EXE, SCENEDETECT_PYTHON
+    global EXE, SCENEDETECT_PYTHON, REF_EXTRA, OUR_EXTRA
     SCENEDETECT_PYTHON = a.scenedetect_python
+    REF_EXTRA, OUR_EXTRA = a.scenedetect_args.split(), a.ours_args.split()
     if a.fast_yuv:
         subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", "-p:WithFastYuv=true", "-o", str(FAST_DIR),
                         str(ROOT / "src" / "ShotDetector.Cli")], check=True, stdout=subprocess.DEVNULL)

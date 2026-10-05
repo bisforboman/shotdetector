@@ -3,6 +3,14 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. Until
 1.0, minor versions may change the public API.
 
+## Unreleased
+
+- Time range (`StartTime`, `EndTime`, `Duration`), `FrameSkip` and `Crop`, matching scenedetect's
+  `time`, `--frame-skip` and `--crop`; `ImageOptions` for `SaveImages` (size, scale, format).
+- API: test-only members are internal; `VideoReader.Pipeline` is the `FramePipeline` enum;
+  `DetectionResult.MinSceneLength` is `MinSceneLengthFrames`; `SaveImages` takes `ImageOptions`.
+- Package icon, changelog, Dependabot.
+
 ## 0.3.0 – 2026-10-05
 
 - All five scenedetect detectors: `Histogram` (`detect-hist`, bit-exact) and `Hash` (`detect-hash`,

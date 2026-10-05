@@ -5,7 +5,7 @@ namespace ShotDetector;
 /// (imgproc/resize.cpp), matching OpenCV's fixed-point arithmetic: 11-bit coefficients, an exact
 /// horizontal pass, then the vertical pass as done by its SIMD path (VResizeLinearVec_32s8u).
 /// When downscaling it samples only the 2x2 nearest source pixels, so fine detail aliases, and it
-/// reads only a fraction of the source: <see cref="ResizeYuv420"/> converts just those pixels.
+/// reads only a fraction of the source: ResizeYuv420 converts just those pixels.
 /// </summary>
 internal sealed class CvResize
 {
@@ -22,11 +22,12 @@ internal sealed class CvResize
     {
         public readonly int Start = start, End = end;
         public readonly int[] Row0 = new int[dw * 3], Row1 = new int[dw * 3];
-        public readonly byte[] BgrRow0 = new byte[sw * 3], BgrRow1 = new byte[sw * 3];
+        public byte[] BgrRow0 = new byte[sw * 3], BgrRow1 = new byte[sw * 3];
     }
 
     /// <summary>The source columns the horizontal pass reads, ascending.</summary>
     public int[] SourceCols { get; }
+    int[]? _shiftedCols;
 
     public CvResize(int sw, int sh, int dw, int dh)
     {
@@ -58,8 +59,21 @@ internal sealed class CvResize
     /// Resizes a packed yuv420p source as if it had first been converted to BGR with
     /// <paramref name="converter"/>, converting only the pixels the resize reads.
     /// </summary>
-    public void ResizeYuv420(byte[] yuv, byte[] dst, IYuv420Converter converter) => Parallel.ForEach(_chunks, c =>
+    public void ResizeYuv420(byte[] yuv, byte[] dst, IYuv420Converter converter) =>
+        ResizeYuv420(yuv, dst, converter, _sw, _sh, 0, 0);
+
+    /// <summary>
+    /// As <see cref="ResizeYuv420(byte[], byte[], IYuv420Converter)"/>, resizing the
+    /// <c>sw × sh</c> region at (<paramref name="cropX"/>, <paramref name="cropY"/>) of a
+    /// <paramref name="fullWidth"/> × <paramref name="fullHeight"/> yuv420p frame. The chroma stays
+    /// aligned to the full frame, as cropping after conversion keeps it.
+    /// </summary>
+    public void ResizeYuv420(byte[] yuv, byte[] dst, IYuv420Converter converter, int fullWidth, int fullHeight, int cropX, int cropY) => Parallel.ForEach(_chunks, c =>
     {
+        int[] cols = cropX == 0 ? SourceCols : _shiftedCols ??= SourceCols.Select(x => x + cropX).ToArray();
+        int rowBytes = fullWidth * 3;
+        if (c.BgrRow0.Length < rowBytes)
+            (c.BgrRow0, c.BgrRow1) = (new byte[rowBytes], new byte[rowBytes]);
         int lastRow0 = -1, lastRow1 = -1;
         for (int dy = c.Start; dy < c.End; dy++)
         {
@@ -67,13 +81,13 @@ internal sealed class CvResize
             // Downscaling rarely reuses rows, but upscaling does; skip converting them twice.
             if (r0 != lastRow0)
             {
-                converter.RowToBgr(yuv, _sw, _sh, r0, SourceCols, c.BgrRow0);
-                HResize(c.BgrRow0, c.Row0);
+                converter.RowToBgr(yuv, fullWidth, fullHeight, r0 + cropY, cols, c.BgrRow0);
+                HResize(c.BgrRow0.AsSpan(cropX * 3), c.Row0);
             }
             if (r1 != lastRow1)
             {
-                converter.RowToBgr(yuv, _sw, _sh, r1, SourceCols, c.BgrRow1);
-                HResize(c.BgrRow1, c.Row1);
+                converter.RowToBgr(yuv, fullWidth, fullHeight, r1 + cropY, cols, c.BgrRow1);
+                HResize(c.BgrRow1.AsSpan(cropX * 3), c.Row1);
             }
             (lastRow0, lastRow1) = (r0, r1);
             VResize(dy, c, dst);

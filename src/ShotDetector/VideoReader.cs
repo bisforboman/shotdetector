@@ -110,6 +110,9 @@ public sealed class VideoReader
     /// <summary>Which PySceneDetect release's frame rate, downscaling and positions this reader reproduces.</summary>
     public PySceneDetectVersion Compatibility { get; }
 
+    /// <summary>The part of the (upright) frame analysed, in pixels: left, top, width, height. The whole frame unless cropped.</summary>
+    public (int X, int Y, int Width, int Height) CropRegion { get; }
+
     /// <summary>Frames the stream is expected to have (from its packets), for progress; 0 if unknown.</summary>
     public int ExpectedFrames => _pts.Length > 0 ? _pts.Length : (int)FrameCountHint;
 
@@ -171,9 +174,24 @@ public sealed class VideoReader
         // 0.7.1 turns it into a clean fraction (framerate_to_fraction); 0.6.4 uses the float as is.
         Fps = compatibility == PySceneDetectVersion.V0_6_4 ? rate : Fps.FromFloat(rate.Value);
         FrameCountHint = long.TryParse(stream.GetValueOrDefault("nb_frames"), out var n) ? n : 0;
+        // Crop like scenedetect: inclusive corners. The "effective size" its downscale factor comes
+        // from is one pixel larger than the crop in both directions (its crop setter adds 1 to the far
+        // corner and detect_scenes adds 1 again), while the frame is sliced to the real crop. Reproduced as is.
+        CropRegion = (0, 0, SourceWidth, SourceHeight);
+        var effective = (SourceWidth, SourceHeight);
+        if (o.Crop is { } c)
+        {
+            int minX = Math.Min(c.X0, c.X1), minY = Math.Min(c.Y0, c.Y1), maxX = Math.Max(c.X0, c.X1), maxY = Math.Max(c.Y0, c.Y1);
+            if (minX < 0 || minY < 0)
+                throw new ArgumentException("Crop coordinates must be >= 0.");
+            if (minX >= SourceWidth || minY >= SourceHeight)
+                throw new ArgumentException("Crop starts outside the video.");
+            CropRegion = (minX, minY, Math.Min(maxX + 1, SourceWidth) - minX, Math.Min(maxY + 1, SourceHeight) - minY);
+            effective = (CropRegion.Width + 1, CropRegion.Height + 1);
+        }
         (Width, Height) = compatibility == PySceneDetectVersion.V0_6_4
-            ? DownscaledSize064(SourceWidth, SourceHeight)
-            : DownscaledSize(SourceWidth, SourceHeight);
+            ? DownscaledSize064(effective.Item1, effective.Item2, CropRegion.Width, CropRegion.Height)
+            : DownscaledSize(effective.Item1, effective.Item2, CropRegion.Width, CropRegion.Height);
         _pixelFormat = stream.GetValueOrDefault("pix_fmt", "");
         // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
         bool fullRange = _pixelFormat == "yuvj420p" || stream.GetValueOrDefault("color_range") == "pc";
@@ -218,6 +236,29 @@ public sealed class VideoReader
     public int FrameAt(double seconds) => (int)Math.Round(seconds * Fps.Value);
 
     /// <summary>
+    /// The frame a start time selects: the one scenedetect's OpenCV seek lands on for constant frame
+    /// rate video (round(seconds × fps)). On variable frame rate video OpenCV's seek is an artifact of
+    /// its frame counting (it can land a second off), so there this is the first frame at or after
+    /// half a frame before the time instead.
+    /// </summary>
+    public int SeekFrame(double seconds)
+    {
+        if (seconds <= 0 || _pts.Length == 0)
+            return 0;
+        int estimate = Math.Clamp(FrameAt(seconds), 0, _pts.Length - 1);
+        if (Math.Abs(Position(estimate).Seconds - seconds) <= 1.0 / Fps.Value)
+            return estimate;
+        double target = seconds - 0.5 / Fps.Value;
+        int lo = 0, hi = _pts.Length - 1;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) / 2;
+            if (Position(mid).Seconds >= target) hi = mid; else lo = mid + 1;
+        }
+        return lo;
+    }
+
+    /// <summary>
     /// The position PySceneDetect reads once decoding has stopped. OpenCV reports CAP_PROP_POS_MSEC
     /// as 0 at that point, so it is always the frame-number fallback for the last frame.
     /// The last scene ends one frame after it.
@@ -230,16 +271,22 @@ public sealed class VideoReader
     /// PySceneDetect 0.6.4's downscale: a whole-number factor width // 256 (from the width only), then
     /// cv2.resize to (round(w / factor), round(h / factor)); no resize when the factor is 1.
     /// </summary>
-    internal static (int W, int H) DownscaledSize064(int width, int height, int minWidth = 256)
+    internal static (int W, int H) DownscaledSize064(int width, int height, int minWidth = 256) => DownscaledSize064(width, height, width, height, minWidth);
+
+    /// <summary>The factor comes from the effective size, the result from the frame's actual size.</summary>
+    internal static (int W, int H) DownscaledSize064(int effectiveWidth, int effectiveHeight, int width, int height, int minWidth = 256)
     {
-        int factor = width < minWidth ? 1 : width / minWidth;
+        int factor = effectiveWidth < minWidth ? 1 : effectiveWidth / minWidth;
         return factor <= 1 ? (width, height) : ((int)Math.Round(width / (double)factor), (int)Math.Round(height / (double)factor));
     }
 
     /// <summary>PySceneDetect 0.7.1's compute_downscale_factor + resize size (Python round = half to even).</summary>
-    internal static (int W, int H) DownscaledSize(int width, int height, int minWidth = 256)
+    internal static (int W, int H) DownscaledSize(int width, int height, int minWidth = 256) => DownscaledSize(width, height, width, height, minWidth);
+
+    /// <summary>The factor comes from the effective size, the result from the frame's actual size.</summary>
+    internal static (int W, int H) DownscaledSize(int effectiveWidth, int effectiveHeight, int width, int height, int minWidth = 256)
     {
-        int largest = Math.Max(width, height);
+        int largest = Math.Max(effectiveWidth, effectiveHeight);
         if (largest < minWidth)
             return (width, height);
         double factor = largest / (double)minWidth;
@@ -247,7 +294,7 @@ public sealed class VideoReader
     }
 
     /// <summary>How frames get from ffmpeg to the downscaled BGR the detectors see.</summary>
-    public FramePipeline Pipeline => !_ffmpegResize && (Width, Height) != (SourceWidth, SourceHeight)
+    public FramePipeline Pipeline => !_ffmpegResize && (Width, Height) != (CropRegion.Width, CropRegion.Height)
         // swscale's unscaled yuv420p converter (what OpenCV gets) needs an even height.
         ? (_yuv420ForVideo is not null && _pixelFormat is "yuv420p" or "yuvj420p" && SourceHeight % 2 == 0 ? FramePipeline.Yuv420Sampled : FramePipeline.FullFrameResize)
         : FramePipeline.FfmpegScale;
@@ -260,9 +307,17 @@ public sealed class VideoReader
     /// and converts only the pixels cv2.resize reads; "bgr24+resize" has ffmpeg convert whole frames;
     /// "ffmpeg-scale" has ffmpeg downscale (--ffmpeg-resize, or when no resize is needed).
     /// </summary>
-    public IEnumerable<byte[]> Frames(CancellationToken cancellationToken = default)
+    public IEnumerable<byte[]> Frames(CancellationToken cancellationToken = default) => Frames(0, null, cancellationToken);
+
+    /// <summary>
+    /// Yields frames <paramref name="startFrame"/> .. <paramref name="startFrame"/> + <paramref name="count"/> - 1
+    /// (count null: to the end), downscaled; see <see cref="Frames(CancellationToken)"/>.
+    /// </summary>
+    public IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (count is <= 0)
+            yield break;
         var pipeline = Pipeline;
         bool resizeHere = pipeline != FramePipeline.FfmpegScale, yuv = pipeline == FramePipeline.Yuv420Sampled;
         // On Windows, stdout redirection uses a 4 KB pipe, which makes full-size frames crawl
@@ -275,15 +330,32 @@ public sealed class VideoReader
 
         var psi = new ProcessStartInfo(FfmpegExe) { RedirectStandardOutput = server is null, RedirectStandardError = true };
         // Emit every decoded frame once, like OpenCV does (no CFR dup/drop).
-        string[] args = ["-v", "error", "-nostdin", "-y", "-threads", $"{_decodeThreads}", "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough"];
+        // Seeking exactly: which frame ffmpeg's -ss starts on depends on the codec, so seek two
+        // frames early (to a keyframe before that), keep the original timestamps, and let a select
+        // filter drop everything before the wanted frame's pts.
+        string[] seek = [], select = [];
+        if (startFrame > 0 && startFrame < _pts.Length)
+        {
+            int early = Math.Max(startFrame - 2, 0);
+            if (early > 0)
+                seek = ["-ss", ((_pts[early] - _startPts) * _timeBase).ToString("R", CultureInfo.InvariantCulture), "-copyts"];
+            select = ["-vf", $"select=gte(pts\\,{_pts[startFrame]})"];
+        }
+        string[] limit = count is { } n ? ["-frames:v", n.ToString(CultureInfo.InvariantCulture)] : [];
+        // The crop (an exact pixel copy) comes after the colour conversion, as OpenCV converts the
+        // whole frame and scenedetect slices the result; in the yuv420p pipeline it happens here instead.
+        string crop = CropRegion.Width == SourceWidth && CropRegion.Height == SourceHeight
+            ? "" : $",crop={CropRegion.Width}:{CropRegion.Height}:{CropRegion.X}:{CropRegion.Y}";
+        string[] args = ["-v", "error", "-nostdin", "-y", "-threads", $"{_decodeThreads}", .. seek, "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough", .. limit];
+        string prefix = select.Length > 0 ? select[1] + "," : "";
         args = pipeline switch
         {
             // The source's own format, so ffmpeg passes the samples through untouched.
-            FramePipeline.Yuv420Sampled => [.. args, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
+            FramePipeline.Yuv420Sampled => [.. args, .. select, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
             // Like OpenCV: SWS_BICUBIC, colour matrix and range from the stream's tags (BT.601 if untagged).
-            FramePipeline.FullFrameResize => [.. args, "-vf", "scale=flags=bicubic,format=bgr24",
+            FramePipeline.FullFrameResize => [.. args, "-vf", prefix + "scale=flags=bicubic,format=bgr24" + crop,
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
-            _ => [.. args, "-vf", $"scale={Width}:{Height}:flags=bilinear,format=bgr24",
+            _ => [.. args, "-vf", prefix + "scale=flags=bicubic,format=bgr24" + crop + $",scale={Width}:{Height}:flags=bilinear",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
         };
         foreach (var a in args)
@@ -315,7 +387,7 @@ public sealed class VideoReader
         using var free = new BlockingCollection<byte[]>();
         using var full = new BlockingCollection<byte[]>();
         int readSize = yuv ? IYuv420Converter.FrameSize(SourceWidth, SourceHeight)
-            : resizeHere ? SourceWidth * SourceHeight * 3
+            : resizeHere ? CropRegion.Width * CropRegion.Height * 3
             : Width * Height * 3;
         for (int i = 0; i < 3; i++)
             free.Add(new byte[readSize]);
@@ -341,7 +413,7 @@ public sealed class VideoReader
 
         try
         {
-            var resizer = resizeHere ? new CvResize(SourceWidth, SourceHeight, Width, Height) : null;
+            var resizer = resizeHere ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
             var small = new byte[Width * Height * 3];
             byte[]? previous = null;
             foreach (var buffer in full.GetConsumingEnumerable(cancel.Token))
@@ -355,7 +427,7 @@ public sealed class VideoReader
                     continue;
                 }
                 if (yuv)
-                    resizer.ResizeYuv420(buffer, small, _yuv420ForVideo!);
+                    resizer.ResizeYuv420(buffer, small, _yuv420ForVideo!, SourceWidth, SourceHeight, CropRegion.X, CropRegion.Y);
                 else
                     resizer.Resize(buffer, small);
                 free.Add(buffer);

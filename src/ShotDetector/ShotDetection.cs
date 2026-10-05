@@ -80,6 +80,30 @@ public sealed record DetectionOptions
     /// <summary>Threshold: cut position between fade-out (-1) and fade-in (+1).</summary>
     public double FadeBias { get; init; }
 
+    /// <summary>
+    /// Where to start, like scenedetect's `time -s`: "HH:MM:SS[.mmm]", seconds ("12.5s" or "12.5")
+    /// or a 1-based frame number ("300"). Null: the first frame.
+    /// </summary>
+    public string? StartTime { get; init; }
+
+    /// <summary>Where to stop (exclusive), like `time -e`; same formats, frame numbers are 0-based here as in scenedetect.</summary>
+    public string? EndTime { get; init; }
+
+    /// <summary>How much to analyse from the start, like `time -d`; same formats. Not with <see cref="EndTime"/>.</summary>
+    public string? Duration { get; init; }
+
+    /// <summary>
+    /// Analyse every (FrameSkip + 1)th frame, like scenedetect's --frame-skip: faster on very
+    /// high frame rates, less accurate. Not with <see cref="CollectStats"/>.
+    /// </summary>
+    public int FrameSkip { get; init; }
+
+    /// <summary>
+    /// Only analyse this part of the frame, like scenedetect's --crop: inclusive pixel coordinates
+    /// of two opposite corners, in the upright frame.
+    /// </summary>
+    public (int X0, int Y0, int X1, int Y1)? Crop { get; init; }
+
     /// <summary>Let ffmpeg downscale (faster, but results can differ from PySceneDetect).</summary>
     public bool FfmpegResize { get; init; }
 
@@ -189,6 +213,12 @@ public static class ShotDetection
             throw new ArgumentException("Bins must be between 1 and 256.");
         if (o.HashSize < 1 || o.HashLowpass < 1)
             throw new ArgumentException("HashSize and HashLowpass must be at least 1.");
+        if (o.FrameSkip < 0)
+            throw new ArgumentException("FrameSkip must be at least 0.");
+        if (o.FrameSkip > 0 && o.CollectStats)
+            throw new ArgumentException("FrameSkip must be 0 when collecting stats (as in scenedetect).");
+        if (o.EndTime is not null && o.Duration is not null)
+            throw new ArgumentException("EndTime and Duration cannot both be set.");
 
         var video = new VideoReader(videoPath, o, cancellationToken);
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
@@ -233,25 +263,31 @@ public static class ShotDetection
             start = cut;
         }
 
-        int frameCount = 0;
+        var range = FrameRange.For(video, o);
+        start = video.Position(range.Start);
+        int frameCount = 0, stride = o.FrameSkip + 1;
         long lastReport = 0;
-        foreach (var frame in video.Frames(cancellationToken))
+        foreach (var frame in video.Frames(range.Start, range.Count, cancellationToken))
         {
-            if (detector.ProcessFrame(frameCount, frame) is { } cut)
+            int index = range.Start + frameCount;
+            if (frameCount % stride == 0 && detector.ProcessFrame(index, frame) is { } cut)
                 Cut(cut);
             frameCount++;
             if (o.Progress is not null && Environment.TickCount64 - lastReport >= 100)
             {
-                o.Progress.Report(new(frameCount, video.ExpectedFrames));
+                o.Progress.Report(new(frameCount, range.Count ?? video.ExpectedFrames - range.Start));
                 lastReport = Environment.TickCount64;
             }
         }
-        o.Progress?.Report(new(frameCount, video.ExpectedFrames));
+        o.Progress?.Report(new(frameCount, frameCount));
         if (frameCount > 0)
         {
-            if (detector.PostProcess(video.PositionAfterDecoding(frameCount)) is { } last)
-                Cut(last);
-            var final = new Shot(shots.Count + 1, start, video.PositionAfterDecoding(frameCount).PlusFrames(1));
+            // Where scenedetect finds the stream after the loop: past the end if it read until EOF,
+            // otherwise at the last frame read (which may be a skipped one).
+            var last = range.ReadsToEnd ? video.PositionAfterDecoding(range.Start + frameCount) : video.Position(range.Start + frameCount - 1);
+            if (detector.PostProcess(last) is { } trailingCut)
+                Cut(trailingCut);
+            var final = new Shot(shots.Count + 1, start, last.PlusFrames(1));
             shots.Add(final);
             onShot?.Invoke(final);
         }
@@ -262,4 +298,65 @@ public static class ShotDetection
     internal static int MinSceneLengthInFrames(string value, Fps fps) => value.EndsWith('s')
         ? (int)Math.Round(double.Parse(value[..^1], CultureInfo.InvariantCulture) * fps.Value)
         : int.Parse(value, CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// A scenedetect timecode ("HH:MM:SS[.mmm]", "12.5s", "12.5", or "300" frames) in seconds, as
+    /// FrameTimecode(str, fps).seconds: frames go through round(frames) / fps.
+    /// </summary>
+    internal static double TimecodeSeconds(string value, Fps fps, bool oneBasedFrames = false)
+    {
+        value = value.Trim();
+        if (value.All(char.IsDigit))
+        {
+            long frames = long.Parse(value, CultureInfo.InvariantCulture);
+            if (oneBasedFrames && frames >= 1) frames--;
+            return frames / fps.Value;
+        }
+        if (value.EndsWith('s'))
+            return double.Parse(value[..^1], CultureInfo.InvariantCulture);
+        if (value.Contains(':'))
+        {
+            var parts = value.Split(':');
+            if (parts.Length != 3) throw new FormatException($"Timecode '{value}' must be HH:MM:SS[.mmm].");
+            return int.Parse(parts[0], CultureInfo.InvariantCulture) * 3600 + int.Parse(parts[1], CultureInfo.InvariantCulture) * 60
+                + double.Parse(parts[2], CultureInfo.InvariantCulture);
+        }
+        return double.Parse(value, CultureInfo.InvariantCulture);
+    }
+}
+
+/// <summary>
+/// Which frames to decode, as scenedetect's `time` and `--frame-skip` options select them: frames
+/// Start .. Start + Count - 1 (Count null: to the end), of which every (FrameSkip + 1)th is analysed.
+/// </summary>
+readonly record struct FrameRange(int Start, int? Count, bool ReadsToEnd)
+{
+    public static FrameRange For(VideoReader video, DetectionOptions o)
+    {
+        var fps = video.Fps;
+        int total = video.ExpectedFrames;
+        int start = o.StartTime is null ? 0 : video.SeekFrame(ShotDetection.TimecodeSeconds(o.StartTime, fps, oneBasedFrames: true));
+        // scenedetect turns the end/duration into a whole number of frames at the average rate first
+        // (FrameTimecode rounds half to even), which differs from the seconds on variable frame rate video.
+        static double Frames(string value, Fps fps) => Math.Round(ShotDetection.TimecodeSeconds(value, fps) * fps.Value);
+        double? end = o.EndTime is not null ? Frames(o.EndTime, fps) / fps.Value
+            : o.Duration is not null ? (Frames(o.Duration, fps) + start) / fps.Value
+            : null;
+        if (end is null || total == 0)
+            return new(start, null, true);
+
+        // scenedetect analyses a frame, skips FrameSkip frames, then stops if the last frame read
+        // plus one frame reaches the end time (or if it hit the end of the video while skipping).
+        int stride = o.FrameSkip + 1;
+        for (int processed = start; ; processed += stride)
+        {
+            if (processed > total - 1)
+                return new(start, total - start, true);
+            int lastRead = Math.Min(processed + o.FrameSkip, total - 1);
+            if (processed + o.FrameSkip > total - 1)
+                return new(start, total - start, true);
+            if (video.Position(lastRead).PlusFrames(1).Seconds >= end.Value)
+                return new(start, lastRead - start + 1, false);
+        }
+    }
 }
