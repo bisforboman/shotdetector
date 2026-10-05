@@ -16,7 +16,7 @@ public readonly record struct Shot(int Number, FrameTime Start, FrameTime End)
 public static class Shots
 {
     /// <summary>Port of get_scenes_from_cuts with start_in_scene=True (what the CLI uses).</summary>
-    public static List<Shot> FromCuts(IEnumerable<FrameTime> cuts, FrameTime start, FrameTime end)
+    internal static List<Shot> FromCuts(IEnumerable<FrameTime> cuts, FrameTime start, FrameTime end)
     {
         var shots = new List<Shot>();
         foreach (var cut in cuts.DistinctBy(c => c.FrameNum).OrderBy(c => c.FrameNum))

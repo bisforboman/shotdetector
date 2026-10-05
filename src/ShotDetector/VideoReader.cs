@@ -6,6 +6,17 @@ using System.Globalization;
 
 namespace ShotDetector;
 
+/// <summary>How <see cref="VideoReader"/> gets downscaled BGR frames out of ffmpeg.</summary>
+public enum FramePipeline
+{
+    /// <summary>ffmpeg downscales (bilinear): fastest, but not what PySceneDetect computes.</summary>
+    FfmpegScale,
+    /// <summary>ffmpeg sends full-size BGR frames and <c>cv2.resize</c>'s port downscales them exactly.</summary>
+    FullFrameResize,
+    /// <summary>ffmpeg sends raw yuv420p; only the pixels the resize reads are converted (needs an <see cref="IYuv420Converter"/>).</summary>
+    Yuv420Sampled,
+}
+
 /// <summary>Frame rate as an exact fraction (e.g. 30000/1001).</summary>
 public readonly record struct Fps(int Num, int Den)
 {
@@ -43,7 +54,7 @@ public readonly record struct Fps(int Num, int Den)
     }
 
     /// <summary>Python's Fraction(x).limit_denominator(max): the closest fraction with denominator ≤ max.</summary>
-    public static (long Num, long Den) LimitDenominator(double x, long maxDen)
+    internal static (long Num, long Den) LimitDenominator(double x, long maxDen)
     {
         // Exact value of the double as n/d.
         long bits = BitConverter.DoubleToInt64Bits(x);
@@ -219,14 +230,14 @@ public sealed class VideoReader
     /// PySceneDetect 0.6.4's downscale: a whole-number factor width // 256 (from the width only), then
     /// cv2.resize to (round(w / factor), round(h / factor)); no resize when the factor is 1.
     /// </summary>
-    public static (int W, int H) DownscaledSize064(int width, int height, int minWidth = 256)
+    internal static (int W, int H) DownscaledSize064(int width, int height, int minWidth = 256)
     {
         int factor = width < minWidth ? 1 : width / minWidth;
         return factor <= 1 ? (width, height) : ((int)Math.Round(width / (double)factor), (int)Math.Round(height / (double)factor));
     }
 
     /// <summary>PySceneDetect 0.7.1's compute_downscale_factor + resize size (Python round = half to even).</summary>
-    public static (int W, int H) DownscaledSize(int width, int height, int minWidth = 256)
+    internal static (int W, int H) DownscaledSize(int width, int height, int minWidth = 256)
     {
         int largest = Math.Max(width, height);
         if (largest < minWidth)
@@ -236,10 +247,10 @@ public sealed class VideoReader
     }
 
     /// <summary>How frames get from ffmpeg to the downscaled BGR the detectors see.</summary>
-    public string Pipeline => !_ffmpegResize && (Width, Height) != (SourceWidth, SourceHeight)
+    public FramePipeline Pipeline => !_ffmpegResize && (Width, Height) != (SourceWidth, SourceHeight)
         // swscale's unscaled yuv420p converter (what OpenCV gets) needs an even height.
-        ? (_yuv420ForVideo is not null && _pixelFormat is "yuv420p" or "yuvj420p" && SourceHeight % 2 == 0 ? "yuv420p+sampled" : "bgr24+resize")
-        : "ffmpeg-scale";
+        ? (_yuv420ForVideo is not null && _pixelFormat is "yuv420p" or "yuvj420p" && SourceHeight % 2 == 0 ? FramePipeline.Yuv420Sampled : FramePipeline.FullFrameResize)
+        : FramePipeline.FfmpegScale;
 
     /// <summary>
     /// Yields every decoded frame, downscaled. A background thread drains the pipe while the caller
@@ -252,8 +263,8 @@ public sealed class VideoReader
     public IEnumerable<byte[]> Frames(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        string pipeline = Pipeline;
-        bool resizeHere = pipeline != "ffmpeg-scale", yuv = pipeline == "yuv420p+sampled";
+        var pipeline = Pipeline;
+        bool resizeHere = pipeline != FramePipeline.FfmpegScale, yuv = pipeline == FramePipeline.Yuv420Sampled;
         // On Windows, stdout redirection uses a 4 KB pipe, which makes full-size frames crawl
         // (19 s vs 12 s for 5000 1080p frames), so ffmpeg writes to a named pipe with a big buffer.
         string pipeName = $"shotdetector_{Guid.NewGuid():N}";
@@ -268,9 +279,9 @@ public sealed class VideoReader
         args = pipeline switch
         {
             // The source's own format, so ffmpeg passes the samples through untouched.
-            "yuv420p+sampled" => [.. args, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
+            FramePipeline.Yuv420Sampled => [.. args, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
             // Like OpenCV: SWS_BICUBIC, colour matrix and range from the stream's tags (BT.601 if untagged).
-            "bgr24+resize" => [.. args, "-vf", "scale=flags=bicubic,format=bgr24",
+            FramePipeline.FullFrameResize => [.. args, "-vf", "scale=flags=bicubic,format=bgr24",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
             _ => [.. args, "-vf", $"scale={Width}:{Height}:flags=bilinear,format=bgr24",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],

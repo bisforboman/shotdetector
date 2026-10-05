@@ -69,7 +69,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     {
         var core = ShotDetection.Detect(clips.ThreeShots);
         var fast = ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { Yuv420Converter = new SwscaleYuv420() });
-        Assert.Equal("yuv420p+sampled", fast.Video.Pipeline);
+        Assert.Equal(FramePipeline.Yuv420Sampled, fast.Video.Pipeline);
         Assert.Equal(Shots.Csv(core.Shots), Shots.Csv(fast.Shots));
     }
 

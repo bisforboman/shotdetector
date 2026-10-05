@@ -115,8 +115,14 @@ public readonly record struct DetectionProgress(int FramesProcessed, int Expecte
 }
 
 /// <summary>The outcome of <see cref="ShotDetection.Detect"/>.</summary>
+/// <param name="VideoPath">The video analysed.</param>
+/// <param name="Video">Its properties (size, frame rate, ...).</param>
+/// <param name="Shots">The shots, in order, covering the whole video.</param>
+/// <param name="FrameCount">Frames decoded.</param>
+/// <param name="MinSceneLengthFrames"><see cref="DetectionOptions.MinSceneLength"/> in frames of this video.</param>
+/// <param name="Stats">Per-frame metrics when <see cref="DetectionOptions.CollectStats"/> was set, else null.</param>
 public sealed record DetectionResult(
-    string VideoPath, VideoReader Video, IReadOnlyList<Shot> Shots, int FrameCount, int MinSceneLength, Stats? Stats);
+    string VideoPath, VideoReader Video, IReadOnlyList<Shot> Shots, int FrameCount, int MinSceneLengthFrames, Stats? Stats);
 
 /// <summary>Runs shot detection on a video file.</summary>
 public static class ShotDetection
@@ -253,7 +259,7 @@ public static class ShotDetection
     }
 
     /// <summary>"0.6s" → frames with Python's round-half-to-even, like FrameTimecode._seconds_to_frames; "15" → 15.</summary>
-    public static int MinSceneLengthInFrames(string value, Fps fps) => value.EndsWith('s')
+    internal static int MinSceneLengthInFrames(string value, Fps fps) => value.EndsWith('s')
         ? (int)Math.Round(double.Parse(value[..^1], CultureInfo.InvariantCulture) * fps.Value)
         : int.Parse(value, CultureInfo.InvariantCulture);
 }

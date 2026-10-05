@@ -15,7 +15,7 @@ public readonly record struct FrameTime(long Value, long TbDen, Fps Fps)
     /// <summary>A bare frame number.</summary>
     public static FrameTime Frame(long frame, Fps fps) => new(frame, 0, fps);
     /// <summary>A frame number as PySceneDetect 0.6.4 holds every position: seconds = frame / fps.</summary>
-    public static FrameTime Frame064(long frame, Fps fps) => new(frame, -1, fps);
+    internal static FrameTime Frame064(long frame, Fps fps) => new(frame, -1, fps);
     /// <summary>A presentation timestamp in units of 1/<paramref name="tbDen"/> seconds.</summary>
     public static FrameTime Pts(long pts, long tbDen, Fps fps) => new(pts, tbDen, fps);
 
@@ -89,7 +89,7 @@ public readonly record struct FrameTime(long Value, long TbDen, Fps Fps)
     /// round(x, 3) and format(x, ".3f") do; Math.Round(x, 3) scales in floating point first and so
     /// rounds e.g. 3.5035 (really 3.50349999...) up.
     /// </summary>
-    public static long RoundScaled(double x, long scale)
+    internal static long RoundScaled(double x, long scale)
     {
         if (x < 0)
             return -RoundScaled(-x, scale);

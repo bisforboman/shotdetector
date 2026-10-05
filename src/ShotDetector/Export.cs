@@ -66,7 +66,7 @@ public static class Export
     }
 
     /// <summary>Seconds of each shot's images: port of _generate_timecode_list.</summary>
-    public static double[][] ImageTimes(IReadOnlyList<Shot> shots, Fps fps, int numImages, int frameMargin)
+    internal static double[][] ImageTimes(IReadOnlyList<Shot> shots, Fps fps, int numImages, int frameMargin)
     {
         double marginSecs = FrameTime.Frame(frameMargin, fps).Seconds;
         return shots.Select(shot =>
@@ -93,7 +93,7 @@ public static class Export
     /// the first part, the last that far from the end of the last part, the others mid-part.
     /// Differs: on variable frame rate video OpenCV's frame seek can land a frame early; this doesn't.
     /// </summary>
-    public static int[][] ImageFrames064(IReadOnlyList<Shot> shots, int numImages, int frameMargin) => shots.Select(shot =>
+    internal static int[][] ImageFrames064(IReadOnlyList<Shot> shots, int numImages, int frameMargin) => shots.Select(shot =>
     {
         int start = (int)shot.Start.FrameNum, count = Math.Max(1, (int)(shot.End.FrameNum - shot.Start.FrameNum));
         var frames = Enumerable.Range(start, count).ToList();

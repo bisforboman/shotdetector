@@ -11,9 +11,9 @@ public sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, do
     public static ContentScorer LumaOnly() => new(0, 0, 1, 0) { IsLumaOnly = true };
 
     /// <summary>Made by <see cref="LumaOnly"/> (luma_only=True), which names the adaptive_ratio stat "_lum".</summary>
-    public bool IsLumaOnly { get; private init; }
+    internal bool IsLumaOnly { get; private init; }
     /// <summary>True when edges have a weight, which requires <see cref="Edges"/>.</summary>
-    public bool UsesEdges => edgeWeight > 0;
+    internal bool UsesEdges => edgeWeight > 0;
 
     /// <summary>
     /// Set to compute edge maps. Required when the edge weight is above 0; PySceneDetect also
@@ -22,7 +22,7 @@ public sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, do
     public EdgeDetector? Edges { get; set; }
 
     /// <summary>Per-channel deltas behind the last score; null for the first frame. Edges is null when not computed.</summary>
-    public (double Hue, double Sat, double Lum, double? Edges)? LastDeltas { get; private set; }
+    internal (double Hue, double Sat, double Lum, double? Edges)? LastDeltas { get; private set; }
 
     byte[] _h = [], _s = [], _v = [], _e = [];
     byte[] _prevH = [], _prevS = [], _prevV = [], _prevE = [];
@@ -89,7 +89,7 @@ public sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, do
     }
 
     /// <summary>Records the last score's metrics like ContentDetector does (not for the first frame).</summary>
-    public void Record(Stats? stats, int frame, double score)
+    internal void Record(Stats? stats, int frame, double score)
     {
         if (stats is null || LastDeltas is not { } d)
             return;

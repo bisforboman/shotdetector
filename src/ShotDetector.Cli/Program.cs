@@ -127,7 +127,7 @@ try
     Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
         $"{Path.GetFileName(input)}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, " +
         $"{result.FrameCount} frames, processed at {video.Width}x{video.Height}, " +
-        $"detector={options.Detector.ToString().ToLowerInvariant()}, min-scene-len={result.MinSceneLength} frames"));
+        $"detector={options.Detector.ToString().ToLowerInvariant()}, min-scene-len={result.MinSceneLengthFrames} frames"));
 
     Console.WriteLine(Shots.Table(result.Shots));
     if (csvPath is not null)

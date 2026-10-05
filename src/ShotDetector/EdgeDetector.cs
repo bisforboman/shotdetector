@@ -17,7 +17,7 @@ public sealed class EdgeDetector(int width, int height, int? kernelSize = null)
     readonly Stack<int> _stack = new();
 
     /// <summary>_estimated_kernel_size: 4 + round(sqrt(w * h) / 192), made odd.</summary>
-    public static int EstimatedKernelSize(int width, int height)
+    internal static int EstimatedKernelSize(int width, int height)
     {
         int size = 4 + (int)Math.Round(Math.Sqrt(width * height) / 192);
         return size % 2 == 0 ? size + 1 : size;
@@ -35,7 +35,7 @@ public sealed class EdgeDetector(int width, int height, int? kernelSize = null)
     }
 
     /// <summary>numpy.median of 8-bit values: the middle value, or the mean of the middle two.</summary>
-    public static double Median(ReadOnlySpan<byte> values)
+    internal static double Median(ReadOnlySpan<byte> values)
     {
         Span<int> histogram = stackalloc int[256];
         foreach (byte v in values)
@@ -53,7 +53,7 @@ public sealed class EdgeDetector(int width, int height, int? kernelSize = null)
     }
 
     /// <summary>cv2.Canny(src, low, high) (aperture 3, L1 gradient): 255 = edge, 0 = not.</summary>
-    public void Canny(ReadOnlySpan<byte> src, int low, int high, Span<byte> output)
+    internal void Canny(ReadOnlySpan<byte> src, int low, int high, Span<byte> output)
     {
         int w = width, h = height;
         // 3x3 Sobel (CV_16S) with BORDER_REPLICATE, and the L1 magnitude.
@@ -130,7 +130,7 @@ public sealed class EdgeDetector(int width, int height, int? kernelSize = null)
     }
 
     /// <summary>cv2.dilate with a k×k square of ones: the maximum over the window, ignoring pixels outside.</summary>
-    public void Dilate(ReadOnlySpan<byte> src, Span<byte> edges)
+    internal void Dilate(ReadOnlySpan<byte> src, Span<byte> edges)
     {
         int w = width, h = height, r = KernelSize / 2;
         for (int y = 0; y < h; y++)

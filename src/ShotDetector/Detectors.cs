@@ -49,7 +49,7 @@ public sealed class ContentDetector(
     }
 
     /// <summary>Returns the frame index of a cut.</summary>
-    public int? ProcessScore(int frame, double score)
+    internal int? ProcessScore(int frame, double score)
     {
         bool above = score >= threshold;
         if (minSceneLen <= 0)
@@ -113,7 +113,7 @@ public sealed class AdaptiveDetector(
     }
 
     /// <summary>Returns the frame index of a cut.</summary>
-    public int? ProcessScore(int frame, double score)
+    internal int? ProcessScore(int frame, double score)
     {
         _lastCut ??= frame;
         _buffer.Add((frame, score));
@@ -182,7 +182,7 @@ public sealed class ThresholdDetector(
     }
 
     /// <summary>numpy.mean over all bytes; exact, since the integer sum fits a double.</summary>
-    public static double Average(ReadOnlySpan<byte> bgr)
+    internal static double Average(ReadOnlySpan<byte> bgr)
     {
         long sum = 0;
         foreach (byte b in bgr)
@@ -191,7 +191,7 @@ public sealed class ThresholdDetector(
     }
 
     /// <summary>Feeds the next frame's mean pixel level (see <see cref="Average"/>); returns a cut, if any.</summary>
-    public FrameTime? ProcessAverage(int frame, double average)
+    internal FrameTime? ProcessAverage(int frame, double average)
     {
         _lastSceneCut ??= frame;
         if (!_processed)
@@ -278,7 +278,7 @@ public sealed class HistogramDetector(
     }
 
     /// <summary>calculate_histogram: the L2-normalised histogram of the Y channel, as float32.</summary>
-    public static float[] Histogram(ReadOnlySpan<byte> bgr, int bins)
+    internal static float[] Histogram(ReadOnlySpan<byte> bgr, int bins)
     {
         Span<int> binOf = stackalloc int[256];
         for (int v = 0; v < 256; v++)
@@ -296,7 +296,7 @@ public sealed class HistogramDetector(
     }
 
     /// <summary>cv2.compareHist(a, b, HISTCMP_CORREL).</summary>
-    public static double Correlation(float[] a, float[] b)
+    internal static double Correlation(float[] a, float[] b)
     {
         int n = a.Length, paired = n - n % 2;
         // Two lanes, as OpenCV's v_float64x2 accumulation, added together at the end.

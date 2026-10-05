@@ -1,5 +1,10 @@
 # ShotDetector
 
+[![CI](https://github.com/bisforboman/shotdetector/actions/workflows/ci.yml/badge.svg)](https://github.com/bisforboman/shotdetector/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/ShotDetector.svg?label=ShotDetector)](https://www.nuget.org/packages/ShotDetector)
+[![NuGet](https://img.shields.io/nuget/v/ShotDetector.FastYuv.svg?label=ShotDetector.FastYuv)](https://www.nuget.org/packages/ShotDetector.FastYuv)
+[![NuGet](https://img.shields.io/nuget/v/ShotDetector.Cli.svg?label=ShotDetector.Cli)](https://www.nuget.org/packages/ShotDetector.Cli)
+
 Shot/cut detection for video in C#: a faithful port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s
 detectors (scenedetect 0.7.1: adaptive, content, threshold, histogram and hash) that gives identical
 results, about 1.5x faster than scenedetect at 1080p with the optional fast path. Video is decoded by [ffmpeg](https://ffmpeg.org), which must be

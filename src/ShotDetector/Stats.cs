@@ -45,7 +45,7 @@ public sealed class Stats
     }
 
     /// <summary>Formats like Python's repr(float): shortest round-trip, "1.0" not "1", "1e-05" not "1E-05".</summary>
-    public static string PyFloat(double d)
+    internal static string PyFloat(double d)
     {
         string s = d.ToString("R", CultureInfo.InvariantCulture);
         int e = s.IndexOf('E');

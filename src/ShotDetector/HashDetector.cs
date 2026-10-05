@@ -56,7 +56,7 @@ public sealed class HashDetector(
     }
 
     /// <summary>The frames' size, needed to shrink them.</summary>
-    public void SetFrameSize(int width, int height)
+    internal void SetFrameSize(int width, int height)
     {
         (_width, _height) = (width, height);
         _gray = new byte[width * height];
@@ -67,7 +67,7 @@ public sealed class HashDetector(
     }
 
     /// <summary>hash_frame: size×size bits.</summary>
-    public bool[] Hash(ReadOnlySpan<byte> bgr)
+    internal bool[] Hash(ReadOnlySpan<byte> bgr)
     {
         Gray(bgr, _gray);
         AreaResize.Resize(_gray, _width, _height, _small, _n, _n);
@@ -110,7 +110,7 @@ public sealed class HashDetector(
     }
 
     /// <summary>cv2.cvtColor(BGR2GRAY) in OpenCV 5: 15-bit fixed point (exact for all 2^24 colours).</summary>
-    public static void Gray(ReadOnlySpan<byte> bgr, Span<byte> gray)
+    internal static void Gray(ReadOnlySpan<byte> bgr, Span<byte> gray)
     {
         for (int i = 0, p = 0; i < gray.Length; i++, p += 3)
             gray[i] = (byte)((bgr[p] * 3735 + bgr[p + 1] * 19235 + bgr[p + 2] * 9798 + 16384) >> 15);
