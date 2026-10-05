@@ -35,11 +35,4 @@ public static class Hsv
         if (h < 0) h += 180;
         return ((byte)h, (byte)s, (byte)v);
     }
-
-    /// <summary>Converts a packed bgr24 frame into three planar channels.</summary>
-    public static void Convert(ReadOnlySpan<byte> bgr, Span<byte> h, Span<byte> s, Span<byte> v)
-    {
-        for (int i = 0, p = 0; i < h.Length; i++, p += 3)
-            (h[i], s[i], v[i]) = FromBgr(bgr[p], bgr[p + 1], bgr[p + 2]);
-    }
 }

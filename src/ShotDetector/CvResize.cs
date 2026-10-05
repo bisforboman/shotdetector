@@ -14,8 +14,16 @@ public sealed class CvResize
     readonly int _sw, _sh, _dw, _dh;
     readonly int[] _xofs, _yofs;
     readonly short[] _xa0, _xa1, _yb0, _yb1;
-    readonly int[] _row0, _row1;
-    readonly byte[] _bgrRow0, _bgrRow1;
+    // Output rows are independent, so they're split into chunks resized in parallel, each with its
+    // own row buffers. Chunks are fixed so buffers can be allocated once.
+    readonly Chunk[] _chunks;
+
+    sealed class Chunk(int start, int end, int dw, int sw)
+    {
+        public readonly int Start = start, End = end;
+        public readonly int[] Row0 = new int[dw * 3], Row1 = new int[dw * 3];
+        public readonly byte[] BgrRow0 = new byte[sw * 3], BgrRow1 = new byte[sw * 3];
+    }
 
     /// <summary>The source columns the horizontal pass reads, ascending.</summary>
     public int[] SourceCols { get; }
@@ -25,54 +33,52 @@ public sealed class CvResize
         (_sw, _sh, _dw, _dh) = (sw, sh, dw, dh);
         (_xofs, _xa0, _xa1) = Table(dw, sw, clampFraction: true);
         (_yofs, _yb0, _yb1) = Table(dh, sh, clampFraction: false);
-        _row0 = new int[dw * 3];
-        _row1 = new int[dw * 3];
-        _bgrRow0 = new byte[sw * 3];
-        _bgrRow1 = new byte[sw * 3];
+        int chunks = Math.Clamp(Environment.ProcessorCount / 2, 1, Math.Max(1, dh / 8));
+        _chunks = Enumerable.Range(0, chunks).Select(c => new Chunk(c * dh / chunks, (c + 1) * dh / chunks, dw, sw)).ToArray();
         SourceCols = _xofs.SelectMany(x => x >= sw - 1 ? new[] { x } : new[] { x, x + 1 }).Distinct().Order().ToArray();
     }
 
     /// <summary>One-off resize of a packed BGR image.</summary>
-    public static void Linear(ReadOnlySpan<byte> src, int sw, int sh, Span<byte> dst, int dw, int dh) =>
+    public static void Linear(byte[] src, int sw, int sh, byte[] dst, int dw, int dh) =>
         new CvResize(sw, sh, dw, dh).Resize(src, dst);
 
     /// <summary>Resizes a packed BGR source.</summary>
-    public void Resize(ReadOnlySpan<byte> src, Span<byte> dst)
+    public void Resize(byte[] src, byte[] dst) => Parallel.ForEach(_chunks, c =>
     {
         int stride = _sw * 3;
-        for (int dy = 0; dy < _dh; dy++)
+        for (int dy = c.Start; dy < c.End; dy++)
         {
-            HResize(src.Slice(Row0(dy) * stride, stride), _row0);
-            HResize(src.Slice(Row1(dy) * stride, stride), _row1);
-            VResize(dy, dst);
+            HResize(src.AsSpan(Row0(dy) * stride, stride), c.Row0);
+            HResize(src.AsSpan(Row1(dy) * stride, stride), c.Row1);
+            VResize(dy, c, dst);
         }
-    }
+    });
 
     /// <summary>
     /// Resizes a packed yuv420p source as if it had first been converted to BGR with
     /// <see cref="Yuv420"/>, converting only the pixels the resize reads.
     /// </summary>
-    public void ResizeYuv420(ReadOnlySpan<byte> yuv, Span<byte> dst)
+    public void ResizeYuv420(byte[] yuv, byte[] dst) => Parallel.ForEach(_chunks, c =>
     {
         int lastRow0 = -1, lastRow1 = -1;
-        for (int dy = 0; dy < _dh; dy++)
+        for (int dy = c.Start; dy < c.End; dy++)
         {
             int r0 = Row0(dy), r1 = Row1(dy);
             // Downscaling rarely reuses rows, but upscaling does; skip converting them twice.
             if (r0 != lastRow0)
             {
-                Yuv420.RowToBgr(yuv, _sw, _sh, r0, SourceCols, _bgrRow0);
-                HResize(_bgrRow0, _row0);
+                Yuv420.RowToBgr(yuv, _sw, _sh, r0, SourceCols, c.BgrRow0);
+                HResize(c.BgrRow0, c.Row0);
             }
             if (r1 != lastRow1)
             {
-                Yuv420.RowToBgr(yuv, _sw, _sh, r1, SourceCols, _bgrRow1);
-                HResize(_bgrRow1, _row1);
+                Yuv420.RowToBgr(yuv, _sw, _sh, r1, SourceCols, c.BgrRow1);
+                HResize(c.BgrRow1, c.Row1);
             }
             (lastRow0, lastRow1) = (r0, r1);
-            VResize(dy, dst);
+            VResize(dy, c, dst);
         }
-    }
+    });
 
     int Row0(int dy) => Math.Clamp(_yofs[dy], 0, _sh - 1);
     int Row1(int dy) => Math.Clamp(_yofs[dy] + 1, 0, _sh - 1);
@@ -90,13 +96,13 @@ public sealed class CvResize
         }
     }
 
-    void VResize(int dy, Span<byte> dst)
+    void VResize(int dy, Chunk c, byte[] dst)
     {
         int b0 = _yb0[dy], b1 = _yb1[dy];
-        var d = dst.Slice(dy * _dw * 3, _dw * 3);
+        var d = dst.AsSpan(dy * _dw * 3, _dw * 3);
         for (int x = 0; x < d.Length; x++)
         {
-            int v = (((b0 * (_row0[x] >> 4)) >> 16) + ((b1 * (_row1[x] >> 4)) >> 16) + 2) >> 2;
+            int v = (((b0 * (c.Row0[x] >> 4)) >> 16) + ((b1 * (c.Row1[x] >> 4)) >> 16) + 2) >> 2;
             d[x] = (byte)Math.Clamp(v, 0, 255);
         }
     }

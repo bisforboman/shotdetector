@@ -254,24 +254,25 @@ public sealed class VideoReader
 
         try
         {
-            var small = resizeHere ? new byte[Width * Height * 3] : null;
             var resizer = resizeHere ? new CvResize(SourceWidth, SourceHeight, Width, Height) : null;
+            var small = new byte[Width * Height * 3];
             byte[]? previous = null;
             foreach (var buffer in full.GetConsumingEnumerable())
             {
                 if (previous is not null)
                     free.Add(previous);
-                if (resizer is not null)
+                if (resizer is null)
                 {
-                    if (yuv)
-                        resizer.ResizeYuv420(buffer, small);
-                    else
-                        resizer.Resize(buffer, small);
-                    free.Add(buffer);
-                }
-                else
                     previous = buffer;
-                yield return small ?? buffer;
+                    yield return buffer;
+                    continue;
+                }
+                if (yuv)
+                    resizer.ResizeYuv420(buffer, small);
+                else
+                    resizer.Resize(buffer, small);
+                free.Add(buffer);
+                yield return small;
             }
             reader.Wait(); // rethrows read errors
             proc.WaitForExit();

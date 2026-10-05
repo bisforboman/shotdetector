@@ -8,7 +8,7 @@ namespace ShotDetector;
 /// </summary>
 public interface IDetector
 {
-    PyTime? ProcessFrame(int frame, ReadOnlySpan<byte> bgr);
+    PyTime? ProcessFrame(int frame, byte[] bgr);
 
     /// <summary>Called once after the last frame; <paramref name="end"/> is the position after decoding stopped.</summary>
     PyTime? PostProcess(PyTime end) => null;
@@ -38,7 +38,7 @@ public sealed class ContentDetector(
     // short (e.g. 14 frames at 24 fps: 0.583333 < 0.58333333).
     bool MinLengthMet(int frame, int since) => position(frame).Minus(position(since)).Seconds >= _minSeconds;
 
-    public PyTime? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
+    public PyTime? ProcessFrame(int frame, byte[] bgr)
     {
         double score = scorer.Score(bgr);
         scorer.Record(Stats, frame, score);
@@ -100,7 +100,7 @@ public sealed class AdaptiveDetector(
     int? _lastCut;
     public Stats? Stats { get; set; }
 
-    public PyTime? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
+    public PyTime? ProcessFrame(int frame, byte[] bgr)
     {
         double score = scorer.Score(bgr);
         scorer.Record(Stats, frame, score);
@@ -164,7 +164,7 @@ public sealed class ThresholdDetector(
     bool _fadedOut, _processed;
     public Stats? Stats { get; set; }
 
-    public PyTime? ProcessFrame(int frame, ReadOnlySpan<byte> bgr)
+    public PyTime? ProcessFrame(int frame, byte[] bgr)
     {
         double average = Average(bgr);
         Stats?.Set(frame, "average_rgb", average);

@@ -24,27 +24,53 @@ public sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, do
 
     byte[] _h = [], _s = [], _v = [], _e = [];
     byte[] _prevH = [], _prevS = [], _prevV = [], _prevE = [];
+    long[] _sums = [];
     bool _hasPrev;
+    const int ChunkPixels = 8192;
 
-    public double Score(ReadOnlySpan<byte> bgr)
+    public double Score(byte[] bgr)
     {
         if (UsesEdges && Edges is null)
             throw new InvalidOperationException("An edge weight needs Edges to be set.");
         int n = bgr.Length / 3;
+        int chunks = (n + ChunkPixels - 1) / ChunkPixels;
         if (_h.Length != n)
         {
             _h = new byte[n]; _s = new byte[n]; _v = new byte[n]; _e = new byte[n];
             _prevH = new byte[n]; _prevS = new byte[n]; _prevV = new byte[n]; _prevE = new byte[n];
+            _sums = new long[chunks * 3];
             _hasPrev = false;
         }
-        Hsv.Convert(bgr, _h, _s, _v);
+
+        // HSV conversion fused with the per-channel |difference| sums, in parallel chunks. The sums
+        // are integers, so adding the chunks up gives exactly MeanPixelDistance's result.
+        var (h, s, v, ph, ps, pv, sums, hasPrev) = (_h, _s, _v, _prevH, _prevS, _prevV, _sums, _hasPrev);
+        Parallel.For(0, chunks, c =>
+        {
+            long sh = 0, ss = 0, sv = 0;
+            for (int i = c * ChunkPixels, end = Math.Min(n, i + ChunkPixels); i < end; i++)
+            {
+                var (hh, s1, v1) = Hsv.FromBgr(bgr[3 * i], bgr[3 * i + 1], bgr[3 * i + 2]);
+                (h[i], s[i], v[i]) = (hh, s1, v1);
+                if (hasPrev)
+                {
+                    sh += Math.Abs(hh - ph[i]);
+                    ss += Math.Abs(s1 - ps[i]);
+                    sv += Math.Abs(v1 - pv[i]);
+                }
+            }
+            (sums[3 * c], sums[3 * c + 1], sums[3 * c + 2]) = (sh, ss, sv);
+        });
         Edges?.Detect(_v, _e);
 
         double score = 0;
         LastDeltas = null;
         if (_hasPrev)
         {
-            var (dh, ds, dv) = (MeanPixelDistance(_h, _prevH), MeanPixelDistance(_s, _prevS), MeanPixelDistance(_v, _prevV));
+            long th = 0, ts = 0, tv = 0;
+            for (int c = 0; c < chunks; c++)
+                (th, ts, tv) = (th + sums[3 * c], ts + sums[3 * c + 1], tv + sums[3 * c + 2]);
+            var (dh, ds, dv) = (th / (double)n, ts / (double)n, tv / (double)n);
             double? de = Edges is null ? null : MeanPixelDistance(_e, _prevE);
             LastDeltas = (dh, ds, dv, de);
             score = (hueWeight * dh + satWeight * ds + lumWeight * dv + edgeWeight * (de ?? 0.0))
