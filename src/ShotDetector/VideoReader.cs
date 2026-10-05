@@ -91,15 +91,19 @@ public sealed class VideoReader
 
     readonly string _path;
     readonly bool _ffmpegResize;
+    readonly int _decodeThreads;
     readonly long[] _pts;        // presentation timestamps of the frames, in display order
     readonly long _startPts;
     readonly double _timeBase;   // seconds per pts unit, as OpenCV's r2d(time_base)
     readonly string _pixelFormat;
 
-    public VideoReader(string path, bool ffmpegResize = false)
+    /// <param name="decodeThreads">ffmpeg decoder threads; 0 = ffmpeg's choice. Each frame thread
+    /// holds its own reference frames, so this trades memory (about 25 MB per thread at 1080p) for speed.</param>
+    public VideoReader(string path, bool ffmpegResize = false, int decodeThreads = 0)
     {
         _path = path;
         _ffmpegResize = ffmpegResize;
+        _decodeThreads = decodeThreads;
         // One demux-only pass: stream properties plus every packet's pts (no decoding).
         var stream = new Dictionary<string, string>();
         var pts = new List<long>();
@@ -197,7 +201,7 @@ public sealed class VideoReader
 
         var psi = new ProcessStartInfo("ffmpeg") { RedirectStandardOutput = server is null, RedirectStandardError = true };
         // Emit every decoded frame once, like OpenCV does (no CFR dup/drop).
-        string[] args = ["-v", "error", "-nostdin", "-y", "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough"];
+        string[] args = ["-v", "error", "-nostdin", "-y", "-threads", $"{_decodeThreads}", "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough"];
         args = pipeline switch
         {
             "yuv420p+sampled" => [.. args, "-f", "rawvideo", "-pix_fmt", "yuv420p"],

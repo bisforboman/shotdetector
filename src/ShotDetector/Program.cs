@@ -17,6 +17,7 @@ const string Usage = """
                                          (default: from the resolution)
       -l, --luma-only                    Only use the V (brightness) channel (overrides --weights)
       -f, --fade-bias <-1..1>            threshold: cut position between fade-out (-1) and fade-in (+1)
+          --threads <n>                  ffmpeg decoder threads (default 0 = automatic); fewer use less memory
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
                                          cv2.resize (faster, but cuts can differ from PySceneDetect)
           --csv <file>                   Write shot list as CSV
@@ -30,6 +31,7 @@ double? threshold = null;
 double minContentVal = 15.0, fadeBias = 0;
 int window = 2;
 int? kernelSize = null;
+int decodeThreads = 0;
 double[] weights = [1, 1, 1, 0];
 bool lumaOnly = false, ffmpegResize = false;
 
@@ -54,6 +56,7 @@ try
             case "-f" or "--fade-bias": fadeBias = NextDouble(); break;
             case "-l" or "--luma-only": lumaOnly = true; break;
             case "--ffmpeg-resize": ffmpegResize = true; break;
+            case "--threads": decodeThreads = int.Parse(Next(), CultureInfo.InvariantCulture); break;
             case "--csv": csvPath = Next(); break;
             case "--json": jsonPath = Next(); break;
             case "--stats": statsPath = Next(); break;
@@ -79,7 +82,7 @@ catch (Exception e) when (e is ArgumentException or FormatException)
 }
 
 VideoReader video;
-try { video = new VideoReader(input, ffmpegResize); }
+try { video = new VideoReader(input, ffmpegResize, decodeThreads); }
 catch (InvalidOperationException e)
 {
     Console.Error.WriteLine(e.Message);

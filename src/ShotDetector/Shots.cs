@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ShotDetector;
 
@@ -55,15 +56,21 @@ public static class Shots
     }
 
     public static string Json(IEnumerable<Shot> shots) => JsonSerializer.Serialize(
-        shots.Select(s => new
-        {
-            shot = s.Number,
-            startFrame = s.Start.FrameNum + 1,
-            endFrame = s.End.FrameNum,
-            startTimecode = s.Start.Timecode(),
-            endTimecode = s.End.Timecode(),
-            durationFrames = s.Duration.FrameNum,
-            durationSeconds = double.Parse(s.Duration.SecondsText(), CultureInfo.InvariantCulture),
-        }),
-        new JsonSerializerOptions { WriteIndented = true });
+        shots.Select(s => new ShotJson(
+            s.Number,
+            s.Start.FrameNum + 1,
+            s.End.FrameNum,
+            s.Start.Timecode(),
+            s.End.Timecode(),
+            s.Duration.FrameNum,
+            double.Parse(s.Duration.SecondsText(), CultureInfo.InvariantCulture))).ToList(),
+        ShotJsonContext.Default.ListShotJson);
 }
+
+public sealed record ShotJson(
+    int Shot, long StartFrame, long EndFrame, string StartTimecode, string EndTimecode, long DurationFrames, double DurationSeconds);
+
+// Source-generated serializer: no reflection, so it also works trimmed / Native AOT.
+[JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(List<ShotJson>))]
+internal partial class ShotJsonContext : JsonSerializerContext;
