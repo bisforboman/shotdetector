@@ -74,27 +74,32 @@ dotnet run -c Release --project src/ShotDetector.Cli -- -i video.mp4 --save-imag
 
 ## Verifying against PySceneDetect
 
+CI (`.github/workflows/ci.yml`) checks every push on Linux, against scenedetect 0.7.1 and 0.6.4 (in
+the matching compatibility mode), for the core path and the FastYuv path, with the latest stable
+ffmpeg. On every sample clip and every detector:
+- the cuts are the same frames;
+- the scene list CSVs are identical cell for cell, timecodes and seconds included;
+- every per-frame stat (`-s` / `--stats`) is printed identically, `delta_edges` included.
+
+The comparison table is in each run's job summary. The same check runs locally:
+
 ```
-python tools/compare.py video.mp4 [more.mp4 ...] [--detector adaptive|content|threshold|both|all] [--tolerance 2] [--ffmpeg-resize] [--report table.md] [--stats]
+pwsh tools/make-samples.ps1
+python tools/compare.py samples/*.mp4 [--detector adaptive|content|threshold|both|all] [--stats] [--fast-yuv]
+    [--compat 0.6.4 --scenedetect-python path/to/python] [--weights 1 1 1 1] [--report table.md]
 dotnet test
 ```
 
 `tools/make-samples.ps1` recreates the test clips in the gitignored `samples/`:
 - a synthetic clip with hard cuts between ffmpeg test sources, including one 12-frame shot;
 - the Sintel and Big Buck Bunny trailers (Blender open movies, CC-BY) in several codecs, containers
-  and resolutions (h264 mp4/mov/m4v/mkv, Theora ogg, 270p–1080p);
-- the Sintel trailer re-timed to 23.976, 29.97 and 60 fps, and two variable frame rate versions
-  (24 → 48 fps, and phone-like jittery timestamps).
+  and resolutions (h264 mp4/mov/m4v/mkv, Theora ogg, 270p–1080p; one tagged BT.709);
+- the Sintel trailer re-timed to 23.976, 29.97 and 60 fps, two variable frame rate versions
+  (24 → 48 fps, and phone-like jittery timestamps), with phone-style rotation tags (90°, 180°), and
+  as full-range, MJPEG and 4:4:4 video.
 
-Results against scenedetect 0.7.1 (the tables in docs/ were made on Windows, before colour tags were
-followed; CI now checks every push on Linux, see .github/workflows/ci.yml):
-- the cuts are the same frames;
-- the scene list CSVs are identical cell for cell, timecodes and seconds included;
-- with `--stats`, every per-frame metric is printed identically, `delta_edges` included ([docs/verification-stats.md](docs/verification-stats.md));
-- with edges weighted in (`--weights 1 1 1 1`), cuts, CSVs and stats are identical too ([docs/verification-edges.md](docs/verification-edges.md)).
-
-Timings are in [docs/verification-table.md](docs/verification-table.md). With `--ffmpeg-resize`,
-cuts on real footage differ (2–6 per trailer).
+On Windows, compare.py differs from scenedetect on BT.709-tagged video: the Windows OpenCV wheel
+ignores colour tags (see below). With `--ffmpeg-resize`, cuts on real footage differ (2–6 per trailer).
 
 ## Performance
 
