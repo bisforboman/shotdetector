@@ -9,6 +9,9 @@
 | bbb_trailer_iphone.m4v | adaptive | 13 | 13 | 13 | 0 | – | – | 0 | none |
 | bbb_trailer_iphone.m4v | content | 16 | 16 | 16 | 0 | – | – | 0 | none |
 | bbb_trailer_iphone.m4v | threshold | 5 | 5 | 5 | 0 | – | – | 0 | none |
+| sintel_mjpeg_yuvj420p.avi | adaptive | 8 | 8 | 8 | 0 | – | – | 0 | none |
+| sintel_mjpeg_yuvj420p.avi | content | 10 | 10 | 10 | 0 | – | – | 0 | none |
+| sintel_mjpeg_yuvj420p.avi | threshold | 8 | 8 | 8 | 0 | – | – | 0 | none |
 | sintel_retimed_24000_1001.mp4 | adaptive | 9 | 9 | 9 | 0 | – | – | 0 | none |
 | sintel_retimed_24000_1001.mp4 | content | 12 | 12 | 12 | 0 | – | – | 0 | none |
 | sintel_retimed_24000_1001.mp4 | threshold | 8 | 8 | 8 | 0 | – | – | 0 | none |
@@ -27,6 +30,9 @@
 | sintel_trailer1_480p_divx.mkv | adaptive | 8 | 8 | 8 | 0 | – | – | 0 | none |
 | sintel_trailer1_480p_divx.mkv | content | 13 | 13 | 13 | 0 | – | – | 0 | none |
 | sintel_trailer1_480p_divx.mkv | threshold | 9 | 9 | 9 | 0 | – | – | 0 | none |
+| sintel_yuv444p.mp4 | adaptive | 7 | 7 | 7 | 0 | – | – | 0 | none |
+| sintel_yuv444p.mp4 | content | 9 | 9 | 9 | 0 | – | – | 0 | none |
+| sintel_yuv444p.mp4 | threshold | 8 | 8 | 8 | 0 | – | – | 0 | none |
 | synthetic.mp4 | adaptive | 5 | 5 | 5 | 0 | – | – | 0 | none |
 | synthetic.mp4 | content | 6 | 6 | 6 | 0 | – | – | 0 | none |
 | synthetic.mp4 | threshold | 1 | 1 | 1 | 0 | – | – | 0 | none |

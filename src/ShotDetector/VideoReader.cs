@@ -94,6 +94,7 @@ public sealed class VideoReader
     readonly long[] _pts;        // presentation timestamps of the frames, in display order
     readonly long _startPts;
     readonly double _timeBase;   // seconds per pts unit, as OpenCV's r2d(time_base)
+    readonly string _pixelFormat;
 
     public VideoReader(string path, bool ffmpegResize = false)
     {
@@ -103,7 +104,7 @@ public sealed class VideoReader
         var stream = new Dictionary<string, string>();
         var pts = new List<long>();
         foreach (var line in Run("ffprobe", ["-v", "error", "-select_streams", "v:0",
-                     "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate,time_base,start_pts,nb_frames:packet=pts",
+                     "-show_entries", "stream=width,height,pix_fmt,r_frame_rate,avg_frame_rate,time_base,start_pts,nb_frames:packet=pts",
                      "-of", "default=nw=1", path]).Split('\n', StringSplitOptions.TrimEntries))
         {
             int eq = line.IndexOf('=');
@@ -124,6 +125,7 @@ public sealed class VideoReader
         Fps = Fps.FromFloat(avg.Num > 0 && avg.Den > 0 ? avg.Value : Fps.Parse(stream["r_frame_rate"]).Value);
         FrameCountHint = long.TryParse(stream.GetValueOrDefault("nb_frames"), out var n) ? n : 0;
         (Width, Height) = DownscaledSize(SourceWidth, SourceHeight);
+        _pixelFormat = stream.GetValueOrDefault("pix_fmt", "");
 
         var tb = Fps.Parse(stream["time_base"]);
         _timeBase = tb.Num / (double)tb.Den;
@@ -168,13 +170,23 @@ public sealed class VideoReader
         return (Math.Max(1, (int)Math.Round(width / factor)), Math.Max(1, (int)Math.Round(height / factor)));
     }
 
+    /// <summary>How frames get from ffmpeg to the downscaled BGR the detectors see.</summary>
+    public string Pipeline => !_ffmpegResize && (Width, Height) != (SourceWidth, SourceHeight)
+        // swscale's unscaled yuv420p converter (what OpenCV gets) needs an even height.
+        ? (_pixelFormat == "yuv420p" && SourceHeight % 2 == 0 ? "yuv420p+sampled" : "bgr24+resize")
+        : "ffmpeg-scale";
+
     /// <summary>
-    /// Yields every decoded frame. A background thread reads (and resizes) the next frames while
-    /// the caller processes the current one, so a yielded buffer is only valid until the next one.
+    /// Yields every decoded frame, downscaled. A background thread drains the pipe while the caller
+    /// processes the current frame, so a yielded buffer is only valid until the next one.
+    /// Pipelines: "yuv420p+sampled" has ffmpeg send raw yuv420p (no conversion, half the bytes of BGR)
+    /// and converts only the pixels cv2.resize reads; "bgr24+resize" has ffmpeg convert whole frames;
+    /// "ffmpeg-scale" has ffmpeg downscale (--ffmpeg-resize, or when no resize is needed).
     /// </summary>
     public IEnumerable<byte[]> Frames()
     {
-        bool resizeHere = !_ffmpegResize && (Width, Height) != (SourceWidth, SourceHeight);
+        string pipeline = Pipeline;
+        bool resizeHere = pipeline != "ffmpeg-scale", yuv = pipeline == "yuv420p+sampled";
         // On Windows, stdout redirection uses a 4 KB pipe, which makes full-size frames crawl
         // (19 s vs 12 s for 5000 1080p frames), so ffmpeg writes to a named pipe with a big buffer.
         string pipeName = $"shotdetector_{Guid.NewGuid():N}";
@@ -184,16 +196,21 @@ public sealed class VideoReader
             : null;
 
         var psi = new ProcessStartInfo("ffmpeg") { RedirectStandardOutput = server is null, RedirectStandardError = true };
-        foreach (var a in new[] { "-v", "error", "-nostdin", "-y", "-i", _path, "-map", "0:v:0",
-                     // Emit every decoded frame once, like OpenCV does (no CFR dup/drop).
-                     "-fps_mode", "passthrough",
-                     // OpenCV converts to BGR with swscale's defaults (BT.601) and SWS_BICUBIC, ignoring
-                     // the stream's colour tags, so do the same.
-                     "-vf", resizeHere
-                         ? "scale=in_color_matrix=bt601:flags=bicubic,format=bgr24"
-                         : $"scale={Width}:{Height}:in_color_matrix=bt601:flags=bilinear,format=bgr24",
-                     "-f", "rawvideo", "-pix_fmt", "bgr24", server is null ? "-" : $@"\\.\pipe\{pipeName}" })
+        // Emit every decoded frame once, like OpenCV does (no CFR dup/drop).
+        string[] args = ["-v", "error", "-nostdin", "-y", "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough"];
+        args = pipeline switch
+        {
+            "yuv420p+sampled" => [.. args, "-f", "rawvideo", "-pix_fmt", "yuv420p"],
+            // OpenCV converts to BGR with swscale's defaults (BT.601) and SWS_BICUBIC, ignoring
+            // the stream's colour tags, so do the same.
+            "bgr24+resize" => [.. args, "-vf", "scale=in_color_matrix=bt601:flags=bicubic,format=bgr24",
+                "-f", "rawvideo", "-pix_fmt", "bgr24"],
+            _ => [.. args, "-vf", $"scale={Width}:{Height}:in_color_matrix=bt601:flags=bilinear,format=bgr24",
+                "-f", "rawvideo", "-pix_fmt", "bgr24"],
+        };
+        foreach (var a in args)
             psi.ArgumentList.Add(a);
+        psi.ArgumentList.Add(server is null ? "-" : $@"\\.\pipe\{pipeName}");
 
         using var proc = Process.Start(psi)!;
         var stderr = proc.StandardError.ReadToEndAsync();
@@ -210,7 +227,9 @@ public sealed class VideoReader
         using var cancel = new CancellationTokenSource();
         using var free = new BlockingCollection<byte[]>();
         using var full = new BlockingCollection<byte[]>();
-        int readSize = resizeHere ? SourceWidth * SourceHeight * 3 : Width * Height * 3;
+        int readSize = yuv ? Yuv420.FrameSize(SourceWidth, SourceHeight)
+            : resizeHere ? SourceWidth * SourceHeight * 3
+            : Width * Height * 3;
         for (int i = 0; i < 3; i++)
             free.Add(new byte[readSize]);
         var reader = Task.Run(() =>
@@ -232,14 +251,18 @@ public sealed class VideoReader
         try
         {
             var small = resizeHere ? new byte[Width * Height * 3] : null;
+            var resizer = resizeHere ? new CvResize(SourceWidth, SourceHeight, Width, Height) : null;
             byte[]? previous = null;
             foreach (var buffer in full.GetConsumingEnumerable())
             {
                 if (previous is not null)
                     free.Add(previous);
-                if (small is not null)
+                if (resizer is not null)
                 {
-                    CvResize.Linear(buffer, SourceWidth, SourceHeight, small, Width, Height);
+                    if (yuv)
+                        resizer.ResizeYuv420(buffer, small);
+                    else
+                        resizer.Resize(buffer, small);
                     free.Add(buffer);
                 }
                 else

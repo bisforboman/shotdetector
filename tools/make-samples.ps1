@@ -41,5 +41,9 @@ try {
       -fps_mode passthrough -enc_time_base 1/1200 -c:v libx264 -crf 18 vfr_24_48.mp4
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -vf "settb=1/1000,setpts='N*40+mod(N*7,13)'" `
       -fps_mode passthrough -enc_time_base 1/1000 -c:v libx264 -crf 18 vfr_jitter.mp4
+
+    # Pixel formats other than yuv420p take the full-BGR pipeline: full-range MJPEG and 4:4:4.
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mjpeg -q:v 4 -pix_fmt yuvj420p sintel_mjpeg_yuvj420p.avi
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libx264 -crf 18 -pix_fmt yuv444p sintel_yuv444p.mp4
 }
 finally { Pop-Location }
