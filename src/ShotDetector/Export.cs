@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 
 namespace ShotDetector;
@@ -22,8 +21,10 @@ public static class Export
     /// Same frames as scenedetect (see <see cref="VideoReader.FrameAt"/>), but encoded by ffmpeg at
     /// -q:v 2 rather than OpenCV at JPEG quality 95, so files are similar, not byte-identical.
     /// </summary>
-    public static List<string> SaveImages(DetectionResult result, string outputDir, int numImages = 3, int frameMargin = 1)
+    public static List<string> SaveImages(DetectionResult result, string outputDir, int numImages = 3, int frameMargin = 1,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var (videoPath, video, shots, frameCount) = (result.VideoPath, result.Video, result.Shots, result.FrameCount);
         if (shots.Count == 0)
             return [];
@@ -48,8 +49,8 @@ public static class Export
             string filterFile = Path.Combine(temp, "filter.txt");
             File.WriteAllText(filterFile,
                 $"select='{string.Join("+", frames.Select(f => $"eq(n\\,{f})"))}',scale='round(iw*sar)':ih,setsar=1");
-            RunFfmpeg(["-v", "error", "-nostdin", "-y", "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
-                "-fps_mode", "passthrough", "-q:v", "2", Path.Combine(temp, "%06d.jpg")]);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-nostdin", "-y", "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
+                "-fps_mode", "passthrough", "-q:v", "2", Path.Combine(temp, "%06d.jpg")], cancellationToken);
             var byFrame = frames.Select((f, i) => (f, Path.Combine(temp, $"{i + 1:000000}.jpg"))).ToDictionary();
             foreach (var (frame, file) in wanted)
                 File.Copy(byFrame[frame], file, overwrite: true);
@@ -86,8 +87,10 @@ public static class Export
     /// split-video: one file per shot, "{video}-Scene-{NNN}.mp4", cut and re-encoded by ffmpeg with
     /// scenedetect's default arguments (libx264 veryfast, CRF 22, AAC audio, subtitles kept).
     /// </summary>
-    public static List<string> SplitVideo(DetectionResult result, string outputDir)
+    /// <remarks>Cancelling stops between clips and kills the running ffmpeg; finished clips are kept.</remarks>
+    public static List<string> SplitVideo(DetectionResult result, string outputDir, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var (videoPath, shots) = (result.VideoPath, result.Shots);
         Directory.CreateDirectory(outputDir);
         string name = Path.GetFileNameWithoutExtension(videoPath);
@@ -95,22 +98,12 @@ public static class Export
         foreach (var shot in shots)
         {
             string file = Path.Combine(outputDir, $"{name}-Scene-{SceneNumber(shot.Number, shots.Count)}.mp4");
-            RunFfmpeg(["-v", "error", "-nostdin", "-y",
+            VideoReader.Run("ffmpeg", ["-v", "error", "-nostdin", "-y",
                 "-ss", Stats.PyFloat(shot.Start.Seconds), "-i", videoPath, "-t", Stats.PyFloat(shot.Duration.Seconds),
                 "-map", "0:v:0", "-map", "0:a?", "-map", "0:s?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
-                "-c:a", "aac", file]);
+                "-c:a", "aac", file], cancellationToken);
             files.Add(file);
         }
         return files;
-    }
-
-    static void RunFfmpeg(string[] args)
-    {
-        var psi = new ProcessStartInfo("ffmpeg", args) { RedirectStandardError = true };
-        using var proc = Process.Start(psi)!;
-        string stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit();
-        if (proc.ExitCode != 0)
-            throw new InvalidOperationException($"ffmpeg failed ({proc.ExitCode}): {stderr}");
     }
 }

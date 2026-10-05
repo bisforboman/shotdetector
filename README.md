@@ -29,6 +29,11 @@ File.WriteAllText("shots.csv", Shots.Csv(result.Shots));
 var fast = ShotDetection.Detect("video.mp4", new DetectionOptions { Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420() });
 ```
 
+`Detect`, `Export.SaveImages` and `Export.SplitVideo` take an optional `CancellationToken`: cancelling
+stops at the next frame (or clip), kills the ffmpeg process and throws `OperationCanceledException`.
+
+Runs wherever .NET 10 and ffmpeg do, including Alpine (`apk add ffmpeg`), which CI tests.
+
 `Shot.Start`/`End` are `FrameTime`s: `FrameNum` (0-based; `End` is exclusive), `Seconds`,
 `Timecode()`. They print exactly as scenedetect prints them.
 

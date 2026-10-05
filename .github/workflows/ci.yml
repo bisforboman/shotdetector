@@ -15,6 +15,9 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Install ffmpeg   # the video tests make clips with it, and the library runs it
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Test
         run: dotnet test ShotDetector.slnx
 
@@ -27,6 +30,21 @@ jobs:
         with:
           name: nupkg
           path: artifacts/*.nupkg
+
+  # Alpine (musl), with Alpine's own ffmpeg. scenedetect can't run here (no musl OpenCV wheels), but
+  # the video tests check real detection, cancellation, and that Alpine's ffmpeg converts colours
+  # exactly like the FastYuv converter (which the parity job ties to scenedetect).
+  alpine:
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/dotnet/sdk:10.0-alpine
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install ffmpeg
+        run: apk add --no-cache ffmpeg && ffmpeg -hide_banner -version | head -1
+
+      - name: Test
+        run: dotnet test ShotDetector.slnx
 
   # ShotDetector and scenedetect run on the same clips; cuts, scene list CSVs and per-frame stats must
   # be identical, for the core path and the FastYuv path. The reference is scenedetect on Linux, whose

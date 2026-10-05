@@ -111,7 +111,9 @@ public sealed class VideoReader
     /// <param name="decodeThreads">ffmpeg decoder threads; 0 = ffmpeg's choice. Each frame thread
     /// holds its own reference frames, so this trades memory (about 25 MB per thread at 1080p) for speed.</param>
     /// <param name="yuv420Converter">Enables the yuv420p fast path (see <see cref="IYuv420Converter"/>).</param>
-    public VideoReader(string path, bool ffmpegResize = false, int decodeThreads = 4, IYuv420Converter? yuv420Converter = null)
+    /// <param name="cancellationToken">Cancels the ffprobe run (the process is killed).</param>
+    public VideoReader(string path, bool ffmpegResize = false, int decodeThreads = 4, IYuv420Converter? yuv420Converter = null,
+        CancellationToken cancellationToken = default)
     {
         _yuv420 = yuv420Converter;
         _path = path;
@@ -122,7 +124,7 @@ public sealed class VideoReader
         var pts = new List<long>();
         foreach (var line in Run("ffprobe", ["-v", "error", "-select_streams", "v:0",
                      "-show_entries", "stream=width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,nb_frames:packet=pts",
-                     "-of", "default=nw=1", path]).Split('\n', StringSplitOptions.TrimEntries))
+                     "-of", "default=nw=1", path], cancellationToken).Split('\n', StringSplitOptions.TrimEntries))
         {
             int eq = line.IndexOf('=');
             if (eq < 0) continue;
@@ -208,12 +210,14 @@ public sealed class VideoReader
     /// <summary>
     /// Yields every decoded frame, downscaled. A background thread drains the pipe while the caller
     /// processes the current frame, so a yielded buffer is only valid until the next one.
+    /// Cancelling <paramref name="cancellationToken"/> kills ffmpeg and throws OperationCanceledException.
     /// Pipelines: "yuv420p+sampled" (with a yuv420 converter) has ffmpeg send raw yuv420p (no conversion, half the bytes of BGR)
     /// and converts only the pixels cv2.resize reads; "bgr24+resize" has ffmpeg convert whole frames;
     /// "ffmpeg-scale" has ffmpeg downscale (--ffmpeg-resize, or when no resize is needed).
     /// </summary>
-    public IEnumerable<byte[]> Frames()
+    public IEnumerable<byte[]> Frames(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         string pipeline = Pipeline;
         bool resizeHere = pipeline != "ffmpeg-scale", yuv = pipeline == "yuv420p+sampled";
         // On Windows, stdout redirection uses a 4 KB pipe, which makes full-size frames crawl
@@ -246,14 +250,23 @@ public sealed class VideoReader
         Stream input = server ?? proc.StandardOutput.BaseStream;
         if (server is not null)
         {
-            var connected = server.WaitForConnectionAsync();
-            if (Task.WhenAny(connected, proc.WaitForExitAsync()).Result != connected)
-                throw new InvalidOperationException($"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
+            var connected = server.WaitForConnectionAsync(cancellationToken);
+            try
+            {
+                if (Task.WaitAny([connected, proc.WaitForExitAsync(cancellationToken)], cancellationToken) != 0)
+                    throw new InvalidOperationException($"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
+            }
+            catch (OperationCanceledException)
+            {
+                proc.Kill();
+                throw;
+            }
         }
 
         // The reader thread only drains the pipe (the bottleneck); resizing happens on the caller's
         // thread. Three buffers: one being filled, one queued, one being resized/processed.
-        using var cancel = new CancellationTokenSource();
+        // Cancelled by the caller's token, or by us when the caller stops iterating.
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var free = new BlockingCollection<byte[]>();
         using var full = new BlockingCollection<byte[]>();
         int readSize = yuv ? IYuv420Converter.FrameSize(SourceWidth, SourceHeight)
@@ -282,7 +295,7 @@ public sealed class VideoReader
             var resizer = resizeHere ? new CvResize(SourceWidth, SourceHeight, Width, Height) : null;
             var small = new byte[Width * Height * 3];
             byte[]? previous = null;
-            foreach (var buffer in full.GetConsumingEnumerable())
+            foreach (var buffer in full.GetConsumingEnumerable(cancel.Token))
             {
                 if (previous is not null)
                     free.Add(previous);
@@ -314,13 +327,20 @@ public sealed class VideoReader
         }
     }
 
-    static string Run(string exe, string[] args)
+    /// <summary>Runs ffmpeg/ffprobe to completion and returns its stdout; cancelling kills it.</summary>
+    internal static string Run(string exe, IEnumerable<string> args, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var psi = new ProcessStartInfo(exe, args) { RedirectStandardOutput = true, RedirectStandardError = true };
         using var proc = Process.Start(psi)!;
-        var stderr = proc.StandardError.ReadToEndAsync();
+        using var kill = cancellationToken.Register(() =>
+        {
+            try { proc.Kill(); } catch (InvalidOperationException) { } // already exited
+        });
+        var stderr = proc.StandardError.ReadToEndAsync(CancellationToken.None);
         string output = proc.StandardOutput.ReadToEnd();
         proc.WaitForExit();
+        cancellationToken.ThrowIfCancellationRequested();
         if (proc.ExitCode != 0)
             throw new InvalidOperationException($"{exe} failed ({proc.ExitCode}): {stderr.Result}");
         return output;

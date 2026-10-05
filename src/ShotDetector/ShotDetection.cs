@@ -72,15 +72,17 @@ public static class ShotDetection
     /// </summary>
     /// <exception cref="ArgumentException">Invalid options.</exception>
     /// <exception cref="InvalidOperationException">ffprobe or ffmpeg failed (e.g. missing file).</exception>
-    public static DetectionResult Detect(string videoPath, DetectionOptions? options = null)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; ffmpeg is stopped.</exception>
+    public static DetectionResult Detect(string videoPath, DetectionOptions? options = null, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var o = options ?? new DetectionOptions();
         if (o.FrameWindow < 1)
             throw new ArgumentException("FrameWindow must be at least 1.");
         if (o.KernelSize is { } k && (k < 3 || k % 2 == 0))
             throw new ArgumentException("KernelSize must be an odd number >= 3.");
 
-        var video = new VideoReader(videoPath, o.FfmpegResize, o.DecodeThreads, o.Yuv420Converter);
+        var video = new VideoReader(videoPath, o.FfmpegResize, o.DecodeThreads, o.Yuv420Converter, cancellationToken);
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
 
         var w = o.Weights;
@@ -99,7 +101,7 @@ public static class ShotDetection
 
         var cuts = new List<FrameTime>();
         int frameCount = 0;
-        foreach (var frame in video.Frames())
+        foreach (var frame in video.Frames(cancellationToken))
         {
             if (detector.ProcessFrame(frameCount, frame) is { } cut)
                 cuts.Add(cut);
