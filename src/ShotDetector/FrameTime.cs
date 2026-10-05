@@ -4,23 +4,31 @@ namespace ShotDetector;
 
 /// <summary>
 /// A position held the way PySceneDetect's FrameTimecode holds it, so that printed timecodes and
-/// seconds match digit for digit. It is either a presentation timestamp (<see cref="Value"/> in units
-/// of 1/<see cref="TbDen"/> s; decoded frame positions) or a bare frame number (TbDen == 0; cuts that
-/// ThresholdDetector computes). Arithmetic, conversions and rounding mirror FrameTimecode, including
-/// Python's round(), which rounds the exact binary value half to even.
+/// seconds match digit for digit. In 0.7.1 it is either a presentation timestamp (<see cref="Value"/>
+/// in units of 1/<see cref="TbDen"/> s; decoded frame positions) or a bare frame number (TbDen == 0;
+/// cuts that ThresholdDetector computes). In 0.6.4 it is always a frame number whose seconds are
+/// frame / fps in floating point (TbDen == -1). Arithmetic, conversions and rounding mirror
+/// FrameTimecode, including Python's round(), which rounds the exact binary value half to even.
 /// </summary>
 public readonly record struct FrameTime(long Value, long TbDen, Fps Fps)
 {
     /// <summary>A bare frame number.</summary>
     public static FrameTime Frame(long frame, Fps fps) => new(frame, 0, fps);
+    /// <summary>A frame number as PySceneDetect 0.6.4 holds every position: seconds = frame / fps.</summary>
+    public static FrameTime Frame064(long frame, Fps fps) => new(frame, -1, fps);
     /// <summary>A presentation timestamp in units of 1/<paramref name="tbDen"/> seconds.</summary>
     public static FrameTime Pts(long pts, long tbDen, Fps fps) => new(pts, tbDen, fps);
 
-    bool IsFrame => TbDen == 0;
+    bool IsFrame => TbDen <= 0;
     double FpsValue => Fps.Value; // float(frame_rate)
 
-    /// <summary>FrameTimecode.seconds: an exact rational, rounded once to double.</summary>
-    public double Seconds => IsFrame ? (double)(Value * Fps.Den) / Fps.Num : (double)Value / TbDen;
+    /// <summary>FrameTimecode.seconds: an exact rational, rounded once to double (0.6.4: frame / float fps).</summary>
+    public double Seconds => TbDen switch
+    {
+        -1 => Value / FpsValue,
+        0 => (double)(Value * Fps.Den) / Fps.Num,
+        _ => (double)Value / TbDen,
+    };
 
     /// <summary>FrameTimecode.frame_num.</summary>
     public long FrameNum => IsFrame ? Value : (long)Math.Round(Seconds * FpsValue);

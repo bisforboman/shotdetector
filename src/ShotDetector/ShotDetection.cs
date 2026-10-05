@@ -2,6 +2,21 @@ using System.Globalization;
 
 namespace ShotDetector;
 
+/// <summary>
+/// Which PySceneDetect release to reproduce. Each is verified in CI to give identical cuts, scene
+/// list CSVs and per-frame stats.
+/// </summary>
+public enum PySceneDetectVersion
+{
+    /// <summary>scenedetect 0.7.1: real frame timestamps (handles variable frame rate), fractional downscale.</summary>
+    V0_7_1,
+    /// <summary>
+    /// scenedetect 0.6.4: frame numbers at OpenCV's average frame rate, a whole-number downscale factor
+    /// from the width (854x480 is analysed at 285x160), and its own fade-cut rounding.
+    /// </summary>
+    V0_6_4,
+}
+
 /// <summary>Which PySceneDetect detector to run.</summary>
 public enum DetectorKind
 {
@@ -16,6 +31,9 @@ public enum DetectorKind
 /// <summary>Detection settings. Defaults match the scenedetect CLI.</summary>
 public sealed record DetectionOptions
 {
+    /// <summary>Which PySceneDetect release to reproduce (default 0.7.1).</summary>
+    public PySceneDetectVersion Compatibility { get; init; } = PySceneDetectVersion.V0_7_1;
+
     /// <summary>Which detector to run (default adaptive).</summary>
     public DetectorKind Detector { get; init; } = DetectorKind.Adaptive;
 
@@ -82,7 +100,7 @@ public static class ShotDetection
         if (o.KernelSize is { } k && (k < 3 || k % 2 == 0))
             throw new ArgumentException("KernelSize must be an odd number >= 3.");
 
-        var video = new VideoReader(videoPath, o.FfmpegResize, o.DecodeThreads, o.Yuv420Converter, cancellationToken);
+        var video = new VideoReader(videoPath, o.FfmpegResize, o.DecodeThreads, o.Yuv420Converter, o.Compatibility, cancellationToken);
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
 
         var w = o.Weights;
@@ -93,7 +111,7 @@ public static class ShotDetection
         IDetector detector = o.Detector switch
         {
             DetectorKind.Content => new ContentDetector(scorer, video.Position, video.Fps, o.Threshold ?? 27.0, minSceneLen),
-            DetectorKind.Threshold => new ThresholdDetector(video.Position, video.Fps, o.Threshold ?? 12.0, minSceneLen, o.FadeBias),
+            DetectorKind.Threshold => new ThresholdDetector(video.Position, video.Fps, o.Threshold ?? 12.0, minSceneLen, o.FadeBias, o.Compatibility),
             _ => new AdaptiveDetector(scorer, video.Position, o.Threshold ?? 3.0, minSceneLen, o.FrameWindow, o.MinContentVal),
         };
         if (o.CollectStats)

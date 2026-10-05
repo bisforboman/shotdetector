@@ -47,14 +47,16 @@ jobs:
         run: dotnet test ShotDetector.slnx
 
   # ShotDetector and scenedetect run on the same clips; cuts, scene list CSVs and per-frame stats must
-  # be identical, for the core path and the FastYuv path. The reference is scenedetect on Linux, whose
-  # OpenCV wheel bundles FFmpeg 8 and so follows colour tags (the Windows wheel's FFmpeg 7.1 doesn't).
+  # be identical, for the core path and the FastYuv path, for each supported scenedetect release (in
+  # the matching compatibility mode). The reference is scenedetect on Linux, whose OpenCV wheel
+  # bundles FFmpeg 8 and so follows colour tags (the Windows wheel's FFmpeg 7.1 doesn't).
   parity:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         path: [core, fast-yuv]
+        scenedetect: ['0.7.1', '0.6.4']
     env:
       FFMPEG: '9.0'   # the latest stable FFmpeg; BtbN's static build
     steps:
@@ -77,7 +79,7 @@ jobs:
         run: ffmpeg -hide_banner -version | head -1
 
       - name: Install scenedetect
-        run: pip install scenedetect==0.7.1 opencv-python-headless==5.0.0.93
+        run: pip install scenedetect==${{ matrix.scenedetect }} opencv-python-headless==5.0.0.93
 
       - name: Make sample clips
         shell: pwsh
@@ -87,6 +89,7 @@ jobs:
         run: |
           status=0
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi \
-            --detector all --stats --report parity.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || status=$?
-          { echo "### ${{ matrix.path }} path"; cat parity.md; } >> "$GITHUB_STEP_SUMMARY"
+            --detector all --stats --report parity.md --compat ${{ matrix.scenedetect }} \
+            ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || status=$?
+          { echo "### scenedetect ${{ matrix.scenedetect }}, ${{ matrix.path }} path"; cat parity.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status

@@ -34,10 +34,13 @@ public static class Export
 
         // (frame index, file name) for every image; a frame may be wanted twice.
         var wanted = new List<(int Frame, string File)>();
-        var times = ImageTimes(shots, video.Fps, numImages, frameMargin);
+        // 0.7.1 picks times and seeks to them; 0.6.4 picks frame numbers directly.
+        int[][] picked = video.Compatibility == PySceneDetectVersion.V0_6_4
+            ? ImageFrames064(shots, numImages, frameMargin)
+            : ImageTimes(shots, video.Fps, numImages, frameMargin).Select(t => t.Select(video.FrameAt).ToArray()).ToArray();
         for (int i = 0; i < shots.Count; i++)
             for (int j = 0; j < numImages; j++)
-                wanted.Add((Math.Clamp(video.FrameAt(times[i][j]), 0, frameCount - 1), Path.Combine(outputDir,
+                wanted.Add((Math.Clamp(picked[i][j], 0, frameCount - 1), Path.Combine(outputDir,
                     $"{name}-Scene-{SceneNumber(shots[i].Number, shots.Count)}-{(j + 1).ToString(imageFormat, CultureInfo.InvariantCulture)}.jpg")));
 
         // One ffmpeg pass: select the wanted frames (in order) into numbered temp files, then rename.
@@ -84,8 +87,36 @@ public static class Export
     }
 
     /// <summary>
+    /// Frame numbers of each shot's images as scenedetect 0.6.4's save_images picks them: the shot's
+    /// frames (padded with its last frame to at least <paramref name="numImages"/>) are split into
+    /// equal parts with np.array_split; the first image is <paramref name="frameMargin"/> frames into
+    /// the first part, the last that far from the end of the last part, the others mid-part.
+    /// Differs: on variable frame rate video OpenCV's frame seek can land a frame early; this doesn't.
+    /// </summary>
+    public static int[][] ImageFrames064(IReadOnlyList<Shot> shots, int numImages, int frameMargin) => shots.Select(shot =>
+    {
+        int start = (int)shot.Start.FrameNum, count = Math.Max(1, (int)(shot.End.FrameNum - shot.Start.FrameNum));
+        var frames = Enumerable.Range(start, count).ToList();
+        while (frames.Count < numImages)
+            frames.Add(frames[^1]);
+        // np.array_split: the first (count % n) parts get one extra element.
+        int size = frames.Count / numImages, extra = frames.Count % numImages, offset = 0;
+        var picked = new int[numImages];
+        for (int j = 0; j < numImages; j++)
+        {
+            var part = frames.GetRange(offset, size + (j < extra ? 1 : 0));
+            offset += part.Count;
+            picked[j] = (0 < j && j < numImages - 1) || numImages == 1 ? part[part.Count / 2]
+                : j == 0 ? Math.Min(part[0] + frameMargin, part[^1])
+                : Math.Max(part[^1] - frameMargin, part[0]);
+        }
+        return picked;
+    }).ToArray();
+
+    /// <summary>
     /// split-video: one file per shot, "{video}-Scene-{NNN}.mp4", cut and re-encoded by ffmpeg with
-    /// scenedetect's default arguments (libx264 veryfast, CRF 22, AAC audio, subtitles kept).
+    /// scenedetect's default arguments (libx264 veryfast, CRF 22, AAC audio, subtitles kept; 0.6.4 adds
+    /// -sn, which drops them).
     /// </summary>
     /// <remarks>Cancelling stops between clips and kills the running ffmpeg; finished clips are kept.</remarks>
     public static List<string> SplitVideo(DetectionResult result, string outputDir, CancellationToken cancellationToken = default)
@@ -101,7 +132,8 @@ public static class Export
             VideoReader.Run("ffmpeg", ["-v", "error", "-nostdin", "-y",
                 "-ss", Stats.PyFloat(shot.Start.Seconds), "-i", videoPath, "-t", Stats.PyFloat(shot.Duration.Seconds),
                 "-map", "0:v:0", "-map", "0:a?", "-map", "0:s?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
-                "-c:a", "aac", file], cancellationToken);
+                "-c:a", "aac", .. (result.Video.Compatibility == PySceneDetectVersion.V0_6_4 ? ["-sn"] : Array.Empty<string>()),
+                file], cancellationToken);
             files.Add(file);
         }
         return files;

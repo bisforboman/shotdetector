@@ -3,6 +3,7 @@
 Usage: python tools/compare.py <video>... [--detector adaptive|content|threshold|both|all] [--tolerance 2]
                                [--ffmpeg-resize] [--fast-yuv] [--report summary.md] [--stats]
                                [--weights "1 1 1 1"] [--kernel-size 5]
+                               [--compat 0.6.4 --scenedetect-python path/to/python]
 """
 
 import argparse
@@ -39,6 +40,7 @@ EXE_NAME = "shotdetect.exe" if sys.platform == "win32" else "shotdetect"
 EXE = ROOT / "src" / "ShotDetector.Cli" / "bin" / "Release" / "net10.0" / EXE_NAME
 # A separate build with the LGPL fast path (-p:WithFastYuv=true), for --fast-yuv.
 FAST_DIR = ROOT / "artifacts" / "cli-fastyuv"
+SCENEDETECT_PYTHON = sys.executable
 
 
 def timed(cmd: list[str]) -> float:
@@ -86,7 +88,7 @@ def compare(video: str, detector: str, tol: int, extra_args: list[str], stats: b
         ref_csv, our_csv = Path(tmp, "ref.csv"), Path(tmp, "ours.csv")
         ref_stats, our_stats = Path(tmp, "ref_stats.csv"), Path(tmp, "our_stats.csv")
         ref_secs = timed(
-            [sys.executable, "-m", "scenedetect", "-q", "-i", video, "-o", tmp,
+            [SCENEDETECT_PYTHON, "-m", "scenedetect", "-q", "-i", video, "-o", tmp,
              *(["-s", str(ref_stats)] if stats else []), f"detect-{detector}", *shared, "list-scenes", "-f", ref_csv.name])
         our_secs = timed([str(EXE), "-i", video, "-d", detector, "--csv", str(our_csv), *extra_args, *shared,
                           *(["--stats", str(our_stats)] if stats else [])])
@@ -136,6 +138,9 @@ def main() -> int:
     ap.add_argument("--tolerance", type=int, default=2)
     ap.add_argument("--ffmpeg-resize", action="store_true", help="pass --ffmpeg-resize to ShotDetector")
     ap.add_argument("--fast-yuv", action="store_true", help="use the ShotDetector.FastYuv path")
+    ap.add_argument("--compat", help="PySceneDetect release ShotDetector reproduces (e.g. 0.6.4)")
+    ap.add_argument("--scenedetect-python", default=sys.executable,
+                    help="Python interpreter whose scenedetect is the reference (default: this one)")
     ap.add_argument("--report", help="also write a Markdown summary table to this file")
     ap.add_argument("--weights", help='content/adaptive weights for both tools, e.g. "1 1 1 1"')
     ap.add_argument("--kernel-size", help="edge kernel size for both tools")
@@ -143,7 +148,8 @@ def main() -> int:
                     help="also diff per-frame stats files (slows scenedetect: it computes edges then)")
     a = ap.parse_args()
 
-    global EXE
+    global EXE, SCENEDETECT_PYTHON
+    SCENEDETECT_PYTHON = a.scenedetect_python
     if a.fast_yuv:
         subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", "-p:WithFastYuv=true", "-o", str(FAST_DIR),
                         str(ROOT / "src" / "ShotDetector.Cli")], check=True, stdout=subprocess.DEVNULL)
@@ -153,7 +159,8 @@ def main() -> int:
                        check=True, stdout=subprocess.DEVNULL)
     detectors = {"both": ["adaptive", "content"], "all": ["adaptive", "content", "threshold"]}.get(
         a.detector, [a.detector])
-    extra_args = (["--ffmpeg-resize"] if a.ffmpeg_resize else []) + (["--fast-yuv"] if a.fast_yuv else [])
+    extra_args = ((["--ffmpeg-resize"] if a.ffmpeg_resize else []) + (["--fast-yuv"] if a.fast_yuv else [])
+                  + (["--compat", a.compat] if a.compat else []))
     shared = [*(["-w", *a.weights.split()] if a.weights else []), *(["-k", a.kernel_size] if a.kernel_size else [])]
     rows = [compare(v, d, a.tolerance, extra_args, a.stats, shared) for v in a.videos for d in detectors]
 

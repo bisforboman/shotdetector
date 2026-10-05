@@ -34,6 +34,13 @@ stops at the next frame (or clip), kills the ffmpeg process and throws `Operatio
 
 Runs wherever .NET 10 and ffmpeg do, including Alpine (`apk add ffmpeg`), which CI tests.
 
+To reproduce scenedetect 0.6.4 instead of 0.7.1 (for consistency with older results), set
+`Compatibility = PySceneDetectVersion.V0_6_4` (CLI: `--compat 0.6.4`). 0.6.4 analyses frames at a
+different size (a whole-number downscale factor from the width, e.g. 854x480 at 285x160), counts
+time in frames at OpenCV's average frame rate (no real timestamps, so variable frame rate video is
+treated as constant), and rounds fade cuts differently. Cuts, CSVs, stats and exports match 0.6.4
+exactly in that mode; CI checks both releases.
+
 `Shot.Start`/`End` are `FrameTime`s: `FrameNum` (0-based; `End` is exclusive), `Seconds`,
 `Timecode()`. They print exactly as scenedetect prints them.
 

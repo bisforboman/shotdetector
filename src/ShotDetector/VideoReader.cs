@@ -96,6 +96,9 @@ public sealed class VideoReader
     /// <summary>Container frame count from ffprobe; may be missing (0) or approximate.</summary>
     public long FrameCountHint { get; }
 
+    /// <summary>Which PySceneDetect release's frame rate, downscaling and positions this reader reproduces.</summary>
+    public PySceneDetectVersion Compatibility { get; }
+
     readonly string _path;
     readonly bool _ffmpegResize;
     readonly int _decodeThreads;
@@ -111,10 +114,12 @@ public sealed class VideoReader
     /// <param name="decodeThreads">ffmpeg decoder threads; 0 = ffmpeg's choice. Each frame thread
     /// holds its own reference frames, so this trades memory (about 25 MB per thread at 1080p) for speed.</param>
     /// <param name="yuv420Converter">Enables the yuv420p fast path (see <see cref="IYuv420Converter"/>).</param>
+    /// <param name="compatibility">Which PySceneDetect release to reproduce.</param>
     /// <param name="cancellationToken">Cancels the ffprobe run (the process is killed).</param>
     public VideoReader(string path, bool ffmpegResize = false, int decodeThreads = 4, IYuv420Converter? yuv420Converter = null,
-        CancellationToken cancellationToken = default)
+        PySceneDetectVersion compatibility = PySceneDetectVersion.V0_7_1, CancellationToken cancellationToken = default)
     {
+        Compatibility = compatibility;
         _yuv420 = yuv420Converter;
         _path = path;
         _ffmpegResize = ffmpegResize;
@@ -141,9 +146,13 @@ public sealed class VideoReader
         // OpenCV's CAP_PROP_FPS is the average frame rate (the nominal one only if that is unknown),
         // which matters for variable frame rate video.
         var avg = Fps.Parse(stream.GetValueOrDefault("avg_frame_rate", "0/0"));
-        Fps = Fps.FromFloat(avg.Num > 0 && avg.Den > 0 ? avg.Value : Fps.Parse(stream["r_frame_rate"]).Value);
+        var rate = avg.Num > 0 && avg.Den > 0 ? avg : Fps.Parse(stream["r_frame_rate"]);
+        // 0.7.1 turns it into a clean fraction (framerate_to_fraction); 0.6.4 uses the float as is.
+        Fps = compatibility == PySceneDetectVersion.V0_6_4 ? rate : Fps.FromFloat(rate.Value);
         FrameCountHint = long.TryParse(stream.GetValueOrDefault("nb_frames"), out var n) ? n : 0;
-        (Width, Height) = DownscaledSize(SourceWidth, SourceHeight);
+        (Width, Height) = compatibility == PySceneDetectVersion.V0_6_4
+            ? DownscaledSize064(SourceWidth, SourceHeight)
+            : DownscaledSize(SourceWidth, SourceHeight);
         _pixelFormat = stream.GetValueOrDefault("pix_fmt", "");
         // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
         bool fullRange = _pixelFormat == "yuvj420p" || stream.GetValueOrDefault("color_range") == "pc";
@@ -161,9 +170,12 @@ public sealed class VideoReader
     /// ((pts - start) * time_base * 1000) rounded to µs, or (frame - 1) / fps when that is not positive.
     /// Assumes OpenCV's best-effort timestamps equal the sorted packet pts, which holds for the
     /// sample clips (mp4, mov, m4v, mkv, ogg) but not for every stream (e.g. missing pts).
+    /// In 0.6.4 a position is just the frame number.
     /// </summary>
     public FrameTime Position(int frame)
     {
+        if (Compatibility == PySceneDetectVersion.V0_6_4)
+            return FrameTime.Frame064(frame, Fps);
         if (frame < _pts.Length)
         {
             double ms = (_pts[frame] - _startPts) * _timeBase * 1000;
@@ -189,9 +201,21 @@ public sealed class VideoReader
     /// as 0 at that point, so it is always the frame-number fallback for the last frame.
     /// The last scene ends one frame after it.
     /// </summary>
-    public FrameTime PositionAfterDecoding(int frameCount) => FrameTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps);
+    public FrameTime PositionAfterDecoding(int frameCount) => Compatibility == PySceneDetectVersion.V0_6_4
+        ? FrameTime.Frame064(frameCount - 1, Fps)
+        : FrameTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps);
 
-    /// <summary>PySceneDetect's compute_downscale_factor + resize size (Python round = half to even).</summary>
+    /// <summary>
+    /// PySceneDetect 0.6.4's downscale: a whole-number factor width // 256 (from the width only), then
+    /// cv2.resize to (round(w / factor), round(h / factor)); no resize when the factor is 1.
+    /// </summary>
+    public static (int W, int H) DownscaledSize064(int width, int height, int minWidth = 256)
+    {
+        int factor = width < minWidth ? 1 : width / minWidth;
+        return factor <= 1 ? (width, height) : ((int)Math.Round(width / (double)factor), (int)Math.Round(height / (double)factor));
+    }
+
+    /// <summary>PySceneDetect 0.7.1's compute_downscale_factor + resize size (Python round = half to even).</summary>
     public static (int W, int H) DownscaledSize(int width, int height, int minWidth = 256)
     {
         int largest = Math.Max(width, height);

@@ -17,6 +17,7 @@ const string Usage = """
                                          (default: from the resolution)
       -l, --luma-only                    Only use the V (brightness) channel (overrides --weights)
       -f, --fade-bias <-1..1>            threshold: cut position between fade-out (-1) and fade-in (+1)
+          --compat <0.7.1|0.6.4>         Which PySceneDetect release to reproduce (default 0.7.1)
           --threads <n>                  ffmpeg decoder threads (default 4; 0 = ffmpeg's choice). Each
                                          costs ~25 MB at 1080p; more rarely helps since we decode in parallel
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
@@ -66,6 +67,17 @@ try
             case "-l" or "--luma-only": options = options with { LumaOnly = true }; break;
             case "--ffmpeg-resize": options = options with { FfmpegResize = true }; break;
             case "--threads": options = options with { DecodeThreads = NextInt() }; break;
+            case "--compat":
+                options = options with
+                {
+                    Compatibility = Next() switch
+                    {
+                        "0.7.1" => PySceneDetectVersion.V0_7_1,
+                        "0.6.4" => PySceneDetectVersion.V0_6_4,
+                        var v => throw new ArgumentException($"Unknown --compat version '{v}' (0.7.1 or 0.6.4)"),
+                    },
+                };
+                break;
 #if FASTYUV
             case "--fast-yuv": options = options with { Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420() }; break;
 #endif
