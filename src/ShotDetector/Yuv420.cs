@@ -7,7 +7,7 @@ namespace ShotDetector;
 /// interpolated: each 2x2 block shares one U and V. Verified against ffmpeg for all 2^24 (Y, U, V).
 /// Lets ffmpeg skip colour conversion and lets us convert only the pixels cv2.resize reads.
 /// </summary>
-public static class Yuv420
+internal static class Yuv420
 {
     // Each term of the asm is a 16-bit multiply-high of one shifted input, so precompute them per value.
     static readonly int[] YTerm = new int[256], UbTerm = new int[256], UgTerm = new int[256], VrTerm = new int[256], VgTerm = new int[256];

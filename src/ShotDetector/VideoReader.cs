@@ -9,8 +9,10 @@ namespace ShotDetector;
 /// <summary>Frame rate as an exact fraction (e.g. 30000/1001).</summary>
 public readonly record struct Fps(int Num, int Den)
 {
+    /// <summary>The frame rate as a double, i.e. Python's float(frame_rate).</summary>
     public double Value => (double)Num / Den;
 
+    /// <summary>Parses "num/den" or a whole number, as ffprobe prints rates.</summary>
     public static Fps Parse(string s)
     {
         var parts = s.Split('/');
@@ -81,10 +83,15 @@ public readonly record struct Fps(int Num, int Den)
 /// </summary>
 public sealed class VideoReader
 {
+    /// <summary>Width of the video.</summary>
     public int SourceWidth { get; }
+    /// <summary>Height of the video.</summary>
     public int SourceHeight { get; }
+    /// <summary>Width of the frames the detectors see (downscaled like PySceneDetect).</summary>
     public int Width { get; }
+    /// <summary>Height of the frames the detectors see.</summary>
     public int Height { get; }
+    /// <summary>Frame rate as OpenCV reports it to PySceneDetect (the average rate).</summary>
     public Fps Fps { get; }
     /// <summary>Container frame count from ffprobe; may be missing (0) or approximate.</summary>
     public long FrameCountHint { get; }
@@ -97,6 +104,8 @@ public sealed class VideoReader
     readonly double _timeBase;   // seconds per pts unit, as OpenCV's r2d(time_base)
     readonly string _pixelFormat;
 
+    /// <param name="path">Video file; ffprobe reads its properties right away.</param>
+    /// <param name="ffmpegResize">Let ffmpeg downscale (faster, results can differ from PySceneDetect).</param>
     /// <param name="decodeThreads">ffmpeg decoder threads; 0 = ffmpeg's choice. Each frame thread
     /// holds its own reference frames, so this trades memory (about 25 MB per thread at 1080p) for speed.</param>
     public VideoReader(string path, bool ffmpegResize = false, int decodeThreads = 4)
@@ -144,17 +153,17 @@ public sealed class VideoReader
     /// Assumes OpenCV's best-effort timestamps equal the sorted packet pts, which holds for the
     /// sample clips (mp4, mov, m4v, mkv, ogg) but not for every stream (e.g. missing pts).
     /// </summary>
-    public PyTime Position(int frame)
+    public FrameTime Position(int frame)
     {
         if (frame < _pts.Length)
         {
             double ms = (_pts[frame] - _startPts) * _timeBase * 1000;
             long micros = (long)Math.Round(ms * 1000);
             if (micros > 0)
-                return PyTime.Pts(micros, 1_000_000, Fps);
+                return FrameTime.Pts(micros, 1_000_000, Fps);
         }
         // PySceneDetect's fallback uses frame_number - 1 with frame_number already advanced, i.e. this frame.
-        return PyTime.Pts((long)frame * Fps.Den, Fps.Num, Fps);
+        return FrameTime.Pts((long)frame * Fps.Den, Fps.Num, Fps);
     }
 
     /// <summary>
@@ -171,7 +180,7 @@ public sealed class VideoReader
     /// as 0 at that point, so it is always the frame-number fallback for the last frame.
     /// The last scene ends one frame after it.
     /// </summary>
-    public PyTime PositionAfterDecoding(int frameCount) => PyTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps);
+    public FrameTime PositionAfterDecoding(int frameCount) => FrameTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps);
 
     /// <summary>PySceneDetect's compute_downscale_factor + resize size (Python round = half to even).</summary>
     public static (int W, int H) DownscaledSize(int width, int height, int minWidth = 256)

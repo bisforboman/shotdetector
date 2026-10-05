@@ -58,9 +58,9 @@ public class ContentScorerTests
 /// <summary>Frame positions as PySceneDetect's OpenCV backend reports them for constant frame rate video.</summary>
 static class Positions
 {
-    public static Func<int, PyTime> Cfr(int fps) => i => i == 0
-        ? PyTime.Pts(0, fps, new Fps(fps, 1)) // frame-number fallback, since POS_MSEC is 0
-        : PyTime.Pts((long)Math.Round(i * 1_000_000.0 / fps), 1_000_000, new Fps(fps, 1));
+    public static Func<int, FrameTime> Cfr(int fps) => i => i == 0
+        ? FrameTime.Pts(0, fps, new Fps(fps, 1)) // frame-number fallback, since POS_MSEC is 0
+        : FrameTime.Pts((long)Math.Round(i * 1_000_000.0 / fps), 1_000_000, new Fps(fps, 1));
 }
 
 public class DetectorTests
@@ -71,7 +71,7 @@ public class DetectorTests
         return scores.Select((s, i) => d.ProcessScore(i, s)).OfType<int>().ToList();
     }
 
-    static List<int> RunAdaptive(double[] scores, int minSceneLen = 15, Func<int, PyTime>? position = null)
+    static List<int> RunAdaptive(double[] scores, int minSceneLen = 15, Func<int, FrameTime>? position = null)
     {
         var d = new AdaptiveDetector(new ContentScorer(), position ?? Positions.Cfr(25), minSceneLen: minSceneLen);
         return scores.Select((s, i) => d.ProcessScore(i, s)).OfType<int>().ToList();
@@ -138,7 +138,7 @@ public class DetectorTests
         // 24 fps for frames 0-19, then 48 fps. A spike at 40 is evaluated at frame 42, which is 22
         // frames but only 0.458 s (round(0.458 * 24) = 11 frames) after the cut at 20, so it is skipped.
         var fps = new Fps(24, 1);
-        Func<int, PyTime> vfr = i => PyTime.Pts(
+        Func<int, FrameTime> vfr = i => FrameTime.Pts(
             (long)Math.Round((i < 20 ? i / 24.0 : 20 / 24.0 + (i - 20) / 48.0) * 1_000_000), 1_000_000, fps);
         Assert.Equal([20], RunAdaptive(Scores(80, 1, (20, 40), (40, 40)), position: vfr));
         Assert.Equal([20, 40], RunAdaptive(Scores(80, 1, (20, 40), (40, 40)), position: Positions.Cfr(24)));
@@ -174,8 +174,8 @@ public class ThresholdDetectorTests
     static List<long> Run(double[] levels, double fadeBias = 0, int minSceneLen = 15)
     {
         var d = new ThresholdDetector(Positions.Cfr(25), Fps25, 12, minSceneLen, fadeBias);
-        var cuts = levels.Select((v, i) => d.ProcessAverage(i, v)).OfType<PyTime>().Select(c => c.FrameNum).ToList();
-        if (d.PostProcess(PyTime.Pts(levels.Length - 1, 25, Fps25)) is { } last) cuts.Add(last.FrameNum);
+        var cuts = levels.Select((v, i) => d.ProcessAverage(i, v)).OfType<FrameTime>().Select(c => c.FrameNum).ToList();
+        if (d.PostProcess(FrameTime.Pts(levels.Length - 1, 25, Fps25)) is { } last) cuts.Add(last.FrameNum);
         return cuts;
     }
 
@@ -302,7 +302,7 @@ public class Yuv420Tests
 public class ExportTests
 {
     static readonly Fps Fps25 = new(25, 1);
-    static PyTime F(long n) => PyTime.Frame(n, Fps25);
+    static FrameTime F(long n) => FrameTime.Frame(n, Fps25);
 
     [Fact]
     public void ImageTimesMatchScenedetect()
@@ -329,10 +329,10 @@ public class CvResizeTests
 }
 
 // Expected values come from scenedetect's own FrameTimecode.
-public class PyTimeTests
+public class FrameTimeTests
 {
     static readonly Fps Ntsc = new(30000, 1001), Fps24 = new(24, 1);
-    static PyTime Micros(long us, Fps fps) => PyTime.Pts(us, 1_000_000, fps);
+    static FrameTime Micros(long us, Fps fps) => FrameTime.Pts(us, 1_000_000, fps);
 
     [Theory]
     [InlineData(0, 30000, 1001, "00:00:00.000")]
@@ -342,7 +342,7 @@ public class PyTimeTests
     [InlineData(90000, 25, 1, "01:00:00.000")]
     [InlineData(59999600, 1000000, 1, "00:01:00.000")] // 59.9996s rounds up into the next minute
     public void FrameNumberTimecode(long frame, int num, int den, string expected) =>
-        Assert.Equal(expected, PyTime.Frame(frame, new Fps(num, den)).Timecode());
+        Assert.Equal(expected, FrameTime.Frame(frame, new Fps(num, den)).Timecode());
 
     [Theory]
     [InlineData(3503500, "00:00:03.503")] // 3.5035 is really 3.50349999..., so it rounds down
@@ -355,7 +355,7 @@ public class PyTimeTests
     [InlineData(0.1875, 188)] // exact tie → even
     [InlineData(3.5035, 3503)]
     public void RoundScaledMatchesPythonRound(double x, long expected) =>
-        Assert.Equal(expected, PyTime.RoundScaled(x, 1000));
+        Assert.Equal(expected, FrameTime.RoundScaled(x, 1000));
 
     [Fact]
     public void TimestampDifference()
@@ -367,7 +367,7 @@ public class PyTimeTests
     [Fact]
     public void EndPlusOneFrameInFrameTimeBase()
     {
-        var end = PyTime.Pts(1252, 24, Fps24).PlusFrames(1);
+        var end = FrameTime.Pts(1252, 24, Fps24).PlusFrames(1);
         Assert.Equal((1253L, "00:00:52.208"), (end.FrameNum, end.Timecode()));
         var d = end.Minus(Micros(52125000, Fps24)); // mixed time bases → the finer one (µs)
         Assert.Equal((83333L, 2L, "00:00:00.083"), (d.Value, d.FrameNum, d.Timecode()));
@@ -376,7 +376,7 @@ public class PyTimeTests
     [Fact]
     public void MixedFrameNumberAndTimestamp()
     {
-        var frame = PyTime.Frame(100, Ntsc);
+        var frame = FrameTime.Frame(100, Ntsc);
         var ts = Micros(3003000, Ntsc);
         Assert.Equal((333667L, "00:00:00.334"), (frame.Minus(ts).Value, frame.Minus(ts).Timecode()));
         Assert.Equal(0L, ts.Minus(frame).Value); // clamped at 0
@@ -405,7 +405,7 @@ public class ShotsTests
 {
     static readonly Fps Ntsc = new(30000, 1001);
 
-    static PyTime F(long n) => PyTime.Frame(n, Ntsc);
+    static FrameTime F(long n) => FrameTime.Frame(n, Ntsc);
 
     [Fact]
     public void ShotsFromCutsAreContiguous() =>

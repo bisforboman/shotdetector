@@ -1,12 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- Trim/AOT analyzers on; publish with -p:PublishAot=true -r win-x64 (needs the MSVC C++ tools). -->
+    <!-- Trim/AOT analyzers on, so apps using the library can publish with Native AOT. -->
     <IsAotCompatible>true</IsAotCompatible>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <PackageId>ShotDetector</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Jakob Boman</Authors>
+    <Description>Shot/cut detection for video, a faithful C# port of PySceneDetect's ContentDetector, AdaptiveDetector and ThresholdDetector with identical results. Decodes with ffmpeg (must be on PATH).</Description>
+    <PackageTags>video;scene-detection;shot-detection;cut-detection;ffmpeg;pyscenedetect</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="ShotDetector.Tests" />
+  </ItemGroup>
 
 </Project>

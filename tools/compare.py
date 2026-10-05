@@ -35,8 +35,8 @@ def match(ref: list[int], ours: list[int], tol: int):
     return pairs, missing, unused
 
 
-EXE = ROOT / "src" / "ShotDetector" / "bin" / "Release" / "net10.0" / (
-    "ShotDetector.exe" if sys.platform == "win32" else "ShotDetector")
+EXE = ROOT / "src" / "ShotDetector.Cli" / "bin" / "Release" / "net10.0" / (
+    "shotdetect.exe" if sys.platform == "win32" else "shotdetect")
 
 
 def timed(cmd: list[str]) -> float:
@@ -139,7 +139,7 @@ def main() -> int:
                     help="also diff per-frame stats files (slows scenedetect: it computes edges then)")
     a = ap.parse_args()
 
-    subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", str(ROOT / "src" / "ShotDetector")],
+    subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", str(ROOT / "src" / "ShotDetector.Cli")],
                    check=True, stdout=subprocess.DEVNULL)
     detectors = {"both": ["adaptive", "content"], "all": ["adaptive", "content", "threshold"]}.get(
         a.detector, [a.detector])

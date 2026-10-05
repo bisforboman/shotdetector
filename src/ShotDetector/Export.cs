@@ -22,9 +22,11 @@ public static class Export
     /// Same frames as scenedetect (see <see cref="VideoReader.FrameAt"/>), but encoded by ffmpeg at
     /// -q:v 2 rather than OpenCV at JPEG quality 95, so files are similar, not byte-identical.
     /// </summary>
-    public static List<string> SaveImages(string videoPath, VideoReader video, IReadOnlyList<Shot> shots, int frameCount,
-        string outputDir, int numImages = 3, int frameMargin = 1)
+    public static List<string> SaveImages(DetectionResult result, string outputDir, int numImages = 3, int frameMargin = 1)
     {
+        var (videoPath, video, shots, frameCount) = (result.VideoPath, result.Video, result.Shots, result.FrameCount);
+        if (shots.Count == 0)
+            return [];
         Directory.CreateDirectory(outputDir);
         string name = Path.GetFileNameWithoutExtension(videoPath);
         string imageFormat = new('0', (int)Math.Floor(Math.Log10(numImages)) + 2);
@@ -62,7 +64,7 @@ public static class Export
     /// <summary>Seconds of each shot's images: port of _generate_timecode_list.</summary>
     public static double[][] ImageTimes(IReadOnlyList<Shot> shots, Fps fps, int numImages, int frameMargin)
     {
-        double marginSecs = PyTime.Frame(frameMargin, fps).Seconds;
+        double marginSecs = FrameTime.Frame(frameMargin, fps).Seconds;
         return shots.Select(shot =>
         {
             double start = shot.Start.Seconds, duration = shot.Duration.Seconds;
@@ -84,8 +86,9 @@ public static class Export
     /// split-video: one file per shot, "{video}-Scene-{NNN}.mp4", cut and re-encoded by ffmpeg with
     /// scenedetect's default arguments (libx264 veryfast, CRF 22, AAC audio, subtitles kept).
     /// </summary>
-    public static List<string> SplitVideo(string videoPath, IReadOnlyList<Shot> shots, string outputDir)
+    public static List<string> SplitVideo(DetectionResult result, string outputDir)
     {
+        var (videoPath, shots) = (result.VideoPath, result.Shots);
         Directory.CreateDirectory(outputDir);
         string name = Path.GetFileNameWithoutExtension(videoPath);
         var files = new List<string>();

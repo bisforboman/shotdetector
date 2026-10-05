@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/ShotDetector.Cli/ShotDetector.Cli.csproj" />
     <Project Path="src/ShotDetector/ShotDetector.csproj" />
   </Folder>
   <Folder Name="/tests/">

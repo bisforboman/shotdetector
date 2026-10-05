@@ -5,7 +5,7 @@ namespace ShotDetector;
 /// output matches cv2.cvtColor(img, COLOR_BGR2HSV) bit for bit: H in [0,180), S and V in [0,255].
 /// OpenCV uses fixed-point division tables instead of floating point.
 /// </summary>
-public static class Hsv
+internal static class Hsv
 {
     const int Shift = 12;
     static readonly int[] SDiv = new int[256];

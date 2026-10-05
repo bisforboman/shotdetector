@@ -7,10 +7,12 @@ namespace ShotDetector;
 /// </summary>
 public sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, double lumWeight = 1, double edgeWeight = 0)
 {
+    /// <summary>Scores only the V (brightness) channel, like luma_only=True.</summary>
     public static ContentScorer LumaOnly() => new(0, 0, 1, 0) { IsLumaOnly = true };
 
     /// <summary>Made by <see cref="LumaOnly"/> (luma_only=True), which names the adaptive_ratio stat "_lum".</summary>
     public bool IsLumaOnly { get; private init; }
+    /// <summary>True when edges have a weight, which requires <see cref="Edges"/>.</summary>
     public bool UsesEdges => edgeWeight > 0;
 
     /// <summary>
@@ -28,6 +30,7 @@ public sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, do
     bool _hasPrev;
     const int ChunkPixels = 8192;
 
+    /// <summary>content_val of this frame (packed BGR) against the previous one; 0 for the first frame.</summary>
     public double Score(byte[] bgr)
     {
         if (UsesEdges && Edges is null)
@@ -98,7 +101,7 @@ public sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, do
             stats.Set(frame, "delta_edges", e);
     }
 
-    public static double MeanPixelDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+    internal static double MeanPixelDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {
         long sum = 0;
         for (int i = 0; i < a.Length; i++)

@@ -13,6 +13,7 @@ public sealed class Stats
     readonly SortedDictionary<int, Dictionary<string, double>> _rows = [];
     readonly SortedSet<string> _keys = new(StringComparer.Ordinal); // Python sorts by code point
 
+    /// <summary>Records a metric for a frame (0-based index).</summary>
     public void Set(int frame, string key, double value)
     {
         _keys.Add(key);
@@ -21,11 +22,12 @@ public sealed class Stats
         row[key] = value;
     }
 
+    /// <summary>A recorded metric, or null.</summary>
     public double? Get(int frame, string key) =>
         _rows.TryGetValue(frame, out var row) && row.TryGetValue(key, out var v) ? v : null;
 
     /// <param name="position">Maps a frame index to its position (rows are keyed by position).</param>
-    public string Csv(Func<int, PyTime> position)
+    public string Csv(Func<int, FrameTime> position)
     {
         var sb = new StringBuilder("Frame Number,Timecode");
         foreach (var key in _keys)

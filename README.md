@@ -1,11 +1,35 @@
 # ShotDetector
 
-A small C# port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s ContentDetector,
-AdaptiveDetector and ThresholdDetector (ported from scenedetect 0.7.1). Frames are decoded by piping
-`ffmpeg -f rawvideo -pix_fmt bgr24`; all detection logic is plain C#.
+Shot/cut detection for video in C#: a faithful port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s
+ContentDetector, AdaptiveDetector and ThresholdDetector (scenedetect 0.7.1) that gives identical
+results, about 1.5x faster at 1080p. Video is decoded by [ffmpeg](https://ffmpeg.org), which must be
+installed and on `PATH`; all detection logic is plain C#.
+
+- `src/ShotDetector`: the library (NuGet package `ShotDetector`).
+- `src/ShotDetector.Cli`: the `shotdetect` command-line tool.
+
+## Library
+
+```csharp
+using ShotDetector;
+
+var result = ShotDetection.Detect("video.mp4");      // adaptive detector, scenedetect's defaults
+foreach (var shot in result.Shots)
+    Console.WriteLine($"{shot.Number}: {shot.Start.Timecode()} - {shot.End.Timecode()}");
+
+// Other detectors and settings; Export uses the shot list.
+var fades = ShotDetection.Detect("video.mp4", new DetectionOptions { Detector = DetectorKind.Threshold });
+Export.SaveImages(result, "thumbs");
+File.WriteAllText("shots.csv", Shots.Csv(result.Shots));
+```
+
+`Shot.Start`/`End` are `FrameTime`s: `FrameNum` (0-based; `End` is exclusive), `Seconds`,
+`Timecode()`. They print exactly as scenedetect prints them.
+
+## Command line
 
 ```
-dotnet run -c Release --project src/ShotDetector -- -i video.mp4 [-d adaptive|content|threshold] [--csv shots.csv] [--json shots.json] [--stats stats.csv] [--ffmpeg-resize]
+dotnet run -c Release --project src/ShotDetector.Cli -- -i video.mp4 [-d adaptive|content|threshold] [--csv shots.csv] [--json shots.json] [--stats stats.csv] [--ffmpeg-resize]
 ```
 
 Output matches `scenedetect -i video.mp4 detect-adaptive list-scenes`: the start frame is 1-based,
@@ -13,12 +37,12 @@ the end frame is inclusive, and timecodes are `HH:MM:SS.mmm`. `--csv` writes the
 as scenedetect (minus its leading "Timecode List" row), and `--stats` writes the per-frame metrics
 file that `scenedetect -s` writes. Defaults match the scenedetect CLI:
 content threshold 27, adaptive threshold 3, min-content-val 15, frame window 2, fade threshold 12,
-min scene length 0.6s.
+min scene length 0.6s. `--help` lists all options.
 
 ## Using the shot list
 
 ```
-dotnet run -c Release --project src/ShotDetector -- -i video.mp4 --save-images thumbs --split-video clips
+dotnet run -c Release --project src/ShotDetector.Cli -- -i video.mp4 --save-images thumbs --split-video clips
 ```
 
 - `--save-images <dir>` writes `{video}-Scene-{NNN}-{II}.jpg`, 3 per shot (`--num-images`): one a
@@ -85,7 +109,7 @@ slower path where ffmpeg converts whole frames, still with identical results.
   bicubic chroma for the default exact resize), because that's what OpenCV's ffmpeg backend does. Converting
   BT.709-tagged video "correctly" shifts content_val enough to flip borderline cuts.
 - **Timestamps:** scenedetect prints times from OpenCV's frame positions (container pts → ms →
-  rounded to µs, with Python's exact-binary rounding), not from frame/fps. `PyTime.cs` reproduces
+  rounded to µs, with Python's exact-binary rounding), not from frame/fps. `FrameTime.cs` reproduces
   that, taking the pts from an extra demux-only ffprobe pass. That assumes OpenCV's best-effort
   timestamps equal the sorted packet pts, which held for every sample but may not for streams with
   missing or broken timestamps.
@@ -109,3 +133,8 @@ slower path where ffmpeg converts whole frames, still with identical results.
 - **CLI spelling:** `-w/--weights` takes four numbers and `-k/--kernel-size` matches scenedetect's
   options; `--frame-window` is long-only here because `-f` is `--fade-bias`.
 - **Not ported:** Histogram/Hash detectors, frame skip, crop.
+
+## License
+
+Not decided yet. ShotDetector ports code from PySceneDetect (BSD 3-Clause), OpenCV (Apache 2.0) and
+FFmpeg's libswscale (LGPL 2.1+); see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

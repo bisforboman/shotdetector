@@ -8,6 +8,7 @@ namespace ShotDetector;
 /// </summary>
 public sealed class EdgeDetector(int width, int height, int? kernelSize = null)
 {
+    /// <summary>Size of the square the edges are dilated with.</summary>
     public int KernelSize { get; } = kernelSize ?? EstimatedKernelSize(width, height);
 
     readonly short[] _dx = new short[width * height], _dy = new short[width * height];

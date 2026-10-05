@@ -6,15 +6,17 @@ using System.Text.Json.Serialization;
 namespace ShotDetector;
 
 /// <summary>A shot from Start up to (not including) End, like PySceneDetect's scene list.</summary>
-public readonly record struct Shot(int Number, PyTime Start, PyTime End)
+public readonly record struct Shot(int Number, FrameTime Start, FrameTime End)
 {
-    public PyTime Duration => End.Minus(Start);
+    /// <summary>End minus start, as PySceneDetect computes a scene's length.</summary>
+    public FrameTime Duration => End.Minus(Start);
 }
 
+/// <summary>Builds shot lists and formats them like scenedetect's list-scenes.</summary>
 public static class Shots
 {
     /// <summary>Port of get_scenes_from_cuts with start_in_scene=True (what the CLI uses).</summary>
-    public static List<Shot> FromCuts(IEnumerable<PyTime> cuts, PyTime start, PyTime end)
+    public static List<Shot> FromCuts(IEnumerable<FrameTime> cuts, FrameTime start, FrameTime end)
     {
         var shots = new List<Shot>();
         foreach (var cut in cuts.DistinctBy(c => c.FrameNum).OrderBy(c => c.FrameNum))
@@ -55,6 +57,7 @@ public static class Shots
         return sb.ToString();
     }
 
+    /// <summary>The shot list as indented JSON.</summary>
     public static string Json(IEnumerable<Shot> shots) => JsonSerializer.Serialize(
         shots.Select(s => new ShotJson(
             s.Number,
@@ -67,7 +70,7 @@ public static class Shots
         ShotJsonContext.Default.ListShotJson);
 }
 
-public sealed record ShotJson(
+internal sealed record ShotJson(
     int Shot, long StartFrame, long EndFrame, string StartTimecode, string EndTimecode, long DurationFrames, double DurationSeconds);
 
 // Source-generated serializer: no reflection, so it also works trimmed / Native AOT.

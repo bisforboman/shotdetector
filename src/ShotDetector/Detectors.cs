@@ -2,16 +2,17 @@ namespace ShotDetector;
 
 /// <summary>
 /// A cut detector fed frames in order (0-based decode index). Returns where a new shot starts, which
-/// may lag behind <paramref name="frame"/>, or null. Detectors measure lengths through
+/// may lag behind the frame just fed, or null. Detectors measure lengths through
 /// <c>position</c> (frame index → time, as PySceneDetect's FrameTimecode positions), so variable
 /// frame rate video behaves as it does in PySceneDetect.
 /// </summary>
 public interface IDetector
 {
-    PyTime? ProcessFrame(int frame, byte[] bgr);
+    /// <summary>Feeds the next frame (packed BGR, downscaled); returns where a new shot starts, if a cut was found.</summary>
+    FrameTime? ProcessFrame(int frame, byte[] bgr);
 
     /// <summary>Called once after the last frame; <paramref name="end"/> is the position after decoding stopped.</summary>
-    PyTime? PostProcess(PyTime end) => null;
+    FrameTime? PostProcess(FrameTime end) => null;
 
     /// <summary>When set, per-frame metrics are recorded here (like `scenedetect -s`).</summary>
     Stats? Stats { get; set; }
@@ -23,7 +24,7 @@ public interface IDetector
 /// </summary>
 public sealed class ContentDetector(
     ContentScorer scorer,
-    Func<int, PyTime> position,
+    Func<int, FrameTime> position,
     Fps fps,
     double threshold = 27.0,
     int minSceneLen = 15) : IDetector
@@ -31,6 +32,7 @@ public sealed class ContentDetector(
     int? _lastAbove, _mergeStart;
     bool _mergeEnabled, _mergeTriggered;
     readonly double _minSeconds = minSceneLen / fps.Value;
+    /// <inheritdoc/>
     public Stats? Stats { get; set; }
 
     // FlashFilter compares the time between positions in float seconds against min_scene_len / fps.
@@ -38,7 +40,8 @@ public sealed class ContentDetector(
     // short (e.g. 14 frames at 24 fps: 0.583333 < 0.58333333).
     bool MinLengthMet(int frame, int since) => position(frame).Minus(position(since)).Seconds >= _minSeconds;
 
-    public PyTime? ProcessFrame(int frame, byte[] bgr)
+    /// <inheritdoc/>
+    public FrameTime? ProcessFrame(int frame, byte[] bgr)
     {
         double score = scorer.Score(bgr);
         scorer.Record(Stats, frame, score);
@@ -89,7 +92,7 @@ public sealed class ContentDetector(
 /// </summary>
 public sealed class AdaptiveDetector(
     ContentScorer scorer,
-    Func<int, PyTime> position,
+    Func<int, FrameTime> position,
     double adaptiveThreshold = 3.0,
     int minSceneLen = 15,
     int windowWidth = 2,
@@ -98,9 +101,11 @@ public sealed class AdaptiveDetector(
     readonly List<(int Frame, double Score)> _buffer = [];
     readonly string _ratioKey = $"adaptive_ratio{(scorer.IsLumaOnly ? "_lum" : "")} (w={windowWidth})";
     int? _lastCut;
+    /// <inheritdoc/>
     public Stats? Stats { get; set; }
 
-    public PyTime? ProcessFrame(int frame, byte[] bgr)
+    /// <inheritdoc/>
+    public FrameTime? ProcessFrame(int frame, byte[] bgr)
     {
         double score = scorer.Score(bgr);
         scorer.Record(Stats, frame, score);
@@ -152,7 +157,7 @@ public sealed class AdaptiveDetector(
 /// even though its option range is -100..100; here it takes the detector's -1..1 meaning.
 /// </summary>
 public sealed class ThresholdDetector(
-    Func<int, PyTime> position,
+    Func<int, FrameTime> position,
     Fps fps,
     double threshold = 12,
     int minSceneLen = 15,
@@ -162,9 +167,11 @@ public sealed class ThresholdDetector(
     int? _lastSceneCut;
     int _lastFadeFrame;
     bool _fadedOut, _processed;
+    /// <inheritdoc/>
     public Stats? Stats { get; set; }
 
-    public PyTime? ProcessFrame(int frame, byte[] bgr)
+    /// <inheritdoc/>
+    public FrameTime? ProcessFrame(int frame, byte[] bgr)
     {
         double average = Average(bgr);
         Stats?.Set(frame, "average_rgb", average);
@@ -180,7 +187,8 @@ public sealed class ThresholdDetector(
         return sum / (double)bgr.Length;
     }
 
-    public PyTime? ProcessAverage(int frame, double average)
+    /// <summary>Feeds the next frame's mean pixel level (see <see cref="Average"/>); returns a cut, if any.</summary>
+    public FrameTime? ProcessAverage(int frame, double average)
     {
         _lastSceneCut ??= frame;
         if (!_processed)
@@ -191,7 +199,7 @@ public sealed class ThresholdDetector(
             return null;
         }
 
-        PyTime? cut = null;
+        FrameTime? cut = null;
         if (!_fadedOut && average < _threshold)
         {
             _fadedOut = true;
@@ -204,7 +212,7 @@ public sealed class ThresholdDetector(
                 // The split is computed as a bare frame number from the (time-derived) frame numbers.
                 long fadeOut = position(_lastFadeFrame).FrameNum;
                 long duration = position(frame).FrameNum - fadeOut;
-                cut = PyTime.Frame(fadeOut + (long)Math.Round(duration * (1.0 + fadeBias) / 2.0), fps);
+                cut = FrameTime.Frame(fadeOut + (long)Math.Round(duration * (1.0 + fadeBias) / 2.0), fps);
                 _lastSceneCut = frame;
             }
             _fadedOut = false;
@@ -213,7 +221,8 @@ public sealed class ThresholdDetector(
         return cut;
     }
 
-    public PyTime? PostProcess(PyTime end) =>
+    /// <inheritdoc/>
+    public FrameTime? PostProcess(FrameTime end) =>
         _processed && _fadedOut && end.Minus(position(_lastSceneCut ?? 0)).FrameNum >= minSceneLen
             ? position(_lastFadeFrame)
             : null;

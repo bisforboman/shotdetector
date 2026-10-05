@@ -7,7 +7,7 @@ namespace ShotDetector;
 /// When downscaling it samples only the 2x2 nearest source pixels, so fine detail aliases, and it
 /// reads only a fraction of the source: <see cref="ResizeYuv420"/> converts just those pixels.
 /// </summary>
-public sealed class CvResize
+internal sealed class CvResize
 {
     const int CoefScale = 1 << 11;
 
