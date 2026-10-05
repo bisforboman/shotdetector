@@ -99,6 +99,7 @@ public sealed class VideoReader
     readonly string _path;
     readonly bool _ffmpegResize;
     readonly int _decodeThreads;
+    readonly IYuv420Converter? _yuv420;
     readonly long[] _pts;        // presentation timestamps of the frames, in display order
     readonly long _startPts;
     readonly double _timeBase;   // seconds per pts unit, as OpenCV's r2d(time_base)
@@ -108,8 +109,10 @@ public sealed class VideoReader
     /// <param name="ffmpegResize">Let ffmpeg downscale (faster, results can differ from PySceneDetect).</param>
     /// <param name="decodeThreads">ffmpeg decoder threads; 0 = ffmpeg's choice. Each frame thread
     /// holds its own reference frames, so this trades memory (about 25 MB per thread at 1080p) for speed.</param>
-    public VideoReader(string path, bool ffmpegResize = false, int decodeThreads = 4)
+    /// <param name="yuv420Converter">Enables the yuv420p fast path (see <see cref="IYuv420Converter"/>).</param>
+    public VideoReader(string path, bool ffmpegResize = false, int decodeThreads = 4, IYuv420Converter? yuv420Converter = null)
     {
+        _yuv420 = yuv420Converter;
         _path = path;
         _ffmpegResize = ffmpegResize;
         _decodeThreads = decodeThreads;
@@ -195,13 +198,13 @@ public sealed class VideoReader
     /// <summary>How frames get from ffmpeg to the downscaled BGR the detectors see.</summary>
     public string Pipeline => !_ffmpegResize && (Width, Height) != (SourceWidth, SourceHeight)
         // swscale's unscaled yuv420p converter (what OpenCV gets) needs an even height.
-        ? (_pixelFormat == "yuv420p" && SourceHeight % 2 == 0 ? "yuv420p+sampled" : "bgr24+resize")
+        ? (_yuv420 is not null && _pixelFormat == "yuv420p" && SourceHeight % 2 == 0 ? "yuv420p+sampled" : "bgr24+resize")
         : "ffmpeg-scale";
 
     /// <summary>
     /// Yields every decoded frame, downscaled. A background thread drains the pipe while the caller
     /// processes the current frame, so a yielded buffer is only valid until the next one.
-    /// Pipelines: "yuv420p+sampled" has ffmpeg send raw yuv420p (no conversion, half the bytes of BGR)
+    /// Pipelines: "yuv420p+sampled" (with a yuv420 converter) has ffmpeg send raw yuv420p (no conversion, half the bytes of BGR)
     /// and converts only the pixels cv2.resize reads; "bgr24+resize" has ffmpeg convert whole frames;
     /// "ffmpeg-scale" has ffmpeg downscale (--ffmpeg-resize, or when no resize is needed).
     /// </summary>
@@ -249,7 +252,7 @@ public sealed class VideoReader
         using var cancel = new CancellationTokenSource();
         using var free = new BlockingCollection<byte[]>();
         using var full = new BlockingCollection<byte[]>();
-        int readSize = yuv ? Yuv420.FrameSize(SourceWidth, SourceHeight)
+        int readSize = yuv ? IYuv420Converter.FrameSize(SourceWidth, SourceHeight)
             : resizeHere ? SourceWidth * SourceHeight * 3
             : Width * Height * 3;
         for (int i = 0; i < 3; i++)
@@ -286,7 +289,7 @@ public sealed class VideoReader
                     continue;
                 }
                 if (yuv)
-                    resizer.ResizeYuv420(buffer, small);
+                    resizer.ResizeYuv420(buffer, small, _yuv420!);
                 else
                     resizer.Resize(buffer, small);
                 free.Add(buffer);

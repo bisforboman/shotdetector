@@ -56,9 +56,9 @@ internal sealed class CvResize
 
     /// <summary>
     /// Resizes a packed yuv420p source as if it had first been converted to BGR with
-    /// <see cref="Yuv420"/>, converting only the pixels the resize reads.
+    /// <paramref name="converter"/>, converting only the pixels the resize reads.
     /// </summary>
-    public void ResizeYuv420(byte[] yuv, byte[] dst) => Parallel.ForEach(_chunks, c =>
+    public void ResizeYuv420(byte[] yuv, byte[] dst, IYuv420Converter converter) => Parallel.ForEach(_chunks, c =>
     {
         int lastRow0 = -1, lastRow1 = -1;
         for (int dy = c.Start; dy < c.End; dy++)
@@ -67,12 +67,12 @@ internal sealed class CvResize
             // Downscaling rarely reuses rows, but upscaling does; skip converting them twice.
             if (r0 != lastRow0)
             {
-                Yuv420.RowToBgr(yuv, _sw, _sh, r0, SourceCols, c.BgrRow0);
+                converter.RowToBgr(yuv, _sw, _sh, r0, SourceCols, c.BgrRow0);
                 HResize(c.BgrRow0, c.Row0);
             }
             if (r1 != lastRow1)
             {
-                Yuv420.RowToBgr(yuv, _sw, _sh, r1, SourceCols, c.BgrRow1);
+                converter.RowToBgr(yuv, _sw, _sh, r1, SourceCols, c.BgrRow1);
                 HResize(c.BgrRow1, c.Row1);
             }
             (lastRow0, lastRow1) = (r0, r1);

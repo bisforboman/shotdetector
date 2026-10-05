@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ShotDetector\ShotDetector.csproj" />
+    <ProjectReference Include="..\..\src\ShotDetector.FastYuv\ShotDetector.FastYuv.csproj" />
   </ItemGroup>
 
 </Project>

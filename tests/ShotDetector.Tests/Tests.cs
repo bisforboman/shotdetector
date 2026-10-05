@@ -1,4 +1,5 @@
 using ShotDetector;
+using ShotDetector.FastYuv;
 
 public class HsvTests
 {
@@ -275,7 +276,7 @@ public class Yuv420Tests
     {
         byte[] yuv = [y, y, y, y, u, v]; // 2x2 frame: 4 luma, 1 U, 1 V
         var row = new byte[6];
-        Yuv420.RowToBgr(yuv, 2, 2, 0, [0, 1], row);
+        new SwscaleYuv420().RowToBgr(yuv, 2, 2, 0, [0, 1], row);
         Assert.Equal([b, g, r, b, g, r], row);
     }
 
@@ -283,17 +284,17 @@ public class Yuv420Tests
     public void FusedYuvResizeEqualsConvertingEverythingFirst()
     {
         const int w = 37, h = 22, dw = 11, dh = 6; // odd width, chroma width 19
-        var yuv = new byte[Yuv420.FrameSize(w, h)];
+        var yuv = new byte[IYuv420Converter.FrameSize(w, h)];
         new Random(7).NextBytes(yuv);
         var bgr = new byte[w * h * 3];
         int[] all = Enumerable.Range(0, w).ToArray();
         for (int y = 0; y < h; y++)
-            Yuv420.RowToBgr(yuv, w, h, y, all, bgr.AsSpan(y * w * 3, w * 3));
+            new SwscaleYuv420().RowToBgr(yuv, w, h, y, all, bgr.AsSpan(y * w * 3, w * 3));
 
         byte[] expected = new byte[dw * dh * 3], actual = new byte[dw * dh * 3];
         var resize = new CvResize(w, h, dw, dh);
         resize.Resize(bgr, expected);
-        resize.ResizeYuv420(yuv, actual);
+        resize.ResizeYuv420(yuv, actual, new SwscaleYuv420());
         Assert.Equal(expected, actual);
     }
 }

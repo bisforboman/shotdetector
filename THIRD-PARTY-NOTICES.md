@@ -4,6 +4,9 @@ ShotDetector contains C# ports of algorithms from the projects below, written so
 match theirs exactly. It does not include their source or binaries. At run time it calls an
 `ffmpeg`/`ffprobe` you install yourself.
 
+The ShotDetector library and CLI (MIT) contain ports from PySceneDetect and OpenCV only. The
+FFmpeg port lives in the separate ShotDetector.FastYuv package, which is LGPL-2.1-or-later.
+
 ## PySceneDetect (BSD 3-Clause)
 
 Ported: ContentDetector, AdaptiveDetector, ThresholdDetector, FlashFilter, FrameTimecode
@@ -49,9 +52,10 @@ Ported: `cv2.cvtColor(COLOR_BGR2HSV)` for 8-bit images (`Hsv.cs`), `cv2.resize(I
 Copyright the OpenCV authors. https://github.com/opencv/opencv,
 license: https://www.apache.org/licenses/LICENSE-2.0
 
-## FFmpeg libswscale (GNU LGPL 2.1 or later)
+## FFmpeg libswscale (GNU LGPL 2.1 or later), ShotDetector.FastYuv only
 
-Ported: the yuv420p → BGR24 converter (`Yuv420.cs`) from `libswscale/yuv2rgb.c` and
-`libswscale/x86/yuv_2_rgb.asm`.
+Ported: the yuv420p → BGR24 converter (`src/ShotDetector.FastYuv/SwscaleYuv420.cs`) from
+`libswscale/yuv2rgb.c` and `libswscale/x86/yuv_2_rgb.asm`. The package is therefore licensed
+LGPL-2.1-or-later (`src/ShotDetector.FastYuv/COPYING.LGPL`).
 Copyright (C) 2001-2007 Michael Niedermayer, (C) 2009-2010 Konstantin Shishkov.
 https://ffmpeg.org, license: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html

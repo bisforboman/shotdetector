@@ -2,11 +2,14 @@
 
 Shot/cut detection for video in C#: a faithful port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s
 ContentDetector, AdaptiveDetector and ThresholdDetector (scenedetect 0.7.1) that gives identical
-results, about 1.5x faster at 1080p. Video is decoded by [ffmpeg](https://ffmpeg.org), which must be
+results, about 1.5x faster than scenedetect at 1080p with the optional fast path. Video is decoded by [ffmpeg](https://ffmpeg.org), which must be
 installed and on `PATH`; all detection logic is plain C#.
 
-- `src/ShotDetector`: the library (NuGet package `ShotDetector`).
-- `src/ShotDetector.Cli`: the `shotdetect` command-line tool.
+- `src/ShotDetector`: the library, NuGet package `ShotDetector` (MIT).
+- `src/ShotDetector.FastYuv`: optional fast path for large video, NuGet package
+  `ShotDetector.FastYuv` (LGPL-2.1-or-later, since it ports FFmpeg code).
+- `src/ShotDetector.Cli`: the `shotdetect` command-line tool, used for development and comparison
+  (core only, not packaged).
 
 ## Library
 
@@ -21,6 +24,9 @@ foreach (var shot in result.Shots)
 var fades = ShotDetection.Detect("video.mp4", new DetectionOptions { Detector = DetectorKind.Threshold });
 Export.SaveImages(result, "thumbs");
 File.WriteAllText("shots.csv", Shots.Csv(result.Shots));
+
+// Optional, from ShotDetector.FastYuv (LGPL): ~1.7x faster on 1080p, identical results.
+var fast = ShotDetection.Detect("video.mp4", new DetectionOptions { Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420() });
 ```
 
 `Shot.Start`/`End` are `FrameTime`s: `FrameNum` (0-based; `End` is exclusive), `Seconds`,
@@ -77,20 +83,23 @@ cuts on real footage differ (2–6 per trailer).
 
 ## Performance
 
-1920x1080, 5012 frames, 16-core machine (measured while another workload was using part of the CPU,
-so expect ±20%):
+1920x1080, 5012 frames, 16-core machine (expect ±20% between runs):
 
 | | Wall time | Peak memory (incl. ffmpeg) |
 |---|---|---|
 | scenedetect 0.7.1 | 15 s | 212 MB |
-| ShotDetector (exact, default) | 10 s | 205 MB (67 MB ours + ~140 MB ffmpeg) |
-| ShotDetector `--ffmpeg-resize` | 5 s | ~60 MB |
+| ShotDetector + FastYuv | 10 s | 205 MB (65 MB ours + ~140 MB ffmpeg) |
+| ShotDetector (core only) | 17 s | 336 MB |
+| ShotDetector `FfmpegResize` (not exact) | 5 s | ~60 MB |
 
-What makes exact mode faster while giving identical results:
+On 480p video all of these take about the same time (3.3–3.7 s for the Sintel trailer).
+All exact variants give identical results.
+
+What makes the FastYuv path faster:
 - ffmpeg sends raw yuv420p (no colour conversion, half the bytes of BGR) through a named pipe with
   an 8 MB buffer (Windows' redirected stdout uses 4 KB);
 - cv2.resize only reads ~150k of the 2M pixels of a 1080p frame, so only those are converted to
-  BGR (`Yuv420.cs`, a bit-exact port of swscale's converter), fused into the resize;
+  BGR (`SwscaleYuv420.cs`, a bit-exact port of swscale's converter), fused into the resize;
 - the resize and the HSV + difference scoring run on several cores; reading overlaps processing;
 - ffmpeg gets 4 decoder threads (`--threads`): more only adds ~25 MB each without making the run faster.
 
@@ -136,5 +145,6 @@ slower path where ffmpeg converts whole frames, still with identical results.
 
 ## License
 
-Not decided yet. ShotDetector ports code from PySceneDetect (BSD 3-Clause), OpenCV (Apache 2.0) and
-FFmpeg's libswscale (LGPL 2.1+); see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+MIT ([LICENSE](LICENSE)), except `src/ShotDetector.FastYuv`, which is LGPL-2.1-or-later because it
+ports FFmpeg's libswscale. The MIT library contains ports from PySceneDetect (BSD 3-Clause) and
+OpenCV (Apache 2.0); see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

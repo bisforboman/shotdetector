@@ -49,6 +49,12 @@ public sealed record DetectionOptions
     /// <summary>ffmpeg decoder threads; 0 = ffmpeg's choice.</summary>
     public int DecodeThreads { get; init; } = 4;
 
+    /// <summary>
+    /// Enables the yuv420p fast path: much faster on large video, same results. Use SwscaleYuv420
+    /// from the ShotDetector.FastYuv package (LGPL).
+    /// </summary>
+    public IYuv420Converter? Yuv420Converter { get; init; }
+
     /// <summary>Record per-frame metrics in <see cref="DetectionResult.Stats"/> (like scenedetect -s).</summary>
     public bool CollectStats { get; init; }
 }
@@ -74,7 +80,7 @@ public static class ShotDetection
         if (o.KernelSize is { } k && (k < 3 || k % 2 == 0))
             throw new ArgumentException("KernelSize must be an odd number >= 3.");
 
-        var video = new VideoReader(videoPath, o.FfmpegResize, o.DecodeThreads);
+        var video = new VideoReader(videoPath, o.FfmpegResize, o.DecodeThreads, o.Yuv420Converter);
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
 
         var w = o.Weights;
