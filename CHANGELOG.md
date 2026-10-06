@@ -5,6 +5,8 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- CLI `--config <file>`: scenedetect's config file (scenedetect.cfg) as defaults; unknown keys are listed.
+  `DetectionOptions.AddLastScene` (threshold detector; on by default, as in scenedetect).
 - `ShotDetection.LoadScenes` / CLI `--load-scenes`: shots from a scene list CSV, as scenedetect's load-scenes.
 - File name templates as scenedetect's: `ImageOptions.FileName`, `SplitOptions.FileName` (CLI `--image-filename`,
   `--split-filename`); CLI `-o/--output` and `$VIDEO_NAME` in output paths.

@@ -144,6 +144,9 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
   detecting, for re-exporting an edited list (`ShotDetection.LoadScenes`); `--load-scenes-column`
   picks the start column (`Start Frame` by default, or a timecode/seconds column). Byte-identical to
   scenedetect's load-scenes, also with time ranges, `--merge-last-scene` and `--drop-short-scenes`.
+- `--config <file>` reads a scenedetect config file (scenedetect.cfg): its `[global]`, `[detect-*]` and
+  output sections become the defaults, which command-line options override. Keys ShotDetector doesn't
+  have are listed on stderr. (`-c` stays `--min-content-val`, as in `detect-adaptive -c`.)
 - File names follow scenedetect's templates (`--image-filename`, `--split-filename`;
   `ImageOptions.FileName`, `SplitOptions.FileName`), with the same variables (`$VIDEO_NAME`,
   `$SCENE_NUMBER`, `$IMAGE_NUMBER`, `$FRAME_NUMBER`, `$TIMESTAMP_MS`, `$TIMECODE`, `$START_TIME`, ...).

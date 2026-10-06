@@ -20,7 +20,7 @@ internal interface IDetector
 
 /// <summary>
 /// Port of PySceneDetect's ContentDetector: cut when content_val >= threshold, with FlashFilter in
-/// MERGE mode (its default) enforcing min_scene_len. SUPPRESS filter mode is not ported.
+/// MERGE mode (its default) or SUPPRESS mode enforcing min_scene_len.
 /// </summary>
 internal sealed class ContentDetector(
     ContentScorer scorer,
@@ -173,7 +173,8 @@ internal sealed class ThresholdDetector(
     double threshold = 12,
     int minSceneLen = 15,
     double fadeBias = 0,
-    PySceneDetectVersion version = PySceneDetectVersion.V0_7_1) : IDetector
+    PySceneDetectVersion version = PySceneDetectVersion.V0_7_1,
+    bool addLastScene = true) : IDetector
 {
     readonly int _threshold = (int)threshold; // PySceneDetect truncates it to an int
     int? _lastSceneCut;
@@ -236,7 +237,7 @@ internal sealed class ThresholdDetector(
 
     /// <inheritdoc/>
     public FrameTime? PostProcess(FrameTime end) =>
-        _processed && _fadedOut && end.Minus(position(_lastSceneCut ?? 0)).FrameNum >= minSceneLen
+        addLastScene && _processed && _fadedOut && end.Minus(position(_lastSceneCut ?? 0)).FrameNum >= minSceneLen
             ? position(_lastFadeFrame)
             : null;
 }
