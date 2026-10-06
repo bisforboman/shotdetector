@@ -280,6 +280,16 @@ public sealed record DetectionResult(
 public static class ShotDetection
 {
     /// <summary>
+    /// The <see cref="System.Diagnostics.ActivitySource"/> name: each detection is one span ("ShotDetection.Detect")
+    /// with the video's size, frame rate, pipeline and decoder, and the frames and shots found. For OpenTelemetry,
+    /// <c>.AddSource(ShotDetection.ActivitySourceName)</c>.
+    /// </summary>
+    public const string ActivitySourceName = "ShotDetector";
+
+    static readonly System.Diagnostics.ActivitySource Tracing =
+        new(ActivitySourceName, typeof(ShotDetection).Assembly.GetName().Version?.ToString());
+
+    /// <summary>
     /// Decodes <paramref name="videoPath"/> with ffmpeg and returns its shots, as
     /// `scenedetect -i video detect-... list-scenes` would.
     /// </summary>
@@ -440,6 +450,36 @@ public static class ShotDetection
     }
 
     static DetectionResult Run(string? videoPath, Stream? videoStream, DetectionOptions? options, Action<Shot>? onShot, CancellationToken cancellationToken)
+    {
+        using var activity = Tracing.StartActivity("ShotDetection.Detect");
+        try
+        {
+            var result = RunTraced(videoPath, videoStream, options, onShot, cancellationToken);
+            if (activity is not null)
+            {
+                var v = result.Video;
+                activity.SetTag("shotdetector.video.width", v.SourceWidth);
+                activity.SetTag("shotdetector.video.height", v.SourceHeight);
+                activity.SetTag("shotdetector.video.fps", v.Fps.Value);
+                activity.SetTag("shotdetector.pipeline", v.Pipeline.ToString());
+                activity.SetTag("shotdetector.decoder", v.DecodesInProcess ? "inprocess" : "process");
+                activity.SetTag("shotdetector.streaming", v.Streaming);
+                activity.SetTag("shotdetector.frames", result.FrameCount);
+                activity.SetTag("shotdetector.shots", result.Shots.Count);
+            }
+            return result;
+        }
+        catch (Exception e)
+        {
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, e.Message);
+            activity?.AddException(e);
+            if (e is ShotDetectionException d)
+                activity?.SetTag("shotdetector.error", d.Reason.ToString());
+            throw;
+        }
+    }
+
+    static DetectionResult RunTraced(string? videoPath, Stream? videoStream, DetectionOptions? options, Action<Shot>? onShot, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var o = options ?? new DetectionOptions();
