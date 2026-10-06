@@ -3,6 +3,8 @@
   <PropertyGroup>
     <IsAotCompatible>true</IsAotCompatible>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Every public member is documented (it's the package's API reference); keep it that way. -->
+    <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
 
     <PackageId>ShotDetector.FastYuv</PackageId>
     <Description>Optional fast path for ShotDetector: a bit-exact port of FFmpeg's yuv420p to BGR conversion, so ffmpeg can send raw yuv420p and only the pixels needed are converted. About 1.7x faster on 1080p video, identical results. LGPL-2.1-or-later, as the FFmpeg code it ports.</Description>
