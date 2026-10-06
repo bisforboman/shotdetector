@@ -179,9 +179,9 @@ public sealed record DetectionOptions
     public bool FfmpegResize { get; init; }
 
     /// <summary>
-    /// ffmpeg decoder threads; 0 = ffmpeg's choice. Null (the default) picks for the frame pipeline: 8 when
-    /// ffmpeg sends yuv420p (<see cref="FramePipeline.Yuv420Sampled"/>, which is then bound by decoding:
-    /// ~13% faster on HD than 4, for ~70 MB more at 1080p), else 4 (bound by the pipe; more doesn't help).
+    /// ffmpeg decoder threads; 0 = ffmpeg's choice. Null (the default) is one fewer than the CPUs available (so 1 on a
+    /// 2-CPU container), at most 8 when ffmpeg sends yuv420p (<see cref="FramePipeline.Yuv420Sampled"/>, bound by
+    /// decoding) and at most 4 otherwise.
     /// </summary>
     public int? DecodeThreads { get; init; }
 

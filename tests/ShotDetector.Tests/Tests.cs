@@ -19,6 +19,19 @@ public class HsvTests
         Assert.Equal((h, s, v), Hsv.FromBgr(b, g, r));
 }
 
+public class DecodeThreadsTests
+{
+    [Theory]
+    [InlineData(1, FramePipeline.SampledBgr, 1)]
+    [InlineData(2, FramePipeline.SampledBgr, 1)]    // a 2-CPU container: one decoder thread
+    [InlineData(4, FramePipeline.SampledBgr, 3)]
+    [InlineData(16, FramePipeline.SampledBgr, 4)]
+    [InlineData(16, FramePipeline.Yuv420Sampled, 8)]
+    [InlineData(6, FramePipeline.Yuv420Sampled, 5)]
+    public void DefaultLeavesOneCpu(int cpus, FramePipeline pipeline, int threads) =>
+        Assert.Equal(threads, VideoReader.DefaultDecodeThreads(pipeline, cpus));
+}
+
 public class ContentScorerTests
 {
     [Theory]
