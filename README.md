@@ -183,9 +183,24 @@ ignores colour tags (see below). With `--ffmpeg-resize`, cuts on real footage di
 
 ## Performance
 
-1920x1080 H.264, 2880 frames (2 minutes), content detector, on a Windows desktop pinned to 2 CPUs and with
-all 16; best of 2, wall times vary ±10% between runs. Memory is the peak of the whole process tree
-(ShotDetector plus its ffmpeg, scenedetect's Python with OpenCV's FFmpeg inside):
+Results depend on the platform and the ffmpeg build more than one would hope, so here are both.
+
+**Linux, 2 CPUs** (GitHub runner, Alpine container with ffmpeg 8.1.2 for ShotDetector, scenedetect on the
+host; Sintel trailer 1080p H.264, 1253 frames, content detector):
+
+| | Wall time | CPU time |
+|---|---|---|
+| scenedetect 0.7.1 | 4.0 s | 7.0 s |
+| ShotDetector (core, MIT) | 6.7 s | 10.4 s |
+| ShotDetector + FastYuv (LGPL) | 6.4 s | 10.8 s |
+
+Here ShotDetector uses ~1.5x scenedetect's CPU: the ffmpeg command line spends ~35% more CPU than OpenCV's
+in-process FFmpeg on the same decoding and conversion, and our scoring takes ~1.3 ms per frame against
+~0.5 ms for scenedetect's (issue #12; both are being worked on).
+
+**Windows desktop** (ffmpeg 7.1), 1920x1080 H.264, 2880 frames (2 minutes), content detector, pinned to
+2 CPUs and with all 16; best of 2, wall times vary ±10% between runs. Memory is the peak of the whole
+process tree (ShotDetector plus its ffmpeg, scenedetect's Python with OpenCV's FFmpeg inside):
 
 | | 2 CPUs | 16 CPUs |
 |---|---|---|
@@ -193,8 +208,8 @@ all 16; best of 2, wall times vary ±10% between runs. Memory is the peak of the
 | ShotDetector (core, MIT) | 19 s, 305 MB | 8.7 s, 284 MB |
 | ShotDetector + FastYuv (LGPL) | 20 s, 268 MB | 5.1 s |
 
-All exact variants give identical results. CPU time on 2 CPUs: ShotDetector 26 s (ffmpeg 20, ours 6),
-scenedetect 30 s. On smaller video the tools take about the same time.
+All exact variants give identical results. CPU time on 2 CPUs on this machine: ShotDetector 26 s
+(ffmpeg 20, ours 6), scenedetect 30 s; on Linux the balance tips the other way (above).
 
 How the core path keeps up without converting pixels itself:
 - ffmpeg converts each frame to BGR exactly as OpenCV does, then its `remap` filter keeps only the
