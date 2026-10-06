@@ -4,6 +4,8 @@
     <!-- Trim/AOT analyzers on, so apps using the library can publish with Native AOT. -->
     <IsAotCompatible>true</IsAotCompatible>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Every public member is documented (it's the package's API reference); keep it that way. -->
+    <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
 
     <PackageId>ShotDetector</PackageId>
     <Description>Shot/cut detection for video, a faithful C# port of PySceneDetect's detectors (adaptive, content, threshold, histogram, hash) with identical results. Decodes with ffmpeg (must be on PATH).</Description>

@@ -13,8 +13,18 @@ installed and on `PATH`; all detection logic is plain C#.
 - `src/ShotDetector`: the library, NuGet package `ShotDetector` (MIT).
 - `src/ShotDetector.FastYuv`: optional fast path for large video, NuGet package
   `ShotDetector.FastYuv` (LGPL-2.1-or-later, since it ports FFmpeg code).
-- `src/ShotDetector.Cli`: the `shotdetect` command-line tool, used for development and comparison
-  (core only, not packaged).
+- `src/ShotDetector.Cli`: the `shotdetect` command-line tool, as the .NET tool `ShotDetector.Cli` and
+  as self-contained Native AOT binaries on each GitHub release (core only, MIT).
+
+## Install
+
+```
+dotnet add package ShotDetector                 # the library
+dotnet add package ShotDetector.FastYuv         # optional, LGPL: faster on large video
+dotnet tool install -g ShotDetector.Cli         # the shotdetect command
+```
+
+ffmpeg and ffprobe must be on `PATH` (or set `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`).
 
 ## Library
 
@@ -84,33 +94,41 @@ on Linux, where repeated runs give different results, so CI compares 0.6.4 on th
 detectors; on Windows all three matched 0.6.4 exactly.)
 
 `Shot.Start`/`End` are `FrameTime`s: `FrameNum` (0-based; `End` is exclusive), `Seconds`,
-`Timecode()`. They print exactly as scenedetect prints them.
+`Timecode()` (also what `ToString()` gives). They print exactly as scenedetect prints them.
 
 ## Command line
 
 ```
-dotnet run -c Release --project src/ShotDetector.Cli -- -i video.mp4 [-d adaptive|content|threshold] [--csv shots.csv] [--json shots.json] [--stats stats.csv] [--ffmpeg-resize]
+shotdetect -i video.mp4 [-d adaptive|content|threshold|hist|hash] [--csv shots.csv] [--json shots.json] [--stats stats.csv]
 ```
 
 Output matches `scenedetect -i video.mp4 detect-adaptive list-scenes`: the start frame is 1-based,
 the end frame is inclusive, and timecodes are `HH:MM:SS.mmm`. `--csv` writes the same scene list CSV
-as scenedetect (minus its leading "Timecode List" row), and `--stats` writes the per-frame metrics
-file that `scenedetect -s` writes. Defaults match the scenedetect CLI:
+as scenedetect, byte for byte (`--skip-cuts` leaves out its "Timecode List" row, `-q` the printed
+table), and `--stats` writes the per-frame metrics file that `scenedetect -s` writes. `-i -` reads
+standard input; `--frame-rate` overrides the frame rate (scenedetect `-f`), also for image
+sequences such as `frames/%04d.png`. Defaults match the scenedetect CLI:
 content threshold 27, adaptive threshold 3, min-content-val 15, frame window 2, fade threshold 12,
 min scene length 0.6s. `--help` lists all options.
 
 ## Using the shot list
 
 ```
-dotnet run -c Release --project src/ShotDetector.Cli -- -i video.mp4 --save-images thumbs --split-video clips
+shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.html --split-video clips
 ```
 
 - `--save-images <dir>` writes `{video}-Scene-{NNN}-{II}.jpg`, 3 per shot (`--num-images`): one a
   frame in from the start, one mid-shot, one a frame before the end. They are the same frames
   scenedetect's `save-images` picks (checked on 120 thumbnails), encoded by ffmpeg instead of
   OpenCV, so similar but not byte-identical files.
+- `--save-html <file>` writes scenedetect's `save-html` page (cut list and shot table with the
+  thumbnails), byte-identical to scenedetect's; `--html-no-images`, `--html-image-width/height`.
+  In the library: `Shots.Html`.
 - `--split-video <dir>` writes `{video}-Scene-{NNN}.mp4` with scenedetect's `split-video` ffmpeg
-  command (libx264 veryfast CRF 22, AAC). The clips came out byte-identical to scenedetect's.
+  command (libx264 veryfast CRF 22, AAC, subtitles dropped), and its options: `--split-copy`,
+  `--split-high-quality`, `--split-crf`, `--split-preset`, `--split-args`, `--split-expand`
+  (`SplitOptions` in the library). The clips came out byte-identical to scenedetect's for every
+  option.
 
 ## Verifying against PySceneDetect
 
