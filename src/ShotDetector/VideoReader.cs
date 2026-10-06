@@ -150,7 +150,12 @@ public sealed partial class VideoReader
     readonly string[] _inputOptions;   // ffmpeg/ffprobe options for the input (an image sequence's rate)
     readonly IYuv420Converter? _yuv420;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
-    readonly List<long> _livePts = []; // the same, as frames arrive, when streaming
+    readonly List<long> _livePts = []; // the same, as frames arrive, when streaming (from the stream's start)
+    // For a file in 0.7.1 mode: the packet (index into _pts) of each decoded frame since _liveStart. Normally
+    // frame i is packet i, but a decoder drops frames it can't decode (corrupt data), and OpenCV then labels
+    // every later frame by its own time, so frame numbers skip. Read from showinfo, as frames arrive.
+    readonly List<int> _livePackets = [];
+    int _liveStart;
     long _startPts;
     double _timeBase;                  // seconds per pts unit, as OpenCV's r2d(time_base)
     readonly double _startSeconds;
@@ -298,6 +303,25 @@ public sealed partial class VideoReader
         return result;
     }
 
+    /// <summary>
+    /// The packet a decoded frame is, from its absolute showinfo time: the first packet after
+    /// <paramref name="previous"/> within half a frame of it; if none is (a time the packet list doesn't
+    /// have), simply the next one.
+    /// </summary>
+    int PacketOf(double seconds, int previous)
+    {
+        double tolerance = 0.5 / Fps.Value;
+        for (int i = previous + 1; i < _pts.Length; i++)
+        {
+            double t = _pts[i] * _timeBase;
+            if (Math.Abs(t - seconds) <= tolerance)
+                return i;
+            if (t > seconds + tolerance)
+                break;
+        }
+        return Math.Min(previous + 1, Math.Max(_pts.Length - 1, 0));
+    }
+
     /// <summary>An ffmpeg/ffprobe failure, explained when it is the common streaming one.</summary>
     static InvalidOperationException Failed(string message, Exception? inner = null) =>
         message.Contains("moov atom not found") || message.Contains("mp4,m4a,3gp,3g2,mj2 @") && message.Contains("partial file")
@@ -334,10 +358,11 @@ public sealed partial class VideoReader
     {
         if (Compatibility == PySceneDetectVersion.V0_6_4)
             return FrameTime.Frame064(frame, Fps);
-        long? pts = Streaming ? (frame < _livePts.Count ? _livePts[frame] : null) : (frame < _pts.Length ? _pts[frame] : null);
+        int packet = frame - _liveStart is int k && k >= 0 && k < _livePackets.Count ? _livePackets[k] : frame;
+        long? pts = Streaming ? (frame < _livePts.Count ? _livePts[frame] : null) : (packet < _pts.Length ? _pts[packet] : null);
         if (pts is { } p)
         {
-            double ms = (p - _startPts) * _timeBase * 1000;
+            double ms = (Streaming ? p : p - _startPts) * _timeBase * 1000;
             long micros = (long)Math.Round(ms * 1000);
             if (micros > 0)
                 return FrameTime.Pts(micros, 1_000_000, Fps);
@@ -477,11 +502,17 @@ public sealed partial class VideoReader
             ? "" : $",crop={CropRegion.Width}:{CropRegion.Height}:{CropRegion.X}:{CropRegion.Y}";
         // When streaming, each frame's timestamp is read from showinfo's log line (there is no
         // packet list), so ffmpeg logs at info level and the lines are parsed as they arrive.
+        // Files (0.7.1 positions) too: there each frame's timestamp says which packet it is.
+        bool live = Streaming || Compatibility != PySceneDetectVersion.V0_6_4;
+        // Absolute timestamps for files, so they compare with the packet list as they are (without
+        // -copyts ffmpeg shifts by the container's start, which can differ from the video stream's).
+        if (live && !Streaming && seek.Length == 0)
+            seek = ["-copyts"];
         string[] noStdin = _stream is null ? ["-nostdin"] : [];
-        string[] args = ["-v", Streaming ? "info" : "error", "-nostats", .. noStdin, "-y",
+        string[] args = ["-v", live ? "info" : "error", "-nostats", .. noStdin, "-y",
             "-threads", $"{_decodeThreads ?? (pipeline == FramePipeline.Yuv420Sampled ? 8 : 4)}", .. seek, .. _inputOptions, "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough", .. limit];
-        if (Streaming)
-            select = ["-vf", "showinfo=checksum=0"];
+        if (live)
+            select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
         string prefix = select.Length > 0 ? select[1] + "," : "";
         args = pipeline switch
         {
@@ -499,9 +530,15 @@ public sealed partial class VideoReader
 
         using var proc = Start(psi);
         using var livePts = new BlockingCollection<long>();
+        double liveTimeBase = _timeBase;
+        if (!Streaming)
+        {
+            _livePackets.Clear();
+            _liveStart = startFrame;
+        }
         var log = new System.Text.StringBuilder();
         // stderr: when streaming, timestamps come out of it; otherwise it's just kept for errors.
-        var stderr = Streaming
+        var stderr = live
             ? Task.Run(() =>
             {
                 string? line;
@@ -517,8 +554,9 @@ public sealed partial class VideoReader
                     if (timeBase.Success)
                     {
                         // The filter's time base can differ from the container's (mp4: 1/1000000).
-                        _timeBase = long.Parse(timeBase.Groups[1].Value, CultureInfo.InvariantCulture) / (double)long.Parse(timeBase.Groups[2].Value, CultureInfo.InvariantCulture);
-                        _startPts = (long)Math.Round(_startSeconds / _timeBase);
+                        liveTimeBase = long.Parse(timeBase.Groups[1].Value, CultureInfo.InvariantCulture) / (double)long.Parse(timeBase.Groups[2].Value, CultureInfo.InvariantCulture);
+                        if (Streaming)
+                            _timeBase = liveTimeBase;
                         continue;
                     }
                     if (log.Length < 16_000 && !line.StartsWith("  ") && !line.StartsWith("Input #") && !line.StartsWith("Output #") && !line.StartsWith("Stream mapping"))
@@ -596,12 +634,15 @@ public sealed partial class VideoReader
             {
                 if (previous is not null)
                     free.Add(previous);
-                if (Streaming)
+                if (live)
                 {
                     // The frame's timestamp precedes it on stderr; without one the frame can't be placed.
                     if (!livePts.TryTake(out long pts, Timeout.Infinite, cancel.Token))
-                        throw Failed($"ffmpeg gave no timestamp for frame {_livePts.Count}: {stderr.Result}");
-                    _livePts.Add(pts);
+                        throw Failed($"ffmpeg gave no timestamp for frame {_livePts.Count + _livePackets.Count}: {stderr.Result}");
+                    if (Streaming)
+                        _livePts.Add(pts); // from the start already: ffmpeg shifts input timestamps to start at 0
+                    else
+                        _livePackets.Add(PacketOf(pts * liveTimeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
                 }
                 if (resizer is null)
                 {
