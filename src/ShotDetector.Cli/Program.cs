@@ -45,11 +45,16 @@ const string Usage = """
           --frame-margin <n>             Frames to keep away from each end of a shot (default 1)
           --image-width <px>, --image-height <px>, --image-scale <factor>, --image-format <jpg|png|webp>
           --split-video <dir>            Cut the video into one mp4 per shot (like scenedetect split-video)
+          --split-copy                   Copy streams instead of re-encoding (fast; cuts on keyframes)
+          --split-high-quality           CRF 17, preset slow (instead of 22, veryfast)
+          --split-crf <n>, --split-preset <name>, --split-args "<ffmpeg args>"
+          --split-expand                 Stretch the first/last clip to the video's start/end (with -s/-e)
     """;
 
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
 var options = new DetectionOptions();
 var images = new ImageOptions();
+var split = new SplitOptions();
 
 try
 {
@@ -121,6 +126,12 @@ try
             case "--frame-skip": options = options with { FrameSkip = NextInt() }; break;
             case "--crop": options = options with { Crop = (NextInt(), NextInt(), NextInt(), NextInt()) }; break;
             case "--split-video": splitDir = Next(); break;
+            case "--split-copy": split = split with { Copy = true }; break;
+            case "--split-high-quality": split = split with { HighQuality = true }; break;
+            case "--split-crf": split = split with { RateFactor = NextInt() }; break;
+            case "--split-preset": split = split with { Preset = Next() }; break;
+            case "--split-args": split = split with { Args = Next() }; break;
+            case "--split-expand": split = split with { Expand = true }; break;
             case "-h" or "--help": Console.WriteLine(Usage); return 0;
             default: throw new ArgumentException($"Unknown option {args[i]}");
         }
@@ -161,7 +172,7 @@ try
     if (imagesDir is not null)
         Console.Error.WriteLine($"Saved {Export.SaveImages(result, imagesDir, images).Count} images to {imagesDir}");
     if (splitDir is not null)
-        Console.Error.WriteLine($"Wrote {Export.SplitVideo(result, splitDir).Count} clips to {splitDir}");
+        Console.Error.WriteLine($"Wrote {Export.SplitVideo(result, splitDir, split).Count} clips to {splitDir}");
     return 0;
 }
 catch (ArgumentException e)

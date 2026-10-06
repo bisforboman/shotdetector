@@ -2,6 +2,40 @@ using System.Globalization;
 
 namespace ShotDetector;
 
+/// <summary>Settings for <see cref="Export.SplitVideo"/>, like scenedetect's split-video options; the defaults are its.</summary>
+public sealed record SplitOptions
+{
+    /// <summary>Copy the streams instead of re-encoding (<c>--copy</c>): fast, but cuts land on keyframes.</summary>
+    public bool Copy { get; init; }
+
+    /// <summary>CRF 17 and preset "slow" instead of 22 and "veryfast" (<c>--high-quality</c>).</summary>
+    public bool HighQuality { get; init; }
+
+    /// <summary>x264 constant rate factor (<c>--rate-factor</c>); default 22, or 17 with <see cref="HighQuality"/>.</summary>
+    public int? RateFactor { get; init; }
+
+    /// <summary>x264 preset (<c>--preset</c>); default "veryfast", or "slow" with <see cref="HighQuality"/>.</summary>
+    public string? Preset { get; init; }
+
+    /// <summary>ffmpeg arguments replacing the encoding ones, split on spaces (<c>--args</c>); <see cref="Copy"/> wins over these.</summary>
+    public string? Args { get; init; }
+
+    /// <summary>Stretch the first clip to the start of the video and the last to its end (<c>--expand</c>), for a time range.</summary>
+    public bool Expand { get; init; }
+
+    internal string[] FfmpegArgs()
+    {
+        if (Copy && (HighQuality || RateFactor is not null || Preset is not null))
+            throw new ArgumentException("High quality, rate factor and preset can't be used with Copy.");
+        // As the scenedetect CLI builds them: copy, else the given args, else libx264 with crf and preset.
+        string args = Copy ? "-map 0:v:0 -map 0:a? -map 0:s? -c:v copy -c:a copy"
+            : Args is not null ? Args.Replace("\\\"", "\"")
+            : $"-map 0:v:0 -map 0:a? -map 0:s? -c:v libx264 -preset {Preset ?? (HighQuality ? "slow" : "veryfast")} " +
+              $"-crf {(RateFactor ?? (HighQuality ? 17 : 22)).ToString(CultureInfo.InvariantCulture)} -c:a aac";
+        return args.Split(' ');
+    }
+}
+
 /// <summary>Settings for <see cref="Export.SaveImages"/>; the defaults are scenedetect's.</summary>
 public sealed record ImageOptions
 {
@@ -160,28 +194,35 @@ public static class Export
     }).ToArray();
 
     /// <summary>
-    /// split-video: one file per shot, "{video}-Scene-{NNN}.mp4", cut and re-encoded by ffmpeg with
-    /// scenedetect's default arguments (libx264 veryfast, CRF 22, AAC audio, subtitles kept; 0.6.4 adds
-    /// -sn, which drops them).
+    /// split-video: one file per shot, "{video}-Scene-{NNN}.mp4", cut by ffmpeg with scenedetect's
+    /// arguments (by default libx264 veryfast, CRF 22 and AAC audio; subtitles dropped).
     /// </summary>
     /// <remarks>Cancelling stops between clips and kills the running ffmpeg; finished clips are kept.</remarks>
-    public static List<string> SplitVideo(DetectionResult result, string outputDir, CancellationToken cancellationToken = default)
+    public static List<string> SplitVideo(DetectionResult result, string outputDir, SplitOptions? options = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (result.VideoPath is null)
             throw new InvalidOperationException("Splitting needs the video as a file path or URL; the input was a Stream.");
-        var (videoPath, shots) = (result.VideoPath, result.Shots);
+        var so = options ?? new SplitOptions();
+        string[] codecArgs = so.FfmpegArgs();
+        var (videoPath, video) = (result.VideoPath, result.Video);
+        var clips = result.Shots.Select(s => (s.Start, s.End)).ToList();
+        if (so.Expand && clips.Count > 0)
+        {
+            // expand_scenes_to_bounds: from the base timecode (frame 0) to base + OpenCV's frame count.
+            clips[0] = (FrameTime.Frame(0, video.Fps), clips[0].End);
+            clips[^1] = (clips[^1].Start, FrameTime.Frame(video.OpenCvFrameCount, video.Fps));
+        }
         Directory.CreateDirectory(outputDir);
         string name = Path.GetFileNameWithoutExtension(videoPath);
         var files = new List<string>();
-        foreach (var shot in shots)
+        for (int i = 0; i < clips.Count; i++)
         {
-            string file = Path.Combine(outputDir, $"{name}-Scene-{SceneNumber(shot.Number, shots.Count)}.mp4");
-            VideoReader.Run(result.Video.FfmpegExe, ["-v", "error", "-nostdin", "-y",
-                "-ss", Stats.PyFloat(shot.Start.Seconds), "-i", videoPath, "-t", Stats.PyFloat(shot.Duration.Seconds),
-                "-map", "0:v:0", "-map", "0:a?", "-map", "0:s?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
-                "-c:a", "aac", .. (result.Video.Compatibility == PySceneDetectVersion.V0_6_4 ? ["-sn"] : Array.Empty<string>()),
-                file], cancellationToken);
+            var (start, end) = clips[i];
+            string file = Path.Combine(outputDir, $"{name}-Scene-{SceneNumber(i + 1, clips.Count)}.mp4");
+            VideoReader.Run(video.FfmpegExe, ["-v", "error", "-nostdin", "-y",
+                "-ss", Stats.PyFloat(start.Seconds), "-i", videoPath, "-t", Stats.PyFloat(end.Minus(start).Seconds),
+                .. codecArgs, "-sn", file], cancellationToken);
             files.Add(file);
         }
         return files;
