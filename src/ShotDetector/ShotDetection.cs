@@ -192,6 +192,13 @@ public sealed record DetectionOptions
     public bool FfmpegResize { get; init; }
 
     /// <summary>
+    /// Deinterlace with ffmpeg's yadif filter (default settings, one frame out per frame in) before analysis, for
+    /// interlaced sources such as 1080i broadcast. Results match scenedetect run on a lossless copy made with
+    /// <c>ffmpeg -vf yadif</c>. Only detection sees deinterlaced frames; exported images and clips are the original's.
+    /// </summary>
+    public bool Deinterlace { get; init; }
+
+    /// <summary>
     /// ffmpeg decoder threads; 0 = ffmpeg's choice. Null (the default) is one fewer than the CPUs available (so 1 on a
     /// 2-CPU container), at most 8 when ffmpeg sends yuv420p (<see cref="FramePipeline.Yuv420Sampled"/>, bound by
     /// decoding) and at most 4 otherwise.
