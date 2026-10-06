@@ -33,9 +33,9 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     {
         Load(libraryDirectory);
         AVFormatContext* fmt = null;
-        Check(ffmpeg.avformat_open_input(&fmt, path, null, null), "open " + path);
+        Check(ffmpeg.avformat_open_input(&fmt, path, null, null), "open " + path, ShotDetectionError.InvalidInput);
         _fmt = fmt;
-        Check(ffmpeg.avformat_find_stream_info(_fmt, null), "read stream info");
+        Check(ffmpeg.avformat_find_stream_info(_fmt, null), "read stream info", ShotDetectionError.InvalidInput);
         // The first video stream, as -map 0:v:0 (and ffprobe -select_streams v:0) take it.
         _stream = -1;
         for (int i = 0; i < _fmt->nb_streams; i++)
@@ -45,12 +45,12 @@ internal sealed unsafe class InProcessDecoder : IDisposable
                 break;
             }
         if (_stream < 0)
-            throw new InvalidOperationException("The input has no video stream.");
+            throw new ShotDetectionException(ShotDetectionError.InvalidInput, "The input has no video stream.");
         var st = _fmt->streams[_stream];
         _timeBase = st->time_base;
         var codec = ffmpeg.avcodec_find_decoder(st->codecpar->codec_id);
         if (codec == null)
-            throw new InvalidOperationException($"No decoder for {st->codecpar->codec_id} in these FFmpeg libraries.");
+            throw new ShotDetectionException(ShotDetectionError.InvalidInput, $"No decoder for {st->codecpar->codec_id} in these FFmpeg libraries.");
         _dec = ffmpeg.avcodec_alloc_context3(codec);
         Check(ffmpeg.avcodec_parameters_to_context(_dec, st->codecpar), "decoder parameters");
         _dec->pkt_timebase = st->time_base; // as ffmpeg's command line sets it (best-effort timestamps use it)
@@ -148,7 +148,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
             _toSize = ffmpeg.sws_getContext(crop.Width, crop.Height, AVPixelFormat.AV_PIX_FMT_BGR24, width, height,
                 AVPixelFormat.AV_PIX_FMT_BGR24, (int)SwsFlags.SWS_BILINEAR, null, null, null);
             if (_toSize == null)
-                throw new InvalidOperationException("Can't set up the scaler.");
+                throw new ShotDetectionException(ShotDetectionError.DecodeFailed, "Can't set up the scaler.");
         }
         byte*[] src = [bgr + crop.Y * stride + crop.X * 3, null, null, null];
         int[] srcStride = [stride, 0, 0, 0];
@@ -201,7 +201,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
             if (_loadedFrom is not null)
             {
                 if (_loadedFrom != dir)
-                    throw new InvalidOperationException(
+                    throw new ShotDetectionException(ShotDetectionError.FfmpegNotFound,
                         $"FFmpeg's libraries were already loaded from '{_loadedFrom}'; one process can use only one copy.");
                 return;
             }
@@ -213,7 +213,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
             }
             catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException or BadImageFormatException)
             {
-                throw new InvalidOperationException(
+                throw new ShotDetectionException(ShotDetectionError.FfmpegNotFound,
                     "In-process decoding needs FFmpeg 8.1's shared libraries (libavcodec 62, libavformat 62, libswscale 9, " +
                     "libavutil 60): on Alpine `apk add ffmpeg-libs`, on Windows a \"shared\" FFmpeg 8.1 build (set FfmpegDirectory " +
                     $"to its bin folder). Or use the default decoder (the ffmpeg executable). ({e.Message})", e);
@@ -222,12 +222,12 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         }
     }
 
-    static void Check(int ret, string what)
+    static void Check(int ret, string what, ShotDetectionError reason = ShotDetectionError.DecodeFailed)
     {
         if (ret >= 0)
             return;
         byte* buf = stackalloc byte[256];
         ffmpeg.av_strerror(ret, buf, 256);
-        throw new InvalidOperationException($"FFmpeg ({what}): {Marshal.PtrToStringAnsi((IntPtr)buf)}");
+        throw new ShotDetectionException(reason, $"FFmpeg ({what}): {Marshal.PtrToStringAnsi((IntPtr)buf)}");
     }
 }

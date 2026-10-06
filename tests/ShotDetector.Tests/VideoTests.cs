@@ -136,9 +136,34 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     [Fact]
     public void MissingFfmpegSaysWhatToDo()
     {
-        var e = Assert.Throws<InvalidOperationException>(() =>
+        var e = Assert.Throws<ShotDetectionException>(() =>
             ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { FfmpegDirectory = Path.GetTempPath() }));
+        Assert.Equal(ShotDetectionError.FfmpegNotFound, e.Reason);
         Assert.Contains("FfmpegDirectory", e.Message);
+    }
+
+    [Fact]
+    public void MissingFileIsInvalidInput()
+    {
+        var e = Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(Path.Combine(Path.GetTempPath(), "no-such-video.mp4")));
+        Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
+    }
+
+    [Fact]
+    public void AudioOnlyFileIsInvalidInput()
+    {
+        string audio = Path.Combine(Path.GetTempPath(), $"shotdetector-audio-{Guid.NewGuid():N}.wav");
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=d=1", audio], default);
+        try
+        {
+            var e = Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(audio));
+            Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
+            Assert.Contains("no video stream", e.Message);
+        }
+        finally
+        {
+            File.Delete(audio);
+        }
     }
 
     [Theory]
@@ -179,11 +204,14 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     }
 
     [Fact]
-    public async Task StreamingReportsErrors() =>
-        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+    public async Task StreamingReportsErrors()
+    {
+        var e = await Assert.ThrowsAsync<ShotDetectionException>(async () =>
         {
             await foreach (var _ in ShotDetection.DetectStreamAsync("does-not-exist.mp4")) { }
         });
+        Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
+    }
 
     [Theory]
     [InlineData("mkv")]
@@ -229,7 +257,8 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     public void PipedMp4WithoutFaststartIsRefusedClearly()
     {
         using var file = File.OpenRead(clips.ThreeShots);
-        var e = Assert.Throws<InvalidOperationException>(() => ShotDetection.Detect(file));
+        var e = Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(file));
+        Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
         Assert.Contains("faststart", e.Message);
     }
 

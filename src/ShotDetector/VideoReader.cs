@@ -216,9 +216,9 @@ public sealed partial class VideoReader
             {
                 probed = Run(ffprobe, probeArgs, cancellationToken, stdin: _prefix);
             }
-            catch (InvalidOperationException e)
+            catch (ShotDetectionException e)
             {
-                throw Failed(e.Message, e);
+                throw Failed(e.Reason, e.Message, e);
             }
         }
         else
@@ -238,6 +238,8 @@ public sealed partial class VideoReader
             else
                 stream[key] = value;
         }
+        if (!stream.ContainsKey("width"))
+            throw new ShotDetectionException(ShotDetectionError.InvalidInput, $"The input has no video stream: {path}");
         SourceWidth = int.Parse(stream["width"], CultureInfo.InvariantCulture);
         SourceHeight = int.Parse(stream["height"], CultureInfo.InvariantCulture);
         // Phone video is often stored sideways with a rotation tag. ffmpeg and OpenCV both rotate it
@@ -336,12 +338,12 @@ public sealed partial class VideoReader
     }
 
     /// <summary>An ffmpeg/ffprobe failure, explained when it is the common streaming one.</summary>
-    static InvalidOperationException Failed(string message, Exception? inner = null) =>
+    static ShotDetectionException Failed(ShotDetectionError reason, string message, Exception? inner = null) =>
         message.Contains("moov atom not found") || message.Contains("mp4,m4a,3gp,3g2,mj2 @") && message.Contains("partial file")
-            ? new InvalidOperationException(
+            ? new ShotDetectionException(ShotDetectionError.InvalidInput,
                 "The stream's container headers aren't at the start (an mp4 without \"faststart\"), so it can't be " +
                 "read as a stream. Use mkv/webm/ts/mov, an mp4 written with -movflags +faststart, or a file path.", inner)
-            : new InvalidOperationException(message, inner);
+            : new ShotDetectionException(reason, message, inner);
 
     static bool IsUrl(string path) =>
         Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
@@ -615,7 +617,7 @@ public sealed partial class VideoReader
             try
             {
                 if (Task.WaitAny([connected, proc.WaitForExitAsync(cancellationToken)], cancellationToken) != 0)
-                    throw Failed($"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
+                    throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
             }
             catch (OperationCanceledException)
             {
@@ -668,7 +670,7 @@ public sealed partial class VideoReader
                 {
                     // The frame's timestamp precedes it on stderr; without one the frame can't be placed.
                     if (!livePts.TryTake(out long pts, Timeout.Infinite, cancel.Token))
-                        throw Failed($"ffmpeg gave no timestamp for frame {_livePts.Count + _livePackets.Count}: {stderr.Result}");
+                        throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg gave no timestamp for frame {_livePts.Count + _livePackets.Count}: {stderr.Result}");
                     if (Streaming)
                         _livePts.Add(pts); // from the start already: ffmpeg shifts input timestamps to start at 0
                     else
@@ -692,7 +694,7 @@ public sealed partial class VideoReader
             reader.Wait(); // rethrows read errors
             proc.WaitForExit();
             if (proc.ExitCode != 0)
-                throw Failed($"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
+                throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
         }
         finally
         {
@@ -756,7 +758,7 @@ public sealed partial class VideoReader
         }
         catch (System.ComponentModel.Win32Exception e)
         {
-            throw new InvalidOperationException(
+            throw new ShotDetectionException(ShotDetectionError.FfmpegNotFound,
                 $"Could not start {psi.FileName}: {e.Message}. Install ffmpeg (which includes ffprobe) and put it on PATH, " +
                 "or set DetectionOptions.FfmpegDirectory.", e);
         }
@@ -768,7 +770,8 @@ public sealed partial class VideoReader
         : Path.Combine(directory, OperatingSystem.IsWindows() ? name + ".exe" : name);
 
     /// <summary>Runs ffmpeg/ffprobe to completion and returns its stdout; cancelling kills it.</summary>
-    internal static string Run(string exe, IEnumerable<string> args, CancellationToken cancellationToken, byte[]? stdin = null)
+    internal static string Run(string exe, IEnumerable<string> args, CancellationToken cancellationToken, byte[]? stdin = null,
+        ShotDetectionError failure = ShotDetectionError.InvalidInput)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var psi = new ProcessStartInfo(exe, args) { RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = stdin is not null };
@@ -789,7 +792,7 @@ public sealed partial class VideoReader
         proc.WaitForExit();
         cancellationToken.ThrowIfCancellationRequested();
         if (proc.ExitCode != 0)
-            throw new InvalidOperationException($"{exe} failed ({proc.ExitCode}): {stderr.Result}");
+            throw new ShotDetectionException(failure, $"{exe} failed ({proc.ExitCode}): {stderr.Result}");
         return output;
     }
 }
