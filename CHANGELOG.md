@@ -3,7 +3,7 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. Until
 1.0, minor versions may change the public API.
 
-## Unreleased
+## 0.4.0 – 2026-10-06
 
 - Streamed input: `Detect(Stream)`, `DetectStreamAsync(Stream)`, URLs, `DetectionOptions.Streaming`
   and `ProbeBytes`; the CLI reads standard input with `-i -`. `DetectionResult.VideoPath` is null for
