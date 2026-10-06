@@ -5,42 +5,63 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
-- The MIT core pipes only the pixels the exact resize reads (ffmpeg's remap filter after its own BGR conversion;
-  `FramePipeline.SampledBgr`): identical results, 0.44 MB instead of 6.2 MB per 1080p frame. On 2 CPUs it now uses
-  less CPU than scenedetect (was 2.1x), on par in wall time; faster than scenedetect with more CPUs (issue #7).
-- CLI `--config <file>`: scenedetect's config file (scenedetect.cfg) as defaults; unknown keys are listed.
-  `DetectionOptions.AddLastScene` (threshold detector; on by default, as in scenedetect).
-- `ShotDetection.LoadScenes` / CLI `--load-scenes`: shots from a scene list CSV, as scenedetect's load-scenes.
-- File name templates as scenedetect's: `ImageOptions.FileName`, `SplitOptions.FileName` (CLI `--image-filename`,
-  `--split-filename`); CLI `-o/--output` and `$VIDEO_NAME` in output paths.
-- Several detectors in one run (`DetectionOptions.Detectors` with per-detector `DetectorSettings`; CLI repeated
-  `-d`), `DropShortScenes`, `MergeLastScene`, `FilterMode` (suppress), `Downscale`; `DetectionResult.Cuts`. All
-  byte-identical to scenedetect (`tools/compare-options.py`, in CI).
-- Timeline exports: `Timeline.Edl`, `Fcpx`, `Fcp7`, `Otio` and `Qp` / CLI `--save-edl`, `--save-fcp`,
-  `--save-otio`, `--save-qp`, scenedetect's save-edl, save-fcp, save-otio and save-qp byte for byte.
+## 0.5.0 – 2026-10-06
+
+Every new output and option below is byte-identical to scenedetect 0.7.1's (checked in CI).
+
+### Breaking changes
+
 - API review toward 1.0: the detector classes, `IDetector`, `ContentScorer` and `EdgeDetector` are internal
   (use `ShotDetection` with `DetectorKind`); `VideoReader.FrameAt`, `SeekFrame`, `PositionAfterDecoding` and
   `FrameCountHint` are internal; `FrameTime`'s raw fields and `FrameTime.Pts` are internal and `ToString()` is
-  the timecode; `SaveImages`/`SplitVideo` return `IReadOnlyList<string>`. New: `ShotDetection.DetectAsync`.
-- Fix: when the decoder drops frames (damaged video), later frames got the wrong times and frame
-  numbers; each frame now takes its own time, as in scenedetect.
-- Fix: a streamed input that doesn't start at 0 (e.g. a TS starting at 1.4 s) had every time shifted
-  by its start.
-- `Shots.Html` / CLI `--save-html`: scenedetect's save-html (export-html) page, byte for byte, with thumbnails.
-- `MinSceneLength` takes every scenedetect format: frames, `0.6s`, `0.6` and `HH:MM:SS.mmm`.
-- The shot list CSV starts with scenedetect's `Timecode List:` row (an empty row when there are no cuts);
-  `Shots.Csv(shots, includeCutList: false)` / CLI `--skip-cuts` leaves it out. CLI `-q/--quiet`.
-- `SplitVideo` takes `SplitOptions` (CLI `--split-copy`, `--split-high-quality`, `--split-crf`,
-  `--split-preset`, `--split-args`, `--split-expand`), scenedetect's split-video options.
-- Fix: split-video now always drops subtitle streams (`-sn`), as scenedetect 0.7.1 does too; only the
-  0.6.4 mode did before.
-- `DetectionOptions.FrameRate` / CLI `--frame-rate`: scenedetect's `-f/--frame-rate` override, including
-  the rate of image sequences (`frames/%04d.png`).
+  the timecode; `SaveImages`/`SplitVideo` return `IReadOnlyList<string>`.
+- `SplitVideo` takes `SplitOptions` before the `CancellationToken` (pass the token by name).
 - `DecodeThreads` is nullable; the default (null) is 8 decoder threads on the yuv420p fast path (~13% faster
-  on HD, ~70 MB more at 1080p) and 4 elsewhere, where the pipe is the bottleneck.
-- MPEG program streams (`.mpg`, MPEG-2) gave shifted cuts: packets without a pts were dropped from the
-  frame timestamps. Per-frame timestamps now come from a decoding pass for such files, as OpenCV sees them.
-- Real-world and mutation checks in CI (`tools/realworld.py`, `tools/mutation/`), nightly real-world run.
+  on HD, ~70 MB more at 1080p) and 4 elsewhere.
+- The shot list CSV starts with scenedetect's `Timecode List:` row (an empty row when there are no cuts), as
+  scenedetect's does; `Shots.Csv(shots, includeCutList: false)` / CLI `--skip-cuts` leaves it out.
+- `DetectionResult` has a new `Cuts` parameter (scenedetect's cut list, which keeps the cuts of dropped or merged
+  shots).
+
+### New
+
+- Timeline exports: `Timeline.Edl`, `Fcpx`, `Fcp7`, `Otio` and `Qp` / CLI `--save-edl`, `--save-fcp`,
+  `--save-otio`, `--save-qp` (scenedetect's save-edl, save-fcp, save-otio, save-qp).
+- `Shots.Html` / CLI `--save-html`: scenedetect's save-html (export-html) page, with thumbnails.
+- Several detectors in one run (`DetectionOptions.Detectors` with per-detector `DetectorSettings`; CLI repeated
+  `-d`, with `-t`/`-m`/`--filter-mode` per detector), `DropShortScenes`, `MergeLastScene`, `FilterMode`
+  (suppress), `Downscale`.
+- `ShotDetection.LoadScenes` / CLI `--load-scenes`: shots from a scene list CSV, as scenedetect's load-scenes.
+- CLI `--config <file>`: scenedetect's config file (scenedetect.cfg) as defaults; unknown keys are listed.
+  `DetectionOptions.AddLastScene` (threshold detector; on by default, as in scenedetect).
+- File name templates: `ImageOptions.FileName`, `SplitOptions.FileName` (CLI `--image-filename`,
+  `--split-filename`); CLI `-o/--output` and `$VIDEO_NAME` in output paths.
+- `SplitOptions` (CLI `--split-copy`, `--split-high-quality`, `--split-crf`, `--split-preset`, `--split-args`,
+  `--split-expand`): scenedetect's split-video options.
+- `DetectionOptions.FrameRate` / CLI `--frame-rate`: scenedetect's `-f/--frame-rate`, including the rate of
+  image sequences (`frames/%04d.png`).
+- `MinSceneLength` takes every scenedetect format: frames, `0.6s`, `0.6` and `HH:MM:SS.mmm`.
+- `ShotDetection.DetectAsync`; CLI `-q/--quiet`.
+
+### Faster
+
+- The MIT core pipes only the pixels the exact resize reads (ffmpeg's remap filter after its own BGR conversion;
+  `FramePipeline.SampledBgr`): identical results, 0.44 MB instead of 6.2 MB per 1080p frame. On 2 CPUs it now uses
+  less CPU than scenedetect (was 2.1x) and is on par in wall time; faster than scenedetect with more CPUs (#7).
+
+### Fixed
+
+- MPEG program streams (`.mpg`, MPEG-2) gave shifted cuts: packets without a pts were dropped from the frame
+  timestamps. Per-frame timestamps now come from a decoding pass for such files, as OpenCV sees them.
+- When the decoder drops frames (damaged video), later frames got the wrong times and frame numbers; each frame
+  now takes its own time, as in scenedetect.
+- A streamed input that doesn't start at 0 (e.g. a TS starting at 1.4 s) had every time shifted by its start.
+- split-video now always drops subtitle streams (`-sn`), as scenedetect 0.7.1 does; only the 0.6.4 mode did.
+
+### Repository
+
+- Real-world (whole films, nightly) and mutation checks in CI; a weekly benchmark; `main` is protected, with
+  17 required checks.
 
 ## 0.4.0 – 2026-10-06
 
