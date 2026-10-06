@@ -57,7 +57,10 @@ jobs:
         run: |
           prerelease=""
           if [[ "$VERSION" == *-* ]]; then prerelease="--prerelease"; fi
-          gh release create "$GITHUB_REF_NAME" artifacts/*.nupkg --title "ShotDetector $VERSION" --generate-notes $prerelease
+          # The version's CHANGELOG.md section ("## 0.5.0 – date" up to the next "## "), else GitHub's PR list.
+          awk -v v="## $VERSION " 'index($0, v) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > notes.md
+          if [ -s notes.md ]; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
+          gh release create "$GITHUB_REF_NAME" artifacts/*.nupkg --title "ShotDetector $VERSION" "${notes[@]}" $prerelease
 
   # Standalone shotdetect binaries (no .NET needed; ffmpeg still is), attached to the release.
   binaries:

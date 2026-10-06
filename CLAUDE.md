@@ -15,10 +15,9 @@ differ is documented in README.md and in `docs/decisions.md`.
 
 ## Status
 
-0.4.0 released 2026-10-06 (streamed input, time range / frame skip / crop). On `main` since, unreleased (CHANGELOG
-"Unreleased"): MPEG-PS and damaged-video timestamp fixes, 8 decode threads on the FastYuv path, frame-rate override,
-min-scene-len formats, save-html, list-scenes `--skip-cuts`/`-q` and the CSV's cut-list row, split-video options
-(and `-sn` in 0.7.1 mode), the 1.0 API review (internals hidden, `DetectAsync`). 192 unit tests, 13 mutation guards.
+0.5.0 released 2026-10-06 (timeline exports, several detectors, load-scenes, config file, templates, the MIT core's
+sampled pipeline from issue #7, the 1.0 API review); see CHANGELOG.md. The release notes are the version's
+CHANGELOG section (release.yml extracts it), so keep sections grouped: breaking changes, new, faster, fixed.
 All five detectors, both compatibility modes (`PySceneDetectVersion.V0_7_1` default and `V0_6_4`), exports
 (save-images, save-html, split-video), stats, streaming out (`DetectStreamAsync`) and in (`Detect(Stream)`, URLs,
 CLI `-i -`). CI compares every sample clip against scenedetect 0.7.1 and 0.6.4 on Linux for the core and FastYuv
