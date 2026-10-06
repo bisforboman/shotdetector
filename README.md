@@ -184,6 +184,10 @@ slower path where ffmpeg converts whole frames, still with identical results.
   that, taking the pts from an extra demux-only ffprobe pass. That assumes OpenCV's best-effort
   timestamps equal the sorted packet pts, which held for every sample but may not for streams with
   missing or broken timestamps.
+- **10-bit video (Linux):** OpenCV's bundled FFmpeg converts 10-bit frames to 8-bit BGR with ±1
+  differences in red and green on some pixels that no ffmpeg command-line option reproduces (tested
+  FFmpeg 8.1 and 9.0, every swscale flag and dither mode). Per-frame stats differ slightly; the cuts
+  were identical on every 10-bit clip tested. On Windows, 10-bit matched exactly.
 - **Variable frame rate:** handled as PySceneDetect handles it. The fps is the *average* frame rate
   (what OpenCV reports, through PySceneDetect's `framerate_to_fraction`), min-scene-len is measured
   in time between frames, and printed frame numbers are `round(time × average fps)`, not decode

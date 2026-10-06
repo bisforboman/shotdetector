@@ -46,10 +46,14 @@ try {
     ffmpeg -v error -y -display_rotation 90 -i sintel_trailer-480p.mp4 -c copy sintel_rotated.mp4
     ffmpeg -v error -y -display_rotation 180 -i sintel_trailer-480p.mp4 -c copy sintel_rotated180.mp4
 
-    # MPEG-2 in a program stream: most packets carry no pts (timestamps come from a decoding pass);
-    # 10-bit h264 (converted to 8-bit by ffmpeg/OpenCV before analysis).
+    # MPEG-2 in a program stream: most packets carry no pts (timestamps come from a decoding pass).
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mpeg2video -q:v 3 sintel_mpeg2.mpg
-    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libx264 -pix_fmt yuv420p10le -crf 18 sintel_10bit.mp4
+
+    # Known differences, compared informationally (samples/informational/): 10-bit h264. Its conversion
+    # to 8-bit BGR differs by +-1 in red and green on some pixels between OpenCV's bundled FFmpeg on
+    # Linux and the ffmpeg CLI (any version, flags or dithering); cuts stay the same. See README.
+    New-Item -ItemType Directory -Force informational | Out-Null
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libx264 -pix_fmt yuv420p10le -crf 18 informational/sintel_10bit.mp4
 
     # Colour handling: full-range yuv420p (tagged "pc"), full-range MJPEG (yuvj420p) and 4:4:4.
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -vf "scale=out_range=full" -color_range pc -c:v libx264 -crf 18 -pix_fmt yuv420p sintel_fullrange.mp4

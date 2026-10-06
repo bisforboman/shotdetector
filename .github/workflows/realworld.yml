@@ -30,7 +30,8 @@ jobs:
           - bbb_10s_h264.mp4
           - bbb_10s_h265.mp4
           - bbb_10s_vp9.webm
-          - bbb_10s_av1.mp4
+          # Not bbb_10s_av1.mp4: OpenCV's Linux wheel has no software AV1 decoder (it opens the file and
+          # reads 0 frames), so scenedetect has nothing to compare with here. It matches on Windows.
     env:
       FFMPEG: '9.0'   # the latest stable FFmpeg; BtbN's static build
     steps:

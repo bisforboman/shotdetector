@@ -14,6 +14,8 @@ Status: **Released** (on nuget.org), **Done** (on `main`, in the next release), 
 | Fix every divergence the real-world check finds | The promise is identical results | Open (none known; MPEG-PS timestamps fixed 2026-10-06) |
 | More sources: interlaced, 10-bit (h264/hevc), odd sizes (1366x768, 427x241), 4:2:2, long GOPs, MPEG-2 in PS/TS | Each is a different decode/convert path | Done (2026-10-06): all exact after the MPEG-PS fix; `.mpg` and 10-bit samples added to the parity set |
 | Telecined footage, VP9/AV1 in webm/mkv, mpeg4 in avi, fragmented mp4, image sequences (`%04d.png`) | More decode paths | Done (2026-10-06): all exact |
+| 10-bit video on Linux: ±1 in red/green on some pixels vs OpenCV's bundled FFmpeg (cuts identical) | No ffmpeg CLI option reproduces it; an exact match needs our own 10-bit→BGR conversion in C# (like FastYuv for 8-bit). Compared informationally in CI | Maybe |
+| AV1 on Linux: OpenCV's wheel can't decode it (0 frames), so nothing to compare against there | Matches on Windows; excluded from the Linux real-world matrix | Done (2026-10-06) |
 | Broken/duplicate timestamps, missing frames (corrupt packets), stream switches mid-file | OpenCV's recovery behaviour vs ffmpeg's | Open |
 | Container edge cases on streamed input: fragmented mp4, HLS/DASH segments, RTSP | The streaming mode relies on ffmpeg's demuxer on a pipe; verify timestamps come out right | Open |
 | Unit test for scenedetect 0.6.4's histogram re-initialisation at frame 1 | A guard reproduced without a test; add it and a mutation | Done (2026-10-06) |
