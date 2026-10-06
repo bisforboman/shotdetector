@@ -62,7 +62,10 @@ environment. Move the `## Unreleased` section of CHANGELOG.md to the version fir
 
 ## Gotchas (each cost time once)
 
-- Scripted edits: write Python edit scripts with the Write tool, not bash heredocs (`\\` collapses). C# files are LF.
+- Scripted edits: write Python edit scripts with the Write tool, not bash heredocs (`\\` and `\n` collapse).
+  Line endings are per file (most CRLF, some LF; no .gitattributes): keep each file's own. Python's write_text
+  writes CRLF on Windows and Git Bash's `sed -i` writes LF, so check `git diff --stat` for whole-file rewrites.
+  Never `git checkout -- <file>` to undo an experiment on a file with uncommitted work: copy it aside first.
 - ffmpeg `-ss` lands on different frames per codec; only the `-copyts` + `select` seek is exact (VideoReader).
 - Crop: ffmpeg must crop *after* `scale,format=bgr24`; scenedetect's downscale factor uses crop size + 1 (both dims).
 - End of a time range is compared as frame numbers (`Position(i).PlusFrames(1).FrameNum >= end`), with

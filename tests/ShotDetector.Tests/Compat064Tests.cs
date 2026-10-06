@@ -4,6 +4,17 @@ using ShotDetector;
 public class Compat064Tests
 {
     [Theory]
+    [InlineData(29.97, 2997, 100)]
+    [InlineData(30.0, 30, 1)]
+    [InlineData(23.976, 2997, 125)]
+    public void FrameRateOverrideKeepsTheFloat(double fps, int num, int den)
+    {
+        // 0.6.4 uses the --framerate float as is; a decimal fraction gives back exactly that double.
+        Assert.Equal(new Fps(num, den), Fps.FromDecimal(fps));
+        Assert.Equal(fps, Fps.FromDecimal(fps).Value);
+    }
+
+    [Theory]
     [InlineData(854, 480, 285, 160)]
     [InlineData(853, 480, 284, 160)]
     [InlineData(1920, 1080, 274, 154)]

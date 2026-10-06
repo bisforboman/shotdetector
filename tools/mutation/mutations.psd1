@@ -15,6 +15,9 @@
         # Packets without a pts (MPEG-PS): per-frame timestamps from a decoding pass, as OpenCV sees them
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (missingPts)'; Replace = 'if (false)'; Tests = 'VideoTests' }
 
+        # Frame rate override: an image sequence is read at that rate
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'path.Contains(''%'') && !IsUrl(path)'; Replace = 'false'; Tests = 'VideoTests' }
+
         # Rotation tags: frames arrive upright, so the reported size is swapped
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '&& Math.Abs(Math.Round(rotation)) % 180 == 90)'; Replace = '&& false)'; Tests = 'VideoTests' }
 

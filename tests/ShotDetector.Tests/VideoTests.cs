@@ -23,6 +23,9 @@ public sealed class Clips : IDisposable
     /// <summary><see cref="ThreeShots"/> as MPEG-2 in an MPEG program stream: not every packet has a pts.</summary>
     public string ThreeShotsMpegPs { get; }
 
+    /// <summary><see cref="ThreeShots"/> as an image sequence pattern (frames/0001.png ...).</summary>
+    public string ThreeShotsImages { get; }
+
     public Clips()
     {
         ThreeShots = Make("three.mp4",
@@ -37,6 +40,9 @@ public sealed class Clips : IDisposable
         Run($"-v error -y -i {ThreeShots} -c copy -movflags +faststart {ThreeShotsFaststart}");
         ThreeShotsMpegPs = Path.Combine(_dir, "three.mpg");
         Run($"-v error -y -i {ThreeShots} -c:v mpeg2video -q:v 3 {ThreeShotsMpegPs}");
+        Directory.CreateDirectory(Path.Combine(_dir, "frames"));
+        ThreeShotsImages = Path.Combine(_dir, "frames", "%04d.png");
+        Run($"-v error -y -i {ThreeShots} {ThreeShotsImages}");
     }
 
     string Make(string name, string input)
@@ -262,6 +268,26 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(Enumerable.Range(0, 150).Select(i => i / 25.0), Enumerable.Range(0, 150).Select(i => video.Position(i).Seconds));
         var r = ShotDetection.Detect(clips.ThreeShotsMpegPs, new() { Detector = DetectorKind.Content });
         Assert.Equal([0L, 50L, 100L], r.Shots.Select(s => s.Start.FrameNum));
+    }
+
+    [Fact]
+    public void FrameRateOverrideChangesFrameNumbersNotTimes()
+    {
+        // 25 fps video read as 50 fps: the cut at 2 s is frame 100, not 50.
+        var r = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content, FrameRate = 50 });
+        Assert.Equal(new Fps(50, 1), r.Video.Fps);
+        Assert.Equal([(0L, "00:00:00.000"), (100L, "00:00:02.000"), (200L, "00:00:04.000")],
+            r.Shots.Select(s => (s.Start.FrameNum, s.Start.Timecode())));
+    }
+
+    [Fact]
+    public void ImageSequenceIsReadAtTheFrameRate()
+    {
+        // An image sequence has no times of its own: at 50 fps the cuts (frames 50 and 100) are at 1 s and 2 s.
+        var r = ShotDetection.Detect(clips.ThreeShotsImages, new() { Detector = DetectorKind.Content, FrameRate = 50 });
+        Assert.Equal([(0L, "00:00:00.000"), (50L, "00:00:01.000"), (100L, "00:00:02.000")],
+            r.Shots.Select(s => (s.Start.FrameNum, s.Start.Timecode())));
+        Assert.Equal("00:00:03.000", r.Shots[^1].End.Timecode());
     }
 
     [Fact]

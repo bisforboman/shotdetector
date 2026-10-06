@@ -47,6 +47,19 @@ public readonly record struct Fps(int Num, int Den)
         return new((int)n, (int)d);
     }
 
+    /// <summary>The fps as a decimal fraction (29.97 → 2997/100), so <see cref="Value"/> is exactly the given double.</summary>
+    internal static Fps FromDecimal(double fps)
+    {
+        decimal d = (decimal)fps;
+        int den = 1;
+        while (d != decimal.Floor(d) && den < 1_000_000)
+        {
+            d *= 10;
+            den *= 10;
+        }
+        return Reduce((long)d, den);
+    }
+
     static Fps Reduce(long n, long d)
     {
         long g = (long)BigInteger.GreatestCommonDivisor(n, d);
@@ -131,6 +144,7 @@ public sealed partial class VideoReader
     readonly byte[] _prefix = [];      // what was read from _stream to probe it; fed to ffmpeg first
     readonly bool _ffmpegResize;
     readonly int? _decodeThreads;
+    readonly string[] _inputOptions;   // ffmpeg/ffprobe options for the input (an image sequence's rate)
     readonly IYuv420Converter? _yuv420;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
     readonly List<long> _livePts = []; // the same, as frames arrive, when streaming
@@ -165,12 +179,18 @@ public sealed partial class VideoReader
         _decodeThreads = o.DecodeThreads;
         FfmpegExe = Executable(o.FfmpegDirectory, "ffmpeg");
         Streaming = video is not null || o.Streaming || IsUrl(path);
+        // scenedetect's frame rate override; an image sequence (no timestamps of its own) is read at that rate.
+        Fps? frameRate = o.FrameRate is not { } fr ? null
+            : fr <= 0 ? throw new ArgumentException("FrameRate must be positive.")
+            : compatibility == PySceneDetectVersion.V0_6_4 ? Fps.FromDecimal(fr) : Fps.FromFloat(fr);
+        _inputOptions = frameRate is { } r && video is null && path.Contains('%') && !IsUrl(path)
+            ? ["-framerate", $"{r.Num}/{r.Den}"] : [];
         // One demux-only pass: stream properties, plus every packet's pts for a file (no decoding).
         // A Stream is probed from its first bytes, which are kept to feed ffmpeg later.
         string entries = "stream=width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames:stream_side_data=rotation"
             + (Streaming ? "" : ":packet=pts");
         string ffprobe = Executable(o.FfmpegDirectory, "ffprobe");
-        string[] probeArgs = ["-v", "error", "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", path];
+        string[] probeArgs = ["-v", "error", .. _inputOptions, "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", path];
         string probed;
         if (video is not null)
         {
@@ -214,7 +234,7 @@ public sealed partial class VideoReader
         var avg = Fps.Parse(stream.GetValueOrDefault("avg_frame_rate", "0/0"));
         var rate = avg.Num > 0 && avg.Den > 0 ? avg : Fps.Parse(stream["r_frame_rate"]);
         // 0.7.1 turns it into a clean fraction (framerate_to_fraction); 0.6.4 uses the float as is.
-        Fps = compatibility == PySceneDetectVersion.V0_6_4 ? rate : Fps.FromFloat(rate.Value);
+        Fps = frameRate ?? (compatibility == PySceneDetectVersion.V0_6_4 ? rate : Fps.FromFloat(rate.Value));
         FrameCountHint = long.TryParse(stream.GetValueOrDefault("nb_frames"), out var n) ? n : 0;
         // Crop like scenedetect: inclusive corners. The "effective size" its downscale factor comes
         // from is one pixel larger than the crop in both directions (its crop setter adds 1 to the far
@@ -451,7 +471,7 @@ public sealed partial class VideoReader
         // packet list), so ffmpeg logs at info level and the lines are parsed as they arrive.
         string[] noStdin = _stream is null ? ["-nostdin"] : [];
         string[] args = ["-v", Streaming ? "info" : "error", "-nostats", .. noStdin, "-y",
-            "-threads", $"{_decodeThreads ?? (pipeline == FramePipeline.Yuv420Sampled ? 8 : 4)}", .. seek, "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough", .. limit];
+            "-threads", $"{_decodeThreads ?? (pipeline == FramePipeline.Yuv420Sampled ? 8 : 4)}", .. seek, .. _inputOptions, "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough", .. limit];
         if (Streaming)
             select = ["-vf", "showinfo=checksum=0"];
         string prefix = select.Length > 0 ? select[1] + "," : "";
