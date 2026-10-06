@@ -524,7 +524,7 @@ public sealed partial class VideoReader
         string? maps = sampled ? WriteMaps(resizer!) : null;
         string[] mapInputs = maps is null ? [] : ["-loop", "1", "-i", Path.Combine(maps, "x.pgm"), "-loop", "1", "-i", Path.Combine(maps, "y.pgm")];
         string[] args = ["-v", live ? "info" : "error", "-nostats", .. noStdin, "-y",
-            "-threads", $"{_decodeThreads ?? (pipeline == FramePipeline.Yuv420Sampled ? 8 : 4)}", .. seek, .. _inputOptions, "-i", _path,
+            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount)}", .. seek, .. _inputOptions, "-i", _path,
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
         if (live)
             select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
@@ -693,6 +693,14 @@ public sealed partial class VideoReader
                 try { Directory.Delete(maps, recursive: true); } catch (IOException) { }
         }
     }
+
+    /// <summary>
+    /// The default decoder threads: one fewer than the CPUs available (Environment.ProcessorCount honours container
+    /// limits), leaving one for the conversion and our scoring; at least 1, at most 8 on the yuv420p path (bound by
+    /// decoding) and 4 elsewhere. With 2 CPUs, 1 thread gave the same wall time as 2-8 for ~9% less CPU (issue #12).
+    /// </summary>
+    internal static int DefaultDecodeThreads(FramePipeline pipeline, int cpus) =>
+        Math.Clamp(cpus - 1, 1, pipeline == FramePipeline.Yuv420Sampled ? 8 : 4);
 
     /// <summary>remap's maps as 16-bit PGM files in a new temp folder: x.pgm (source column) and y.pgm (source row).</summary>
     string WriteMaps(CvResize resizer)

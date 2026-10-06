@@ -190,13 +190,15 @@ host; Sintel trailer 1080p H.264, 1253 frames, content detector):
 
 | | Wall time | CPU time |
 |---|---|---|
-| scenedetect 0.7.1 | 4.0 s | 7.0 s |
-| ShotDetector (core, MIT) | 6.7 s | 10.4 s |
-| ShotDetector + FastYuv (LGPL) | 6.4 s | 10.8 s |
+| scenedetect 0.7.1 | 1.00x | 1.00x |
+| ShotDetector 0.5.0 (core, MIT) | 1.55x | 1.51x |
+| ShotDetector, unreleased (core, MIT) | 1.31x | 1.24x |
+| ShotDetector, unreleased + FastYuv (LGPL) | 1.40x | 1.40x |
 
-Here ShotDetector uses ~1.5x scenedetect's CPU: the ffmpeg command line spends ~35% more CPU than OpenCV's
-in-process FFmpeg on the same decoding and conversion, and our scoring takes ~1.3 ms per frame against
-~0.5 ms for scenedetect's (issue #12; both are being worked on).
+(Relative to scenedetect on the same runner, best of 3; runners differ in absolute speed.) Most of what
+remains is the ffmpeg command line itself, which spends ~35% more CPU than OpenCV's in-process FFmpeg on
+the same decoding and conversion (issue #12). Here the core path is faster than FastYuv, which still pipes
+whole yuv420p frames.
 
 **Windows desktop** (ffmpeg 7.1), 1920x1080 H.264, 2880 frames (2 minutes), content detector, pinned to
 2 CPUs and with all 16; best of 2, wall times vary ±10% between runs. Memory is the peak of the whole

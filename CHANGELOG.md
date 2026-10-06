@@ -5,6 +5,11 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- Faster scoring: frames as small as scenedetect's (at most 256 wide) no longer split across threads, which cost
+  3-4x their CPU; the resize reads the sampled rows directly; difference sums use 256-bit vectors. Same results.
+  On Linux with 2 CPUs: 17% faster, 9% less CPU than 0.5.0 (issue #12).
+- Default decoder threads: one fewer than the CPUs available (1 in a 2-CPU container, where it used the same wall
+  time as more for ~9% less CPU), still at most 4, or 8 on the yuv420p path.
 - Correction to 0.5.0: "on 2 CPUs it now uses less CPU than scenedetect" holds on the Windows machine it was
   measured on (ffmpeg 7.1), not on Linux: there, with 2 CPUs, ShotDetector uses ~1.5x scenedetect's CPU and
   ~1.6x its wall time (issue #12). The README has both measurements.
