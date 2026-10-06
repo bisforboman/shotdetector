@@ -415,6 +415,25 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     }
 
     [Fact]
+    public void LoadScenesReadsAShotListBack()
+    {
+        var detected = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content });
+        string csv = Path.Combine(Path.GetTempPath(), $"shotdetector-{Guid.NewGuid():N}.csv");
+        try
+        {
+            File.WriteAllText(csv, Shots.Csv(detected.Shots));
+            var loaded = ShotDetection.LoadScenes(clips.ThreeShots, csv);
+            Assert.Equal(detected.Shots.Select(s => (s.Start.FrameNum, s.End.FrameNum)), loaded.Shots.Select(s => (s.Start.FrameNum, s.End.FrameNum)));
+            Assert.Equal([50L, 100L], loaded.Cuts.Select(c => c.FrameNum));
+            // By time instead, and only from 3 s: the cut at 2 s falls outside.
+            var fromThree = ShotDetection.LoadScenes(clips.ThreeShots, csv, "Start Timecode", new() { StartTime = "3s" });
+            Assert.Equal([(75L, 100L), (100L, 150L)], fromThree.Shots.Select(s => (s.Start.FrameNum, s.End.FrameNum)));
+            Assert.Equal("00:00:03.000", fromThree.Shots[0].Start.Timecode());
+        }
+        finally { File.Delete(csv); }
+    }
+
+    [Fact]
     public void AlreadyCancelledTokenThrowsImmediately() =>
         Assert.Throws<OperationCanceledException>(() => ShotDetection.Detect(clips.Long, cancellationToken: new CancellationToken(true)));
 

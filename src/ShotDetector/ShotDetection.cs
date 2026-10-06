@@ -270,6 +270,87 @@ public static class ShotDetection
         Run(null, video, options, onShot: null, cancellationToken);
 
     /// <summary>
+    /// load-scenes: shots from a scene list CSV instead of detecting them (nothing is decoded; the video is only
+    /// probed for its frame rate and length), e.g. to export again from an edited list. The column holds each shot's
+    /// start: 1-based frame numbers ("Start Frame", the default), or timecodes/seconds. The time range options, and
+    /// <see cref="DetectionOptions.DropShortScenes"/>/<see cref="DetectionOptions.MergeLastScene"/>, apply as in scenedetect.
+    /// </summary>
+    /// <param name="videoPath">The video the list is for.</param>
+    /// <param name="sceneListCsv">A scene list CSV, e.g. from <see cref="Shots.Csv"/> or scenedetect's list-scenes.</param>
+    /// <param name="column">The column with each shot's start.</param>
+    /// <param name="options">Uses the time range, MinSceneLength, DropShortScenes, MergeLastScene, Compatibility and FfmpegDirectory.</param>
+    /// <param name="cancellationToken">Cancels the probe.</param>
+    public static DetectionResult LoadScenes(string videoPath, string sceneListCsv, string column = "Start Frame",
+        DetectionOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        var o = options ?? new DetectionOptions();
+        var video = new VideoReader(videoPath, o, cancellationToken);
+        var fps = video.Fps;
+        using var reader = new StreamReader(sceneListCsv);
+        var header = CsvRow(reader.ReadLine());
+        if (!header.Contains(column))
+            header = CsvRow(reader.ReadLine()); // past scenedetect's "Timecode List:" row
+        int col = header.IndexOf(column);
+        if (col < 0)
+            throw new ArgumentException($"The scene list has no column '{column}'.");
+        // FrameTimecode(value, fps): digits are a frame number, anything else a time in seconds.
+        FrameTime Time(string value, int shift = 0) => value.All(char.IsDigit)
+            ? (o.Compatibility == PySceneDetectVersion.V0_6_4 ? FrameTime.Frame064(Math.Max(0, long.Parse(value, CultureInfo.InvariantCulture) - shift), fps)
+                : FrameTime.Frame(Math.Max(0, long.Parse(value, CultureInfo.InvariantCulture) - shift), fps))
+            : FrameTime.FromSeconds(TimecodeSeconds(value, fps), fps);
+        // Start Frame values are 1-based in the CLI's output.
+        FrameTime Parse(string value) => Time(value, shift: 1);
+        var starts = new List<FrameTime>();
+        for (string? line; (line = reader.ReadLine()) is not null;)
+            if (line.Length > 0 && CsvRow(line) is var row && col < row.Count)
+                starts.Add(Parse(row[col]));
+        // sorted(...)[1:]: the first shot's start is no cut. None of these are exact timestamps, so they
+        // compare (and sort, stably) by frame number, as FrameTimecode does.
+        var cuts = starts.OrderBy(c => c.FrameNum).Skip(1).ToList();
+        var start = FrameTime.Frame(0, fps); // base_timecode
+        if (o.StartTime is { } s)
+        {
+            start = Time(s.Trim(), shift: 1); // `time -s`: a frame number is 1-based (parse_timecode(correct_pts=True))
+            cuts = [.. cuts.Where(c => c.FrameNum > start.FrameNum)];
+        }
+        // min(x, duration): the first one unless the video is shorter (by frame number).
+        var duration = FrameTime.Frame(video.OpenCvFrameCount, fps);
+        FrameTime Min(FrameTime x) => duration.FrameNum < x.FrameNum ? duration : x;
+        var end = o.EndTime is { } e ? Min(Time(e.Trim()))
+            : o.Duration is { } d ? Min(start.Plus(Time(d.Trim())))
+            : duration;
+        cuts = [.. cuts.Where(c => c.FrameNum < end.FrameNum)];
+        int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, fps);
+        var shots = Scenes(cuts, start, end, o.MergeLastScene, o.DropShortScenes ? minSceneLen : 0, minSceneLen);
+        return new(videoPath, video, shots, (int)video.OpenCvFrameCount, minSceneLen, null, cuts);
+    }
+
+    /// <summary>One CSV row (RFC 4180 quoting), as Python's csv.reader reads it.</summary>
+    static List<string> CsvRow(string? line)
+    {
+        var cells = new List<string>();
+        if (line is null)
+            return cells;
+        var cell = new System.Text.StringBuilder();
+        bool quoted = false;
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (quoted)
+            {
+                if (c != '"') cell.Append(c);
+                else if (i + 1 < line.Length && line[i + 1] == '"') { cell.Append('"'); i++; }
+                else quoted = false;
+            }
+            else if (c == '"') quoted = true;
+            else if (c == ',') { cells.Add(cell.ToString()); cell.Clear(); }
+            else cell.Append(c);
+        }
+        cells.Add(cell.ToString());
+        return cells;
+    }
+
+    /// <summary>
     /// <see cref="Detect(string, DetectionOptions?, CancellationToken)"/> on a thread-pool thread, so the
     /// caller's thread (a UI, a request) isn't blocked while ffmpeg decodes.
     /// </summary>

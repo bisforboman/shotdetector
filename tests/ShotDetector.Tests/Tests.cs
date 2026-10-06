@@ -463,6 +463,19 @@ public class SceneListTests
     }
 
     [Fact]
+    public void SecondsPrintTheirNearestFrameButKeepTheirValue()
+    {
+        // FrameTimecode("5s") at 29.97 fps: timecode of frame 150 (5.005), seconds 5.000.
+        var ntsc = new Fps(30000, 1001);
+        var t = FrameTime.FromSeconds(5.0, ntsc);
+        Assert.Equal((150L, "00:00:05.005", "5.000"), (t.FrameNum, t.Timecode(), t.SecondsText()));
+        // Seconds minus a frame number stay seconds; a frame number minus seconds counts frames.
+        Assert.Equal(5.0 - 1.001, t.Minus(FrameTime.Frame(30, ntsc)).Seconds); // frame 30 is exactly 30030/30000 s; 3.999 as in scenedetect
+        Assert.Equal(30L, FrameTime.Frame(180, ntsc).Minus(t).FrameNum);
+        Assert.Equal(5.0 + 2 / ntsc.Value, t.PlusFrames(2).Seconds, 12);
+    }
+
+    [Fact]
     public void ScenesMergeTheLastShortShotAndDropShortOnes()
     {
         List<FrameTime> cuts = [F(50), F(60), F(140)];
