@@ -21,6 +21,35 @@ public class HsvTests
 
 public class ContentScorerTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(31)]
+    [InlineData(32)]
+    [InlineData(4097)]
+    [InlineData(36864)]   // 256 x 144, past 128 rounds of 32 bytes (the 16-bit lanes are flushed)
+    public void AbsDiffSumMatchesTheScalarSum(int length)
+    {
+        var rnd = new Random(length);
+        var (a, b) = (new byte[length], new byte[length]);
+        rnd.NextBytes(a); rnd.NextBytes(b);
+        a.AsSpan(0, length / 2).Fill(255); b.AsSpan(0, length / 2).Fill(0); // worst case: 255 per byte
+        long expected = 0;
+        for (int i = 0; i < length; i++) expected += Math.Abs(a[i] - b[i]);
+        Assert.Equal(expected, ContentScorer.AbsDiffSum(a, b));
+    }
+
+    [Fact]
+    public void HsvPlanesMatchThePerPixelConversion()
+    {
+        var rnd = new Random(7);
+        var bgr = new byte[3 * 5000];
+        rnd.NextBytes(bgr);
+        var (h, s, v) = (new byte[5000], new byte[5000], new byte[5000]);
+        Hsv.Convert(bgr, h, s, v);
+        for (int i = 0; i < 5000; i++)
+            Assert.Equal(Hsv.FromBgr(bgr[3 * i], bgr[3 * i + 1], bgr[3 * i + 2]), (h[i], s[i], v[i]));
+    }
+
     static byte[] Solid(byte b, byte g, byte r, int pixels = 16) =>
         Enumerable.Range(0, pixels).SelectMany(_ => new[] { b, g, r }).ToArray();
 
