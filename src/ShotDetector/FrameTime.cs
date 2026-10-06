@@ -48,10 +48,13 @@ public readonly record struct FrameTime
     public long FrameNum => IsFrame ? Value : (long)Math.Round(Seconds * FpsValue);
 
     /// <summary>FrameTimecode.get_timecode(): HH:MM:SS.mmm.</summary>
-    public string Timecode()
-    {
+    public string Timecode() =>
         // nearest_frame: frame numbers go through the float frame rate; timestamps use their seconds.
-        double secs = IsFrame ? Value / FpsValue : Seconds;
+        FormatTimecode(IsFrame ? Value / FpsValue : Seconds);
+
+    /// <summary>get_timecode() of a time in seconds: HH:MM:SS.mmm, milliseconds rounded like Python's round().</summary>
+    internal static string FormatTimecode(double secs)
+    {
         long hrs = (long)(secs / 3600);
         secs -= hrs * 3600;
         long mins = (long)(secs / 60);
