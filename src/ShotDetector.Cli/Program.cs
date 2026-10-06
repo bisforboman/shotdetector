@@ -65,6 +65,8 @@ const string Usage = """
           --image-filename <template>    save-images name, no extension (default $VIDEO_NAME-Scene-$SCENE_NUMBER-$IMAGE_NUMBER)
           --split-filename <template>    split-video name (default $VIDEO_NAME-Scene-$SCENE_NUMBER)
       -o, --output <dir>                 Folder for outputs given as relative paths; $VIDEO_NAME works in every output path
+      --load-scenes <csv>                Take the shots from a scene list CSV instead of detecting (scenedetect load-scenes)
+      --load-scenes-column <name>        Its column with each shot's start (default "Start Frame")
           --split-copy                   Copy streams instead of re-encoding (fast; cuts on keyframes)
           --split-high-quality           CRF 17, preset slow (instead of 22, veryfast)
           --split-crf <n>, --split-preset <name>, --split-args "<ffmpeg args>"
@@ -77,7 +79,7 @@ string? htmlPath = null;
 string? edlPath = null, edlTitle = null, edlReel = "AX", edlStart = null, fcpPath = null, fcpFormat = "fcpx";
 string? otioPath = null, otioName = null, qpPath = null;
 bool otioAudio = true, qpShift = true;
-string? outputDir = null;
+string? outputDir = null, loadScenes = null, loadColumn = "Start Frame";
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
 var options = new DetectionOptions();
 var detectorList = new List<DetectorSettings>();  // -d ... each with its own -t/-m/--filter-mode
@@ -194,6 +196,8 @@ try
             case "--image-filename": images = images with { FileName = Next() }; break;
             case "--split-filename": split = split with { FileName = Next() }; break;
             case "-o" or "--output": outputDir = Next(); break;
+            case "--load-scenes": loadScenes = Next(); break;
+            case "--load-scenes-column": loadColumn = Next(); break;
             case "--split-copy": split = split with { Copy = true }; break;
             case "--split-high-quality": split = split with { HighQuality = true }; break;
             case "--split-crf": split = split with { RateFactor = NextInt() }; break;
@@ -224,8 +228,8 @@ try
     if (!Console.IsErrorRedirected)
         options = options with { Progress = new SyncProgress<DetectionProgress>(p => Console.Error.Write(
             p.Fraction is { } f ? $"\r{f:P0} ({p.FramesProcessed} frames)  " : $"\r{p.FramesProcessed} frames  ")) };
-    var result = input == "-"
-        ? ShotDetection.Detect(Console.OpenStandardInput(), options)
+    var result = loadScenes is not null ? ShotDetection.LoadScenes(input, loadScenes, loadColumn!, options)
+        : input == "-" ? ShotDetection.Detect(Console.OpenStandardInput(), options)
         : ShotDetection.Detect(input, options);
     if (!Console.IsErrorRedirected)
         Console.Error.Write("\r" + new string(' ', 40) + "\r");

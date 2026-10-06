@@ -288,7 +288,7 @@ public static class Timeline
 
     /// <summary>FrameTimecode's exact seconds: pts × time_base (a frame number counts in 1/fps).</summary>
     static (BigInteger Num, BigInteger Den) Exact(FrameTime t) =>
-        t.TbDen > 0 ? Reduce(t.Value, t.TbDen) : Reduce((BigInteger)t.Value * t.Fps.Den, t.Fps.Num);
+        t.TbDen > 0 ? Reduce(t.Value, t.TbDen) : Reduce((BigInteger)t.FrameNum * t.Fps.Den, t.Fps.Num);
 
     static (BigInteger Num, BigInteger Den) Reduce(BigInteger num, BigInteger den)
     {

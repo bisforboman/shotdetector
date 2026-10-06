@@ -140,6 +140,10 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
   `--split-high-quality`, `--split-crf`, `--split-preset`, `--split-args`, `--split-expand`
   (`SplitOptions` in the library). The clips came out byte-identical to scenedetect's for every
   option.
+- `--load-scenes <csv>` takes the shots from a scene list CSV (ours or scenedetect's) instead of
+  detecting, for re-exporting an edited list (`ShotDetection.LoadScenes`); `--load-scenes-column`
+  picks the start column (`Start Frame` by default, or a timecode/seconds column). Byte-identical to
+  scenedetect's load-scenes, also with time ranges, `--merge-last-scene` and `--drop-short-scenes`.
 - File names follow scenedetect's templates (`--image-filename`, `--split-filename`;
   `ImageOptions.FileName`, `SplitOptions.FileName`), with the same variables (`$VIDEO_NAME`,
   `$SCENE_NUMBER`, `$IMAGE_NUMBER`, `$FRAME_NUMBER`, `$TIMESTAMP_MS`, `$TIMECODE`, `$START_TIME`, ...).

@@ -6,7 +6,8 @@ namespace ShotDetector;
 /// A position held the way PySceneDetect's FrameTimecode holds it, so that printed timecodes and
 /// seconds match digit for digit. In 0.7.1 it is either a presentation timestamp (<see cref="Value"/>
 /// in units of 1/<see cref="TbDen"/> s; decoded frame positions) or a bare frame number (TbDen == 0;
-/// cuts that ThresholdDetector computes). In 0.6.4 it is always a frame number whose seconds are
+/// cuts that ThresholdDetector computes), or a time in seconds (TbDen == -2, the double's bits in Value;
+/// times typed by the user or read from a scene list). In 0.6.4 it is always a frame number whose seconds are
 /// frame / fps in floating point (TbDen == -1). Arithmetic, conversions and rounding mirror
 /// FrameTimecode, including Python's round(), which rounds the exact binary value half to even.
 /// </summary>
@@ -32,13 +33,17 @@ public readonly record struct FrameTime
     internal static FrameTime Frame064(long frame, Fps fps) => new(frame, -1, fps);
     /// <summary>A presentation timestamp in units of 1/<paramref name="tbDen"/> seconds.</summary>
     internal static FrameTime Pts(long pts, long tbDen, Fps fps) => new(pts, tbDen, fps);
+    /// <summary>A time in seconds (FrameTimecode's _Seconds), e.g. "5s" or "00:00:05.000" given by the user.</summary>
+    internal static FrameTime FromSeconds(double seconds, Fps fps) => new(BitConverter.DoubleToInt64Bits(seconds), -2, fps);
 
-    bool IsFrame => TbDen <= 0;
+    bool IsFrame => TbDen is 0 or -1;
+    bool IsSecs => TbDen == -2;
     double FpsValue => Fps.Value; // float(frame_rate)
 
     /// <summary>FrameTimecode.seconds: an exact rational, rounded once to double (0.6.4: frame / float fps).</summary>
     public double Seconds => TbDen switch
     {
+        -2 => BitConverter.Int64BitsToDouble(Value),
         -1 => Value / FpsValue,
         0 => (double)(Value * Fps.Den) / Fps.Num,
         _ => (double)Value / TbDen,
@@ -49,8 +54,9 @@ public readonly record struct FrameTime
 
     /// <summary>FrameTimecode.get_timecode(): HH:MM:SS.mmm.</summary>
     public string Timecode() =>
-        // nearest_frame: frame numbers go through the float frame rate; timestamps use their seconds.
-        FormatTimecode(IsFrame ? Value / FpsValue : Seconds);
+        // nearest_frame: frame numbers and seconds go through the frame number and the float frame rate;
+        // timestamps use their own seconds.
+        FormatTimecode(TbDen <= 0 ? FrameNum / FpsValue : Seconds);
 
     /// <summary>get_timecode() of a time in seconds: HH:MM:SS.mmm, milliseconds rounded like Python's round().</summary>
     internal static string FormatTimecode(double secs)
@@ -76,16 +82,27 @@ public readonly record struct FrameTime
     }
 
     /// <summary>FrameTimecode + n frames (only used for the end of the last scene).</summary>
-    public FrameTime PlusFrames(int frames) => IsFrame
-        ? this with { Value = Value + frames }
+    public FrameTime PlusFrames(int frames) => IsFrame ? this with { Value = Value + frames }
+        : IsSecs ? FromSeconds(Math.Max(0.0, Seconds + frames / FpsValue), Fps)
         : this with { Value = Math.Max(0, Value + (long)Math.Round(frames / FpsValue / (1.0 / TbDen))) };
+
+    /// <summary>FrameTimecode + FrameTimecode for frame numbers and seconds (a start plus a duration).</summary>
+    internal FrameTime Plus(FrameTime other) =>
+        IsSecs ? FromSeconds(Math.Max(0.0, Seconds + other.Seconds), Fps)
+        : IsFrame && !(other.TbDen > 0) ? this with { Value = Math.Max(0, Value + other.FrameNum) }
+        : throw new NotSupportedException("Adding timestamps isn't needed here.");
 
     /// <summary>FrameTimecode - FrameTimecode (clamped at 0), e.g. a scene's duration.</summary>
     public FrameTime Minus(FrameTime other)
     {
+        // Seconds minus anything but a timestamp stays in seconds; a frame number minus seconds counts frames.
+        if (IsSecs && !(other.TbDen > 0))
+            return FromSeconds(Math.Max(0.0, Seconds - other.Seconds), Fps);
+        if (IsFrame && other.IsSecs)
+            return this with { Value = Math.Max(0, Value - other.FrameNum) };
         if (IsFrame && other.IsFrame)
             return this with { Value = Math.Max(0, Value - other.Value) };
-        if (!IsFrame && !other.IsFrame)
+        if (TbDen > 0 && other.TbDen > 0)
         {
             if (TbDen == other.TbDen)
                 return this with { Value = Math.Max(0, Value - other.Value) };
@@ -94,9 +111,9 @@ public readonly record struct FrameTime
             long b = RoundHalfEven(other.Value * (BigInteger)finer, other.TbDen);
             return this with { Value = Math.Max(0, a - b), TbDen = finer };
         }
-        if (!IsFrame) // timestamp - frame number: in this time base
+        if (TbDen > 0) // timestamp - frame number or seconds: in this time base
             return this with { Value = Math.Max(0, Value - (long)Math.Round(other.Seconds / (1.0 / TbDen))) };
-        // frame number - timestamp: in the other's time base
+        // frame number or seconds - timestamp: in the other's time base
         long self = (long)Math.Round(Seconds / (1.0 / other.TbDen));
         return this with { Value = Math.Max(0, self - other.Value), TbDen = other.TbDen };
     }

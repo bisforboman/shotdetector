@@ -5,6 +5,7 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- `ShotDetection.LoadScenes` / CLI `--load-scenes`: shots from a scene list CSV, as scenedetect's load-scenes.
 - File name templates as scenedetect's: `ImageOptions.FileName`, `SplitOptions.FileName` (CLI `--image-filename`,
   `--split-filename`); CLI `-o/--output` and `$VIDEO_NAME` in output paths.
 - Several detectors in one run (`DetectionOptions.Detectors` with per-detector `DetectorSettings`; CLI repeated
