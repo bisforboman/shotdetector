@@ -30,9 +30,9 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 |---|---|---|
 | Benchmark script and CI job (`tools/bench.py`, `benchmark.yml`, weekly and on demand): fps and peak memory vs scenedetect on the films | Desktop timings vary by ±50% between identical runs; claims need numbers from a quiet runner | Done (2026-10-06) |
 | README performance section from the CI numbers, including memory | Users choosing between the tools want numbers | Open |
-| Decode threads: `-threads 0` decodes ~22% faster than our default 4 on 16 cores, but a full run gained nothing (the scoring's `Parallel.ForEach` competes with the decoder). Find a default that wins on both small and large frames | Biggest remaining lever on large frames | Open |
-| Pipe bytes: the core path pipes full-size BGR (3 bytes per pixel) although the exact resize reads ~1/5 of the pixels; the FastYuv path pipes yuv420p (1.5) | ~15% on large frames | Open |
-| Probe cost: ffprobe reads every packet of the whole file even for `-e 120s` | ~0.2-1.3 s per film; matters for short ranges and many small files | Open |
+| Decode threads: 8 by default on the yuv420p fast path (decode-bound: 13% faster on HD, +70 MB at 1080p, user's choice); the core path stays at 4 (pipe-bound: more threads don't help) | Biggest lever that keeps exact results | Done (2026-10-06) |
+| Pipe bytes on the core path: it pipes full-size BGR (3 bytes per pixel) although the exact resize reads ~1/5 of the pixels; ffmpeg has no filter that keeps exactly those rows and columns, and converting yuv420p in C# is what the LGPL FastYuv package is | The core path's bottleneck on HD (~15%); FastYuv is the answer today | Maybe |
+| Probe cost: scanning packets in the background while ffmpeg decodes | Measured no gain (the end check needs timestamps from the first frame; short files scan fast); reverted | Dropped (2026-10-06) |
 | SIMD in the resize/HSV/score loops | ~4% of the time; not worth it until the above are done | Maybe |
 
 ## 3. Toward 1.0

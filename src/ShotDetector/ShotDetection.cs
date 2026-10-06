@@ -117,8 +117,12 @@ public sealed record DetectionOptions
     /// <summary>Let ffmpeg downscale (faster, but results can differ from PySceneDetect).</summary>
     public bool FfmpegResize { get; init; }
 
-    /// <summary>ffmpeg decoder threads; 0 = ffmpeg's choice.</summary>
-    public int DecodeThreads { get; init; } = 4;
+    /// <summary>
+    /// ffmpeg decoder threads; 0 = ffmpeg's choice. Null (the default) picks for the frame pipeline: 8 when
+    /// ffmpeg sends yuv420p (<see cref="FramePipeline.Yuv420Sampled"/>, which is then bound by decoding:
+    /// ~13% faster on HD than 4, for ~70 MB more at 1080p), else 4 (bound by the pipe; more doesn't help).
+    /// </summary>
+    public int? DecodeThreads { get; init; }
 
     /// <summary>
     /// Enables the yuv420p fast path: much faster on large video, same results. Use SwscaleYuv420

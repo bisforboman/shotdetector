@@ -158,7 +158,9 @@ What makes the FastYuv path faster:
 - cv2.resize only reads ~150k of the 2M pixels of a 1080p frame, so only those are converted to
   BGR (`SwscaleYuv420.cs`, a bit-exact port of swscale's converter), fused into the resize;
 - the resize and the HSV + difference scoring run on several cores; reading overlaps processing;
-- ffmpeg gets 4 decoder threads (`--threads`): more only adds ~25 MB each without making the run faster.
+- ffmpeg gets 8 decoder threads on this path (`--threads`): with half the bytes to pipe, decoding is
+  the bottleneck, and 8 threads are ~13% faster than 4 on HD for ~70 MB more at 1080p. The core path
+  keeps 4: it is bound by piping full BGR frames, so more threads only add memory.
 
 Files in other pixel formats (10-bit, 4:2:2/4:4:4, full-range MJPEG) or with an odd height take a
 slower path where ffmpeg converts whole frames, still with identical results.

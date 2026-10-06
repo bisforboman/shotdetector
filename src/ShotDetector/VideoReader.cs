@@ -130,7 +130,7 @@ public sealed partial class VideoReader
     readonly Stream? _stream;
     readonly byte[] _prefix = [];      // what was read from _stream to probe it; fed to ffmpeg first
     readonly bool _ffmpegResize;
-    readonly int _decodeThreads;
+    readonly int? _decodeThreads;
     readonly IYuv420Converter? _yuv420;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
     readonly List<long> _livePts = []; // the same, as frames arrive, when streaming
@@ -451,7 +451,7 @@ public sealed partial class VideoReader
         // packet list), so ffmpeg logs at info level and the lines are parsed as they arrive.
         string[] noStdin = _stream is null ? ["-nostdin"] : [];
         string[] args = ["-v", Streaming ? "info" : "error", "-nostats", .. noStdin, "-y",
-            "-threads", $"{_decodeThreads}", .. seek, "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough", .. limit];
+            "-threads", $"{_decodeThreads ?? (pipeline == FramePipeline.Yuv420Sampled ? 8 : 4)}", .. seek, "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough", .. limit];
         if (Streaming)
             select = ["-vf", "showinfo=checksum=0"];
         string prefix = select.Length > 0 ? select[1] + "," : "";
