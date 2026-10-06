@@ -5,6 +5,8 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- The shot list CSV starts with scenedetect's `Timecode List:` row (an empty row when there are no cuts);
+  `Shots.Csv(shots, includeCutList: false)` / CLI `--skip-cuts` leaves it out. CLI `-q/--quiet`.
 - `SplitVideo` takes `SplitOptions` (CLI `--split-copy`, `--split-high-quality`, `--split-crf`,
   `--split-preset`, `--split-args`, `--split-expand`), scenedetect's split-video options.
 - Fix: split-video now always drops subtitle streams (`-sn`), as scenedetect 0.7.1 does too; only the

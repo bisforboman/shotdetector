@@ -435,6 +435,18 @@ public class FrameTimeTests
 
 public class ShotsTests
 {
+    [Fact]
+    public void CsvStartsWithTheCutListLikeScenedetect()
+    {
+        var fps = new Fps(25, 1);
+        Shot S(int n, long a, long b) => new(n, FrameTime.Frame(a, fps), FrameTime.Frame(b, fps));
+        string csv = Shots.Csv([S(1, 0, 50), S(2, 50, 100), S(3, 100, 150)]);
+        Assert.StartsWith("Timecode List:,00:00:02.000,00:00:04.000\nScene Number,", csv);
+        // No cuts: scenedetect's fallback row is empty, so the file starts with a blank line.
+        Assert.StartsWith("\nScene Number,", Shots.Csv([S(1, 0, 150)]));
+        Assert.StartsWith("Scene Number,", Shots.Csv([S(1, 0, 50), S(2, 50, 100)], includeCutList: false));
+    }
+
     static readonly Fps Ntsc = new(30000, 1001);
 
     static FrameTime F(long n) => FrameTime.Frame(n, Ntsc);

@@ -52,8 +52,8 @@ def timed(cmd: list[str]) -> float:
 
 
 def diff_scene_csv(ref_path: Path, our_path: Path) -> int:
-    """Number of cells that differ between two scene list CSVs (all columns, as text)."""
-    ref, ours = (list(csv.reader(_scene_rows(p))) for p in (ref_path, our_path))
+    """Number of cells that differ between two scene list CSVs (every row, including the cut list; as text)."""
+    ref, ours = (list(csv.reader(open(p, newline="").read().splitlines())) for p in (ref_path, our_path))
     cells = sum(x != y for a, b in zip(ref, ours) for x, y in zip(a, b))
     return cells + sum(len(r) for r in (ref[len(ours):] + ours[len(ref):]))
 
