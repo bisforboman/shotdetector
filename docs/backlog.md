@@ -21,12 +21,19 @@ Status: **Released** (on nuget.org), **Done** (on `main`, in the next release), 
 
 ## 2. Performance
 
+Measured 2026-10-06 (dotnet-trace thread sampling plus interleaved best-of-3 timings, Tears of Steel 1280x534):
+our resize and scoring are ~4% of sampled thread time, and a full run takes 3.8 s against 2.8 s for ffmpeg
+decoding and converting the same frames into nothing. On large frames both tools are bound by decoding, so
+faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup with ffprobe, and decode threads.
+
 | Item | Why | Status |
 |---|---|---|
-| Benchmark script (`tools/bench.py`): fps and peak memory vs scenedetect on the real-world films, numbers in the README | Claims need numbers that are reproduced in CI | Open |
-| Profile the exact path: resize + HSV + diff per frame; SIMD (`Vector256`) where it keeps bit-exactness | Current speed-up comes from threads and the yuv420p sampled path; the scoring loop is scalar | Open |
-| Pipe throughput: larger pipe buffers on Linux/macOS, avoid the copy into the frame buffer | Decoding is often the bottleneck for small frames | Open |
-| Startup: trim the ffprobe call when nothing but the frame list is needed; AOT size | Matters for the CLI on many short clips | Maybe |
+| Benchmark script and CI job (`tools/bench.py`, `benchmark.yml`, weekly and on demand): fps and peak memory vs scenedetect on the films | Desktop timings vary by ±50% between identical runs; claims need numbers from a quiet runner | Done (2026-10-06) |
+| README performance section from the CI numbers, including memory | Users choosing between the tools want numbers | Open |
+| Decode threads: `-threads 0` decodes ~22% faster than our default 4 on 16 cores, but a full run gained nothing (the scoring's `Parallel.ForEach` competes with the decoder). Find a default that wins on both small and large frames | Biggest remaining lever on large frames | Open |
+| Pipe bytes: the core path pipes full-size BGR (3 bytes per pixel) although the exact resize reads ~1/5 of the pixels; the FastYuv path pipes yuv420p (1.5) | ~15% on large frames | Open |
+| Probe cost: ffprobe reads every packet of the whole file even for `-e 120s` | ~0.2-1.3 s per film; matters for short ranges and many small files | Open |
+| SIMD in the resize/HSV/score loops | ~4% of the time; not worth it until the above are done | Maybe |
 
 ## 3. Toward 1.0
 
