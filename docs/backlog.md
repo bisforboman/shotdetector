@@ -38,7 +38,8 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | Memory at 1080p: ~300 MB vs scenedetect's ~235 MB, now mostly ffmpeg's frame queues and decoder threads (our process ~50 MB). Slice threading cut ffmpeg alone to 76 MB but cost 18-40% speed in the full pipeline; --threads 1 helps on many cores | Small containers (issue #7) | Open |
 | Streamed input: spill an mp4 without faststart to a temporary file instead of refusing it; the streaming path's extra time and memory on SD | Issue #7 (low priority there) | Open |
 | Probe cost: scanning packets in the background while ffmpeg decodes | Measured no gain (the end check needs timestamps from the first frame; short files scan fast); reverted | Dropped (2026-10-06) |
-| In-process decoding (FFmpeg.AutoGen / Sdcb.FFmpeg, the C# counterparts of PyAV) instead of the ffmpeg pipe | Removes the pipe (~15% on HD, core path) and the separate ffmpeg executable; costs native FFmpeg libraries per platform (AOT, Alpine) and their LGPL/GPL terms | Maybe |
+| In-process decoding (FFmpeg.AutoGen / Sdcb.FFmpeg, the C# counterparts of PyAV) instead of the ffmpeg pipe | Removes the pipe (~15% on HD, core path) and the separate ffmpeg executable; costs native FFmpeg libraries per platform (AOT, Alpine) and their LGPL/GPL terms | Done (opt-in, next row) |
+| In-process decoding as an opt-in backend (FFmpeg.AutoGen, FFmpeg 8.1 libraries): prototype exact and 40% less CPU than the ffmpeg command line on 2 CPUs (decisions.md) | Issue #12: the command line is two thirds of the gap to scenedetect on Linux | Done |
 | SIMD in the resize/HSV/score loops | ~4% of the time; not worth it until the above are done | Maybe |
 
 ## 3. Toward 1.0
