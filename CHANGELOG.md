@@ -5,6 +5,9 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- Several detectors in one run (`DetectionOptions.Detectors` with per-detector `DetectorSettings`; CLI repeated
+  `-d`), `DropShortScenes`, `MergeLastScene`, `FilterMode` (suppress), `Downscale`; `DetectionResult.Cuts`. All
+  byte-identical to scenedetect (`tools/compare-options.py`, in CI).
 - Timeline exports: `Timeline.Edl`, `Fcpx`, `Fcp7`, `Otio` and `Qp` / CLI `--save-edl`, `--save-fcp`,
   `--save-otio`, `--save-qp`, scenedetect's save-edl, save-fcp, save-otio and save-qp byte for byte.
 - API review toward 1.0: the detector classes, `IDetector`, `ContentScorer` and `EdgeDetector` are internal

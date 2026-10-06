@@ -69,6 +69,12 @@ exports need a path.
 
 All five scenedetect detectors are available: `DetectorKind.Adaptive`, `Content`, `Threshold`,
 `Histogram` and `Hash` (CLI `-d adaptive|content|threshold|hist|hash`), with scenedetect's defaults.
+Several can run at once and their cuts are combined, as with several `detect-*` commands:
+`Detectors = [new(DetectorKind.Content) { Threshold = 30 }, new(DetectorKind.Threshold)]` (CLI
+`-d content -t 30 -d threshold`: `-t`, `-m` and `--filter-mode` after a `-d` belong to it). Also as in
+scenedetect: `DropShortScenes`, `MergeLastScene`, `FilterMode = FlashFilterMode.Suppress` and
+`Downscale` (CLI `--drop-short-scenes`, `--merge-last-scene`, `--filter-mode`, `--downscale`).
+`DetectionResult.Cuts` is scenedetect's cut list, which keeps the cuts of dropped or merged shots.
 
 Like scenedetect's `time`, `--frame-skip` and `--crop`: `StartTime`, `EndTime` and `Duration`
 ("HH:MM:SS.mmm", "12.5s", or a frame number; CLI `-s`, `-e`, `--duration`), `FrameSkip` (analyse
@@ -227,7 +233,6 @@ slower path where ffmpeg converts whole frames, still with identical results.
 - **min_scene_len:** ContentDetector reproduces PySceneDetect's float-seconds comparison on
   µs-rounded frame times, so a gap of exactly min_scene_len frames is sometimes rejected (as it is
   there). It assumes constant frame rate starting at 0; variable frame rate isn't handled.
-- **Flash filter:** only MERGE mode (the default) is ported, not SUPPRESS.
 - **Faithfully kept quirks:** AdaptiveDetector measures min_scene_len from the current frame rather
   than the cut frame (so cuts are allowed `window` frames early), and a merge still pending at the
   end of the video is dropped.

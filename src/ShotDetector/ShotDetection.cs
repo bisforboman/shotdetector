@@ -34,6 +34,61 @@ public enum DetectorKind
     Hash,
 }
 
+/// <summary>How ContentDetector enforces the minimum scene length (scenedetect's detect-content --filter-mode).</summary>
+public enum FlashFilterMode
+{
+    /// <summary>Merge cuts closer than the minimum length (scenedetect's default).</summary>
+    Merge,
+
+    /// <summary>Drop cuts until the minimum length has passed since the last cut.</summary>
+    Suppress,
+}
+
+/// <summary>
+/// One detector of a run with several (<see cref="DetectionOptions.Detectors"/>), like one detect-* command of the
+/// scenedetect CLI with its own options. Unset values come from the <see cref="DetectionOptions"/> (Threshold: the
+/// detector's default).
+/// </summary>
+/// <param name="Kind">The detector.</param>
+public sealed record DetectorSettings(DetectorKind Kind)
+{
+    /// <summary>The detector's threshold; null: its scenedetect default.</summary>
+    public double? Threshold { get; init; }
+
+    /// <summary>Minimum shot length for this detector (same formats as <see cref="DetectionOptions.MinSceneLength"/>).</summary>
+    public string? MinSceneLength { get; init; }
+
+    /// <summary>Content: how the minimum length is enforced.</summary>
+    public FlashFilterMode? FilterMode { get; init; }
+
+    /// <summary>Adaptive: see <see cref="DetectionOptions.MinContentVal"/>.</summary>
+    public double? MinContentVal { get; init; }
+
+    /// <summary>Adaptive: see <see cref="DetectionOptions.FrameWindow"/>.</summary>
+    public int? FrameWindow { get; init; }
+
+    /// <summary>Content/adaptive: see <see cref="DetectionOptions.Weights"/>.</summary>
+    public (double Hue, double Sat, double Lum, double Edges)? Weights { get; init; }
+
+    /// <summary>Content/adaptive: see <see cref="DetectionOptions.LumaOnly"/>.</summary>
+    public bool? LumaOnly { get; init; }
+
+    /// <summary>Content/adaptive: see <see cref="DetectionOptions.KernelSize"/>.</summary>
+    public int? KernelSize { get; init; }
+
+    /// <summary>Histogram: see <see cref="DetectionOptions.Bins"/>.</summary>
+    public int? Bins { get; init; }
+
+    /// <summary>Hash: see <see cref="DetectionOptions.HashSize"/>.</summary>
+    public int? HashSize { get; init; }
+
+    /// <summary>Hash: see <see cref="DetectionOptions.HashLowpass"/>.</summary>
+    public int? HashLowpass { get; init; }
+
+    /// <summary>Threshold: see <see cref="DetectionOptions.FadeBias"/>.</summary>
+    public double? FadeBias { get; init; }
+}
+
 /// <summary>Detection settings. Defaults match the scenedetect CLI.</summary>
 public sealed record DetectionOptions
 {
@@ -134,6 +189,27 @@ public sealed record DetectionOptions
     public string? FfmpegDirectory { get; init; }
 
     /// <summary>
+    /// Several detectors in one run (like several detect-* commands): their cuts are combined. Null or empty: the one
+    /// <see cref="Detector"/>, with <see cref="Threshold"/>. With several, shots stream out only at the end.
+    /// </summary>
+    public IReadOnlyList<DetectorSettings>? Detectors { get; init; }
+
+    /// <summary>Content: how the minimum length is enforced (detect-content --filter-mode).</summary>
+    public FlashFilterMode FilterMode { get; init; }
+
+    /// <summary>Downscale frames by this whole factor (scenedetect -d); null: scenedetect's automatic factor; 1: none.</summary>
+    public int? Downscale { get; init; }
+
+    /// <summary>
+    /// Detect without a minimum length, then drop shots shorter than <see cref="MinSceneLength"/>
+    /// (--drop-short-scenes). The result can have gaps; <see cref="DetectionResult.Cuts"/> keeps every cut.
+    /// </summary>
+    public bool DropShortScenes { get; init; }
+
+    /// <summary>Merge the last shot into the one before it when it is shorter than <see cref="MinSceneLength"/> (--merge-last-scene).</summary>
+    public bool MergeLastScene { get; init; }
+
+    /// <summary>
     /// Override the detected frame rate, like scenedetect's <c>-f/--frame-rate</c>: frame numbers and
     /// <see cref="MinSceneLength"/> in frames use it, while times still come from the container. For an
     /// image sequence ("frames/%04d.png"), which has no times, frame n is at n / rate (default 25).
@@ -166,8 +242,11 @@ public readonly record struct DetectionProgress(int FramesProcessed, int Expecte
 /// <param name="FrameCount">Frames decoded.</param>
 /// <param name="MinSceneLengthFrames"><see cref="DetectionOptions.MinSceneLength"/> in frames of this video.</param>
 /// <param name="Stats">Per-frame metrics when <see cref="DetectionOptions.CollectStats"/> was set, else null.</param>
+/// <param name="Cuts">Every cut, sorted: the shot starts after the first, unless shots were dropped or merged
+/// (scenedetect's cut list, which its CSV's first row, the HTML page and the QP file use).</param>
 public sealed record DetectionResult(
-    string? VideoPath, VideoReader Video, IReadOnlyList<Shot> Shots, int FrameCount, int MinSceneLengthFrames, Stats? Stats);
+    string? VideoPath, VideoReader Video, IReadOnlyList<Shot> Shots, int FrameCount, int MinSceneLengthFrames, Stats? Stats,
+    IReadOnlyList<FrameTime> Cuts);
 
 /// <summary>Runs shot detection on a video file.</summary>
 public static class ShotDetection
@@ -255,57 +334,44 @@ public static class ShotDetection
     {
         cancellationToken.ThrowIfCancellationRequested();
         var o = options ?? new DetectionOptions();
-        if (o.FrameWindow < 1)
-            throw new ArgumentException("FrameWindow must be at least 1.");
-        if (o.KernelSize is { } k && (k < 3 || k % 2 == 0))
-            throw new ArgumentException("KernelSize must be an odd number >= 3.");
-        if (o.Bins is < 1 or > 256)
-            throw new ArgumentException("Bins must be between 1 and 256.");
-        if (o.HashSize < 1 || o.HashLowpass < 1)
-            throw new ArgumentException("HashSize and HashLowpass must be at least 1.");
         if (o.FrameSkip < 0)
             throw new ArgumentException("FrameSkip must be at least 0.");
         if (o.FrameSkip > 0 && o.CollectStats)
             throw new ArgumentException("FrameSkip must be 0 when collecting stats (as in scenedetect).");
         if (o.EndTime is not null && o.Duration is not null)
             throw new ArgumentException("EndTime and Duration cannot both be set.");
+        if (o.Downscale is < 1)
+            throw new ArgumentException("Downscale must be at least 1.");
 
         var video = videoStream is not null ? new VideoReader(videoStream, o, cancellationToken) : new VideoReader(videoPath!, o, cancellationToken);
         if (o.StartTime is not null && video.Streaming)
             throw new ArgumentException("StartTime isn't available for a streamed input (a Stream, a URL, or Streaming = true).");
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
 
-        var w = o.Weights;
-        var scorer = o.LumaOnly ? ContentScorer.LumaOnly() : new ContentScorer(w.Hue, w.Sat, w.Lum, w.Edges);
-        // Like PySceneDetect, edges are computed when they're weighted or stats are collected.
-        if (o.Detector is DetectorKind.Adaptive or DetectorKind.Content && (scorer.UsesEdges || o.CollectStats))
-            scorer.Edges = new EdgeDetector(video.Width, video.Height, o.KernelSize);
-        IDetector detector = o.Detector switch
-        {
-            DetectorKind.Content => new ContentDetector(scorer, video.Position, video.Fps, o.Threshold ?? 27.0, minSceneLen),
-            DetectorKind.Threshold => new ThresholdDetector(video.Position, video.Fps, o.Threshold ?? 12.0, minSceneLen, o.FadeBias, o.Compatibility),
-            DetectorKind.Histogram => new HistogramDetector(video.Position, o.Threshold ?? 0.05, o.Bins, minSceneLen, o.Compatibility),
-            DetectorKind.Hash => new HashDetector(video.Position, o.Threshold ?? 0.395, o.HashSize, o.HashLowpass, minSceneLen),
-            _ => new AdaptiveDetector(scorer, video.Position, o.Threshold ?? 3.0, minSceneLen, o.FrameWindow, o.MinContentVal),
-        };
-        if (o.CollectStats)
-            detector.Stats = new Stats();
-        if (detector is HashDetector hash)
-            hash.SetFrameSize(video.Width, video.Height);
+        // One detector per settings entry (the single-detector options are the shorthand); each gets the same frames.
+        bool single = o.Detectors is not { Count: > 0 };
+        var settings = single ? [new DetectorSettings(o.Detector) { Threshold = o.Threshold }] : o.Detectors!;
+        var stats = o.CollectStats ? new Stats() : null;
+        var detectors = settings.Select(st => Build(st, o, video, minSceneLen, stats)).ToList();
+        // Shots stream out as cuts arrive only when nothing can reorder or change them later.
+        bool incremental = detectors.Count == 1 && !o.DropShortScenes && !o.MergeLastScene;
 
-        // Shots are built as cuts arrive (detectors report them in frame order), which is what
-        // get_scenes_from_cuts does with the sorted, de-duplicated cut list.
+        // Cuts as scenedetect keeps them (its cutting list, later sorted and de-duplicated).
+        var cuts = new List<FrameTime>();
         var shots = new List<Shot>();
         var start = video.Position(0);
         FrameTime? lastCut = null;
         void Cut(FrameTime cut)
         {
+            cuts.Add(cut);
+            if (!incremental)
+                return;
             // A cut at frame 0 still makes a (zero-length) first shot, as in scenedetect.
             if (lastCut is { } previous)
             {
-                if (cut.FrameNum == previous.FrameNum)
+                if (SameCut(cut, previous))
                     return; // the same cut twice
-                if (cut.FrameNum < previous.FrameNum)
+                if (CompareCuts(cut, previous) < 0)
                     throw new InvalidOperationException($"Cut at frame {cut.FrameNum} came after one at {previous.FrameNum}.");
             }
             lastCut = cut;
@@ -329,8 +395,10 @@ public static class ShotDetection
         foreach (var frame in video.Frames(startFrame, null, cancellationToken))
         {
             int index = startFrame + frameCount;
-            if (frameCount % stride == 0 && detector.ProcessFrame(index, frame) is { } cut)
-                Cut(cut);
+            if (frameCount % stride == 0)
+                foreach (var detector in detectors)
+                    if (detector.ProcessFrame(index, frame) is { } cut)
+                        Cut(cut);
             frameCount++;
             if (o.Progress is not null && Environment.TickCount64 - lastReport >= 100)
             {
@@ -351,13 +419,105 @@ public static class ShotDetection
             // Where scenedetect finds the stream after the loop: past the end if it read until EOF,
             // otherwise at the last frame read (which may be a skipped one).
             var last = readToEnd ? video.PositionAfterDecoding(startFrame + frameCount) : video.Position(startFrame + frameCount - 1);
-            if (detector.PostProcess(last) is { } trailingCut)
-                Cut(trailingCut);
-            var final = new Shot(shots.Count + 1, start, last.PlusFrames(1));
-            shots.Add(final);
-            onShot?.Invoke(final);
+            foreach (var detector in detectors)
+                if (detector.PostProcess(last) is { } trailingCut)
+                    Cut(trailingCut);
+            if (incremental)
+            {
+                var final = new Shot(shots.Count + 1, start, last.PlusFrames(1));
+                shots.Add(final);
+                onShot?.Invoke(final);
+            }
+            else
+            {
+                shots = Scenes(Unique(cuts), start, last.PlusFrames(1), o.MergeLastScene, o.DropShortScenes ? minSceneLen : 0, minSceneLen);
+                foreach (var shot in shots)
+                    onShot?.Invoke(shot);
+            }
         }
-        return new(videoPath, video, shots, frameCount, minSceneLen, detector.Stats);
+        return new(videoPath, video, shots, frameCount, minSceneLen, stats, Unique(cuts));
+    }
+
+    static IDetector Build(DetectorSettings st, DetectionOptions o, VideoReader video, int minSceneLen, Stats? stats)
+    {
+        int frameWindow = st.FrameWindow ?? o.FrameWindow, bins = st.Bins ?? o.Bins, hashSize = st.HashSize ?? o.HashSize,
+            hashLowpass = st.HashLowpass ?? o.HashLowpass;
+        int? kernelSize = st.KernelSize ?? o.KernelSize;
+        if (frameWindow < 1)
+            throw new ArgumentException("FrameWindow must be at least 1.");
+        if (kernelSize is { } k && (k < 3 || k % 2 == 0))
+            throw new ArgumentException("KernelSize must be an odd number >= 3.");
+        if (bins is < 1 or > 256)
+            throw new ArgumentException("Bins must be between 1 and 256.");
+        if (hashSize < 1 || hashLowpass < 1)
+            throw new ArgumentException("HashSize and HashLowpass must be at least 1.");
+        // --drop-short-scenes: detectors cut freely; the short shots are dropped afterwards.
+        int min = o.DropShortScenes ? 0 : st.MinSceneLength is { } m ? MinSceneLengthInFrames(m, video.Fps) : minSceneLen;
+        ContentScorer Scorer()
+        {
+            var w = st.Weights ?? o.Weights;
+            var scorer = st.LumaOnly ?? o.LumaOnly ? ContentScorer.LumaOnly() : new ContentScorer(w.Hue, w.Sat, w.Lum, w.Edges);
+            // Like PySceneDetect, edges are computed when they're weighted or stats are collected.
+            if (scorer.UsesEdges || o.CollectStats)
+                scorer.Edges = new EdgeDetector(video.Width, video.Height, kernelSize);
+            return scorer;
+        }
+        IDetector detector = st.Kind switch
+        {
+            DetectorKind.Content => new ContentDetector(Scorer(), video.Position, video.Fps, st.Threshold ?? 27.0, min,
+                (st.FilterMode ?? o.FilterMode) == FlashFilterMode.Suppress),
+            DetectorKind.Threshold => new ThresholdDetector(video.Position, video.Fps, st.Threshold ?? 12.0, min, st.FadeBias ?? o.FadeBias, o.Compatibility),
+            DetectorKind.Histogram => new HistogramDetector(video.Position, st.Threshold ?? 0.05, bins, min, o.Compatibility),
+            DetectorKind.Hash => new HashDetector(video.Position, st.Threshold ?? 0.395, hashSize, hashLowpass, min),
+            _ => new AdaptiveDetector(Scorer(), video.Position, st.Threshold ?? 3.0, min, frameWindow, st.MinContentVal ?? o.MinContentVal),
+        };
+        detector.Stats = stats;
+        if (detector is HashDetector hash)
+            hash.SetFrameSize(video.Width, video.Height);
+        return detector;
+    }
+
+    /// <summary>
+    /// FrameTimecode equality: exact times when both are timestamps at the same rate, else frame numbers.
+    /// </summary>
+    internal static bool SameCut(FrameTime a, FrameTime b) => CompareCuts(a, b) == 0;
+
+    /// <summary>FrameTimecode ordering, as scenedetect sorts its cut list.</summary>
+    internal static int CompareCuts(FrameTime a, FrameTime b) =>
+        a.TbDen > 0 && b.TbDen > 0 && a.Fps == b.Fps
+            ? ((System.Numerics.BigInteger)a.Value * b.TbDen).CompareTo((System.Numerics.BigInteger)b.Value * a.TbDen)
+            : a.FrameNum.CompareTo(b.FrameNum);
+
+    /// <summary>sorted(set(cutting_list)): sorted, the first of equal cuts kept.</summary>
+    internal static List<FrameTime> Unique(List<FrameTime> cuts)
+    {
+        var unique = new List<FrameTime>();
+        foreach (var cut in cuts)
+            if (!unique.Any(u => SameCut(u, cut)))
+                unique.Add(cut);
+        // A stable sort, so equal-rank cuts keep their order as Python's sorted does.
+        return [.. unique.Select((c, i) => (c, i)).OrderBy(x => x.c, Comparer<FrameTime>.Create(CompareCuts)).ThenBy(x => x.i).Select(x => x.c)];
+    }
+
+    /// <summary>get_scenes_from_cuts, then the CLI's --merge-last-scene and --drop-short-scenes; numbered from 1.</summary>
+    internal static List<Shot> Scenes(List<FrameTime> cuts, FrameTime start, FrameTime end, bool mergeLast, int dropShorterThan, int minSceneLen)
+    {
+        var scenes = new List<(FrameTime Start, FrameTime End)>();
+        var from = start;
+        foreach (var cut in cuts)
+        {
+            scenes.Add((from, cut));
+            from = cut;
+        }
+        scenes.Add((from, end));
+        if (mergeLast && minSceneLen > 0 && scenes.Count > 1 && scenes[^1].End.Minus(scenes[^1].Start).FrameNum < minSceneLen)
+        {
+            scenes[^2] = (scenes[^2].Start, scenes[^1].End);
+            scenes.RemoveAt(scenes.Count - 1);
+        }
+        if (dropShorterThan > 0)
+            scenes.RemoveAll(sc => sc.End.Minus(sc.Start).FrameNum < dropShorterThan);
+        return [.. scenes.Select((sc, i) => new Shot(i + 1, sc.Start, sc.End))];
     }
 
     /// <summary>"0.6s" → frames with Python's round-half-to-even, like FrameTimecode._seconds_to_frames; "15" → 15.</summary>

@@ -42,15 +42,22 @@ public static class Shots
         return sb.Append(rule).ToString();
     }
 
-    /// <summary>Same columns as PySceneDetect's scene list CSV (without its leading "Timecode List" row).</summary>
-    public static string Csv(IEnumerable<Shot> shots, bool includeCutList = true)
+    /// <summary>PySceneDetect's scene list CSV: the "Timecode List" row (cuts), a header and one row per shot.</summary>
+    /// <param name="shots">The shots.</param>
+    /// <param name="includeCutList">Write the first row (list-scenes --skip-cuts leaves it out).</param>
+    /// <param name="cuts">The cut list for that row (<see cref="DetectionResult.Cuts"/>); default the shot starts after the first.</param>
+    public static string Csv(IEnumerable<Shot> shots, bool includeCutList = true, IEnumerable<FrameTime>? cuts = null)
     {
         var list = shots.ToList();
         var sb = new StringBuilder();
-        // scenedetect's first row: "Timecode List:" and the cuts; with no cuts its fallback writes an empty row.
-        // list-scenes --skip-cuts leaves it out.
+        // scenedetect's first row: "Timecode List:" and the cuts; without cuts, its fallback row of the shot starts
+        // after the first (empty for one shot). list-scenes --skip-cuts leaves it out.
         if (includeCutList)
-            sb.Append(list.Count > 1 ? "Timecode List:," + string.Join(',', list.Skip(1).Select(s => s.Start.Timecode())) : "").Append('\n');
+        {
+            var cutList = (cuts ?? list.Skip(1).Select(s => s.Start)).ToList();
+            sb.Append(cutList.Count > 0 ? "Timecode List:," + string.Join(',', cutList.Select(c => c.Timecode()))
+                : string.Join(',', list.Skip(1).Select(s => s.Start.Timecode()))).Append('\n');
+        }
         sb.Append(
             "Scene Number,Start Frame,Start Timecode,Start Time (seconds),End Frame,End Timecode," +
             "End Time (seconds),Length (frames),Length (timecode),Length (seconds)\n");
@@ -71,9 +78,13 @@ public static class Shots
     /// <param name="images">Per shot, the images to show (e.g. from <see cref="Export.SaveImages"/>), relative to the page.</param>
     /// <param name="imageWidth">Width attribute of the images, if any.</param>
     /// <param name="imageHeight">Height attribute of the images, if any.</param>
-    public static string Html(IEnumerable<Shot> shots, IReadOnlyList<IReadOnlyList<string>>? images = null, int? imageWidth = null, int? imageHeight = null)
+    /// <param name="cuts">The cut list for the first table (<see cref="DetectionResult.Cuts"/>); default the shot starts after the first.</param>
+    public static string Html(IEnumerable<Shot> shots, IReadOnlyList<IReadOnlyList<string>>? images = null, int? imageWidth = null, int? imageHeight = null,
+        IEnumerable<FrameTime>? cuts = null)
     {
         var list = shots.ToList();
+        var cutList = (cuts ?? []).ToList();
+        var timecodes = (cutList.Count > 0 ? cutList : list.Skip(1).Select(s => s.Start)).Select(c => c.Timecode());
         static string Row(IEnumerable<string> cells, string tag = "td") => string.Join('\n', ["<tr>", .. cells.Select(c => $"<{tag}>{c}</{tag}>"), "</tr>"]);
         // urllib.parse.quote: letters, digits and "_.-~" stay, "/" separates; everything else is %XX (UTF-8).
         static string Quote(string path) => string.Join('/', path.Replace('\\', '/').Split('/').Select(Uri.EscapeDataString));
@@ -96,7 +107,7 @@ public static class Shots
         return string.Join('\n', [
             "<style type=\"text/css\">", HtmlCss, "</style>",
             "<meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\">",
-            "<table class=mytable>", Row(["Timecode List:", .. list.Skip(1).Select(s => s.Start.Timecode())]), "</table>", "<br />",
+            "<table class=mytable>", Row(["Timecode List:", .. timecodes]), "</table>", "<br />",
             "<table class=mytable>", Row(header, "th"), .. rows, "</table>", "<br />"]);
     }
 

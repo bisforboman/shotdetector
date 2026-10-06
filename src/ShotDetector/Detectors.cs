@@ -27,7 +27,8 @@ internal sealed class ContentDetector(
     Func<int, FrameTime> position,
     Fps fps,
     double threshold = 27.0,
-    int minSceneLen = 15) : IDetector
+    int minSceneLen = 15,
+    bool suppress = false) : IDetector
 {
     int? _lastAbove, _mergeStart;
     bool _mergeEnabled, _mergeTriggered;
@@ -57,6 +58,14 @@ internal sealed class ContentDetector(
 
         _lastAbove ??= frame;
         bool minLengthMet = MinLengthMet(frame, _lastAbove.Value);
+        if (suppress)
+        {
+            // FlashFilter SUPPRESS: a cut only once the minimum length has passed since the last cut.
+            if (!(above && minLengthMet))
+                return null;
+            _lastAbove = frame;
+            return frame;
+        }
         if (above)
             _lastAbove = frame;
 

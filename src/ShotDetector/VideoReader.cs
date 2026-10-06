@@ -264,7 +264,10 @@ public sealed partial class VideoReader
             CropRegion = (minX, minY, Math.Min(maxX + 1, SourceWidth) - minX, Math.Min(maxY + 1, SourceHeight) - minY);
             effective = (CropRegion.Width + 1, CropRegion.Height + 1);
         }
-        (Width, Height) = compatibility == PySceneDetectVersion.V0_6_4
+        (Width, Height) = o.Downscale is { } d
+            ? d <= 1 ? (CropRegion.Width, CropRegion.Height)
+                : (Math.Max(1, (int)Math.Round(CropRegion.Width / (double)d)), Math.Max(1, (int)Math.Round(CropRegion.Height / (double)d)))
+            : compatibility == PySceneDetectVersion.V0_6_4
             ? DownscaledSize064(effective.Item1, effective.Item2, CropRegion.Width, CropRegion.Height)
             : DownscaledSize(effective.Item1, effective.Item2, CropRegion.Width, CropRegion.Height);
         _pixelFormat = stream.GetValueOrDefault("pix_fmt", "");

@@ -93,6 +93,16 @@ public class DetectorTests
     public void ContentIgnoresCutTooCloseToStart() => Assert.Empty(RunContent(Scores(80, 2, (10, 40))));
 
     [Fact]
+    public void ContentSuppressFilterDropsCutsUntilTheMinimumLengthPassed()
+    {
+        // Above the threshold at 2, 4 (too soon after 2) and 30: suppress keeps 2 and 30, not a merged cut.
+        var fps = new Fps(25, 1);
+        var d = new ContentDetector(ContentScorer.LumaOnly(), i => FrameTime.Frame(i, fps), fps, 27, minSceneLen: 15, suppress: true);
+        var cuts = Enumerable.Range(0, 40).Select(i => d.ProcessScore(i, i is 2 or 4 or 30 ? 50 : 0)).OfType<int>().ToList();
+        Assert.Equal([30], cuts); // 2 is within 15 frames of the start (frame 0), 4 within 15 of 0, 30 is 30 after
+    }
+
+    [Fact]
     public void ContentMergeFilterSwallowsFlashThenEmitsLaterCut() =>
         // 25 is too close to 20, which arms merging; 45 is emitted once 15 quiet frames follow it.
         Assert.Equal([20, 45], RunContent(Scores(80, 2, (20, 40), (25, 40), (45, 40))));
@@ -431,6 +441,36 @@ public class FrameTimeTests
     [InlineData(1.3862395109953702, "1.3862395109953702")]
     [InlineData(255.0, "255.0")]
     public void StatsFloatsPrintLikePythonRepr(double x, string expected) => Assert.Equal(expected, Stats.PyFloat(x));
+}
+
+public class SceneListTests
+{
+    static readonly Fps Fps25 = new(25, 1);
+    static FrameTime F(long frame) => FrameTime.Frame(frame, Fps25);
+    static FrameTime P(long micros) => FrameTime.Pts(micros, 1_000_000, Fps25);
+    static (long, long)[] Spans(List<Shot> shots) => [.. shots.Select(s => (s.Start.FrameNum, s.End.FrameNum))];
+
+    [Fact]
+    public void CutsFromSeveralDetectorsAreSortedAndUnique()
+    {
+        // A frame-number cut and a timestamp at the same frame are the same cut (the first one is kept);
+        // two timestamps are compared exactly.
+        var cuts = ShotDetection.Unique([P(4_000_000), F(50), P(2_000_000), F(100), P(2_000_000)]);
+        Assert.Equal([50L, 100L], cuts.Select(c => c.FrameNum));
+        Assert.True(cuts[0].TbDen == 0 && cuts[1].TbDen > 0); // whichever came first: F(50) before P(2s), P(4s) before F(100)
+        // Two different timestamps that round to the same frame number (VFR) are two cuts, as in scenedetect.
+        Assert.Equal(2, ShotDetection.Unique([P(2_000_000), P(2_010_000)]).Count);
+    }
+
+    [Fact]
+    public void ScenesMergeTheLastShortShotAndDropShortOnes()
+    {
+        List<FrameTime> cuts = [F(50), F(60), F(140)];
+        Assert.Equal([(0L, 50L), (50L, 60L), (60L, 140L), (140L, 150L)], Spans(ShotDetection.Scenes(cuts, F(0), F(150), false, 0, 15)));
+        Assert.Equal([(0L, 50L), (50L, 60L), (60L, 150L)], Spans(ShotDetection.Scenes(cuts, F(0), F(150), true, 0, 15)));
+        Assert.Equal([(0L, 50L), (60L, 140L)], Spans(ShotDetection.Scenes(cuts, F(0), F(150), false, 15, 15)));
+        Assert.Equal([1, 2], ShotDetection.Scenes(cuts, F(0), F(150), false, 15, 15).Select(s => s.Number));
+    }
 }
 
 public class ShotsTests

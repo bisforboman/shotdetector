@@ -51,6 +51,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | save-html / export-html: `Shots.Html`, CLI `--save-html`; byte-identical pages (with and without thumbnails) | Parity on the command surface | Done (2026-10-06) |
 | list-scenes `--skip-cuts`, `-q`; the CSV's `Timecode List:` row | Our CSV lacked scenedetect's first row | Done (2026-10-06) |
 | Timeline exports: save-edl, save-fcp (fcpx/fcp7), save-otio, save-qp (`Timeline`, CLI `--save-*`); byte-identical, checked in CI (`tools/compare-timeline.py`) | Editors and encoders import these | Done (2026-10-06) |
+| Detection options: several detectors in one run (per-detector settings, user's choice), --drop-short-scenes, --merge-last-scene, detect-content --filter-mode suppress, -d/--downscale; checked in CI (`tools/compare-options.py`) | Parity on the command surface | Done (2026-10-06) |
 | scenedetect features still missing: save-images `--quality`/`--compression` (our images come from ffmpeg, so only approximately), split-video `--mkvmerge` (external tool), filename templates (`$VIDEO_NAME`...) | Parity on the command surface, not only on results | Maybe |
 | 1.0 release plan: what must hold (parity matrix green for N releases of scenedetect/ffmpeg), version policy afterwards | So 1.0 means something | Open |
 

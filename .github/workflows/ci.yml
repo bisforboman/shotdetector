@@ -163,6 +163,11 @@ jobs:
         if: matrix.scenedetect == '0.7.1' && matrix.path == 'core'
         run: python tools/compare-timeline.py
 
+      # Several detectors, per-detector options, drop/merge, suppress, -d downscale: CSVs and stats identical.
+      - name: Compare detection options with scenedetect
+        if: matrix.scenedetect == '0.7.1'
+        run: python tools/compare-options.py
+
       # detect-hash is informational: on flat frames (fades to black) the perceptual hash is DCT
       # rounding noise, in scenedetect itself as much as here, so a few frames and the odd cut inside
       # a fade differ. Everything else should match; eyeball the table if it changes.

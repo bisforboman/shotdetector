@@ -389,6 +389,32 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     }
 
     [Fact]
+    public void SeveralDetectorsCombineTheirCuts()
+    {
+        var content = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content });
+        var both = ShotDetection.Detect(clips.ThreeShots, new()
+        {
+            Detectors = [new(DetectorKind.Content), new(DetectorKind.Histogram) { Threshold = 0.05 }],
+        });
+        Assert.Equal(content.Shots.Select(s => s.Start.FrameNum), both.Shots.Select(s => s.Start.FrameNum));
+        Assert.Equal([50L, 100L], both.Cuts.Select(c => c.FrameNum));
+        // A per-detector threshold too high to cut leaves the other detector's cuts.
+        var one = ShotDetection.Detect(clips.ThreeShots, new()
+        {
+            Detectors = [new(DetectorKind.Content) { Threshold = 255 }, new(DetectorKind.Histogram)],
+        });
+        Assert.Equal([0L, 50L, 100L], one.Shots.Select(s => s.Start.FrameNum));
+    }
+
+    [Fact]
+    public void DownscaleSetsTheProcessingSize()
+    {
+        Assert.Equal((320, 240), (ShotDetection.Detect(clips.ThreeShots, new() { Downscale = 1 }).Video.Width, 240));
+        var r = ShotDetection.Detect(clips.ThreeShots, new() { Downscale = 3 });
+        Assert.Equal((107, 80), (r.Video.Width, r.Video.Height));
+    }
+
+    [Fact]
     public void AlreadyCancelledTokenThrowsImmediately() =>
         Assert.Throws<OperationCanceledException>(() => ShotDetection.Detect(clips.Long, cancellationToken: new CancellationToken(true)));
 

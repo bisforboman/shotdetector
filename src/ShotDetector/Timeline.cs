@@ -213,8 +213,8 @@ public static class Timeline
         var shots = result.Shots;
         long start = shots.Count > 0 ? shots[0].Start.FrameNum : 0, offset = shiftStart ? start : 0;
         var sb = new StringBuilder().Append(CultureInfo.InvariantCulture, $"{(shiftStart ? 0 : start)} I -1\n");
-        foreach (var shot in shots.Skip(1))
-            sb.Append(CultureInfo.InvariantCulture, $"{shot.Start.FrameNum - offset} I -1\n");
+        foreach (var cut in result.Cuts)
+            sb.Append(CultureInfo.InvariantCulture, $"{cut.FrameNum - offset} I -1\n");
         return sb.ToString();
     }
 

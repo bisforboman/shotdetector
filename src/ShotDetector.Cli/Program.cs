@@ -6,7 +6,13 @@ const string Usage = """
 
       -i, --input <file|url|->           Video file, a URL (http, rtsp, ...), or - for standard input
 
-      -d, --detector <name>              adaptive, content, threshold, hist or hash (default: adaptive)
+      -d, --detector <name>              adaptive, content, threshold, hist or hash (default: adaptive). Repeat
+                                         to combine detectors, as scenedetect does: -t, -m and --filter-mode
+                                         after a -d apply to that detector (-d content -t 30 -d threshold -t 8)
+      --filter-mode <merge|suppress>     content: how min-scene-len is enforced (default merge)
+      --drop-short-scenes                Detect without min-scene-len, then drop shots shorter than it
+      --merge-last-scene                 Merge the last shot into the previous one if shorter than min-scene-len
+      --downscale <n>                    Downscale frames by n (scenedetect -d); default automatic, 1 = none
       -t, --threshold <n>                content: content_val threshold (default 27)
                                          adaptive: adaptive ratio threshold (default 3)
                                          threshold: mean pixel level of a fade (default 12)
@@ -70,6 +76,7 @@ string? otioPath = null, otioName = null, qpPath = null;
 bool otioAudio = true, qpShift = true;
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
 var options = new DetectionOptions();
+var detectorList = new List<DetectorSettings>();  // -d ... each with its own -t/-m/--filter-mode
 var images = new ImageOptions();
 var split = new SplitOptions();
 
@@ -84,21 +91,37 @@ try
         {
             case "-i" or "--input": input = Next(); break;
             case "-d" or "--detector":
-                options = options with
+                detectorList.Add(new DetectorSettings(Next() switch
                 {
-                    Detector = Next() switch
-                    {
-                        "adaptive" => DetectorKind.Adaptive,
-                        "content" => DetectorKind.Content,
-                        "threshold" => DetectorKind.Threshold,
-                        "hist" => DetectorKind.Histogram,
-                        "hash" => DetectorKind.Hash,
-                        var d => throw new ArgumentException($"Unknown detector '{d}'"),
-                    },
-                };
+                    "adaptive" => DetectorKind.Adaptive,
+                    "content" => DetectorKind.Content,
+                    "threshold" => DetectorKind.Threshold,
+                    "hist" => DetectorKind.Histogram,
+                    "hash" => DetectorKind.Hash,
+                    var d => throw new ArgumentException($"Unknown detector '{d}'"),
+                }));
                 break;
-            case "-t" or "--threshold": options = options with { Threshold = NextDouble() }; break;
-            case "-m" or "--min-scene-len": options = options with { MinSceneLength = Next() }; break;
+            case "-t" or "--threshold":
+                if (detectorList.Count > 0) detectorList[^1] = detectorList[^1] with { Threshold = NextDouble() };
+                else options = options with { Threshold = NextDouble() };
+                break;
+            case "--filter-mode":
+                var mode = Next() switch
+                {
+                    "merge" => FlashFilterMode.Merge,
+                    "suppress" => FlashFilterMode.Suppress,
+                    var m => throw new ArgumentException($"Unknown filter mode '{m}' (merge or suppress)"),
+                };
+                if (detectorList.Count > 0) detectorList[^1] = detectorList[^1] with { FilterMode = mode };
+                else options = options with { FilterMode = mode };
+                break;
+            case "--drop-short-scenes": options = options with { DropShortScenes = true }; break;
+            case "--merge-last-scene": options = options with { MergeLastScene = true }; break;
+            case "--downscale": options = options with { Downscale = NextInt() }; break;
+            case "-m" or "--min-scene-len":
+                if (detectorList.Count > 0) detectorList[^1] = detectorList[^1] with { MinSceneLength = Next() };
+                else options = options with { MinSceneLength = Next() };
+                break;
             case "-c" or "--min-content-val": options = options with { MinContentVal = NextDouble() }; break;
             case "--frame-window": options = options with { FrameWindow = NextInt() }; break;
             case "-w" or "--weights": options = options with { Weights = (NextDouble(), NextDouble(), NextDouble(), NextDouble()) }; break;
@@ -176,6 +199,11 @@ try
     }
     if (input is null)
         throw new ArgumentException("Missing -i <video>");
+    // One -d keeps the single-detector shorthand (a -t given before it still applies); several are combined.
+    if (detectorList.Count == 1)
+        options = options with { Detectors = [detectorList[0] with { Threshold = detectorList[0].Threshold ?? options.Threshold }] };
+    else if (detectorList.Count > 1)
+        options = options with { Detectors = detectorList };
 }
 catch (Exception e) when (e is ArgumentException or FormatException)
 {
@@ -198,12 +226,13 @@ try
     Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
         $"{(input == "-" ? "stdin" : Path.GetFileName(input))}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, " +
         $"{result.FrameCount} frames, processed at {video.Width}x{video.Height}, " +
-        $"detector={options.Detector.ToString().ToLowerInvariant()}, min-scene-len={result.MinSceneLengthFrames} frames"));
+        $"detector={string.Join('+', (options.Detectors?.Select(d => d.Kind) ?? [options.Detector]).Select(k => k.ToString().ToLowerInvariant()))}, " +
+        $"min-scene-len={result.MinSceneLengthFrames} frames"));
 
     if (!quiet)
         Console.WriteLine(Shots.Table(result.Shots));
     if (csvPath is not null)
-        File.WriteAllText(csvPath, Shots.Csv(result.Shots, includeCutList: !skipCuts));
+        File.WriteAllText(csvPath, Shots.Csv(result.Shots, includeCutList: !skipCuts, result.Cuts));
     if (jsonPath is not null)
         File.WriteAllText(jsonPath, Shots.Json(result.Shots));
     if (statsPath is not null)
@@ -224,7 +253,7 @@ try
         string pageDir = Path.GetDirectoryName(Path.GetFullPath(htmlPath))!;
         var perShot = htmlNoImages || saved is null ? null
             : saved.Select(f => Path.GetRelativePath(pageDir, f)).Chunk(images.NumImages).Select(c => (IReadOnlyList<string>)c).ToList();
-        File.WriteAllText(htmlPath, Shots.Html(result.Shots, perShot, htmlWidth, htmlHeight));
+        File.WriteAllText(htmlPath, Shots.Html(result.Shots, perShot, htmlWidth, htmlHeight, result.Cuts));
         Console.Error.WriteLine($"Wrote {htmlPath}");
     }
     if (edlPath is not null)

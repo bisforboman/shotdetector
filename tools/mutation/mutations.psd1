@@ -33,6 +33,16 @@
         # scenedetect 0.6.4's histogram detector re-initialises its last cut at frame 1
         @{ File = 'src/ShotDetector/Detectors.cs'; Find = '(version == PySceneDetectVersion.V0_6_4 && _lastCut == 0)'; Replace = 'false'; Tests = 'HistogramDetectorTests' }
 
+        # Several detectors: FrameTimecode equality (exact times only for two timestamps), first of equals kept
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'a.TbDen > 0 && b.TbDen > 0 && a.Fps == b.Fps'; Replace = 'false'; Tests = 'SceneListTests' }
+
+        # --merge-last-scene and --drop-short-scenes
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'scenes[^1].End.Minus(scenes[^1].Start).FrameNum < minSceneLen'; Replace = 'false'; Tests = 'SceneListTests' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'sc.End.Minus(sc.Start).FrameNum < dropShorterThan'; Replace = 'false'; Tests = 'SceneListTests' }
+
+        # detect-content --filter-mode suppress
+        @{ File = 'src/ShotDetector/Detectors.cs'; Find = 'if (!(above && minLengthMet))'; Replace = 'if (!above)'; Tests = 'DetectorTests' }
+
         # Python rounds half to even
         @{ File = 'src/ShotDetector/FrameTime.cs'; Find = 'if (cmp > 0 || (cmp == 0 && !q.IsEven))'; Replace = 'if (cmp > 0)'; Tests = 'FrameTimeTests' }
     )
