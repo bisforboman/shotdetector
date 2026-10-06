@@ -17,6 +17,16 @@ public class RangeTests(Clips clips) : IClassFixture<Clips>
     public void TimecodesParseLikeScenedetect(string text, bool oneBased, double seconds) =>
         Assert.Equal(seconds, ShotDetection.TimecodeSeconds(text, Fps25, oneBased), 9);
 
+    [Theory]
+    [InlineData("15", 15)]
+    [InlineData("0.6s", 15)]
+    [InlineData("0.6", 15)]
+    [InlineData("00:00:00.600", 15)]
+    [InlineData("00:00:01", 25)]
+    [InlineData("0.5s", 12)]   // 12.5 rounds half to even
+    public void MinSceneLengthTakesScenedetectsFormats(string value, int frames) =>
+        Assert.Equal(frames, ShotDetection.MinSceneLengthInFrames(value, Fps25));
+
     [Fact]
     public void StartAndEndSelectFrames()
     {

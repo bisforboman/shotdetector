@@ -12,7 +12,7 @@ const string Usage = """
                                          threshold: mean pixel level of a fade (default 12)
                                          hist: drop in histogram correlation (default 0.05)
                                          hash: fraction of hash bits that differ (default 0.395)
-      -m, --min-scene-len <n|Ns>         Minimum shot length, frames or seconds e.g. 0.6s (default 0.6s)
+      -m, --min-scene-len <time>         Minimum shot length: frames (15), seconds (0.6s, 0.6) or HH:MM:SS.mmm (default 0.6s)
       -c, --min-content-val <n>          adaptive: minimum content_val for a cut (default 15)
           --frame-window <n>             adaptive: frames on each side to average (default 2)
       -w, --weights <h> <s> <l> <e>      content/adaptive: weights of hue, saturation, luma and edge
