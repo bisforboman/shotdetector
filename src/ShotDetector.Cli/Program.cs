@@ -31,8 +31,8 @@ const string Usage = """
           --duration <time>              Analyse this much from the start (not with --end)
           --frame-skip <n>               Analyse every (n+1)th frame (not with --stats)
           --crop <x0> <y0> <x1> <y1>     Only analyse this part of the frame (inclusive pixel corners)
-          --threads <n>                  ffmpeg decoder threads (default 4; 0 = ffmpeg's choice). Each
-                                         costs ~25 MB at 1080p; more rarely helps since we decode in parallel
+          --threads <n>                  ffmpeg decoder threads (0 = ffmpeg's choice; default 4, or 8 on the
+                                         yuv420p fast path, where decoding is the bottleneck). ~20 MB each at 1080p
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
                                          cv2.resize (faster, but cuts can differ from PySceneDetect)
           --csv <file>                   Write shot list as CSV

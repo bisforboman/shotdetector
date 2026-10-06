@@ -5,6 +5,8 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- `DecodeThreads` is nullable; the default (null) is 8 decoder threads on the yuv420p fast path (~13% faster
+  on HD, ~70 MB more at 1080p) and 4 elsewhere, where the pipe is the bottleneck.
 - MPEG program streams (`.mpg`, MPEG-2) gave shifted cuts: packets without a pts were dropped from the
   frame timestamps. Per-frame timestamps now come from a decoding pass for such files, as OpenCV sees them.
 - Real-world and mutation checks in CI (`tools/realworld.py`, `tools/mutation/`), nightly real-world run.
