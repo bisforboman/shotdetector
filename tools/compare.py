@@ -129,7 +129,7 @@ def compare(video: str, detector: str, tol: int, extra_args: list[str], stats: b
 def report(rows: list[dict], tol: int) -> str:
     # With stats on, scenedetect also computes edges, so timings would not be comparable.
     stats = rows[0]["stat_diffs"] is not None
-    lines = [f"| Video | Detector | scenedetect cuts | ShotDetector cuts | Exact | Off by ≤{tol} | Missing | Extra "
+    lines = [f"| Video | Detector | scenedetect cuts | ShotDetector cuts | Exact | Off by <={tol} | Missing | Extra "
              "| CSV cells that differ |" + (" Stats cells that differ |" if stats else " scenedetect s | ShotDetector s |"),
              "|---|---|---|---|---|---|---|---|---|" + ("---|" if stats else "---|---|")]
     for r in rows:
