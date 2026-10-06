@@ -172,6 +172,9 @@ public sealed record DetectionOptions
     /// <summary>How many bytes of a Stream input to read for probing its container headers (16 MB).</summary>
     public int ProbeBytes { get; init; } = 16 << 20;
 
+    /// <summary>Tests: pipe whole BGR frames rather than only the pixels the resize reads (same results, slower).</summary>
+    internal bool FullFrames { get; init; }
+
     /// <summary>Let ffmpeg downscale (faster, but results can differ from PySceneDetect).</summary>
     public bool FfmpegResize { get; init; }
 

@@ -183,27 +183,32 @@ ignores colour tags (see below). With `--ffmpeg-resize`, cuts on real footage di
 
 ## Performance
 
-1920x1080, 5012 frames, 16-core machine (expect ±20% between runs):
+1920x1080 H.264, 2880 frames (2 minutes), content detector, on a Windows desktop pinned to 2 CPUs and with
+all 16; best of 2, wall times vary ±10% between runs. Memory is the peak of the whole process tree
+(ShotDetector plus its ffmpeg, scenedetect's Python with OpenCV's FFmpeg inside):
 
-| | Wall time | Peak memory (incl. ffmpeg) |
+| | 2 CPUs | 16 CPUs |
 |---|---|---|
-| scenedetect 0.7.1 | 15 s | 212 MB |
-| ShotDetector + FastYuv | 10 s | 205 MB (65 MB ours + ~140 MB ffmpeg) |
-| ShotDetector (core only) | 17 s | 336 MB |
-| ShotDetector `FfmpegResize` (not exact) | 5 s | ~60 MB |
+| scenedetect 0.7.1 | 19 s, 236 MB | 9.3 s, 231 MB |
+| ShotDetector (core, MIT) | 19 s, 305 MB | 8.7 s, 284 MB |
+| ShotDetector + FastYuv (LGPL) | 20 s, 268 MB | 5.1 s |
 
-On 480p video all of these take about the same time (3.3–3.7 s for the Sintel trailer).
-All exact variants give identical results.
+All exact variants give identical results. CPU time on 2 CPUs: ShotDetector 26 s (ffmpeg 20, ours 6),
+scenedetect 30 s. On smaller video the tools take about the same time.
 
-What makes the FastYuv path faster:
-- ffmpeg sends raw yuv420p (no colour conversion, half the bytes of BGR) through a named pipe with
-  an 8 MB buffer (Windows' redirected stdout uses 4 KB);
-- cv2.resize only reads ~150k of the 2M pixels of a 1080p frame, so only those are converted to
-  BGR (`SwscaleYuv420.cs`, a bit-exact port of swscale's converter), fused into the resize;
-- the resize and the HSV + difference scoring run on several cores; reading overlaps processing;
-- ffmpeg gets 8 decoder threads on this path (`--threads`): with half the bytes to pipe, decoding is
-  the bottleneck, and 8 threads are ~13% faster than 4 on HD for ~70 MB more at 1080p. The core path
-  keeps 4: it is bound by piping full BGR frames, so more threads only add memory.
+How the core path keeps up without converting pixels itself:
+- ffmpeg converts each frame to BGR exactly as OpenCV does, then its `remap` filter keeps only the
+  pixels the exact `cv2.resize` port reads (512 x 288 of a 1080p frame: 0.44 MB instead of 6.2 MB per
+  frame through the pipe, which used to cost as much CPU as the decoding);
+- the resize and the HSV + difference scoring run on several cores; reading overlaps processing.
+
+The FastYuv path goes further: ffmpeg sends raw yuv420p (no conversion at all) and
+`SwscaleYuv420.cs`, a bit-exact port of swscale's converter, converts only the pixels the resize reads.
+Decoding is then the bottleneck, so ffmpeg gets 8 decoder threads there (`--threads`; 4 on the core path).
+
+Memory: most of it is ffmpeg's own frame queues and decoder threads (whole decoded frames); our
+process takes ~50 MB. `--threads 1` (`DecodeThreads = 1`) lowers ffmpeg's share on many-core machines,
+at the cost of decoding speed.
 
 Files in other pixel formats (10-bit, 4:2:2/4:4:4, full-range MJPEG) or with an odd height take a
 slower path where ffmpeg converts whole frames, still with identical results.

@@ -433,6 +433,21 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         finally { File.Delete(csv); }
     }
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(37, false)]
+    [InlineData(0, true)]
+    public void SampledFramesAreTheFullFramesResized(int start, bool crop)
+    {
+        // The default MIT pipeline pipes only the pixels the resize reads; the frames must be the same.
+        var o = new DetectionOptions { Crop = crop ? (10, 6, 301, 231) : null };
+        var sampled = new VideoReader(clips.ThreeShots, o);
+        var full = new VideoReader(clips.ThreeShots, o with { FullFrames = true });
+        Assert.Equal(FramePipeline.SampledBgr, sampled.Pipeline);
+        Assert.Equal(FramePipeline.FullFrameResize, full.Pipeline);
+        Assert.Equal(full.Frames(start, 40).Select(f => f.ToArray()), sampled.Frames(start, 40).Select(f => f.ToArray()));
+    }
+
     [Fact]
     public void AlreadyCancelledTokenThrowsImmediately() =>
         Assert.Throws<OperationCanceledException>(() => ShotDetection.Detect(clips.Long, cancellationToken: new CancellationToken(true)));
