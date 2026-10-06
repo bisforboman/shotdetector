@@ -50,6 +50,11 @@ const string Usage = """
                                          save-html); images go to --save-images <dir>, or next to the page
           --html-no-images               Leave the thumbnails out of the HTML page
           --html-image-width <px>, --html-image-height <px>   Size attributes of the HTML thumbnails
+          --save-edl <file>              CMX 3600 EDL (scenedetect save-edl); --edl-title <t>, --edl-reel <r>,
+                                         --edl-start-timecode <HH:MM:SS:FF>
+          --save-fcp <file>              Final Cut Pro XML (save-fcp); --fcp-format <fcpx|fcp7> (default fcpx)
+          --save-otio <file>             OpenTimelineIO timeline (save-otio); --otio-name <n>, --otio-no-audio
+          --save-qp <file>               x264 QP file with a keyframe at each cut (save-qp); --qp-disable-shift
           --split-video <dir>            Cut the video into one mp4 per shot (like scenedetect split-video)
           --split-copy                   Copy streams instead of re-encoding (fast; cuts on keyframes)
           --split-high-quality           CRF 17, preset slow (instead of 22, veryfast)
@@ -60,6 +65,9 @@ const string Usage = """
 bool skipCuts = false, quiet = false, htmlNoImages = false;
 int? htmlWidth = null, htmlHeight = null;
 string? htmlPath = null;
+string? edlPath = null, edlTitle = null, edlReel = "AX", edlStart = null, fcpPath = null, fcpFormat = "fcpx";
+string? otioPath = null, otioName = null, qpPath = null;
+bool otioAudio = true, qpShift = true;
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
 var options = new DetectionOptions();
 var images = new ImageOptions();
@@ -122,6 +130,21 @@ try
             case "--csv": csvPath = Next(); break;
             case "--skip-cuts": skipCuts = true; break;
             case "--save-html": htmlPath = Next(); break;
+            case "--save-edl": edlPath = Next(); break;
+            case "--edl-title": edlTitle = Next(); break;
+            case "--edl-reel": edlReel = Next(); break;
+            case "--edl-start-timecode": edlStart = Next(); break;
+            case "--save-fcp": fcpPath = Next(); break;
+            case "--fcp-format":
+                fcpFormat = Next();
+                if (fcpFormat is not ("fcpx" or "fcp7"))
+                    throw new ArgumentException("--fcp-format must be fcpx or fcp7");
+                break;
+            case "--save-otio": otioPath = Next(); break;
+            case "--otio-name": otioName = Next(); break;
+            case "--otio-no-audio": otioAudio = false; break;
+            case "--save-qp": qpPath = Next(); break;
+            case "--qp-disable-shift": qpShift = false; break;
             case "--html-no-images": htmlNoImages = true; break;
             case "--html-image-width": htmlWidth = NextInt(); break;
             case "--html-image-height": htmlHeight = NextInt(); break;
@@ -204,6 +227,14 @@ try
         File.WriteAllText(htmlPath, Shots.Html(result.Shots, perShot, htmlWidth, htmlHeight));
         Console.Error.WriteLine($"Wrote {htmlPath}");
     }
+    if (edlPath is not null)
+        File.WriteAllText(edlPath, Timeline.Edl(result, edlTitle, edlReel!, edlStart));
+    if (fcpPath is not null && result.Shots.Count > 0)
+        File.WriteAllText(fcpPath, fcpFormat == "fcp7" ? Timeline.Fcp7(result) : Timeline.Fcpx(result));
+    if (otioPath is not null)
+        File.WriteAllText(otioPath, Timeline.Otio(result, otioName, otioAudio));
+    if (qpPath is not null)
+        File.WriteAllText(qpPath, Timeline.Qp(result, qpShift));
     if (splitDir is not null)
         Console.Error.WriteLine($"Wrote {Export.SplitVideo(result, splitDir, split).Count} clips to {splitDir}");
     return 0;

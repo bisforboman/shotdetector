@@ -5,6 +5,8 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- Timeline exports: `Timeline.Edl`, `Fcpx`, `Fcp7`, `Otio` and `Qp` / CLI `--save-edl`, `--save-fcp`,
+  `--save-otio`, `--save-qp`, scenedetect's save-edl, save-fcp, save-otio and save-qp byte for byte.
 - API review toward 1.0: the detector classes, `IDetector`, `ContentScorer` and `EdgeDetector` are internal
   (use `ShotDetection` with `DetectorKind`); `VideoReader.FrameAt`, `SeekFrame`, `PositionAfterDecoding` and
   `FrameCountHint` are internal; `FrameTime`'s raw fields and `FrameTime.Pts` are internal and `ToString()` is

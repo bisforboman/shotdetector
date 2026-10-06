@@ -157,6 +157,12 @@ jobs:
           { echo "### time/crop and frame-skip options, ${{ matrix.path }} path"; cat options.md skip.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
+      # save-edl, save-fcp (fcpx and fcp7), save-otio and save-qp must be byte-identical (the CLI was built
+      # by the compare steps above). Once: the exports don't depend on the frame pipeline.
+      - name: Compare timeline exports with scenedetect's
+        if: matrix.scenedetect == '0.7.1' && matrix.path == 'core'
+        run: python tools/compare-timeline.py
+
       # detect-hash is informational: on flat frames (fades to black) the perceptual hash is DCT
       # rounding noise, in scenedetect itself as much as here, so a few frames and the odd cut inside
       # a fade differ. Everything else should match; eyeball the table if it changes.
