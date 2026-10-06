@@ -18,6 +18,9 @@
         # ContentDetector's flash filter keeps merging until the minimum length passes below the threshold
         @{ File = 'src/ShotDetector/Detectors.cs'; Find = 'if (minLengthMet && !above && MinLengthMet(_lastAbove.Value, _mergeStart!.Value))'; Replace = 'if (minLengthMet && !above)'; Tests = 'DetectorTests' }
 
+        # scenedetect 0.6.4's histogram detector re-initialises its last cut at frame 1
+        @{ File = 'src/ShotDetector/Detectors.cs'; Find = '(version == PySceneDetectVersion.V0_6_4 && _lastCut == 0)'; Replace = 'false'; Tests = 'HistogramDetectorTests' }
+
         # Python rounds half to even
         @{ File = 'src/ShotDetector/FrameTime.cs'; Find = 'if (cmp > 0 || (cmp == 0 && !q.IsEven))'; Replace = 'if (cmp > 0)'; Tests = 'FrameTimeTests' }
     )

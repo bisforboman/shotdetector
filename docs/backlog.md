@@ -14,7 +14,7 @@ Status: **Released** (on nuget.org), **Done** (on `main`, in the next release), 
 | Fix every divergence the real-world check finds | The promise is identical results | Open (none known yet) |
 | More sources: interlaced/telecined footage, 10-bit (yuv420p10), odd sizes (e.g. 1366x768), very long GOPs, broken timestamps | Each is a different decode/convert path (`IYuv420Converter`, `CvResize`) | Open |
 | Container edge cases on streamed input: fragmented mp4, HLS/DASH segments, RTSP | The streaming mode relies on ffmpeg's demuxer on a pipe; verify timestamps come out right | Open |
-| Unit test for scenedetect 0.6.4's histogram re-initialisation at frame 1 | A guard reproduced without a test; add it and a mutation | Open |
+| Unit test for scenedetect 0.6.4's histogram re-initialisation at frame 1 | A guard reproduced without a test; add it and a mutation | Done (2026-10-06) |
 | Windows OpenCV wheel (FFmpeg 7.1) colour difference on BT.709 | Documented; decide whether to offer a `ColorMatrix` override for users comparing on Windows | Maybe |
 
 ## 2. Performance
