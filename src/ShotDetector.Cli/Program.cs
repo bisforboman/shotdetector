@@ -38,6 +38,8 @@ const string Usage = """
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
                                          cv2.resize (faster, but cuts can differ from PySceneDetect)
           --csv <file>                   Write shot list as CSV
+          --skip-cuts                    Leave the "Timecode List:" row out of the CSV (list-scenes -s)
+      -q, --quiet                        Don't print the shot list (list-scenes -q)
           --json <file>                  Write shot list as JSON
           --stats <file>                 Write per-frame metrics as CSV (like scenedetect -s)
           --save-images <dir>            Save JPEG thumbnails per shot (like scenedetect save-images)
@@ -51,6 +53,7 @@ const string Usage = """
           --split-expand                 Stretch the first/last clip to the video's start/end (with -s/-e)
     """;
 
+bool skipCuts = false, quiet = false;
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
 var options = new DetectionOptions();
 var images = new ImageOptions();
@@ -111,6 +114,8 @@ try
             case "--fast-yuv": options = options with { Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420() }; break;
 #endif
             case "--csv": csvPath = Next(); break;
+            case "--skip-cuts": skipCuts = true; break;
+            case "-q" or "--quiet": quiet = true; break;
             case "--json": jsonPath = Next(); break;
             case "--stats": statsPath = Next(); options = options with { CollectStats = true }; break;
             case "--save-images": imagesDir = Next(); break;
@@ -162,9 +167,10 @@ try
         $"{result.FrameCount} frames, processed at {video.Width}x{video.Height}, " +
         $"detector={options.Detector.ToString().ToLowerInvariant()}, min-scene-len={result.MinSceneLengthFrames} frames"));
 
-    Console.WriteLine(Shots.Table(result.Shots));
+    if (!quiet)
+        Console.WriteLine(Shots.Table(result.Shots));
     if (csvPath is not null)
-        File.WriteAllText(csvPath, Shots.Csv(result.Shots));
+        File.WriteAllText(csvPath, Shots.Csv(result.Shots, includeCutList: !skipCuts));
     if (jsonPath is not null)
         File.WriteAllText(jsonPath, Shots.Json(result.Shots));
     if (statsPath is not null)

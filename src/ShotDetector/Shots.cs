@@ -43,12 +43,18 @@ public static class Shots
     }
 
     /// <summary>Same columns as PySceneDetect's scene list CSV (without its leading "Timecode List" row).</summary>
-    public static string Csv(IEnumerable<Shot> shots)
+    public static string Csv(IEnumerable<Shot> shots, bool includeCutList = true)
     {
-        var sb = new StringBuilder(
+        var list = shots.ToList();
+        var sb = new StringBuilder();
+        // scenedetect's first row: "Timecode List:" and the cuts; with no cuts its fallback writes an empty row.
+        // list-scenes --skip-cuts leaves it out.
+        if (includeCutList)
+            sb.Append(list.Count > 1 ? "Timecode List:," + string.Join(',', list.Skip(1).Select(s => s.Start.Timecode())) : "").Append('\n');
+        sb.Append(
             "Scene Number,Start Frame,Start Timecode,Start Time (seconds),End Frame,End Timecode," +
             "End Time (seconds),Length (frames),Length (timecode),Length (seconds)\n");
-        foreach (var s in shots)
+        foreach (var s in list)
         {
             var d = s.Duration;
             sb.Append(string.Create(CultureInfo.InvariantCulture,
