@@ -188,6 +188,7 @@ public sealed partial class VideoReader
             probed = Run(ffprobe, probeArgs, cancellationToken);
         var stream = new Dictionary<string, string>();
         var pts = new List<long>();
+        bool missingPts = false;
         foreach (var line in probed.Split('\n', StringSplitOptions.TrimEntries))
         {
             int eq = line.IndexOf('=');
@@ -195,7 +196,7 @@ public sealed partial class VideoReader
             string key = line[..eq], value = line[(eq + 1)..];
             if (key == "pts")
             {
-                if (long.TryParse(value, CultureInfo.InvariantCulture, out long p)) pts.Add(p);
+                if (long.TryParse(value, CultureInfo.InvariantCulture, out long p)) pts.Add(p); else missingPts = true;
             }
             else
                 stream[key] = value;
@@ -243,7 +244,30 @@ public sealed partial class VideoReader
         _startPts = long.TryParse(stream.GetValueOrDefault("start_pts"), out var s) ? s : 0;
         _startSeconds = double.TryParse(stream.GetValueOrDefault("start_time"), NumberStyles.Float, CultureInfo.InvariantCulture, out var st) ? st : 0;
         pts.Sort(); // packets come in decode order
+        // Some containers (MPEG-PS) carry no pts on every packet. OpenCV then takes the frame's
+        // dts (its pts when set and non-zero, else pkt_dts), in output order: get exactly that
+        // from a decoding pass, which only such files pay for.
+        if (missingPts)
+            pts = FrameTimestamps(ffprobe, path, cancellationToken);
         _pts = [.. pts];
+    }
+
+    static List<long> FrameTimestamps(string ffprobe, string path, CancellationToken ct)
+    {
+        var result = new List<long>();
+        long? framePts = null;
+        string[] args = ["-v", "error", "-select_streams", "v:0", "-show_entries", "frame=pts,pkt_dts", "-of", "default=nw=1", path];
+        foreach (var line in Run(ffprobe, args, ct).Split('\n', StringSplitOptions.TrimEntries))
+        {
+            if (line.StartsWith("pts="))
+                framePts = long.TryParse(line[4..], CultureInfo.InvariantCulture, out long p) && p != 0 ? p : null;
+            else if (line.StartsWith("pkt_dts="))
+            {
+                result.Add(framePts ?? (long.TryParse(line[8..], CultureInfo.InvariantCulture, out long d) ? d : 0));
+                framePts = null;
+            }
+        }
+        return result;
     }
 
     /// <summary>An ffmpeg/ffprobe failure, explained when it is the common streaming one.</summary>

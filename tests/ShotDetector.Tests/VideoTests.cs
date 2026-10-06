@@ -20,6 +20,9 @@ public sealed class Clips : IDisposable
     public string ThreeShotsMkv { get; }
     public string ThreeShotsFaststart { get; }
 
+    /// <summary><see cref="ThreeShots"/> as MPEG-2 in an MPEG program stream: not every packet has a pts.</summary>
+    public string ThreeShotsMpegPs { get; }
+
     public Clips()
     {
         ThreeShots = Make("three.mp4",
@@ -32,6 +35,8 @@ public sealed class Clips : IDisposable
         Run($"-v error -y -i {ThreeShots} -c copy {ThreeShotsMkv}");
         ThreeShotsFaststart = Path.Combine(_dir, "three-faststart.mp4");
         Run($"-v error -y -i {ThreeShots} -c copy -movflags +faststart {ThreeShotsFaststart}");
+        ThreeShotsMpegPs = Path.Combine(_dir, "three.mpg");
+        Run($"-v error -y -i {ThreeShots} -c:v mpeg2video -q:v 3 {ThreeShotsMpegPs}");
     }
 
     string Make(string name, string input)
@@ -246,6 +251,17 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         using var file = File.OpenRead(clips.ThreeShotsMkv);
         var r = ShotDetection.Detect(file);
         Assert.Throws<InvalidOperationException>(() => Export.SaveImages(r, Path.GetTempPath()));
+    }
+
+    [Fact]
+    public void PacketsWithoutPtsTakeTheFrameDtsLikeOpenCv()
+    {
+        // MPEG-PS leaves the pts out of most packets; every frame must still get its own timestamp.
+        var video = new VideoReader(clips.ThreeShotsMpegPs);
+        Assert.Equal(150, video.ExpectedFrames);
+        Assert.Equal(Enumerable.Range(0, 150).Select(i => i / 25.0), Enumerable.Range(0, 150).Select(i => video.Position(i).Seconds));
+        var r = ShotDetection.Detect(clips.ThreeShotsMpegPs, new() { Detector = DetectorKind.Content });
+        Assert.Equal([0L, 50L, 100L], r.Shots.Select(s => s.Start.FrameNum));
     }
 
     [Fact]

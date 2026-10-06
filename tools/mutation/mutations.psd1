@@ -12,6 +12,9 @@
         # Streamed input
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (o.StartTime is not null && video.Streaming)'; Replace = 'if (false)'; Tests = 'VideoTests' }
 
+        # Packets without a pts (MPEG-PS): per-frame timestamps from a decoding pass, as OpenCV sees them
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (missingPts)'; Replace = 'if (false)'; Tests = 'VideoTests' }
+
         # Rotation tags: frames arrive upright, so the reported size is swapped
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '&& Math.Abs(Math.Round(rotation)) % 180 == 90)'; Replace = '&& false)'; Tests = 'VideoTests' }
 
