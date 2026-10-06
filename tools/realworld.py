@@ -4,6 +4,7 @@ in samples/realworld/ (gitignored).
 
 Usage: python tools/realworld.py [name ...] [--detector all] [--fast-yuv] [--report realworld.md]
        python tools/realworld.py --list
+       python tools/realworld.py [name ...] --download   (only fetch; for tools/bench.py)
 Any other option goes to tools/compare.py."""
 import argparse
 import hashlib
@@ -59,6 +60,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("names", nargs="*", help="videos to run (default: all)")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--download", action="store_true", help="only download and verify; print the paths")
     args, rest = ap.parse_known_args()
     if args.list:
         print("\n".join(VIDEOS))
@@ -67,6 +69,9 @@ def main():
     if unknown:
         sys.exit(f"unknown: {', '.join(unknown)}; known: {', '.join(VIDEOS)}")
     paths = [fetch(n) for n in (args.names or VIDEOS)]
+    if args.download:
+        print("\n".join(map(str, paths)))
+        return
     if "--detector" not in rest:
         rest += ["--detector", "all"]
     cmd = [sys.executable, str(ROOT / "tools" / "compare.py"), *map(str, paths), "--stats", *rest]
