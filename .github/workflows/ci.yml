@@ -160,3 +160,12 @@ jobs:
         run: |
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg             --detector hash --stats --report hash.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### detect-hash (informational), ${{ matrix.path }} path"; cat hash.md; } >> "$GITHUB_STEP_SUMMARY"
+
+      # 10-bit video: OpenCV's bundled FFmpeg converts it to 8-bit BGR with +-1 differences in red and
+      # green on some pixels that no ffmpeg CLI option reproduces, so per-frame stats differ a little.
+      # Cuts should still match; eyeball the table if they don't.
+      - name: Compare 10-bit video with scenedetect (informational)
+        if: matrix.scenedetect == '0.7.1'
+        run: |
+          python tools/compare.py samples/informational/*.mp4 --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
+          { echo "### 10-bit (informational), ${{ matrix.path }} path"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"

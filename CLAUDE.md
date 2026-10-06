@@ -73,6 +73,9 @@ environment. Move the `## Unreleased` section of CHANGELOG.md to the version fir
   detector re-initialises at frame 1 (`if not last_cut` is false for 0) — reproduced.
 - MPEG-PS packets mostly lack a pts: OpenCV uses the frame's dts, so the reader takes per-frame timestamps
   from an ffprobe decoding pass when any packet has none (`FrameTimestamps`).
+- 10-bit on Linux: OpenCV's FFmpeg converts to BGR with ±1 differences no ffmpeg CLI flag reproduces (FFmpeg 8.1/9.0,
+  sws flags, dither, cpuflags all tried); compared informationally (`samples/informational/`). Linux OpenCV can't
+  decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments.
 - Streamed input needs the container headers first (mkv/webm/ts/mov or faststart mp4); ffmpeg reports a non-faststart
   mp4 on a pipe as "moov atom not found" or, when the whole file fit the probe prefix, "partial file".
 - Windows named pipe path is `\\.\pipe\…`; stdout's 4 KB pipe is far slower. Kill ffmpeg race-free (`Kill` helper).

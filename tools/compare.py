@@ -102,6 +102,8 @@ def compare(video: str, detector: str, tol: int, extra_args: list[str], stats: b
              *(["-s", str(ref_stats)] if stats else []), *REF_EXTRA, f"detect-{detector}", *shared, "list-scenes", "-f", ref_csv.name])
         our_secs = timed([str(EXE), "-i", video, "-d", detector, "--csv", str(our_csv), *extra_args, *shared, *OUR_EXTRA,
                           *(["--stats", str(our_stats)] if stats else [])])
+        if not ref_csv.exists():
+            sys.exit(f"{Path(video).name}: scenedetect wrote no scene list (could its OpenCV decode the video?)")
         ref, ours = cuts_from_csv(ref_csv), cuts_from_csv(our_csv)
         csv_cells = diff_scene_csv(ref_csv, our_csv)
         stat_diffs = diff_stats(ref_stats, our_stats) if stats else None
