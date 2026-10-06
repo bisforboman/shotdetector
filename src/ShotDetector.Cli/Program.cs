@@ -65,6 +65,8 @@ const string Usage = """
           --image-filename <template>    save-images name, no extension (default $VIDEO_NAME-Scene-$SCENE_NUMBER-$IMAGE_NUMBER)
           --split-filename <template>    split-video name (default $VIDEO_NAME-Scene-$SCENE_NUMBER)
       -o, --output <dir>                 Folder for outputs given as relative paths; $VIDEO_NAME works in every output path
+          --config <file>                scenedetect's config file (scenedetect.cfg): its values are the defaults; keys
+                                         ShotDetector doesn't have are listed on stderr
       --load-scenes <csv>                Take the shots from a scene list CSV instead of detecting (scenedetect load-scenes)
       --load-scenes-column <name>        Its column with each shot's start (default "Start Frame")
           --split-copy                   Copy streams instead of re-encoding (fast; cuts on keyframes)
@@ -83,13 +85,25 @@ string? outputDir = null, loadScenes = null, loadColumn = "Start Frame";
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
 var options = new DetectionOptions();
 var detectorList = new List<DetectorSettings>();  // -d ... each with its own -t/-m/--filter-mode
+var given = new HashSet<string>();                 // options given on the command line (they beat the config file)
+Config? config = null;
 var images = new ImageOptions();
 var split = new SplitOptions();
 
 try
 {
+    // scenedetect's config file first: its values are the defaults the command line overrides.
+    int configAt = Array.IndexOf(args, "--config"); // -c is --min-content-val here, as detect-adaptive -c
+    if (configAt >= 0)
+    {
+        if (configAt + 1 >= args.Length)
+            throw new ArgumentException("--config needs a file");
+        config = Config.Read(args[configAt + 1]);
+        ApplyConfig(config);
+    }
     for (int i = 0; i < args.Length; i++)
     {
+        given.Add(args[i]);
         string Next() => i + 1 < args.Length ? args[++i] : throw new ArgumentException($"{args[i]} needs a value");
         double NextDouble() => double.Parse(Next(), CultureInfo.InvariantCulture);
         int NextInt() => int.Parse(Next(), CultureInfo.InvariantCulture);
@@ -97,15 +111,7 @@ try
         {
             case "-i" or "--input": input = Next(); break;
             case "-d" or "--detector":
-                detectorList.Add(new DetectorSettings(Next() switch
-                {
-                    "adaptive" => DetectorKind.Adaptive,
-                    "content" => DetectorKind.Content,
-                    "threshold" => DetectorKind.Threshold,
-                    "hist" => DetectorKind.Histogram,
-                    "hash" => DetectorKind.Hash,
-                    var d => throw new ArgumentException($"Unknown detector '{d}'"),
-                }));
+                detectorList.Add(new DetectorSettings(KindOf(Next())));
                 break;
             case "-t" or "--threshold":
                 if (detectorList.Count > 0) detectorList[^1] = detectorList[^1] with { Threshold = NextDouble() };
@@ -204,12 +210,23 @@ try
             case "--split-preset": split = split with { Preset = Next() }; break;
             case "--split-args": split = split with { Args = Next() }; break;
             case "--split-expand": split = split with { Expand = true }; break;
+            case "--config": i++; break; // read above
             case "-h" or "--help": Console.WriteLine(Usage); return 0;
             default: throw new ArgumentException($"Unknown option {args[i]}");
         }
     }
     if (input is null)
         throw new ArgumentException("Missing -i <video>");
+    if (config is not null)
+    {
+        // The default detector, and each detector's own section for what the command line didn't set.
+        if (detectorList.Count == 0 && config.Get("global", "default-detector") is { } dd)
+            detectorList.Add(new DetectorSettings(KindOf(dd.Replace("detect-", ""))));
+        for (int k = 0; k < detectorList.Count; k++)
+            detectorList[k] = FromConfig(config, detectorList[k]);
+        foreach (string key in config.Unsupported())
+            Console.Error.WriteLine($"Config: {key} isn't supported by ShotDetector; ignored.");
+    }
     // One -d keeps the single-detector shorthand (a -t given before it still applies); several are combined.
     if (detectorList.Count == 1)
         options = options with { Detectors = [detectorList[0] with { Threshold = detectorList[0].Threshold ?? options.Threshold }] };
@@ -297,6 +314,93 @@ catch (InvalidOperationException e)
 {
     Console.Error.WriteLine(e.Message);
     return 1;
+}
+
+
+static DetectorKind KindOf(string name) => name switch
+{
+    "adaptive" => DetectorKind.Adaptive,
+    "content" => DetectorKind.Content,
+    "threshold" => DetectorKind.Threshold,
+    "hist" => DetectorKind.Histogram,
+    "hash" => DetectorKind.Hash,
+    var d => throw new ArgumentException($"Unknown detector '{d}'"),
+};
+
+/// <summary>[detect-*] values for what neither the command line nor the detector's own options set.</summary>
+DetectorSettings FromConfig(Config c, DetectorSettings d)
+{
+    string section = "detect-" + d.Kind switch { DetectorKind.Histogram => "hist", var k => k.ToString().ToLowerInvariant() };
+    bool Free(params string[] flags) => !flags.Any(given.Contains);
+    return d with
+    {
+        Threshold = d.Threshold ?? (Free("-t", "--threshold") ? c.Double(section, "threshold") : null),
+        MinSceneLength = d.MinSceneLength ?? c.Time(section, "min-scene-len"),
+        FilterMode = d.FilterMode ?? (Free("--filter-mode") && c.Get(section, "filter-mode") is { } fm
+            ? (fm.Trim().ToLowerInvariant() == "suppress" ? FlashFilterMode.Suppress : FlashFilterMode.Merge) : null),
+        Weights = Free("-w", "--weights") ? c.Weights(section, "weights") : null,
+        LumaOnly = Free("-l", "--luma-only") ? c.Bool(section, "luma-only") : null,
+        KernelSize = Free("-k", "--kernel-size") && c.Int(section, "kernel-size") is { } ks && ks > 0 ? ks : null,
+        MinContentVal = Free("-c", "--min-content-val") ? c.Double(section, "min-content-val") : null,
+        FrameWindow = Free("--frame-window") ? c.Int(section, "frame-window") : null,
+        Bins = Free("-b", "--bins") ? c.Int(section, "bins") : null,
+        HashSize = Free("--hash-size") ? c.Int(section, "size") : null,
+        HashLowpass = Free("--hash-lowpass") ? c.Int(section, "lowpass") : null,
+        FadeBias = Free("-f", "--fade-bias") ? c.Double(section, "fade-bias") : null,
+        AddLastScene = c.Bool(section, "add-last-scene"),
+    };
+}
+
+/// <summary>[global] and the output sections as defaults (the command line is parsed afterwards).</summary>
+void ApplyConfig(Config c)
+{
+    options = options with
+    {
+        MinSceneLength = c.Get("global", "min-scene-len") ?? options.MinSceneLength,
+        DropShortScenes = c.Bool("global", "drop-short-scenes") ?? options.DropShortScenes,
+        MergeLastScene = c.Bool("global", "merge-last-scene") ?? options.MergeLastScene,
+        FrameSkip = c.Int("global", "frame-skip") ?? options.FrameSkip,
+        Downscale = c.Int("global", "downscale") is { } ds && ds > 0 ? ds : options.Downscale,
+        Crop = c.Get("global", "crop") is { } cr && cr.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries) is { Length: 4 } p
+            ? (int.Parse(p[0], CultureInfo.InvariantCulture), int.Parse(p[1], CultureInfo.InvariantCulture),
+               int.Parse(p[2], CultureInfo.InvariantCulture), int.Parse(p[3], CultureInfo.InvariantCulture))
+            : options.Crop,
+    };
+    outputDir = c.Get("global", "output") ?? outputDir;
+    if (c.Get("global", "backend") is { } backend && backend != "opencv")
+        Console.Error.WriteLine($"Config: backend {backend}: ShotDetector reproduces the opencv backend.");
+    loadColumn = c.Get("load-scenes", "start-col-name") ?? loadColumn;
+    skipCuts = c.Bool("list-scenes", "skip-cuts") ?? skipCuts;
+    quiet = c.Bool("list-scenes", "quiet") ?? quiet;
+    images = images with
+    {
+        NumImages = c.Int("save-images", "num-images") ?? images.NumImages,
+        FrameMargin = c.Int("save-images", "frame-margin") ?? images.FrameMargin,
+        Width = c.Int("save-images", "width") is { } w && w > 0 ? w : images.Width,
+        Height = c.Int("save-images", "height") is { } h && h > 0 ? h : images.Height,
+        Scale = c.Double("save-images", "scale") is { } sc && sc != 1.0 ? sc : images.Scale,
+        Format = c.Get("save-images", "format") is { } f ? (f == "jpeg" ? "jpg" : f) : images.Format,
+        FileName = c.Get("save-images", "filename") ?? images.FileName,
+    };
+    split = split with
+    {
+        Copy = c.Bool("split-video", "copy") ?? split.Copy,
+        HighQuality = c.Bool("split-video", "high-quality") ?? split.HighQuality,
+        RateFactor = c.Int("split-video", "rate-factor") ?? split.RateFactor,
+        Preset = c.Get("split-video", "preset") ?? split.Preset,
+        Args = c.Get("split-video", "args") ?? split.Args,
+        FileName = c.Get("split-video", "filename") ?? split.FileName,
+    };
+    htmlNoImages = c.Bool("save-html", "no-images") ?? htmlNoImages;
+    htmlWidth = c.Int("save-html", "image-width") is { } hw && hw > 0 ? hw : htmlWidth;
+    htmlHeight = c.Int("save-html", "image-height") is { } hh && hh > 0 ? hh : htmlHeight;
+    edlTitle = c.Get("save-edl", "title") ?? edlTitle;
+    edlReel = c.Get("save-edl", "reel") ?? edlReel;
+    edlStart = c.Get("save-edl", "start-timecode") ?? edlStart;
+    fcpFormat = c.Get("save-fcp", "format") is { } ff ? ff.ToLowerInvariant().Replace("fcpformat.", "") : fcpFormat;
+    otioName = c.Get("save-otio", "name") ?? otioName;
+    otioAudio = c.Bool("save-otio", "audio") ?? otioAudio;
+    qpShift = !(c.Bool("save-qp", "disable-shift") ?? !qpShift);
 }
 
 /// <summary>Reports on the calling thread (Progress&lt;T&gt; would post to the thread pool, out of order).</summary>

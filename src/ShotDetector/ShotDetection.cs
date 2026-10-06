@@ -87,6 +87,9 @@ public sealed record DetectorSettings(DetectorKind Kind)
 
     /// <summary>Threshold: see <see cref="DetectionOptions.FadeBias"/>.</summary>
     public double? FadeBias { get; init; }
+
+    /// <summary>Threshold: see <see cref="DetectionOptions.AddLastScene"/>.</summary>
+    public bool? AddLastScene { get; init; }
 }
 
 /// <summary>Detection settings. Defaults match the scenedetect CLI.</summary>
@@ -196,6 +199,12 @@ public sealed record DetectionOptions
 
     /// <summary>Content: how the minimum length is enforced (detect-content --filter-mode).</summary>
     public FlashFilterMode FilterMode { get; init; }
+
+    /// <summary>
+    /// Threshold: when the video ends faded out, cut at the fade-out (scenedetect's add-last-scene, on by default;
+    /// its config file is the only place to turn it off).
+    /// </summary>
+    public bool AddLastScene { get; init; } = true;
 
     /// <summary>Downscale frames by this whole factor (scenedetect -d); null: scenedetect's automatic factor; 1: none.</summary>
     public int? Downscale { get; init; }
@@ -547,7 +556,8 @@ public static class ShotDetection
         {
             DetectorKind.Content => new ContentDetector(Scorer(), video.Position, video.Fps, st.Threshold ?? 27.0, min,
                 (st.FilterMode ?? o.FilterMode) == FlashFilterMode.Suppress),
-            DetectorKind.Threshold => new ThresholdDetector(video.Position, video.Fps, st.Threshold ?? 12.0, min, st.FadeBias ?? o.FadeBias, o.Compatibility),
+            DetectorKind.Threshold => new ThresholdDetector(video.Position, video.Fps, st.Threshold ?? 12.0, min, st.FadeBias ?? o.FadeBias, o.Compatibility,
+                st.AddLastScene ?? o.AddLastScene),
             DetectorKind.Histogram => new HistogramDetector(video.Position, st.Threshold ?? 0.05, bins, min, o.Compatibility),
             DetectorKind.Hash => new HashDetector(video.Position, st.Threshold ?? 0.395, hashSize, hashLowpass, min),
             _ => new AdaptiveDetector(Scorer(), video.Position, st.Threshold ?? 3.0, min, frameWindow, st.MinContentVal ?? o.MinContentVal),

@@ -8,6 +8,24 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from compare import EXE, ROOT  # noqa: E402
 
 OUT = pathlib.Path(tempfile.mkdtemp(prefix="shotdetector-options-"))
+# A scenedetect config file: default detector, per-detector values, add-last-scene off, list-scenes skip-cuts.
+CONFIG = OUT / "scenedetect.cfg"
+CONFIG.write_text("""[global]
+min-scene-len = 1s
+default-detector = detect-content
+
+[detect-content]
+threshold = 30
+weights = 1.0, 0.5, 1.0, 0.2
+
+[detect-threshold]
+add-last-scene = no
+threshold = 8
+min-scene-len = 2s
+
+[list-scenes]
+skip-cuts = yes
+""")
 VIDEOS = ["samples/synthetic.mp4", "samples/sintel_trailer-480p.mp4"]
 # label, scenedetect global options, scenedetect detect commands, shotdetect options
 CASES = [
@@ -27,6 +45,8 @@ CASES = [
      ["--merge-last-scene", "-m", "1s", "-e", "33s", "-d", "content"]),
     ("filter-mode suppress, 2s", [], ["detect-content", "-f", "suppress", "-m", "2s"], ["-d", "content", "--filter-mode", "suppress", "-m", "2s"]),
     ("filter-mode suppress", [], ["detect-content", "-f", "suppress"], ["-d", "content", "--filter-mode", "suppress"]),
+    ("config file", ["-c", str(CONFIG)], [], ["--config", str(CONFIG)]),
+    ("config file, threshold", ["-c", str(CONFIG)], ["detect-threshold"], ["--config", str(CONFIG), "-d", "threshold"]),
     ("downscale 1", ["-d", "1"], ["detect-content"], ["--downscale", "1", "-d", "content"]),
     ("downscale 3", ["-d", "3"], ["detect-adaptive"], ["--downscale", "3", "-d", "adaptive"]),
     ("downscale 5", ["-d", "5"], ["detect-hist"], ["--downscale", "5", "-d", "hist"]),

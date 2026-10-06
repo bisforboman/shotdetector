@@ -54,6 +54,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | Detection options: several detectors in one run (per-detector settings, user's choice), --drop-short-scenes, --merge-last-scene, detect-content --filter-mode suppress, -d/--downscale; checked in CI (`tools/compare-options.py`) | Parity on the command surface | Done (2026-10-06) |
 | File name templates (save-images/split-video -f, every variable), -o, $VIDEO_NAME in output paths | Parity on the command surface | Done (2026-10-06) |
 | load-scenes: `LoadScenes`, CLI `--load-scenes`; FrameTimecode's seconds kind added to `FrameTime` (typed times print their nearest frame); checked in CI (`tools/compare-load-scenes.py`) | Re-exporting edited lists | Done (2026-10-06) |
+| Config file (`--config`, scenedetect.cfg): global, detector and output sections; add-last-scene can be turned off; checked in CI (`tools/compare-options.py`) | Parity on the command surface | Done (2026-10-06) |
 | scenedetect features still missing: save-images `--quality`/`--compression` (our images come from ffmpeg, so only approximately), split-video `--mkvmerge` (external tool), filename templates (`$VIDEO_NAME`...) | Parity on the command surface, not only on results | Maybe |
 | 1.0 release plan: what must hold (parity matrix green for N releases of scenedetect/ffmpeg), version policy afterwards | So 1.0 means something | Open |
 
