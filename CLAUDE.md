@@ -79,6 +79,10 @@ environment. Move the `## Unreleased` section of CHANGELOG.md to the version fir
 - 10-bit on Linux: OpenCV's FFmpeg converts to BGR with ±1 differences no ffmpeg CLI flag reproduces (FFmpeg 8.1/9.0,
   sws flags, dither, cpuflags all tried); compared informationally (`samples/informational/`). Linux OpenCV can't
   decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments.
+- Frame labels (0.7.1): each decoded frame's showinfo time is matched to its packet (`PacketOf`), so frames
+  the decoder drops make numbers skip as in OpenCV. Files always run with `-copyts` (absolute times); streamed
+  times already start at 0 (ffmpeg shifts them), so `_startPts` must not be subtracted there. 0.6.4 labels
+  are plain counters and skip neither.
 - Streamed input needs the container headers first (mkv/webm/ts/mov or faststart mp4); ffmpeg reports a non-faststart
   mp4 on a pipe as "moov atom not found" or, when the whole file fit the probe prefix, "partial file".
 - Windows named pipe path is `\\.\pipe\…`; stdout's 4 KB pipe is far slower. Kill ffmpeg race-free (`Kill` helper).

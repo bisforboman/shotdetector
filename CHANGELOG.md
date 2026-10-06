@@ -5,6 +5,10 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- Fix: when the decoder drops frames (damaged video), later frames got the wrong times and frame
+  numbers; each frame now takes its own time, as in scenedetect.
+- Fix: a streamed input that doesn't start at 0 (e.g. a TS starting at 1.4 s) had every time shifted
+  by its start.
 - `Shots.Html` / CLI `--save-html`: scenedetect's save-html (export-html) page, byte for byte, with thumbnails.
 - `MinSceneLength` takes every scenedetect format: frames, `0.6s`, `0.6` and `HH:MM:SS.mmm`.
 - The shot list CSV starts with scenedetect's `Timecode List:` row (an empty row when there are no cuts);

@@ -18,6 +18,12 @@
         # Frame rate override: an image sequence is read at that rate
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'path.Contains(''%'') && !IsUrl(path)'; Replace = 'false'; Tests = 'VideoTests' }
 
+        # Dropped frames: each decoded frame takes its own packet's time (OpenCV labels frames by time)
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'k < _livePackets.Count ? _livePackets[k] : frame'; Replace = 'false ? 0 : frame'; Tests = 'VideoTests' }
+
+        # Streamed timestamps already start at 0 (ffmpeg shifts them); not subtracted again
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(Streaming ? p : p - _startPts)'; Replace = '(p - _startPts)'; Tests = 'VideoTests' }
+
         # Rotation tags: frames arrive upright, so the reported size is swapped
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '&& Math.Abs(Math.Round(rotation)) % 180 == 90)'; Replace = '&& false)'; Tests = 'VideoTests' }
 

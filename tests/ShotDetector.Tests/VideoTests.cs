@@ -26,6 +26,12 @@ public sealed class Clips : IDisposable
     /// <summary><see cref="ThreeShots"/> as an image sequence pattern (frames/0001.png ...).</summary>
     public string ThreeShotsImages { get; }
 
+    /// <summary>
+    /// <see cref="ThreeShots"/> with the first bytes of packets 60, 61 and 120 overwritten, so the decoder
+    /// can't parse two of them and drops those frames (148 decoded), like a damaged download.
+    /// </summary>
+    public string ThreeShotsDropped { get; }
+
     public Clips()
     {
         ThreeShots = Make("three.mp4",
@@ -43,6 +49,13 @@ public sealed class Clips : IDisposable
         Directory.CreateDirectory(Path.Combine(_dir, "frames"));
         ThreeShotsImages = Path.Combine(_dir, "frames", "%04d.png");
         Run($"-v error -y -i {ThreeShots} {ThreeShotsImages}");
+        ThreeShotsDropped = Path.Combine(_dir, "dropped.mp4");
+        var bytes = File.ReadAllBytes(ThreeShots);
+        var positions = VideoReader.Run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pos", "-of", "csv=p=0", ThreeShots], default)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(long.Parse).ToArray();
+        foreach (int k in new[] { 60, 61, 120 })
+            bytes.AsSpan((int)positions[k], 4).Fill(0xff);
+        File.WriteAllBytes(ThreeShotsDropped, bytes);
     }
 
     string Make(string name, string input)
@@ -306,6 +319,34 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             Assert.Equal(2.0, Duration(files[1]), 1);   // 4 .. 6 s instead of 4 .. 5 s
         }
         finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void FramesKeepTheirOwnTimesWhenTheDecoderDropsSome()
+    {
+        // Two frames before the cut at 100 can't be decoded. Like scenedetect (OpenCV labels a frame by
+        // its time), the cut stays frame 100 at 4 s rather than becoming the 98th decoded frame.
+        var r = ShotDetection.Detect(clips.ThreeShotsDropped, new() { Detector = DetectorKind.Content });
+        Assert.True(r.FrameCount < 150);
+        Assert.Equal([(0L, "00:00:00.000"), (50L, "00:00:02.000"), (100L, "00:00:04.000")],
+            r.Shots.Select(s => (s.Start.FrameNum, s.Start.Timecode())));
+    }
+
+    [Fact]
+    public void PipedInputThatDoesNotStartAtZeroKeepsItsTimes()
+    {
+        // A transport stream starts at 1.4 s; times are measured from there, as for the file.
+        string ts = Path.Combine(Path.GetTempPath(), $"shotdetector-{Guid.NewGuid():N}.ts");
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c:v", "mpeg2video", "-q:v", "3", ts], default);
+        try
+        {
+            var file = ShotDetection.Detect(ts, new() { Detector = DetectorKind.Content });
+            using var stream = File.OpenRead(ts);
+            var piped = ShotDetection.Detect(stream, new() { Detector = DetectorKind.Content });
+            Assert.Equal(file.Shots.Select(s => s.Start.Timecode()), piped.Shots.Select(s => s.Start.Timecode()));
+            Assert.Equal("00:00:02.000", piped.Shots[1].Start.Timecode());
+        }
+        finally { File.Delete(ts); }
     }
 
     [Fact]

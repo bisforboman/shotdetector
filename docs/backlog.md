@@ -16,7 +16,8 @@ Status: **Released** (on nuget.org), **Done** (on `main`, in the next release), 
 | Telecined footage, VP9/AV1 in webm/mkv, mpeg4 in avi, fragmented mp4, image sequences (`%04d.png`) | More decode paths | Done (2026-10-06): all exact |
 | 10-bit video on Linux: ±1 in red/green on some pixels vs OpenCV's bundled FFmpeg (cuts identical) | No ffmpeg CLI option reproduces it; an exact match needs our own 10-bit→BGR conversion in C# (like FastYuv for 8-bit). Compared informationally in CI | Maybe |
 | AV1 on Linux: OpenCV's wheel can't decode it (0 frames), so nothing to compare against there | Matches on Windows; excluded from the Linux real-world matrix | Done (2026-10-06) |
-| Broken/duplicate timestamps, missing frames (corrupt packets), stream switches mid-file | OpenCV's recovery behaviour vs ffmpeg's | Open |
+| Damaged files (`tools/make-broken.py`): corrupted mp4/TS, truncated mp4/TS, duplicate timestamps, a resolution change | Found and fixed: frames after a decoder-dropped frame were mislabeled; a piped TS not starting at 0 was shifted. All identical to scenedetect now, except the resolution change, where OpenCV freezes on the last frame before it (documented, not reproduced) | Done (2026-10-06) |
+| Damaged data: concealed pixels can differ from OpenCV's (decoder threading), so stats differ a little on corrupt files | Matching would need OpenCV's exact decoder threading setup; cuts matched on every damaged file tested | Maybe |
 | Container edge cases on streamed input: fragmented mp4, HLS/DASH segments, RTSP | The streaming mode relies on ffmpeg's demuxer on a pipe; verify timestamps come out right | Open |
 | Unit test for scenedetect 0.6.4's histogram re-initialisation at frame 1 | A guard reproduced without a test; add it and a mutation | Done (2026-10-06) |
 | Windows OpenCV wheel (FFmpeg 7.1) colour difference on BT.709 | Documented; decide whether to offer a `ColorMatrix` override for users comparing on Windows | Maybe |

@@ -188,6 +188,12 @@ slower path where ffmpeg converts whole frames, still with identical results.
   differences in red and green on some pixels that no ffmpeg command-line option reproduces (tested
   FFmpeg 8.1 and 9.0, every swscale flag and dither mode). Per-frame stats differ slightly; the cuts
   were identical on every 10-bit clip tested. On Windows, 10-bit matched exactly.
+- **Damaged video:** when the decoder drops frames it can't decode, every frame still gets its own
+  time and frame number, as with OpenCV (numbers skip; identical to scenedetect on the damaged files
+  tested). Error concealment on damaged data can differ in a few pixels, since OpenCV runs FFmpeg's
+  decoder with other threading. On a **resolution change** mid-stream, OpenCV returns the last frame
+  from before the change over and over, so scenedetect sees no cuts after it; ShotDetector keeps
+  decoding (ffmpeg scales the new frames to the first size) and finds them.
 - **Variable frame rate:** handled as PySceneDetect handles it. The fps is the *average* frame rate
   (what OpenCV reports, through PySceneDetect's `framerate_to_fraction`), min-scene-len is measured
   in time between frames, and printed frame numbers are `round(time × average fps)`, not decode
