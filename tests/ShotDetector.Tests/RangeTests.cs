@@ -74,6 +74,14 @@ public class RangeTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal([0L, 50L, 100L], r.Shots.Select(s => s.Start.FrameNum));
     }
 
+    [Fact]
+    public void CroppedVideoDownscalesFromTheCropSizePlusOne()
+    {
+        // A 300x240 crop: scenedetect's factor comes from 301x241 (255x204), not 300x240 (256x205).
+        var r = ShotDetection.Detect(clips.ThreeShots, Content(new() { Crop = (0, 0, 299, 239) }));
+        Assert.Equal((255, 204), (r.Video.Width, r.Video.Height));
+    }
+
     [Theory]
     [InlineData(0, 0, 499, 299, 255, 153)]      // 500x300 crop; scenedetect's factor comes from 501x301
     [InlineData(600, 0, 1000, 479, 135, 255)]   // runs off the right edge: 254x480 crop, factor from 255x481
