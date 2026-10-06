@@ -46,6 +46,10 @@ const string Usage = """
           --num-images <n>               Thumbnails per shot (default 3)
           --frame-margin <n>             Frames to keep away from each end of a shot (default 1)
           --image-width <px>, --image-height <px>, --image-scale <factor>, --image-format <jpg|png|webp>
+          --save-html <file>             Write the shot list as an HTML page with thumbnails (scenedetect
+                                         save-html); images go to --save-images <dir>, or next to the page
+          --html-no-images               Leave the thumbnails out of the HTML page
+          --html-image-width <px>, --html-image-height <px>   Size attributes of the HTML thumbnails
           --split-video <dir>            Cut the video into one mp4 per shot (like scenedetect split-video)
           --split-copy                   Copy streams instead of re-encoding (fast; cuts on keyframes)
           --split-high-quality           CRF 17, preset slow (instead of 22, veryfast)
@@ -53,7 +57,9 @@ const string Usage = """
           --split-expand                 Stretch the first/last clip to the video's start/end (with -s/-e)
     """;
 
-bool skipCuts = false, quiet = false;
+bool skipCuts = false, quiet = false, htmlNoImages = false;
+int? htmlWidth = null, htmlHeight = null;
+string? htmlPath = null;
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
 var options = new DetectionOptions();
 var images = new ImageOptions();
@@ -115,6 +121,10 @@ try
 #endif
             case "--csv": csvPath = Next(); break;
             case "--skip-cuts": skipCuts = true; break;
+            case "--save-html": htmlPath = Next(); break;
+            case "--html-no-images": htmlNoImages = true; break;
+            case "--html-image-width": htmlWidth = NextInt(); break;
+            case "--html-image-height": htmlHeight = NextInt(); break;
             case "-q" or "--quiet": quiet = true; break;
             case "--json": jsonPath = Next(); break;
             case "--stats": statsPath = Next(); options = options with { CollectStats = true }; break;
@@ -175,8 +185,25 @@ try
         File.WriteAllText(jsonPath, Shots.Json(result.Shots));
     if (statsPath is not null)
         File.WriteAllText(statsPath, result.Stats!.Csv(video.Position));
+    // save-html includes thumbnails by default; like scenedetect, it saves them (next to the page) if
+    // save-images wasn't asked for.
+    if (htmlPath is not null && !htmlNoImages)
+        imagesDir ??= Path.GetDirectoryName(Path.GetFullPath(htmlPath));
+    List<string>? saved = null;
     if (imagesDir is not null)
-        Console.Error.WriteLine($"Saved {Export.SaveImages(result, imagesDir, images).Count} images to {imagesDir}");
+    {
+        saved = Export.SaveImages(result, imagesDir, images);
+        Console.Error.WriteLine($"Saved {saved.Count} images to {imagesDir}");
+    }
+    if (htmlPath is not null)
+    {
+        // Image links relative to the page, grouped per shot (SaveImages writes NumImages per shot, in order).
+        string pageDir = Path.GetDirectoryName(Path.GetFullPath(htmlPath))!;
+        var perShot = htmlNoImages || saved is null ? null
+            : saved.Select(f => Path.GetRelativePath(pageDir, f)).Chunk(images.NumImages).Select(c => (IReadOnlyList<string>)c).ToList();
+        File.WriteAllText(htmlPath, Shots.Html(result.Shots, perShot, htmlWidth, htmlHeight));
+        Console.Error.WriteLine($"Wrote {htmlPath}");
+    }
     if (splitDir is not null)
         Console.Error.WriteLine($"Wrote {Export.SplitVideo(result, splitDir, split).Count} clips to {splitDir}");
     return 0;

@@ -15,6 +15,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="Data/*.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\ShotDetector\ShotDetector.csproj" />
     <ProjectReference Include="..\..\src\ShotDetector.FastYuv\ShotDetector.FastYuv.csproj" />
   </ItemGroup>
