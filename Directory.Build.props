@@ -5,6 +5,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
+    <!-- Supply chain (issue #18): reproducible paths on CI, SourceLink to this commit, symbol packages. -->
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <Authors>Jakob Boman</Authors>
     <Copyright>Copyright (c) Jakob Boman</Copyright>
     <PackageProjectUrl>https://github.com/bisforboman/shotdetector</PackageProjectUrl>

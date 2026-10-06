@@ -26,6 +26,9 @@ dotnet tool install -g ShotDetector.Cli         # the shotdetect command
 
 ffmpeg and ffprobe must be on `PATH` (or set `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`).
 
+Releases are built by GitHub Actions from the tagged commit: packages carry SourceLink and symbol packages, and
+every package and binary has a signed build attestation (`gh attestation verify <file> --repo bisforboman/shotdetector`).
+
 ## Library
 
 ```csharp
