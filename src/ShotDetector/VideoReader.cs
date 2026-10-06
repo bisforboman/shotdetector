@@ -151,6 +151,9 @@ public sealed partial class VideoReader
     readonly int? _decodeThreads;
     readonly string[] _inputOptions;   // ffmpeg/ffprobe options for the input (an image sequence's rate)
     readonly bool _fullFrames;         // tests: the full-frame pipeline instead of the sampled one
+    readonly VideoDecoder _decoder;
+    readonly string? _ffmpegDirectory;
+    readonly int _rotation;            // the display rotation ffmpeg applies (degrees); 0 if none
     readonly IYuv420Converter? _yuv420;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
     readonly List<long> _livePts = []; // the same, as frames arrive, when streaming (from the stream's start)
@@ -189,6 +192,8 @@ public sealed partial class VideoReader
         _ffmpegResize = o.FfmpegResize;
         _decodeThreads = o.DecodeThreads;
         _fullFrames = o.FullFrames;
+        _decoder = o.Decoder;
+        _ffmpegDirectory = o.FfmpegDirectory;
         FfmpegExe = Executable(o.FfmpegDirectory, "ffmpeg");
         Streaming = video is not null || o.Streaming || IsUrl(path);
         // scenedetect's frame rate override; an image sequence (no timestamps of its own) is read at that rate.
@@ -238,8 +243,9 @@ public sealed partial class VideoReader
         // Phone video is often stored sideways with a rotation tag. ffmpeg and OpenCV both rotate it
         // upright when decoding, so for ±90° the frames we get (and OpenCV's reported size) are
         // height x width.
-        if (double.TryParse(stream.GetValueOrDefault("rotation"), CultureInfo.InvariantCulture, out double rotation)
-            && Math.Abs(Math.Round(rotation)) % 180 == 90)
+        if (double.TryParse(stream.GetValueOrDefault("rotation"), CultureInfo.InvariantCulture, out double rotation))
+            _rotation = (int)Math.Round(rotation) % 360;
+        if (Math.Abs(_rotation) % 180 == 90)
             (SourceWidth, SourceHeight) = (SourceHeight, SourceWidth);
         // OpenCV's CAP_PROP_FPS is the average frame rate (the nominal one only if that is unknown),
         // which matters for variable frame rate video.
@@ -475,6 +481,12 @@ public sealed partial class VideoReader
             yield break;
         if (Streaming && startFrame > 0)
             throw new NotSupportedException("A streamed input can't be seeked.");
+        if (DecodesInProcess)
+        {
+            foreach (var frame in FramesInProcess(startFrame, count, cancellationToken))
+                yield return frame;
+            yield break;
+        }
         var pipeline = Pipeline;
         bool resizeHere = pipeline != FramePipeline.FfmpegScale, yuv = pipeline == FramePipeline.Yuv420Sampled;
         // On Windows, stdout redirection uses a 4 KB pipe, which makes full-size frames crawl

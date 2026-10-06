@@ -5,6 +5,10 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- In-process decoding, opt-in: `DetectionOptions.Decoder = VideoDecoder.InProcess` / `--decoder inprocess`
+  decodes with FFmpeg 8.1's shared libraries (FFmpeg.AutoGen bindings, MIT) instead of the ffmpeg executable.
+  Same frames and results; about 40% less CPU for decoding on Linux (issue #12). Streams, URLs, image
+  sequences and rotated video still use the executable.
 - Faster scoring: frames as small as scenedetect's (at most 256 wide) no longer split across threads, which cost
   3-4x their CPU; the resize reads the sampled rows directly; difference sums use 256-bit vectors. Same results.
   On Linux with 2 CPUs: 17% faster, 9% less CPU than 0.5.0 (issue #12).

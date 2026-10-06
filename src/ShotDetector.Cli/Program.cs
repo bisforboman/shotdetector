@@ -34,6 +34,8 @@ const string Usage = """
           --frame-rate <fps>             Override the detected frame rate (scenedetect -f); also the
                                          rate of an image sequence such as frames/%04d.png (default 25)
           --ffmpeg-dir <dir>             Folder containing ffmpeg and ffprobe (default: found on PATH)
+          --decoder <process|inprocess>  Decode with the ffmpeg executable (default) or with FFmpeg 8.1's
+                                         shared libraries in this process: same results, less CPU
       -s, --start <time>                 Start here: HH:MM:SS[.mmm], seconds (12.5s) or 1-based frame (300)
       -e, --end <time>                   Stop here (exclusive); same formats, frames 0-based
           --duration <time>              Analyse this much from the start (not with --end)
@@ -147,6 +149,17 @@ try
             case "--ffmpeg-resize": options = options with { FfmpegResize = true }; break;
             case "--threads": options = options with { DecodeThreads = NextInt() }; break;
             case "--ffmpeg-dir": options = options with { FfmpegDirectory = Next() }; break;
+            case "--decoder":
+                options = options with
+                {
+                    Decoder = Next() switch
+                    {
+                        "process" => VideoDecoder.FfmpegProcess,
+                        "inprocess" => VideoDecoder.InProcess,
+                        var d => throw new ArgumentException($"Unknown decoder '{d}' (process or inprocess)"),
+                    },
+                };
+                break;
             case "--frame-rate" or "--framerate": options = options with { FrameRate = NextDouble() }; break;
             case "--compat":
                 options = options with
