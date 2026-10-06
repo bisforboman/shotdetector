@@ -366,6 +366,29 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     }
 
     [Fact]
+    public void TimelineExportsPlaceTheCuts()
+    {
+        // Cuts at 2 s and 4 s (frames 50 and 100) of a 6 s, 25 fps clip.
+        var r = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content });
+        string edl = Timeline.Edl(r, reel: "B01");
+        Assert.StartsWith("* CREATED WITH SHOTDETECTOR", edl);
+        Assert.Contains("\nTITLE: three\nFCM: NON-DROP FRAME\n\n001  B01 V     C        00:00:00:00 00:00:02:00 00:00:00:00 00:00:02:00\n", edl);
+        Assert.EndsWith("003  B01 V     C        00:00:04:00 00:00:06:00 00:00:04:00 00:00:06:00\n", edl);
+        Assert.Contains("01:00:02:00", Timeline.Edl(r, startTimecode: "01:00:00:00"));
+        Assert.Equal("0 I -1\n50 I -1\n100 I -1\n", Timeline.Qp(r));
+        string fcpx = Timeline.Fcpx(r);
+        Assert.Contains("<format id=\"r1\" name=\"FFVideoFormat240p2500\" frameDuration=\"1/25s\" width=\"320\" height=\"240\"/>", fcpx);
+        Assert.Contains("<asset-clip name=\"Shot 2\" ref=\"r2\" offset=\"2s\" start=\"2s\" duration=\"2s\"/>", fcpx);
+        string fcp7 = Timeline.Fcp7(r);
+        Assert.Contains("<start>100</start>", fcp7);
+        Assert.Contains("<ntsc>False</ntsc>", fcp7);
+        string otio = Timeline.Otio(r, audio: false);
+        Assert.Contains("\"name\": \"Video 1\"", otio);
+        Assert.DoesNotContain("Audio 1", otio);
+        Assert.Contains("\"value\": 50.0", otio);
+    }
+
+    [Fact]
     public void AlreadyCancelledTokenThrowsImmediately() =>
         Assert.Throws<OperationCanceledException>(() => ShotDetection.Detect(clips.Long, cancellationToken: new CancellationToken(true)));
 

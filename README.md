@@ -124,6 +124,11 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
 - `--save-html <file>` writes scenedetect's `save-html` page (cut list and shot table with the
   thumbnails), byte-identical to scenedetect's; `--html-no-images`, `--html-image-width/height`.
   In the library: `Shots.Html`.
+- `--save-edl`, `--save-fcp` (`--fcp-format fcpx|fcp7`), `--save-otio` and `--save-qp` write scenedetect's
+  timeline exports for editors and encoders (CMX 3600 EDL, Final Cut Pro XML, OpenTimelineIO, x264 QP
+  keyframes), byte-identical to scenedetect's except the EDL's comment line, which names ShotDetector.
+  Like scenedetect, the OTIO clips declare an available range of 1980 frames whatever the video's
+  length. In the library: `Timeline.Edl`, `Fcpx`, `Fcp7`, `Otio`, `Qp`.
 - `--split-video <dir>` writes `{video}-Scene-{NNN}.mp4` with scenedetect's `split-video` ffmpeg
   command (libx264 veryfast CRF 22, AAC, subtitles dropped), and its options: `--split-copy`,
   `--split-high-quality`, `--split-crf`, `--split-preset`, `--split-args`, `--split-expand`

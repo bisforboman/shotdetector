@@ -36,6 +36,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | Decode threads: 8 by default on the yuv420p fast path (decode-bound: 13% faster on HD, +70 MB at 1080p, user's choice); the core path stays at 4 (pipe-bound: more threads don't help) | Biggest lever that keeps exact results | Done (2026-10-06) |
 | Pipe bytes on the core path: it pipes full-size BGR (3 bytes per pixel) although the exact resize reads ~1/5 of the pixels; ffmpeg has no filter that keeps exactly those rows and columns, and converting yuv420p in C# is what the LGPL FastYuv package is | The core path's bottleneck on HD (~15%); FastYuv is the answer today | Maybe |
 | Probe cost: scanning packets in the background while ffmpeg decodes | Measured no gain (the end check needs timestamps from the first frame; short files scan fast); reverted | Dropped (2026-10-06) |
+| In-process decoding (FFmpeg.AutoGen / Sdcb.FFmpeg, the C# counterparts of PyAV) instead of the ffmpeg pipe | Removes the pipe (~15% on HD, core path) and the separate ffmpeg executable; costs native FFmpeg libraries per platform (AOT, Alpine) and their LGPL/GPL terms | Maybe |
 | SIMD in the resize/HSV/score loops | ~4% of the time; not worth it until the above are done | Maybe |
 
 ## 3. Toward 1.0
@@ -49,6 +50,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | split-video options (`--copy`, `--high-quality`, `--rate-factor`, `--preset`, `--args`, `--expand`): `SplitOptions`, CLI `--split-*`; 60 of 60 clips byte-identical to scenedetect's. Also fixed: `-sn` (subtitles dropped) in 0.7.1 mode too | Parity on the command surface | Done (2026-10-06) |
 | save-html / export-html: `Shots.Html`, CLI `--save-html`; byte-identical pages (with and without thumbnails) | Parity on the command surface | Done (2026-10-06) |
 | list-scenes `--skip-cuts`, `-q`; the CSV's `Timecode List:` row | Our CSV lacked scenedetect's first row | Done (2026-10-06) |
+| Timeline exports: save-edl, save-fcp (fcpx/fcp7), save-otio, save-qp (`Timeline`, CLI `--save-*`); byte-identical, checked in CI (`tools/compare-timeline.py`) | Editors and encoders import these | Done (2026-10-06) |
 | scenedetect features still missing: save-images `--quality`/`--compression` (our images come from ffmpeg, so only approximately), split-video `--mkvmerge` (external tool), filename templates (`$VIDEO_NAME`...) | Parity on the command surface, not only on results | Maybe |
 | 1.0 release plan: what must hold (parity matrix green for N releases of scenedetect/ffmpeg), version policy afterwards | So 1.0 means something | Open |
 
