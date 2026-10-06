@@ -49,5 +49,8 @@ jobs:
           echo "Runner: $(nproc) CPUs, $(free -g | awk '/Mem:/ {print $2}') GB" >> "$GITHUB_STEP_SUMMARY"
           for d in content adaptive; do
             python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector $d --runs 3 --report bench.md
-            { echo "### detect-$d"; cat bench.md; } >> "$GITHUB_STEP_SUMMARY"
+            { echo "### detect-$d, all $(nproc) CPUs"; cat bench.md; } >> "$GITHUB_STEP_SUMMARY"
           done
+          # A small container's view: both tools and their children pinned to 2 CPUs (issue #12).
+          taskset -c 0,1 python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --runs 3 --report bench2.md
+          { echo "### detect-content, 2 CPUs"; cat bench2.md; } >> "$GITHUB_STEP_SUMMARY"

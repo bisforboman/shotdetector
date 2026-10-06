@@ -5,6 +5,9 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- Correction to 0.5.0: "on 2 CPUs it now uses less CPU than scenedetect" holds on the Windows machine it was
+  measured on (ffmpeg 7.1), not on Linux: there, with 2 CPUs, ShotDetector uses ~1.5x scenedetect's CPU and
+  ~1.6x its wall time (issue #12). The README has both measurements.
 ## 0.5.0 – 2026-10-06
 
 Every new output and option below is byte-identical to scenedetect 0.7.1's (checked in CI).
@@ -48,6 +51,8 @@ Every new output and option below is byte-identical to scenedetect 0.7.1's (chec
 - The MIT core pipes only the pixels the exact resize reads (ffmpeg's remap filter after its own BGR conversion;
   `FramePipeline.SampledBgr`): identical results, 0.44 MB instead of 6.2 MB per 1080p frame. On 2 CPUs it now uses
   less CPU than scenedetect (was 2.1x) and is on par in wall time; faster than scenedetect with more CPUs (#7).
+  *Correction: measured on Windows with ffmpeg 7.1 only; on Linux with 2 CPUs it uses ~1.5x scenedetect's CPU
+  (issue #12, see the README).*
 
 ### Fixed
 
