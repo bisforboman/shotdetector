@@ -50,7 +50,7 @@ public sealed record DetectionOptions
     /// </summary>
     public double? Threshold { get; init; }
 
-    /// <summary>Minimum shot length: frames ("15") or seconds ("0.6s").</summary>
+    /// <summary>Minimum shot length, as scenedetect takes it: frames ("15"), seconds ("0.6s" or "0.6") or "HH:MM:SS[.mmm]".</summary>
     public string MinSceneLength { get; init; } = "0.6s";
 
     /// <summary>Adaptive: minimum content_val for a cut.</summary>
@@ -350,9 +350,9 @@ public static class ShotDetection
     }
 
     /// <summary>"0.6s" → frames with Python's round-half-to-even, like FrameTimecode._seconds_to_frames; "15" → 15.</summary>
-    internal static int MinSceneLengthInFrames(string value, Fps fps) => value.EndsWith('s')
-        ? (int)Math.Round(double.Parse(value[..^1], CultureInfo.InvariantCulture) * fps.Value)
-        : int.Parse(value, CultureInfo.InvariantCulture);
+    internal static int MinSceneLengthInFrames(string value, Fps fps) => value.Trim().All(char.IsDigit)
+        ? int.Parse(value, CultureInfo.InvariantCulture)
+        : (int)Math.Round(TimecodeSeconds(value, fps) * fps.Value);
 
     /// <summary>
     /// A scenedetect timecode ("HH:MM:SS[.mmm]", "12.5s", "12.5", or "300" frames) in seconds, as
