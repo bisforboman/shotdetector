@@ -173,7 +173,8 @@ public static partial class Export
                 _ => ["-q:v", "2"],
             };
             VideoReader.Run(video.FfmpegExe, ["-v", "error", "-nostdin", "-y", "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
-                "-fps_mode", "passthrough", .. quality, Path.Combine(temp, $"%06d.{io.Format}")], cancellationToken);
+                "-fps_mode", "passthrough", .. quality, Path.Combine(temp, $"%06d.{io.Format}")], cancellationToken,
+                failure: ShotDetectionError.ExportFailed);
             var byFrame = frames.Select((f, i) => (f, Path.Combine(temp, $"{i + 1:000000}.{io.Format}"))).ToDictionary();
             foreach (var (frame, file) in wanted)
                 File.Copy(byFrame[frame], file, overwrite: true);
@@ -276,7 +277,7 @@ public static partial class Export
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
             VideoReader.Run(video.FfmpegExe, ["-v", "error", "-nostdin", "-y",
                 "-ss", Stats.PyFloat(start.Seconds), "-i", videoPath, "-t", Stats.PyFloat(end.Minus(start).Seconds),
-                .. codecArgs, "-sn", file], cancellationToken);
+                .. codecArgs, "-sn", file], cancellationToken, failure: ShotDetectionError.ExportFailed);
             files.Add(file);
         }
         return files;
