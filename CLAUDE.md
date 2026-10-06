@@ -71,6 +71,8 @@ environment. Move the `## Unreleased` section of CHANGELOG.md to the version fir
   still carry FFmpeg 7.1 and differ on BT.709; Linux is the reference).
 - scenedetect 0.6.4's ThresholdDetector is nondeterministic on Linux (excluded from CI compare); its histogram
   detector re-initialises at frame 1 (`if not last_cut` is false for 0) — reproduced.
+- MPEG-PS packets mostly lack a pts: OpenCV uses the frame's dts, so the reader takes per-frame timestamps
+  from an ffprobe decoding pass when any packet has none (`FrameTimestamps`).
 - Streamed input needs the container headers first (mkv/webm/ts/mov or faststart mp4); ffmpeg reports a non-faststart
   mp4 on a pipe as "moov atom not found" or, when the whole file fit the probe prefix, "partial file".
 - Windows named pipe path is `\\.\pipe\…`; stdout's 4 KB pipe is far slower. Kill ffmpeg race-free (`Kill` helper).

@@ -3,6 +3,12 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. Until
 1.0, minor versions may change the public API.
 
+## Unreleased
+
+- MPEG program streams (`.mpg`, MPEG-2) gave shifted cuts: packets without a pts were dropped from the
+  frame timestamps. Per-frame timestamps now come from a decoding pass for such files, as OpenCV sees them.
+- Real-world and mutation checks in CI (`tools/realworld.py`, `tools/mutation/`), nightly real-world run.
+
 ## 0.4.0 – 2026-10-06
 
 - Streamed input: `Detect(Stream)`, `DetectStreamAsync(Stream)`, URLs, `DetectionOptions.Streaming`

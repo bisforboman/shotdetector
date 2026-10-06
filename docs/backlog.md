@@ -11,8 +11,9 @@ Status: **Released** (on nuget.org), **Done** (on `main`, in the next release), 
 | Item | Why | Status |
 |---|---|---|
 | Real-world check: whole Blender films and codec clips vs scenedetect (`tools/realworld.py`, nightly) | Synthetic clips and trailers can't show divergences on hours of footage, fades, dark scenes, or in HEVC/VP9/AV1 decoding | Done (2026-10-06) |
-| Fix every divergence the real-world check finds | The promise is identical results | Open (none known yet) |
-| More sources: interlaced/telecined footage, 10-bit (yuv420p10), odd sizes (e.g. 1366x768), very long GOPs, broken timestamps | Each is a different decode/convert path (`IYuv420Converter`, `CvResize`) | Open |
+| Fix every divergence the real-world check finds | The promise is identical results | Open (none known; MPEG-PS timestamps fixed 2026-10-06) |
+| More sources: interlaced, 10-bit (h264/hevc), odd sizes (1366x768, 427x241), 4:2:2, long GOPs, MPEG-2 in PS/TS | Each is a different decode/convert path | Done (2026-10-06): all exact after the MPEG-PS fix; `.mpg` and 10-bit samples added to the parity set |
+| Telecined (pulldown) footage, broken/duplicate timestamps, image sequences | Not covered yet | Open |
 | Container edge cases on streamed input: fragmented mp4, HLS/DASH segments, RTSP | The streaming mode relies on ffmpeg's demuxer on a pipe; verify timestamps come out right | Open |
 | Unit test for scenedetect 0.6.4's histogram re-initialisation at frame 1 | A guard reproduced without a test; add it and a mutation | Done (2026-10-06) |
 | Windows OpenCV wheel (FFmpeg 7.1) colour difference on BT.709 | Documented; decide whether to offer a `ColorMatrix` override for users comparing on Windows | Maybe |
