@@ -143,6 +143,30 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     }
 
     [Fact]
+    public void EachDetectionIsATracingSpan()
+    {
+        var spans = new System.Collections.Concurrent.ConcurrentBag<System.Diagnostics.Activity>();
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = s => s.Name == ShotDetection.ActivitySourceName,
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) =>
+                System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = spans.Add,
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+        var parent = new System.Diagnostics.Activity("test").Start();
+        ShotDetection.Detect(clips.ThreeShots);
+        parent.Stop();
+        // Other tests may run detections meanwhile: take this one's span by its parent.
+        var span = Assert.Single(spans, a => a.ParentSpanId == parent.SpanId);
+        Assert.Equal("ShotDetection.Detect", span.OperationName);
+        Assert.Equal(150, span.GetTagItem("shotdetector.frames"));
+        Assert.Equal(3, span.GetTagItem("shotdetector.shots"));
+        Assert.Equal(320, span.GetTagItem("shotdetector.video.width"));
+        Assert.Equal("process", span.GetTagItem("shotdetector.decoder"));
+    }
+
+    [Fact]
     public void MissingFileIsInvalidInput()
     {
         var e = Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(Path.Combine(Path.GetTempPath(), "no-such-video.mp4")));
