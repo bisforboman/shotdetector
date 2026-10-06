@@ -13,7 +13,8 @@ Status: **Released** (on nuget.org), **Done** (on `main`, in the next release), 
 | Real-world check: whole Blender films and codec clips vs scenedetect (`tools/realworld.py`, nightly) | Synthetic clips and trailers can't show divergences on hours of footage, fades, dark scenes, or in HEVC/VP9/AV1 decoding | Done (2026-10-06) |
 | Fix every divergence the real-world check finds | The promise is identical results | Open (none known; MPEG-PS timestamps fixed 2026-10-06) |
 | More sources: interlaced, 10-bit (h264/hevc), odd sizes (1366x768, 427x241), 4:2:2, long GOPs, MPEG-2 in PS/TS | Each is a different decode/convert path | Done (2026-10-06): all exact after the MPEG-PS fix; `.mpg` and 10-bit samples added to the parity set |
-| Telecined (pulldown) footage, broken/duplicate timestamps, image sequences | Not covered yet | Open |
+| Telecined footage, VP9/AV1 in webm/mkv, mpeg4 in avi, fragmented mp4, image sequences (`%04d.png`) | More decode paths | Done (2026-10-06): all exact |
+| Broken/duplicate timestamps, missing frames (corrupt packets), stream switches mid-file | OpenCV's recovery behaviour vs ffmpeg's | Open |
 | Container edge cases on streamed input: fragmented mp4, HLS/DASH segments, RTSP | The streaming mode relies on ffmpeg's demuxer on a pipe; verify timestamps come out right | Open |
 | Unit test for scenedetect 0.6.4's histogram re-initialisation at frame 1 | A guard reproduced without a test; add it and a mutation | Done (2026-10-06) |
 | Windows OpenCV wheel (FFmpeg 7.1) colour difference on BT.709 | Documented; decide whether to offer a `ColorMatrix` override for users comparing on Windows | Maybe |
@@ -33,7 +34,7 @@ Status: **Released** (on nuget.org), **Done** (on `main`, in the next release), 
 |---|---|---|
 | API freeze review: naming, nullability, records vs classes, what is `internal` | Minor versions may still change the API until 1.0 | Open |
 | Docs pass: README sections per use case (library, CLI, streaming), XML docs on every public member, samples folder with a small app | First impression for NuGet users | Open |
-| scenedetect features still missing: `export-html`, `--min-scene-len` as a time, `list-scenes` `-q`/`-s` options, `split-video` `--copy`/`--high-quality` args | Parity on the command surface, not only on results | Open |
+| scenedetect features still missing: `-f/--framerate` override (image sequences and broken headers), `export-html`, `--min-scene-len` as a time, `list-scenes` `-q`/`-s` options, `split-video` `--copy`/`--high-quality` args | Parity on the command surface, not only on results | Open |
 | 1.0 release plan: what must hold (parity matrix green for N releases of scenedetect/ffmpeg), version policy afterwards | So 1.0 means something | Open |
 
 ## Done
