@@ -23,6 +23,14 @@ jobs:
       - name: Install ffmpeg   # the video tests make clips with it, and the library runs it
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
+      # In-process decoding needs FFmpeg 8.1's shared libraries; InProcessTests compare it with that build's
+      # executable, so both go in one folder.
+      - name: FFmpeg 8.1 shared libraries
+        run: |
+          curl -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-shared-8.1.tar.xz | tar -xJ
+          cp ffmpeg-n8.1-latest-linux64-gpl-shared-8.1/bin/* ffmpeg-n8.1-latest-linux64-gpl-shared-8.1/lib/
+          echo "SHOTDETECTOR_FFMPEG_LIBS=$PWD/ffmpeg-n8.1-latest-linux64-gpl-shared-8.1/lib" >> "$GITHUB_ENV"
+
       - name: Test
         run: dotnet test ShotDetector.slnx
 

@@ -34,6 +34,19 @@ public enum DetectorKind
     Hash,
 }
 
+/// <summary>How frames are decoded.</summary>
+public enum VideoDecoder
+{
+    /// <summary>The ffmpeg executable, frames through a pipe (the default; any ffmpeg version on PATH).</summary>
+    FfmpegProcess,
+
+    /// <summary>
+    /// FFmpeg's libraries in this process (they must be FFmpeg 8.1's shared libraries): the same frames for less CPU,
+    /// without a second process. Streams, URLs, image sequences and rotated video still use the executable.
+    /// </summary>
+    InProcess,
+}
+
 /// <summary>How ContentDetector enforces the minimum scene length (scenedetect's detect-content --filter-mode).</summary>
 public enum FlashFilterMode
 {
@@ -191,8 +204,11 @@ public sealed record DetectionOptions
     /// </summary>
     public IYuv420Converter? Yuv420Converter { get; init; }
 
-    /// <summary>Folder containing ffmpeg and ffprobe; null (default) finds them on PATH.</summary>
+    /// <summary>Folder containing ffmpeg and ffprobe; null (default) finds them on PATH. With <see cref="VideoDecoder.InProcess"/>, also where FFmpeg's shared libraries are.</summary>
     public string? FfmpegDirectory { get; init; }
+
+    /// <summary>How frames are decoded: by the ffmpeg executable (default) or in this process.</summary>
+    public VideoDecoder Decoder { get; init; }
 
     /// <summary>
     /// Several detectors in one run (like several detect-* commands): their cuts are combined. Null or empty: the one

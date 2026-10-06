@@ -223,6 +223,12 @@ The FastYuv path goes further: ffmpeg sends raw yuv420p (no conversion at all) a
 `SwscaleYuv420.cs`, a bit-exact port of swscale's converter, converts only the pixels the resize reads.
 Decoding is then the bottleneck, so ffmpeg gets 8 decoder threads there (`--threads`; 4 on the core path).
 
+In-process decoding (`Decoder = VideoDecoder.InProcess`, CLI `--decoder inprocess`) decodes with FFmpeg's
+shared libraries inside our process, as OpenCV does, instead of running the ffmpeg executable: the same
+frames (CI compares them), with ~40% less CPU for decoding and converting on Linux. It needs FFmpeg 8.1's
+shared libraries (a "shared" build; `--ffmpeg-dir` / `FfmpegDirectory` names their folder). Streams and URLs,
+image sequences and rotated video still use the executable.
+
 Memory: most of it is ffmpeg's own frame queues and decoder threads (whole decoded frames); our
 process takes ~50 MB. `--threads 1` (`DecodeThreads = 1`) lowers ffmpeg's share on many-core machines,
 at the cost of decoding speed.

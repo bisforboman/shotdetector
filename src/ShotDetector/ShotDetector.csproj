@@ -15,6 +15,16 @@
     <PackageIcon>icon.png</PackageIcon>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MIT bindings to FFmpeg 8.1's libraries, for DetectionOptions.Decoder = InProcess (the libraries themselves
+         come from the system, like the ffmpeg executable). -->
+    <PackageReference Include="FFmpeg.AutoGen" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
