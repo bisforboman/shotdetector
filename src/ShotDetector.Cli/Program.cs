@@ -62,6 +62,9 @@ const string Usage = """
           --save-otio <file>             OpenTimelineIO timeline (save-otio); --otio-name <n>, --otio-no-audio
           --save-qp <file>               x264 QP file with a keyframe at each cut (save-qp); --qp-disable-shift
           --split-video <dir>            Cut the video into one mp4 per shot (like scenedetect split-video)
+          --image-filename <template>    save-images name, no extension (default $VIDEO_NAME-Scene-$SCENE_NUMBER-$IMAGE_NUMBER)
+          --split-filename <template>    split-video name (default $VIDEO_NAME-Scene-$SCENE_NUMBER)
+      -o, --output <dir>                 Folder for outputs given as relative paths; $VIDEO_NAME works in every output path
           --split-copy                   Copy streams instead of re-encoding (fast; cuts on keyframes)
           --split-high-quality           CRF 17, preset slow (instead of 22, veryfast)
           --split-crf <n>, --split-preset <name>, --split-args "<ffmpeg args>"
@@ -74,6 +77,7 @@ string? htmlPath = null;
 string? edlPath = null, edlTitle = null, edlReel = "AX", edlStart = null, fcpPath = null, fcpFormat = "fcpx";
 string? otioPath = null, otioName = null, qpPath = null;
 bool otioAudio = true, qpShift = true;
+string? outputDir = null;
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
 var options = new DetectionOptions();
 var detectorList = new List<DetectorSettings>();  // -d ... each with its own -t/-m/--filter-mode
@@ -187,6 +191,9 @@ try
             case "--frame-skip": options = options with { FrameSkip = NextInt() }; break;
             case "--crop": options = options with { Crop = (NextInt(), NextInt(), NextInt(), NextInt()) }; break;
             case "--split-video": splitDir = Next(); break;
+            case "--image-filename": images = images with { FileName = Next() }; break;
+            case "--split-filename": split = split with { FileName = Next() }; break;
+            case "-o" or "--output": outputDir = Next(); break;
             case "--split-copy": split = split with { Copy = true }; break;
             case "--split-high-quality": split = split with { HighQuality = true }; break;
             case "--split-crf": split = split with { RateFactor = NextInt() }; break;
@@ -223,6 +230,15 @@ try
     if (!Console.IsErrorRedirected)
         Console.Error.Write("\r" + new string(' ', 40) + "\r");
     var video = result.Video;
+    // Output paths: $VIDEO_NAME expanded, relative ones under -o.
+    string videoName = input == "-" ? "stdin" : Path.GetFileNameWithoutExtension(input);
+    string? Out(string? path) => path is null ? null
+        : Path.Combine(outputDir ?? "", path.Replace("$VIDEO_NAME", videoName).Replace("${VIDEO_NAME}", videoName));
+    (csvPath, jsonPath, statsPath, imagesDir, htmlPath, splitDir) = (Out(csvPath), Out(jsonPath), Out(statsPath), Out(imagesDir), Out(htmlPath), Out(splitDir));
+    (edlPath, fcpPath, otioPath, qpPath) = (Out(edlPath), Out(fcpPath), Out(otioPath), Out(qpPath));
+    foreach (var file in new[] { csvPath, jsonPath, statsPath, htmlPath, edlPath, fcpPath, otioPath, qpPath })
+        if (file is not null && Path.GetDirectoryName(Path.GetFullPath(file)) is { } dir)
+            Directory.CreateDirectory(dir);
     Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
         $"{(input == "-" ? "stdin" : Path.GetFileName(input))}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, " +
         $"{result.FrameCount} frames, processed at {video.Width}x{video.Height}, " +

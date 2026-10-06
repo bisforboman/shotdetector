@@ -5,6 +5,8 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- File name templates as scenedetect's: `ImageOptions.FileName`, `SplitOptions.FileName` (CLI `--image-filename`,
+  `--split-filename`); CLI `-o/--output` and `$VIDEO_NAME` in output paths.
 - Several detectors in one run (`DetectionOptions.Detectors` with per-detector `DetectorSettings`; CLI repeated
   `-d`), `DropShortScenes`, `MergeLastScene`, `FilterMode` (suppress), `Downscale`; `DetectionResult.Cuts`. All
   byte-identical to scenedetect (`tools/compare-options.py`, in CI).

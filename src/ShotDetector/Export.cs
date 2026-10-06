@@ -23,6 +23,12 @@ public sealed record SplitOptions
     /// <summary>Stretch the first clip to the start of the video and the last to its end (<c>--expand</c>), for a time range.</summary>
     public bool Expand { get; init; }
 
+    /// <summary>
+    /// File name template (split-video -f): $VIDEO_NAME, $SCENE_NUMBER, $START_TIME, $END_TIME (with ';' for ':'),
+    /// $START_FRAME, $END_FRAME, $START_PTS, $END_PTS (milliseconds); ".mp4" is added unless it has an extension.
+    /// </summary>
+    public string FileName { get; init; } = "$VIDEO_NAME-Scene-$SCENE_NUMBER";
+
     internal string[] FfmpegArgs()
     {
         if (Copy && (HighQuality || RateFactor is not null || Preset is not null))
@@ -57,6 +63,12 @@ public sealed record ImageOptions
     /// <summary>"jpg", "png" or "webp".</summary>
     public string Format { get; init; } = "jpg";
 
+    /// <summary>
+    /// File name template, without extension (save-images -f): $VIDEO_NAME, $SCENE_NUMBER, $IMAGE_NUMBER,
+    /// $FRAME_NUMBER, $TIMESTAMP_MS, $TIMECODE (with ';' for ':'); may contain folders.
+    /// </summary>
+    public string FileName { get; init; } = "$VIDEO_NAME-Scene-$SCENE_NUMBER-$IMAGE_NUMBER";
+
     /// <summary>The ffmpeg scale filter for these settings (bilinear, as scenedetect's default scale-method).</summary>
     internal string ScaleFilter() => (Width, Height, Scale) switch
     {
@@ -72,8 +84,21 @@ public sealed record ImageOptions
 /// Uses a shot list like scenedetect's save-images and split-video commands, with the same
 /// defaults and file names. Both run ffmpeg.
 /// </summary>
-public static class Export
+public static partial class Export
 {
+    /// <summary>
+    /// Python's string.Template(template).safe_substitute(values): $NAME or ${NAME} (letters, digits, '_'),
+    /// "$$" for '$'; unknown names and stray '$' stay as they are.
+    /// </summary>
+    internal static string Substitute(string template, IReadOnlyDictionary<string, string> values) =>
+        TemplateVariable().Replace(template, m =>
+            m.Groups["escaped"].Success ? "$"
+            : (m.Groups["named"].Success ? m.Groups["named"].Value : m.Groups["braced"].Value) is var key && values.TryGetValue(key, out var v) ? v
+            : m.Value);
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\$(?:(?<escaped>\$)|(?<named>[_a-zA-Z][_a-zA-Z0-9]*)|\{(?<braced>[_a-zA-Z][_a-zA-Z0-9]*)\})")]
+    private static partial System.Text.RegularExpressions.Regex TemplateVariable();
+
     /// <summary>scenedetect pads scene numbers to at least 3 digits.</summary>
     static string SceneNumber(int number, int count) =>
         number.ToString(new string('0', Math.Max(3, (int)Math.Floor(Math.Log10(count)) + 1)), CultureInfo.InvariantCulture);
@@ -112,10 +137,25 @@ public static class Export
         int[][] picked = video.Compatibility == PySceneDetectVersion.V0_6_4
             ? ImageFrames064(shots, numImages, frameMargin)
             : ImageTimes(shots, video.Fps, numImages, frameMargin).Select(t => t.Select(video.FrameAt).ToArray()).ToArray();
+        double[][]? times = video.Compatibility == PySceneDetectVersion.V0_6_4 ? null : ImageTimes(shots, video.Fps, numImages, frameMargin);
         for (int i = 0; i < shots.Count; i++)
             for (int j = 0; j < numImages; j++)
-                wanted.Add((Math.Clamp(picked[i][j], 0, frameCount - 1), Path.Combine(outputDir,
-                    $"{name}-Scene-{SceneNumber(shots[i].Number, shots.Count)}-{(j + 1).ToString(imageFormat, CultureInfo.InvariantCulture)}.{io.Format}")));
+            {
+                // The image's own time: 0.7.1 the picked time, 0.6.4 the picked frame.
+                double seconds = times?[i][j] ?? picked[i][j] / video.Fps.Value;
+                string file = Substitute(io.FileName, new Dictionary<string, string>
+                {
+                    ["VIDEO_NAME"] = name,
+                    ["SCENE_NUMBER"] = SceneNumber(shots[i].Number, shots.Count),
+                    ["IMAGE_NUMBER"] = (j + 1).ToString(imageFormat, CultureInfo.InvariantCulture),
+                    ["FRAME_NUMBER"] = picked[i][j].ToString(CultureInfo.InvariantCulture),
+                    ["TIMESTAMP_MS"] = ((long)(seconds * 1000)).ToString(CultureInfo.InvariantCulture),
+                    ["TIMECODE"] = FrameTime.FormatTimecode(seconds).Replace(':', ';'),
+                }) + "." + io.Format;
+                string path = Path.Combine(outputDir, file);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                wanted.Add((Math.Clamp(picked[i][j], 0, frameCount - 1), path));
+            }
 
         // One ffmpeg pass: select the wanted frames (in order) into numbered temp files, then rename.
         int[] frames = wanted.Select(w => w.Frame).Distinct().Order().ToArray();
@@ -215,11 +255,25 @@ public static class Export
         }
         Directory.CreateDirectory(outputDir);
         string name = Path.GetFileNameWithoutExtension(videoPath);
+        // As the CLI: ".mp4" unless the template ends in a 2-4 character extension.
+        int dot = so.FileName.LastIndexOf('.');
+        string template = so.FileName + (dot >= 0 && so.FileName.Length - dot - 1 is >= 2 and <= 4 ? "" : ".mp4");
         var files = new List<string>();
         for (int i = 0; i < clips.Count; i++)
         {
             var (start, end) = clips[i];
-            string file = Path.Combine(outputDir, $"{name}-Scene-{SceneNumber(i + 1, clips.Count)}.mp4");
+            string file = Path.Combine(outputDir, Substitute(template, new Dictionary<string, string>
+            {
+                ["VIDEO_NAME"] = name,
+                ["SCENE_NUMBER"] = SceneNumber(i + 1, clips.Count),
+                ["START_TIME"] = start.Timecode().Replace(':', ';'),
+                ["END_TIME"] = end.Timecode().Replace(':', ';'),
+                ["START_FRAME"] = start.FrameNum.ToString(CultureInfo.InvariantCulture),
+                ["END_FRAME"] = end.FrameNum.ToString(CultureInfo.InvariantCulture),
+                ["START_PTS"] = ((long)Math.Round(start.Seconds * 1000)).ToString(CultureInfo.InvariantCulture),
+                ["END_PTS"] = ((long)Math.Round(end.Seconds * 1000)).ToString(CultureInfo.InvariantCulture),
+            }));
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
             VideoReader.Run(video.FfmpegExe, ["-v", "error", "-nostdin", "-y",
                 "-ss", Stats.PyFloat(start.Seconds), "-i", videoPath, "-t", Stats.PyFloat(end.Minus(start).Seconds),
                 .. codecArgs, "-sn", file], cancellationToken);

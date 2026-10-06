@@ -140,6 +140,10 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
   `--split-high-quality`, `--split-crf`, `--split-preset`, `--split-args`, `--split-expand`
   (`SplitOptions` in the library). The clips came out byte-identical to scenedetect's for every
   option.
+- File names follow scenedetect's templates (`--image-filename`, `--split-filename`;
+  `ImageOptions.FileName`, `SplitOptions.FileName`), with the same variables (`$VIDEO_NAME`,
+  `$SCENE_NUMBER`, `$IMAGE_NUMBER`, `$FRAME_NUMBER`, `$TIMESTAMP_MS`, `$TIMECODE`, `$START_TIME`, ...).
+  `-o <dir>` puts outputs given as relative paths there, and `$VIDEO_NAME` works in any output path.
 
 ## Verifying against PySceneDetect
 

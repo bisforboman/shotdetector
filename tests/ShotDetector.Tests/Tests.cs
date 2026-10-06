@@ -473,6 +473,17 @@ public class SceneListTests
     }
 }
 
+public class TemplateTests
+{
+    [Theory]
+    [InlineData("$VIDEO_NAME-Scene-$SCENE_NUMBER", "clip-Scene-007")]
+    [InlineData("${VIDEO_NAME}x-$VIDEO_NAMEx", "clipx-$VIDEO_NAMEx")]   // an identifier runs as far as it can
+    [InlineData("$$VIDEO_NAME $5 $ end$", "$VIDEO_NAME $5 $ end$")]      // "$$" is "$"; stray '$' stays
+    [InlineData("$UNKNOWN/${SCENE_NUMBER}", "$UNKNOWN/007")]
+    public void TemplatesSubstituteLikePythonsSafeSubstitute(string template, string expected) =>
+        Assert.Equal(expected, Export.Substitute(template, new Dictionary<string, string> { ["VIDEO_NAME"] = "clip", ["SCENE_NUMBER"] = "007" }));
+}
+
 public class ShotsTests
 {
     static string Reference(string name) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", name));
