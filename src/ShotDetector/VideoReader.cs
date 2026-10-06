@@ -148,6 +148,7 @@ public sealed partial class VideoReader
     readonly Stream? _stream;
     readonly byte[] _prefix = [];      // what was read from _stream to probe it; fed to ffmpeg first
     readonly bool _ffmpegResize;
+    readonly bool _deinterlace;
     readonly int? _decodeThreads;
     readonly string[] _inputOptions;   // ffmpeg/ffprobe options for the input (an image sequence's rate)
     readonly bool _fullFrames;         // tests: the full-frame pipeline instead of the sampled one
@@ -190,6 +191,7 @@ public sealed partial class VideoReader
         _path = path;
         _stream = video;
         _ffmpegResize = o.FfmpegResize;
+        _deinterlace = o.Deinterlace;
         _decodeThreads = o.DecodeThreads;
         _fullFrames = o.FullFrames;
         _decoder = o.Decoder;
@@ -515,7 +517,10 @@ public sealed partial class VideoReader
             int early = Math.Max(startFrame - 2, 0);
             if (early > 0)
                 seek = ["-ss", ((_pts[early] - _startPts) * _timeBase).ToString("R", CultureInfo.InvariantCulture), "-copyts"];
-            select = ["-vf", $"select=gte(pts\\,{_pts[startFrame]})"];
+            // yadif halves the time base, so after it compare times: halfway between the frame before and the wanted one.
+            select = ["-vf", _deinterlace
+                ? $"select=gte(t\\,{((_pts[startFrame - 1] + _pts[startFrame]) / 2.0 * _timeBase).ToString("R", CultureInfo.InvariantCulture)})"
+                : $"select=gte(pts\\,{_pts[startFrame]})"];
         }
         string[] limit = count is { } n ? ["-frames:v", n.ToString(CultureInfo.InvariantCulture)] : [];
         // The crop (an exact pixel copy) comes after the colour conversion, as OpenCV converts the
@@ -542,6 +547,9 @@ public sealed partial class VideoReader
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
         if (live)
             select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
+        // Deinterlacing first, so the frames a seek decodes early still feed yadif, as in the copy it stands for.
+        if (_deinterlace)
+            select = ["-vf", "yadif" + (select.Length > 0 ? "," + select[1] : "")];
         string prefix = select.Length > 0 ? select[1] + "," : "";
         args = pipeline switch
         {

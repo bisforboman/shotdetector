@@ -4,9 +4,11 @@ public sealed partial class VideoReader
 {
     /// <summary>
     /// Whether frames are decoded in this process (<see cref="VideoDecoder.InProcess"/>) rather than by the ffmpeg
-    /// executable. Inputs it doesn't handle yet use the executable: streams and URLs, image sequences, rotated video.
+    /// executable. Inputs it doesn't handle yet use the executable: streams and URLs, image sequences, rotated video,
+    /// and deinterlacing.
     /// </summary>
-    public bool DecodesInProcess => _decoder == VideoDecoder.InProcess && _stream is null && !Streaming && _inputOptions.Length == 0 && _rotation == 0;
+    public bool DecodesInProcess => _decoder == VideoDecoder.InProcess && _stream is null && !Streaming && _inputOptions.Length == 0
+        && _rotation == 0 && !_deinterlace;
 
     /// <summary>Frames(startFrame, count) decoded in-process: the same bytes per pipeline as the ffmpeg pipe, then the same resize.</summary>
     IEnumerable<byte[]> FramesInProcess(int startFrame, int? count, CancellationToken cancellationToken)

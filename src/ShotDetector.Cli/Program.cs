@@ -40,6 +40,7 @@ const string Usage = """
       -e, --end <time>                   Stop here (exclusive); same formats, frames 0-based
           --duration <time>              Analyse this much from the start (not with --end)
           --frame-skip <n>               Analyse every (n+1)th frame (not with --stats)
+          --deinterlace                  Deinterlace (ffmpeg's yadif) before analysis, for interlaced sources
           --crop <x0> <y0> <x1> <y1>     Only analyse this part of the frame (inclusive pixel corners)
           --threads <n>                  ffmpeg decoder threads (0 = ffmpeg's choice; default: CPUs - 1, at most 4,
                                          or 8 on the yuv420p fast path). ~20 MB each at 1080p
@@ -210,6 +211,7 @@ try
             case "-e" or "--end": options = options with { EndTime = Next() }; break;
             case "--duration": options = options with { Duration = Next() }; break;
             case "--frame-skip": options = options with { FrameSkip = NextInt() }; break;
+            case "--deinterlace": options = options with { Deinterlace = true }; break;
             case "--crop": options = options with { Crop = (NextInt(), NextInt(), NextInt(), NextInt()) }; break;
             case "--split-video": splitDir = Next(); break;
             case "--image-filename": images = images with { FileName = Next() }; break;
