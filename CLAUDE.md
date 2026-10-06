@@ -86,6 +86,11 @@ environment. Move the `## Unreleased` section of CHANGELOG.md to the version fir
   the decoder drops make numbers skip as in OpenCV. Files always run with `-copyts` (absolute times); streamed
   times already start at 0 (ffmpeg shifts them), so `_startPts` must not be subtracted there. 0.6.4 labels
   are plain counters and skip neither.
+- The core path's frames: ffmpeg converts to BGR, then `remap` (two looping 16-bit PGM maps, x and y) keeps only
+  `CvResize.SourceCols` x `SourceRows`; `ResizeSampled` resizes from that. Equivalent to the full frames by test
+  (`SampledFramesAreTheFullFramesResized`); `DetectionOptions.FullFrames` (internal) brings the old path back.
+- Benchmarks on this desktop: pin CPUs with `cmd /c start /affinity 3 ...` (children inherit), compare CPU time
+  (more stable than wall time here), and interleave runs.
 - Streamed input needs the container headers first (mkv/webm/ts/mov or faststart mp4); ffmpeg reports a non-faststart
   mp4 on a pipe as "moov atom not found" or, when the whole file fit the probe prefix, "partial file".
 - Windows named pipe path is `\\.\pipe\…`; stdout's 4 KB pipe is far slower. Kill ffmpeg race-free (`Kill` helper).

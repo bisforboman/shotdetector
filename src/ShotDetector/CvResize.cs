@@ -27,6 +27,10 @@ internal sealed class CvResize
 
     /// <summary>The source columns the horizontal pass reads, ascending.</summary>
     public int[] SourceCols { get; }
+
+    /// <summary>The source rows the vertical pass reads, ascending.</summary>
+    public int[] SourceRows { get; }
+    int[]? _rowIndex; // source row -> its index in SourceRows
     int[]? _shiftedCols;
 
     public CvResize(int sw, int sh, int dw, int dh)
@@ -37,6 +41,52 @@ internal sealed class CvResize
         int chunks = Math.Clamp(Environment.ProcessorCount / 2, 1, Math.Max(1, dh / 8));
         _chunks = Enumerable.Range(0, chunks).Select(c => new Chunk(c * dh / chunks, (c + 1) * dh / chunks, dw, sw)).ToArray();
         SourceCols = _xofs.SelectMany(x => x >= sw - 1 ? new[] { x } : new[] { x, x + 1 }).Distinct().Order().ToArray();
+        SourceRows = Enumerable.Range(0, dh).SelectMany(dy => new[] { Row0(dy), Row1(dy) }).Distinct().Order().ToArray();
+    }
+
+    /// <summary>
+    /// Resizes from only the pixels the resize reads: <see cref="SourceRows"/> × <see cref="SourceCols"/>, packed BGR
+    /// (what ffmpeg's remap filter sends). Same arithmetic as <see cref="Resize"/>, so the same result.
+    /// </summary>
+    public void ResizeSampled(byte[] sampled, byte[] dst) => Parallel.ForEach(_chunks, c =>
+    {
+        if (_rowIndex is null)
+        {
+            var index = new int[_sh];
+            for (int i = 0; i < SourceRows.Length; i++)
+                index[SourceRows[i]] = i;
+            _rowIndex = index;
+        }
+        int lastRow0 = -1, lastRow1 = -1;
+        for (int dy = c.Start; dy < c.End; dy++)
+        {
+            int r0 = Row0(dy), r1 = Row1(dy);
+            if (r0 != lastRow0)
+            {
+                Unpack(sampled, _rowIndex[r0], c.BgrRow0);
+                HResize(c.BgrRow0, c.Row0);
+            }
+            if (r1 != lastRow1)
+            {
+                Unpack(sampled, _rowIndex[r1], c.BgrRow1);
+                HResize(c.BgrRow1, c.Row1);
+            }
+            (lastRow0, lastRow1) = (r0, r1);
+            VResize(dy, c, dst);
+        }
+    });
+
+    /// <summary>Spreads one sampled row back to its columns of a full-width row (the others aren't read).</summary>
+    void Unpack(byte[] sampled, int row, byte[] bgrRow)
+    {
+        int from = row * SourceCols.Length * 3;
+        for (int k = 0; k < SourceCols.Length; k++)
+        {
+            int to = SourceCols[k] * 3, s = from + k * 3;
+            bgrRow[to] = sampled[s];
+            bgrRow[to + 1] = sampled[s + 1];
+            bgrRow[to + 2] = sampled[s + 2];
+        }
     }
 
     /// <summary>One-off resize of a packed BGR image.</summary>

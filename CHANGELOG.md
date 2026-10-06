@@ -5,6 +5,9 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- The MIT core pipes only the pixels the exact resize reads (ffmpeg's remap filter after its own BGR conversion;
+  `FramePipeline.SampledBgr`): identical results, 0.44 MB instead of 6.2 MB per 1080p frame. On 2 CPUs it now uses
+  less CPU than scenedetect (was 2.1x), on par in wall time; faster than scenedetect with more CPUs (issue #7).
 - CLI `--config <file>`: scenedetect's config file (scenedetect.cfg) as defaults; unknown keys are listed.
   `DetectionOptions.AddLastScene` (threshold detector; on by default, as in scenedetect).
 - `ShotDetection.LoadScenes` / CLI `--load-scenes`: shots from a scene list CSV, as scenedetect's load-scenes.

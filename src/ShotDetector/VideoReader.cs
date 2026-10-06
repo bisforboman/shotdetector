@@ -13,6 +13,8 @@ public enum FramePipeline
     FfmpegScale,
     /// <summary>ffmpeg sends full-size BGR frames and <c>cv2.resize</c>'s port downscales them exactly.</summary>
     FullFrameResize,
+    /// <summary>ffmpeg converts whole frames to BGR as above but sends only the pixels the exact resize reads (its remap filter): same result, a fraction of the bytes.</summary>
+    SampledBgr,
     /// <summary>ffmpeg sends raw yuv420p; only the pixels the resize reads are converted (needs an <see cref="IYuv420Converter"/>).</summary>
     Yuv420Sampled,
 }
@@ -148,6 +150,7 @@ public sealed partial class VideoReader
     readonly bool _ffmpegResize;
     readonly int? _decodeThreads;
     readonly string[] _inputOptions;   // ffmpeg/ffprobe options for the input (an image sequence's rate)
+    readonly bool _fullFrames;         // tests: the full-frame pipeline instead of the sampled one
     readonly IYuv420Converter? _yuv420;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
     readonly List<long> _livePts = []; // the same, as frames arrive, when streaming (from the stream's start)
@@ -185,6 +188,7 @@ public sealed partial class VideoReader
         _stream = video;
         _ffmpegResize = o.FfmpegResize;
         _decodeThreads = o.DecodeThreads;
+        _fullFrames = o.FullFrames;
         FfmpegExe = Executable(o.FfmpegDirectory, "ffmpeg");
         Streaming = video is not null || o.Streaming || IsUrl(path);
         // scenedetect's frame rate override; an image sequence (no timestamps of its own) is read at that rate.
@@ -446,7 +450,8 @@ public sealed partial class VideoReader
     /// <summary>How frames get from ffmpeg to the downscaled BGR the detectors see.</summary>
     public FramePipeline Pipeline => !_ffmpegResize && (Width, Height) != (CropRegion.Width, CropRegion.Height)
         // swscale's unscaled yuv420p converter (what OpenCV gets) needs an even height.
-        ? (_yuv420ForVideo is not null && _pixelFormat is "yuv420p" or "yuvj420p" && SourceHeight % 2 == 0 ? FramePipeline.Yuv420Sampled : FramePipeline.FullFrameResize)
+        ? (_yuv420ForVideo is not null && _pixelFormat is "yuv420p" or "yuvj420p" && SourceHeight % 2 == 0 ? FramePipeline.Yuv420Sampled
+            : _fullFrames ? FramePipeline.FullFrameResize : FramePipeline.SampledBgr)
         : FramePipeline.FfmpegScale;
 
     /// <summary>
@@ -512,8 +517,15 @@ public sealed partial class VideoReader
         if (live && !Streaming && seek.Length == 0)
             seek = ["-copyts"];
         string[] noStdin = _stream is null ? ["-nostdin"] : [];
+        // SampledBgr: two 16-bit maps (source column and row of every pixel the resize reads, crop included)
+        // that remap uses to keep just those pixels of the converted frame.
+        bool sampled = pipeline == FramePipeline.SampledBgr;
+        var resizer = resizeHere ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
+        string? maps = sampled ? WriteMaps(resizer!) : null;
+        string[] mapInputs = maps is null ? [] : ["-loop", "1", "-i", Path.Combine(maps, "x.pgm"), "-loop", "1", "-i", Path.Combine(maps, "y.pgm")];
         string[] args = ["-v", live ? "info" : "error", "-nostats", .. noStdin, "-y",
-            "-threads", $"{_decodeThreads ?? (pipeline == FramePipeline.Yuv420Sampled ? 8 : 4)}", .. seek, .. _inputOptions, "-i", _path, "-map", "0:v:0", "-fps_mode", "passthrough", .. limit];
+            "-threads", $"{_decodeThreads ?? (pipeline == FramePipeline.Yuv420Sampled ? 8 : 4)}", .. seek, .. _inputOptions, "-i", _path,
+            .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
         if (live)
             select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
         string prefix = select.Length > 0 ? select[1] + "," : "";
@@ -523,6 +535,9 @@ public sealed partial class VideoReader
             FramePipeline.Yuv420Sampled => [.. args, .. select, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
             // Like OpenCV: SWS_BICUBIC, colour matrix and range from the stream's tags (BT.601 if untagged).
             FramePipeline.FullFrameResize => [.. args, "-vf", prefix + "scale=flags=bicubic,format=bgr24" + crop,
+                "-f", "rawvideo", "-pix_fmt", "bgr24"],
+            FramePipeline.SampledBgr => [.. args, "-filter_complex",
+                $"[0:v]{prefix}scale=flags=bicubic,format=bgr24[c];[c][1:v][2:v]remap=format=color[out]", "-map", "[out]",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
             _ => [.. args, "-vf", prefix + "scale=flags=bicubic,format=bgr24" + crop + $",scale={Width}:{Height}:flags=bilinear",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
@@ -604,6 +619,7 @@ public sealed partial class VideoReader
         using var free = new BlockingCollection<byte[]>();
         using var full = new BlockingCollection<byte[]>();
         int readSize = yuv ? IYuv420Converter.FrameSize(SourceWidth, SourceHeight)
+            : sampled ? resizer!.SourceCols.Length * resizer.SourceRows.Length * 3
             : resizeHere ? CropRegion.Width * CropRegion.Height * 3
             : Width * Height * 3;
         for (int i = 0; i < 3; i++)
@@ -630,7 +646,6 @@ public sealed partial class VideoReader
 
         try
         {
-            var resizer = resizeHere ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
             var small = new byte[Width * Height * 3];
             byte[]? previous = null;
             foreach (var buffer in full.GetConsumingEnumerable(cancel.Token))
@@ -655,6 +670,8 @@ public sealed partial class VideoReader
                 }
                 if (yuv)
                     resizer.ResizeYuv420(buffer, small, _yuv420ForVideo!, SourceWidth, SourceHeight, CropRegion.X, CropRegion.Y);
+                else if (sampled)
+                    resizer.ResizeSampled(buffer, small);
                 else
                     resizer.Resize(buffer, small);
                 free.Add(buffer);
@@ -672,7 +689,31 @@ public sealed partial class VideoReader
             Kill(proc);
             try { reader.Wait(TimeSpan.FromSeconds(5)); } catch (AggregateException) { }
             try { feeder.Wait(TimeSpan.FromSeconds(5)); } catch (AggregateException) { }
+            if (maps is not null)
+                try { Directory.Delete(maps, recursive: true); } catch (IOException) { }
         }
+    }
+
+    /// <summary>remap's maps as 16-bit PGM files in a new temp folder: x.pgm (source column) and y.pgm (source row).</summary>
+    string WriteMaps(CvResize resizer)
+    {
+        string dir = Directory.CreateTempSubdirectory("shotdetector-").FullName;
+        int w = resizer.SourceCols.Length, h = resizer.SourceRows.Length;
+        void Write(string name, Func<int, int, int> value)
+        {
+            using var f = File.Create(Path.Combine(dir, name));
+            f.Write(System.Text.Encoding.ASCII.GetBytes($"P5\n{w} {h}\n65535\n"));
+            var row = new byte[w * 2];
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(row.AsSpan(x * 2), (ushort)value(x, y));
+                f.Write(row);
+            }
+        }
+        Write("x.pgm", (x, _) => CropRegion.X + resizer.SourceCols[x]);
+        Write("y.pgm", (_, y) => CropRegion.Y + resizer.SourceRows[y]);
+        return dir;
     }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"\] n:\s*\d+ pts:\s*(-?\d+) ")]
