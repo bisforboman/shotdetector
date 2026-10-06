@@ -29,6 +29,7 @@ internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, 
     long[] _sums = [];
     bool _hasPrev;
     const int ChunkPixels = 8192;
+    const int ParallelPixels = 1 << 17; // ~362 x 362
 
     /// <summary>content_val of this frame (packed BGR) against the previous one; 0 for the first frame.</summary>
     public double Score(byte[] bgr)
@@ -48,22 +49,21 @@ internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, 
         // HSV conversion fused with the per-channel |difference| sums, in parallel chunks. The sums
         // are integers, so adding the chunks up gives exactly MeanPixelDistance's result.
         var (h, s, v, ph, ps, pv, sums, hasPrev) = (_h, _s, _v, _prevH, _prevS, _prevV, _sums, _hasPrev);
-        Parallel.For(0, chunks, c =>
+        // Small frames (scenedetect's are at most 256 pixels wide) are cheaper on one thread than split up.
+        void Chunk(int c)
         {
-            long sh = 0, ss = 0, sv = 0;
-            for (int i = c * ChunkPixels, end = Math.Min(n, i + ChunkPixels); i < end; i++)
-            {
-                var (hh, s1, v1) = Hsv.FromBgr(bgr[3 * i], bgr[3 * i + 1], bgr[3 * i + 2]);
-                (h[i], s[i], v[i]) = (hh, s1, v1);
-                if (hasPrev)
-                {
-                    sh += Math.Abs(hh - ph[i]);
-                    ss += Math.Abs(s1 - ps[i]);
-                    sv += Math.Abs(v1 - pv[i]);
-                }
-            }
-            (sums[3 * c], sums[3 * c + 1], sums[3 * c + 2]) = (sh, ss, sv);
-        });
+            int start = c * ChunkPixels, len = Math.Min(n, start + ChunkPixels) - start;
+            Hsv.Convert(bgr.AsSpan(3 * start, 3 * len), h.AsSpan(start, len), s.AsSpan(start, len), v.AsSpan(start, len));
+            (sums[3 * c], sums[3 * c + 1], sums[3 * c + 2]) = hasPrev
+                ? (AbsDiffSum(h.AsSpan(start, len), ph.AsSpan(start, len)), AbsDiffSum(s.AsSpan(start, len), ps.AsSpan(start, len)),
+                   AbsDiffSum(v.AsSpan(start, len), pv.AsSpan(start, len)))
+                : (0, 0, 0);
+        }
+        if (n < ParallelPixels)
+            for (int c = 0; c < chunks; c++)
+                Chunk(c);
+        else
+            Parallel.For(0, chunks, Chunk);
         Edges?.Detect(_v, _e);
 
         double score = 0;
@@ -101,11 +101,36 @@ internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, 
             stats.Set(frame, "delta_edges", e);
     }
 
-    internal static double MeanPixelDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+    internal static double MeanPixelDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b) => AbsDiffSum(a, b) / (double)a.Length;
+
+    /// <summary>Σ|a[i] - b[i]|, 32 bytes at a time where the hardware has 256-bit vectors.</summary>
+    internal static long AbsDiffSum(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {
         long sum = 0;
-        for (int i = 0; i < a.Length; i++)
+        int i = 0;
+        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated)
+        {
+            var total = System.Runtime.Intrinsics.Vector256<uint>.Zero;
+            while (i + 32 <= a.Length)
+            {
+                // Up to 128 rounds of 2 x 255 fit a 16-bit lane; then move them to 32-bit lanes.
+                var acc = System.Runtime.Intrinsics.Vector256<ushort>.Zero;
+                for (int round = 0; round < 128 && i + 32 <= a.Length; round++, i += 32)
+                {
+                    var x = System.Runtime.Intrinsics.Vector256.Create(a.Slice(i, 32));
+                    var y = System.Runtime.Intrinsics.Vector256.Create(b.Slice(i, 32));
+                    var d = System.Runtime.Intrinsics.Vector256.Max(x, y) - System.Runtime.Intrinsics.Vector256.Min(x, y);
+                    var (lo, hi) = System.Runtime.Intrinsics.Vector256.Widen(d);
+                    acc += lo + hi;
+                }
+                var (l32, h32) = System.Runtime.Intrinsics.Vector256.Widen(acc);
+                total += l32 + h32;
+            }
+            sum = (long)(System.Runtime.Intrinsics.Vector256.Sum(System.Runtime.Intrinsics.Vector256.WidenLower(total))
+                + System.Runtime.Intrinsics.Vector256.Sum(System.Runtime.Intrinsics.Vector256.WidenUpper(total)));
+        }
+        for (; i < a.Length; i++)
             sum += Math.Abs(a[i] - b[i]);
-        return sum / (double)a.Length;
+        return sum;
     }
 }

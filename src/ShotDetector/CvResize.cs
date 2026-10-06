@@ -10,6 +10,7 @@ namespace ShotDetector;
 internal sealed class CvResize
 {
     const int CoefScale = 1 << 11;
+    const int ParallelPixels = 1 << 17; // ~362 x 362
 
     readonly int _sw, _sh, _dw, _dh;
     readonly int[] _xofs, _yofs;
@@ -31,6 +32,10 @@ internal sealed class CvResize
     /// <summary>The source rows the vertical pass reads, ascending.</summary>
     public int[] SourceRows { get; }
     int[]? _rowIndex; // source row -> its index in SourceRows
+    // For a sampled row (SourceCols only): byte offsets of each output column's two source pixels, and their
+    // weights; at the right border the second weight is 0, which gives HResize's s * CoefScale exactly.
+    int[]? _sampledX0, _sampledX1;
+    short[]? _sampledW0, _sampledW1;
     int[]? _shiftedCols;
 
     public CvResize(int sw, int sh, int dw, int dh)
@@ -38,7 +43,9 @@ internal sealed class CvResize
         (_sw, _sh, _dw, _dh) = (sw, sh, dw, dh);
         (_xofs, _xa0, _xa1) = Table(dw, sw, clampFraction: true);
         (_yofs, _yb0, _yb1) = Table(dh, sh, clampFraction: false);
-        int chunks = Math.Clamp(Environment.ProcessorCount / 2, 1, Math.Max(1, dh / 8));
+        // Small outputs (scenedetect's sizes are at most 256 pixels wide) take well under a millisecond;
+        // splitting them across threads costs more CPU than it saves, so only large ones go parallel.
+        int chunks = dw * dh < ParallelPixels ? 1 : Math.Clamp(Environment.ProcessorCount / 2, 1, Math.Max(1, dh / 8));
         _chunks = Enumerable.Range(0, chunks).Select(c => new Chunk(c * dh / chunks, (c + 1) * dh / chunks, dw, sw)).ToArray();
         SourceCols = _xofs.SelectMany(x => x >= sw - 1 ? new[] { x } : new[] { x, x + 1 }).Distinct().Order().ToArray();
         SourceRows = Enumerable.Range(0, dh).SelectMany(dy => new[] { Row0(dy), Row1(dy) }).Distinct().Order().ToArray();
@@ -48,45 +55,68 @@ internal sealed class CvResize
     /// Resizes from only the pixels the resize reads: <see cref="SourceRows"/> × <see cref="SourceCols"/>, packed BGR
     /// (what ffmpeg's remap filter sends). Same arithmetic as <see cref="Resize"/>, so the same result.
     /// </summary>
-    public void ResizeSampled(byte[] sampled, byte[] dst) => Parallel.ForEach(_chunks, c =>
+    public void ResizeSampled(byte[] sampled, byte[] dst)
     {
         if (_rowIndex is null)
+            PrepareSampled();
+        ForChunks(c =>
         {
-            var index = new int[_sh];
-            for (int i = 0; i < SourceRows.Length; i++)
-                index[SourceRows[i]] = i;
-            _rowIndex = index;
-        }
-        int lastRow0 = -1, lastRow1 = -1;
-        for (int dy = c.Start; dy < c.End; dy++)
-        {
-            int r0 = Row0(dy), r1 = Row1(dy);
-            if (r0 != lastRow0)
+            int rowBytes = SourceCols.Length * 3, lastRow0 = -1, lastRow1 = -1;
+            for (int dy = c.Start; dy < c.End; dy++)
             {
-                Unpack(sampled, _rowIndex[r0], c.BgrRow0);
-                HResize(c.BgrRow0, c.Row0);
+                int r0 = Row0(dy), r1 = Row1(dy);
+                if (r0 != lastRow0)
+                    HResizeSampled(sampled.AsSpan(_rowIndex![r0] * rowBytes, rowBytes), c.Row0);
+                if (r1 != lastRow1)
+                    HResizeSampled(sampled.AsSpan(_rowIndex![r1] * rowBytes, rowBytes), c.Row1);
+                (lastRow0, lastRow1) = (r0, r1);
+                VResize(dy, c, dst);
             }
-            if (r1 != lastRow1)
-            {
-                Unpack(sampled, _rowIndex[r1], c.BgrRow1);
-                HResize(c.BgrRow1, c.Row1);
-            }
-            (lastRow0, lastRow1) = (r0, r1);
-            VResize(dy, c, dst);
-        }
-    });
+        });
+    }
 
-    /// <summary>Spreads one sampled row back to its columns of a full-width row (the others aren't read).</summary>
-    void Unpack(byte[] sampled, int row, byte[] bgrRow)
+    void PrepareSampled()
     {
-        int from = row * SourceCols.Length * 3;
+        var col = new Dictionary<int, int>();
         for (int k = 0; k < SourceCols.Length; k++)
+            col[SourceCols[k]] = k;
+        (_sampledX0, _sampledX1) = (new int[_dw], new int[_dw]);
+        (_sampledW0, _sampledW1) = (new short[_dw], new short[_dw]);
+        for (int dx = 0; dx < _dw; dx++)
         {
-            int to = SourceCols[k] * 3, s = from + k * 3;
-            bgrRow[to] = sampled[s];
-            bgrRow[to + 1] = sampled[s + 1];
-            bgrRow[to + 2] = sampled[s + 2];
+            int sx = _xofs[dx];
+            bool edge = sx >= _sw - 1;
+            _sampledX0[dx] = col[sx] * 3;
+            _sampledX1[dx] = edge ? col[sx] * 3 : col[sx + 1] * 3;
+            (_sampledW0[dx], _sampledW1[dx]) = edge ? ((short)CoefScale, (short)0) : (_xa0[dx], _xa1[dx]);
         }
+        var index = new int[_sh];
+        for (int i = 0; i < SourceRows.Length; i++)
+            index[SourceRows[i]] = i;
+        _rowIndex = index;
+    }
+
+    /// <summary>HResize from a sampled row: the same products and sums, read from the packed columns.</summary>
+    void HResizeSampled(ReadOnlySpan<byte> s, int[] d)
+    {
+        int[] x0 = _sampledX0!, x1 = _sampledX1!;
+        short[] w0 = _sampledW0!, w1 = _sampledW1!;
+        for (int dx = 0; dx < x0.Length; dx++)
+        {
+            int a = x0[dx], b = x1[dx], wa = w0[dx], wb = w1[dx], o = dx * 3;
+            d[o] = s[a] * wa + s[b] * wb;
+            d[o + 1] = s[a + 1] * wa + s[b + 1] * wb;
+            d[o + 2] = s[a + 2] * wa + s[b + 2] * wb;
+        }
+    }
+
+    /// <summary>Runs the body on every chunk: inline when there is one, else in parallel.</summary>
+    void ForChunks(Action<Chunk> body)
+    {
+        if (_chunks.Length == 1)
+            body(_chunks[0]);
+        else
+            Parallel.ForEach(_chunks, body);
     }
 
     /// <summary>One-off resize of a packed BGR image.</summary>
@@ -94,7 +124,7 @@ internal sealed class CvResize
         new CvResize(sw, sh, dw, dh).Resize(src, dst);
 
     /// <summary>Resizes a packed BGR source.</summary>
-    public void Resize(byte[] src, byte[] dst) => Parallel.ForEach(_chunks, c =>
+    public void Resize(byte[] src, byte[] dst) => ForChunks(c =>
     {
         int stride = _sw * 3;
         for (int dy = c.Start; dy < c.End; dy++)
@@ -118,7 +148,7 @@ internal sealed class CvResize
     /// <paramref name="fullWidth"/> × <paramref name="fullHeight"/> yuv420p frame. The chroma stays
     /// aligned to the full frame, as cropping after conversion keeps it.
     /// </summary>
-    public void ResizeYuv420(byte[] yuv, byte[] dst, IYuv420Converter converter, int fullWidth, int fullHeight, int cropX, int cropY) => Parallel.ForEach(_chunks, c =>
+    public void ResizeYuv420(byte[] yuv, byte[] dst, IYuv420Converter converter, int fullWidth, int fullHeight, int cropX, int cropY) => ForChunks(c =>
     {
         int[] cols = cropX == 0 ? SourceCols : _shiftedCols ??= SourceCols.Select(x => x + cropX).ToArray();
         int rowBytes = fullWidth * 3;
