@@ -134,6 +134,13 @@ public sealed record DetectionOptions
     public string? FfmpegDirectory { get; init; }
 
     /// <summary>
+    /// Override the detected frame rate, like scenedetect's <c>-f/--frame-rate</c>: frame numbers and
+    /// <see cref="MinSceneLength"/> in frames use it, while times still come from the container. For an
+    /// image sequence ("frames/%04d.png"), which has no times, frame n is at n / rate (default 25).
+    /// </summary>
+    public double? FrameRate { get; init; }
+
+    /// <summary>
     /// Receives progress while frames are decoded (about 10 times a second, and once at the end).
     /// With <see cref="System.Progress{T}"/>, reports arrive on the thread that created it.
     /// </summary>

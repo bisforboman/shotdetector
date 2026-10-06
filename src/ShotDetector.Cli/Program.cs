@@ -25,6 +25,8 @@ const string Usage = """
           --hash-lowpass <n>             hash: shrink frames to size*n pixels per side first (default 2)
       -f, --fade-bias <-1..1>            threshold: cut position between fade-out (-1) and fade-in (+1)
           --compat <0.7.1|0.6.4>         Which PySceneDetect release to reproduce (default 0.7.1)
+          --frame-rate <fps>             Override the detected frame rate (scenedetect -f); also the
+                                         rate of an image sequence such as frames/%04d.png (default 25)
           --ffmpeg-dir <dir>             Folder containing ffmpeg and ffprobe (default: found on PATH)
       -s, --start <time>                 Start here: HH:MM:SS[.mmm], seconds (12.5s) or 1-based frame (300)
       -e, --end <time>                   Stop here (exclusive); same formats, frames 0-based
@@ -88,6 +90,7 @@ try
             case "--ffmpeg-resize": options = options with { FfmpegResize = true }; break;
             case "--threads": options = options with { DecodeThreads = NextInt() }; break;
             case "--ffmpeg-dir": options = options with { FfmpegDirectory = Next() }; break;
+            case "--frame-rate" or "--framerate": options = options with { FrameRate = NextDouble() }; break;
             case "--compat":
                 options = options with
                 {

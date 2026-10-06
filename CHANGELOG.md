@@ -5,6 +5,8 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- `DetectionOptions.FrameRate` / CLI `--frame-rate`: scenedetect's `-f/--frame-rate` override, including
+  the rate of image sequences (`frames/%04d.png`).
 - `DecodeThreads` is nullable; the default (null) is 8 decoder threads on the yuv420p fast path (~13% faster
   on HD, ~70 MB more at 1080p) and 4 elsewhere, where the pipe is the bottleneck.
 - MPEG program streams (`.mpg`, MPEG-2) gave shifted cuts: packets without a pts were dropped from the
