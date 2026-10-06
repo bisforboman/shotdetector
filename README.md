@@ -91,6 +91,16 @@ jpg/png/webp).
 expected total about 10 times a second. ffmpeg and ffprobe are found on `PATH`, or in
 `DetectionOptions.FfmpegDirectory` (CLI: `--ffmpeg-dir`).
 
+Interlaced sources (1080i broadcast): `Deinterlace = true` (CLI `--deinterlace`) runs ffmpeg's yadif before
+analysis, so there is no need to re-encode first; results equal scenedetect's on a lossless `ffmpeg -vf yadif` copy.
+
+Failures from ffmpeg, ffprobe or the input throw `ShotDetectionException` (an `InvalidOperationException`) whose
+`Reason` tells a deployment problem (`FfmpegNotFound`) from bad input (`InvalidInput`), a decode failure
+(`DecodeFailed`) or a failed export (`ExportFailed`).
+
+Each detection is an OpenTelemetry-ready span: `.AddSource(ShotDetection.ActivitySourceName)` shows
+"ShotDetection.Detect" with the video's size, frame rate, pipeline, frames and shots.
+
 Runs wherever .NET 10 and ffmpeg do, including Alpine (`apk add ffmpeg`), which CI tests.
 
 To reproduce scenedetect 0.6.4 instead of 0.7.1 (for consistency with older results), set

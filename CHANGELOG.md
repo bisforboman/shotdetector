@@ -5,6 +5,14 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- `Deinterlace` / `--deinterlace`: ffmpeg's yadif before analysis, for interlaced sources; results equal
+  scenedetect's on a lossless `-vf yadif` copy, seeking included (issue #16).
+- `ShotDetectionException` with a `Reason` (FfmpegNotFound, InvalidInput, DecodeFailed, ExportFailed) for every
+  ffmpeg/ffprobe/input failure; it is an `InvalidOperationException`, so existing catches still work. A file
+  without a video stream now says so (issue #17).
+- Tracing: `ShotDetection.ActivitySourceName`, one span per detection (issue #19).
+- Packages: SourceLink, symbol packages (.snupkg), deterministic CI builds; release packages and binaries carry
+  GitHub build attestations (`gh attestation verify`, issue #18).
 - In-process decoding, opt-in: `DetectionOptions.Decoder = VideoDecoder.InProcess` / `--decoder inprocess`
   decodes with FFmpeg 8.1's shared libraries (FFmpeg.AutoGen bindings, MIT) instead of the ffmpeg executable.
   Same frames and results; about 40% less CPU for decoding on Linux (issue #12). Streams, URLs, image
