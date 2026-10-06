@@ -63,6 +63,84 @@ public static class Shots
         return sb.ToString();
     }
 
+    /// <summary>
+    /// The shot list as scenedetect's save-html (export-html) page, byte for byte: its CSS, a cut list table and
+    /// a shot table, with each shot's images when given (links relative to the page, as file names or paths).
+    /// </summary>
+    /// <param name="shots">The shots.</param>
+    /// <param name="images">Per shot, the images to show (e.g. from <see cref="Export.SaveImages"/>), relative to the page.</param>
+    /// <param name="imageWidth">Width attribute of the images, if any.</param>
+    /// <param name="imageHeight">Height attribute of the images, if any.</param>
+    public static string Html(IEnumerable<Shot> shots, IReadOnlyList<IReadOnlyList<string>>? images = null, int? imageWidth = null, int? imageHeight = null)
+    {
+        var list = shots.ToList();
+        static string Row(IEnumerable<string> cells, string tag = "td") => string.Join('\n', ["<tr>", .. cells.Select(c => $"<{tag}>{c}</{tag}>"), "</tr>"]);
+        // urllib.parse.quote: letters, digits and "_.-~" stay, "/" separates; everything else is %XX (UTF-8).
+        static string Quote(string path) => string.Join('/', path.Replace('\\', '/').Split('/').Select(Uri.EscapeDataString));
+        string Image(string file)
+        {
+            string q = Quote(file);
+            return $"<a href=\"{q}\" target=\"_blank\"><img src=\"{q}\"" + (imageHeight is { } h ? $" height=\"{h}\"" : "")
+                + (imageWidth is { } w ? $" width=\"{w}\"" : "") + "></a>";
+        }
+        var rows = list.Select((s, i) =>
+        {
+            var d = s.Duration;
+            string[] cells = [s.Number.ToString(CultureInfo.InvariantCulture), (s.Start.FrameNum + 1).ToString(CultureInfo.InvariantCulture),
+                s.Start.Timecode(), s.Start.SecondsText(), s.End.FrameNum.ToString(CultureInfo.InvariantCulture), s.End.Timecode(),
+                s.End.SecondsText(), d.FrameNum.ToString(CultureInfo.InvariantCulture), d.Timecode(), d.SecondsText()];
+            return Row(images is null || i >= images.Count ? cells : [.. cells, .. images[i].Select(Image)]);
+        });
+        string[] header = ["Scene Number", "Start Frame", "Start Timecode", "Start Time (seconds)", "End Frame", "End Timecode",
+            "End Time (seconds)", "Length (frames)", "Length (timecode)", "Length (seconds)"];
+        return string.Join('\n', [
+            "<style type=\"text/css\">", HtmlCss, "</style>",
+            "<meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\">",
+            "<table class=mytable>", Row(["Timecode List:", .. list.Skip(1).Select(s => s.Start.Timecode())]), "</table>", "<br />",
+            "<table class=mytable>", Row(header, "th"), .. rows, "</table>", "<br />"]);
+    }
+
+    // scenedetect's default CSS for save-html, whitespace included.
+    static readonly string HtmlCss = string.Join('\n', [
+        "",
+        "        table.mytable {",
+        "            font-family: times;",
+        "            font-size:12px;",
+        "            color:#000000;",
+        "            border-width: 1px;",
+        "            border-color: #eeeeee;",
+        "            border-collapse: collapse;",
+        "            background-color: #ffffff;",
+        "            width=100%;",
+        "            max-width:550px;",
+        "            table-layout:fixed;",
+        "        }",
+        "        table.mytable th {",
+        "            border-width: 1px;",
+        "            padding: 8px;",
+        "            border-style: solid;",
+        "            border-color: #eeeeee;",
+        "            background-color: #e6eed6;",
+        "            color:#000000;",
+        "        }",
+        "        table.mytable td {",
+        "            border-width: 1px;",
+        "            padding: 8px;",
+        "            border-style: solid;",
+        "            border-color: #eeeeee;",
+        "        }",
+        "        #code {",
+        "            display:inline;",
+        "            font-family: courier;",
+        "            color: #3d9400;",
+        "        }",
+        "        #string {",
+        "            display:inline;",
+        "            font-weight: bold;",
+        "        }",
+        "        ",
+    ]);
+
     /// <summary>The shot list as indented JSON.</summary>
     public static string Json(IEnumerable<Shot> shots) => JsonSerializer.Serialize(
         shots.Select(s => new ShotJson(

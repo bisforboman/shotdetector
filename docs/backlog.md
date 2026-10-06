@@ -45,7 +45,9 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | Docs pass: README sections per use case (library, CLI, streaming), XML docs on every public member, samples folder with a small app | First impression for NuGet users | Open |
 | Frame-rate override (`-f/--frame-rate`, incl. image sequences): `DetectionOptions.FrameRate`, CLI `--frame-rate`, exact on video at 30/29.97/23.976/12.5, image sequences and 0.6.4 | Image sequences and broken headers need it | Done (2026-10-06) |
 | split-video options (`--copy`, `--high-quality`, `--rate-factor`, `--preset`, `--args`, `--expand`): `SplitOptions`, CLI `--split-*`; 60 of 60 clips byte-identical to scenedetect's. Also fixed: `-sn` (subtitles dropped) in 0.7.1 mode too | Parity on the command surface | Done (2026-10-06) |
-| scenedetect features still missing: `export-html`, `list-scenes` `-q`/`-s` options, split-video `--mkvmerge` (external tool) | Parity on the command surface, not only on results | Open |
+| save-html / export-html: `Shots.Html`, CLI `--save-html`; byte-identical pages (with and without thumbnails) | Parity on the command surface | Done (2026-10-06) |
+| list-scenes `--skip-cuts`, `-q`; the CSV's `Timecode List:` row | Our CSV lacked scenedetect's first row | Done (2026-10-06) |
+| scenedetect features still missing: save-images `--quality`/`--compression` (our images come from ffmpeg, so only approximately), split-video `--mkvmerge` (external tool), filename templates (`$VIDEO_NAME`...) | Parity on the command surface, not only on results | Maybe |
 | 1.0 release plan: what must hold (parity matrix green for N releases of scenedetect/ffmpeg), version policy afterwards | So 1.0 means something | Open |
 
 ## Done

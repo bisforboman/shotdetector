@@ -435,6 +435,18 @@ public class FrameTimeTests
 
 public class ShotsTests
 {
+    static string Reference(string name) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", name));
+
+    [Fact]
+    public void HtmlIsScenedetectsPageByteForByte()
+    {
+        var fps = new Fps(25, 1);
+        Shot S(int n, long a, long b) => new(n, FrameTime.Frame(a, fps), FrameTime.Frame(b, fps));
+        Assert.Equal(Reference("scenedetect-two-shots-images.html"),
+            Shots.Html([S(1, 0, 50), S(2, 50, 100)], [["a b-Scene-001-01.jpg"], ["x.jpg"]], imageWidth: 160));
+        Assert.Equal(Reference("scenedetect-one-shot.html"), Shots.Html([S(1, 0, 150)]));
+    }
+
     [Fact]
     public void CsvStartsWithTheCutListLikeScenedetect()
     {

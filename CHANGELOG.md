@@ -5,6 +5,7 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- `Shots.Html` / CLI `--save-html`: scenedetect's save-html (export-html) page, byte for byte, with thumbnails.
 - `MinSceneLength` takes every scenedetect format: frames, `0.6s`, `0.6` and `HH:MM:SS.mmm`.
 - The shot list CSV starts with scenedetect's `Timecode List:` row (an empty row when there are no cuts);
   `Shots.Csv(shots, includeCutList: false)` / CLI `--skip-cuts` leaves it out. CLI `-q/--quiet`.
