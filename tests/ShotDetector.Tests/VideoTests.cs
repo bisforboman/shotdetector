@@ -350,6 +350,22 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     }
 
     [Fact]
+    public async Task DetectAsyncGivesTheSameShots()
+    {
+        var expected = ShotDetection.Detect(clips.ThreeShots).Shots;
+        var r = await ShotDetection.DetectAsync(clips.ThreeShots);
+        Assert.Equal(expected, r.Shots);
+        Assert.Equal("00:00:02.000", r.Shots[1].Start.ToString());
+    }
+
+    [Fact]
+    public async Task DetectAsyncCanBeCancelled()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ShotDetection.DetectAsync(clips.Long, cancellationToken: cts.Token));
+    }
+
+    [Fact]
     public void AlreadyCancelledTokenThrowsImmediately() =>
         Assert.Throws<OperationCanceledException>(() => ShotDetection.Detect(clips.Long, cancellationToken: new CancellationToken(true)));
 

@@ -118,7 +118,7 @@ public sealed partial class VideoReader
     /// <summary>Frame rate as OpenCV reports it to PySceneDetect (the average rate).</summary>
     public Fps Fps { get; }
     /// <summary>Container frame count from ffprobe; may be missing (0) or approximate.</summary>
-    public long FrameCountHint { get; }
+    internal long FrameCountHint { get; }
 
     /// <summary>The frame count OpenCV reports (CAP_PROP_FRAME_COUNT), which scenedetect takes as the video's end.</summary>
     internal long OpenCvFrameCount { get; }
@@ -378,7 +378,7 @@ public sealed partial class VideoReader
     /// Differs: for variable frame rate video OpenCV reads forward to correct its estimate; this
     /// keeps the average-fps estimate, so thumbnails can be a few frames off there.
     /// </summary>
-    public int FrameAt(double seconds) => (int)Math.Round(seconds * Fps.Value);
+    internal int FrameAt(double seconds) => (int)Math.Round(seconds * Fps.Value);
 
     /// <summary>
     /// The frame a start time selects: the one scenedetect's OpenCV seek lands on for constant frame
@@ -386,7 +386,7 @@ public sealed partial class VideoReader
     /// its frame counting (it can land a second off), so there this is the first frame at or after
     /// half a frame before the time instead.
     /// </summary>
-    public int SeekFrame(double seconds)
+    internal int SeekFrame(double seconds)
     {
         if (Streaming)
             throw new NotSupportedException("A streamed input can't be seeked; StartTime isn't available.");
@@ -410,7 +410,7 @@ public sealed partial class VideoReader
     /// as 0 at that point, so it is always the frame-number fallback for the last frame.
     /// The last scene ends one frame after it.
     /// </summary>
-    public FrameTime PositionAfterDecoding(int frameCount) => Compatibility == PySceneDetectVersion.V0_6_4
+    internal FrameTime PositionAfterDecoding(int frameCount) => Compatibility == PySceneDetectVersion.V0_6_4
         ? FrameTime.Frame064(frameCount - 1, Fps)
         : FrameTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps);
 

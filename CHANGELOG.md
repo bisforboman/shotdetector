@@ -5,6 +5,10 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- API review toward 1.0: the detector classes, `IDetector`, `ContentScorer` and `EdgeDetector` are internal
+  (use `ShotDetection` with `DetectorKind`); `VideoReader.FrameAt`, `SeekFrame`, `PositionAfterDecoding` and
+  `FrameCountHint` are internal; `FrameTime`'s raw fields and `FrameTime.Pts` are internal and `ToString()` is
+  the timecode; `SaveImages`/`SplitVideo` return `IReadOnlyList<string>`. New: `ShotDetection.DetectAsync`.
 - Fix: when the decoder drops frames (damaged video), later frames got the wrong times and frame
   numbers; each frame now takes its own time, as in scenedetect.
 - Fix: a streamed input that doesn't start at 0 (e.g. a TS starting at 1.4 s) had every time shifted

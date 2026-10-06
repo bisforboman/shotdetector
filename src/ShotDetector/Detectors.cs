@@ -6,7 +6,7 @@ namespace ShotDetector;
 /// <c>position</c> (frame index → time, as PySceneDetect's FrameTimecode positions), so variable
 /// frame rate video behaves as it does in PySceneDetect.
 /// </summary>
-public interface IDetector
+internal interface IDetector
 {
     /// <summary>Feeds the next frame (packed BGR, downscaled); returns where a new shot starts, if a cut was found.</summary>
     FrameTime? ProcessFrame(int frame, byte[] bgr);
@@ -22,7 +22,7 @@ public interface IDetector
 /// Port of PySceneDetect's ContentDetector: cut when content_val >= threshold, with FlashFilter in
 /// MERGE mode (its default) enforcing min_scene_len. SUPPRESS filter mode is not ported.
 /// </summary>
-public sealed class ContentDetector(
+internal sealed class ContentDetector(
     ContentScorer scorer,
     Func<int, FrameTime> position,
     Fps fps,
@@ -90,7 +90,7 @@ public sealed class ContentDetector(
 /// Port of PySceneDetect's AdaptiveDetector: compares each frame's content_val against the mean of
 /// the <c>windowWidth</c> frames on either side. Cuts are therefore reported windowWidth frames late.
 /// </summary>
-public sealed class AdaptiveDetector(
+internal sealed class AdaptiveDetector(
     ContentScorer scorer,
     Func<int, FrameTime> position,
     double adaptiveThreshold = 3.0,
@@ -158,7 +158,7 @@ public sealed class AdaptiveDetector(
 /// In 0.6.4 mode the split frame is int((fade_in + fade_out + int(bias * (fade_in - fade_out))) / 2),
 /// as 0.6.4 computes it, instead of 0.7.1's fade_out + round((fade_in - fade_out) * (1 + bias) / 2).
 /// </summary>
-public sealed class ThresholdDetector(
+internal sealed class ThresholdDetector(
     Func<int, FrameTime> position,
     Fps fps,
     double threshold = 12,
@@ -239,7 +239,7 @@ public sealed class ThresholdDetector(
 /// binning, normalize (L2, float32), and compareHist(HISTCMP_CORREL) summed in two double lanes
 /// as its 128-bit SIMD path does.
 /// </summary>
-public sealed class HistogramDetector(
+internal sealed class HistogramDetector(
     Func<int, FrameTime> position,
     double threshold = 0.05,
     int bins = 256,
