@@ -10,14 +10,28 @@ namespace ShotDetector;
 /// frame / fps in floating point (TbDen == -1). Arithmetic, conversions and rounding mirror
 /// FrameTimecode, including Python's round(), which rounds the exact binary value half to even.
 /// </summary>
-public readonly record struct FrameTime(long Value, long TbDen, Fps Fps)
+public readonly record struct FrameTime
 {
+    internal FrameTime(long value, long tbDen, Fps fps) => (Value, TbDen, Fps) = (value, tbDen, fps);
+
+    /// <summary>A frame number, or a pts in units of 1/<see cref="TbDen"/> seconds.</summary>
+    internal long Value { get; init; }
+
+    /// <summary>0 for a frame number, else the time base denominator of <see cref="Value"/>.</summary>
+    internal long TbDen { get; init; }
+
+    /// <summary>The frame rate frame numbers are counted at.</summary>
+    public Fps Fps { get; }
+
+    /// <summary>The timecode, "HH:MM:SS.mmm".</summary>
+    public override string ToString() => Timecode();
+
     /// <summary>A bare frame number.</summary>
     public static FrameTime Frame(long frame, Fps fps) => new(frame, 0, fps);
     /// <summary>A frame number as PySceneDetect 0.6.4 holds every position: seconds = frame / fps.</summary>
     internal static FrameTime Frame064(long frame, Fps fps) => new(frame, -1, fps);
     /// <summary>A presentation timestamp in units of 1/<paramref name="tbDen"/> seconds.</summary>
-    public static FrameTime Pts(long pts, long tbDen, Fps fps) => new(pts, tbDen, fps);
+    internal static FrameTime Pts(long pts, long tbDen, Fps fps) => new(pts, tbDen, fps);
 
     bool IsFrame => TbDen <= 0;
     double FpsValue => Fps.Value; // float(frame_rate)

@@ -191,6 +191,17 @@ public static class ShotDetection
         Run(null, video, options, onShot: null, cancellationToken);
 
     /// <summary>
+    /// <see cref="Detect(string, DetectionOptions?, CancellationToken)"/> on a thread-pool thread, so the
+    /// caller's thread (a UI, a request) isn't blocked while ffmpeg decodes.
+    /// </summary>
+    public static Task<DetectionResult> DetectAsync(string videoPath, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
+        Task.Run(() => Run(videoPath, null, options, onShot: null, cancellationToken), cancellationToken);
+
+    /// <summary><see cref="Detect(Stream, DetectionOptions?, CancellationToken)"/> on a thread-pool thread.</summary>
+    public static Task<DetectionResult> DetectAsync(Stream video, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
+        Task.Run(() => Run(null, video, options, onShot: null, cancellationToken), cancellationToken);
+
+    /// <summary>
     /// Like <see cref="Detect(string, DetectionOptions?, CancellationToken)"/>, but yields each shot as soon as it is known, while the rest of the
     /// video is still being decoded (on a background thread). The shots are exactly those Detect
     /// returns. A shot is known once the cut that ends it is confirmed, which can take a few frames

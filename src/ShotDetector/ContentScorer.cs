@@ -5,7 +5,7 @@ namespace ShotDetector;
 /// planes (and optionally the edge maps) between the current frame and the previous one.
 /// Returns 0 for the first frame. Port of ContentDetector._calculate_frame_score.
 /// </summary>
-public sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, double lumWeight = 1, double edgeWeight = 0)
+internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, double lumWeight = 1, double edgeWeight = 0)
 {
     /// <summary>Scores only the V (brightness) channel, like luma_only=True.</summary>
     public static ContentScorer LumaOnly() => new(0, 0, 1, 0) { IsLumaOnly = true };

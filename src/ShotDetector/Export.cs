@@ -87,7 +87,7 @@ public static class Export
     /// Same frames as scenedetect (see <see cref="VideoReader.FrameAt"/>), but encoded by ffmpeg at
     /// -q:v 2 rather than OpenCV at JPEG quality 95, so files are similar, not byte-identical.
     /// </summary>
-    public static List<string> SaveImages(DetectionResult result, string outputDir, ImageOptions? options = null,
+    public static IReadOnlyList<string> SaveImages(DetectionResult result, string outputDir, ImageOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -198,7 +198,7 @@ public static class Export
     /// arguments (by default libx264 veryfast, CRF 22 and AAC audio; subtitles dropped).
     /// </summary>
     /// <remarks>Cancelling stops between clips and kills the running ffmpeg; finished clips are kept.</remarks>
-    public static List<string> SplitVideo(DetectionResult result, string outputDir, SplitOptions? options = null, CancellationToken cancellationToken = default)
+    public static IReadOnlyList<string> SplitVideo(DetectionResult result, string outputDir, SplitOptions? options = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (result.VideoPath is null)

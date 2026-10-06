@@ -23,7 +23,10 @@ using ShotDetector;
 
 var result = ShotDetection.Detect("video.mp4");      // adaptive detector, scenedetect's defaults
 foreach (var shot in result.Shots)
-    Console.WriteLine($"{shot.Number}: {shot.Start.Timecode()} - {shot.End.Timecode()}");
+    Console.WriteLine($"{shot.Number}: {shot.Start} - {shot.End}");   // timecodes, e.g. 00:00:02.000
+
+// Without blocking the calling thread (web apps, UIs):
+var later = await ShotDetection.DetectAsync("video.mp4");
 
 // Other detectors and settings; Export uses the shot list.
 var fades = ShotDetection.Detect("video.mp4", new DetectionOptions { Detector = DetectorKind.Threshold });
@@ -34,7 +37,7 @@ File.WriteAllText("shots.csv", Shots.Csv(result.Shots));
 var fast = ShotDetection.Detect("video.mp4", new DetectionOptions { Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420() });
 ```
 
-`Detect`, `Export.SaveImages` and `Export.SplitVideo` take an optional `CancellationToken`: cancelling
+`Detect`, `DetectAsync`, `Export.SaveImages` and `Export.SplitVideo` take an optional `CancellationToken`: cancelling
 stops at the next frame (or clip), kills the ffmpeg process and throws `OperationCanceledException`.
 
 To get shots while a long video is still being decoded, stream them (same results as `Detect`):

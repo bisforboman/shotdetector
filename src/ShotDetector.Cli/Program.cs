@@ -189,7 +189,7 @@ try
     // save-images wasn't asked for.
     if (htmlPath is not null && !htmlNoImages)
         imagesDir ??= Path.GetDirectoryName(Path.GetFullPath(htmlPath));
-    List<string>? saved = null;
+    IReadOnlyList<string>? saved = null;
     if (imagesDir is not null)
     {
         saved = Export.SaveImages(result, imagesDir, images);

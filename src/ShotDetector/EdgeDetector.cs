@@ -6,7 +6,7 @@ namespace ShotDetector;
 /// overlap between frames. Canny is ported from OpenCV (imgproc/canny.cpp) for 8-bit input with
 /// aperture 3 and L1 gradient, so the maps match cv2.Canny + cv2.dilate exactly.
 /// </summary>
-public sealed class EdgeDetector(int width, int height, int? kernelSize = null)
+internal sealed class EdgeDetector(int width, int height, int? kernelSize = null)
 {
     /// <summary>Size of the square the edges are dilated with.</summary>
     public int KernelSize { get; } = kernelSize ?? EstimatedKernelSize(width, height);

@@ -9,7 +9,7 @@ namespace ShotDetector;
 /// in double precision rather than cv2.dct's float32, so a hash bit can differ only when a coefficient
 /// ties with the median to within ~1e-6 (not seen in 512,000 bits tested).
 /// </summary>
-public sealed class HashDetector(
+internal sealed class HashDetector(
     Func<int, FrameTime> position,
     double threshold = 0.395,
     int size = 16,
