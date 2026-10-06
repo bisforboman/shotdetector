@@ -79,7 +79,7 @@ jobs:
           ffmpeg -v error -f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 \
             -filter_complex "[0][1]concat=n=2:v=1:a=0,format=yuv420p" -r 25 -c:v mpeg4 clip.mp4
           ./out/shotdetect -i clip.mp4 -d content --csv shots.csv
-          test "$(tail -n +2 shots.csv | wc -l)" -eq 2
+          test "$(tail -n +3 shots.csv | wc -l)" -eq 2   # after the "Timecode List:" row and the header
 
   # Alpine (musl), with Alpine's own ffmpeg. scenedetect can't run here (no musl OpenCV wheels), but
   # the video tests check real detection, cancellation, and that Alpine's ffmpeg converts colours
