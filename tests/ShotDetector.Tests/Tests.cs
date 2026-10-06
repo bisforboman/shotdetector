@@ -318,6 +318,21 @@ public class Yuv420Tests
 // Expected values from scenedetect's _generate_timecode_list / FrameTimecode.
 public class ExportTests
 {
+    [Theory]
+    [InlineData(false, false, null, null, null, "-map 0:v:0 -map 0:a? -map 0:s? -c:v libx264 -preset veryfast -crf 22 -c:a aac")]
+    [InlineData(false, true, null, null, null, "-map 0:v:0 -map 0:a? -map 0:s? -c:v libx264 -preset slow -crf 17 -c:a aac")]
+    [InlineData(false, true, 30, null, null, "-map 0:v:0 -map 0:a? -map 0:s? -c:v libx264 -preset slow -crf 30 -c:a aac")]
+    [InlineData(false, false, null, "fast", null, "-map 0:v:0 -map 0:a? -map 0:s? -c:v libx264 -preset fast -crf 22 -c:a aac")]
+    [InlineData(false, false, 30, null, "-c:v libx265", "-c:v libx265")]              // args win over crf/preset
+    [InlineData(true, false, null, null, "-c:v libx265", "-map 0:v:0 -map 0:a? -map 0:s? -c:v copy -c:a copy")] // copy wins over args
+    [InlineData(false, false, null, null, "-vf \\\"scale=640:-2\\\"", "-vf \"scale=640:-2\"")] // \" becomes "
+    public void SplitArgumentsAreScenedetects(bool copy, bool hq, int? crf, string? preset, string? args, string expected) =>
+        Assert.Equal(expected, string.Join(' ', new SplitOptions { Copy = copy, HighQuality = hq, RateFactor = crf, Preset = preset, Args = args }.FfmpegArgs()));
+
+    [Fact]
+    public void CopyRefusesEncodingSettings() =>
+        Assert.Throws<ArgumentException>(() => new SplitOptions { Copy = true, RateFactor = 20 }.FfmpegArgs());
+
     static readonly Fps Fps25 = new(25, 1);
     static FrameTime F(long n) => FrameTime.Frame(n, Fps25);
 

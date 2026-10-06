@@ -120,6 +120,9 @@ public sealed partial class VideoReader
     /// <summary>Container frame count from ffprobe; may be missing (0) or approximate.</summary>
     public long FrameCountHint { get; }
 
+    /// <summary>The frame count OpenCV reports (CAP_PROP_FRAME_COUNT), which scenedetect takes as the video's end.</summary>
+    internal long OpenCvFrameCount { get; }
+
     /// <summary>Which PySceneDetect release's frame rate, downscaling and positions this reader reproduces.</summary>
     public PySceneDetectVersion Compatibility { get; }
 
@@ -187,7 +190,7 @@ public sealed partial class VideoReader
             ? ["-framerate", $"{r.Num}/{r.Den}"] : [];
         // One demux-only pass: stream properties, plus every packet's pts for a file (no decoding).
         // A Stream is probed from its first bytes, which are kept to feed ffmpeg later.
-        string entries = "stream=width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames:stream_side_data=rotation"
+        string entries = "stream=width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration"
             + (Streaming ? "" : ":packet=pts");
         string ffprobe = Executable(o.FfmpegDirectory, "ffprobe");
         string[] probeArgs = ["-v", "error", .. _inputOptions, "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", path];
@@ -236,6 +239,11 @@ public sealed partial class VideoReader
         // 0.7.1 turns it into a clean fraction (framerate_to_fraction); 0.6.4 uses the float as is.
         Fps = frameRate ?? (compatibility == PySceneDetectVersion.V0_6_4 ? rate : Fps.FromFloat(rate.Value));
         FrameCountHint = long.TryParse(stream.GetValueOrDefault("nb_frames"), out var n) ? n : 0;
+        // OpenCV's CAP_PROP_FRAME_COUNT: the stream's frame count, else round(duration * fps), where the
+        // duration is the container's (format=duration is printed after the stream's, so it wins here).
+        OpenCvFrameCount = FrameCountHint > 0 ? FrameCountHint
+            : double.TryParse(stream.GetValueOrDefault("duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out double secs)
+                ? (long)Math.Floor(secs * rate.Value + 0.5) : 0;
         // Crop like scenedetect: inclusive corners. The "effective size" its downscale factor comes
         // from is one pixel larger than the crop in both directions (its crop setter adds 1 to the far
         // corner and detect_scenes adds 1 again), while the frame is sliced to the real crop. Reproduced as is.

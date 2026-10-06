@@ -291,6 +291,24 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     }
 
     [Fact]
+    public void SplitExpandCoversTheWholeVideo()
+    {
+        // Shots from 2 s to 4 s (frames 50..99); expanded, the clips run from 0 to the end (150 frames).
+        var result = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content, StartTime = "2s", EndTime = "5s" });
+        string dir = Path.Combine(Path.GetTempPath(), "shotdetector-split-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var files = Export.SplitVideo(result, dir, new SplitOptions { Expand = true, Copy = false, Preset = "ultrafast" });
+            double Duration(string f) => double.Parse(VideoReader.Run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f], default),
+                System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Equal(2, files.Count);
+            Assert.Equal(4.0, Duration(files[0]), 1);   // 0 .. 4 s instead of 2 .. 4 s
+            Assert.Equal(2.0, Duration(files[1]), 1);   // 4 .. 6 s instead of 4 .. 5 s
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
     public void AlreadyCancelledTokenThrowsImmediately() =>
         Assert.Throws<OperationCanceledException>(() => ShotDetection.Detect(clips.Long, cancellationToken: new CancellationToken(true)));
 
@@ -323,7 +341,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         string dir = Directory.CreateTempSubdirectory("shotdetector-split-").FullName;
         try
         {
-            Assert.Throws<OperationCanceledException>(() => Export.SplitVideo(result, dir, new CancellationToken(true)));
+            Assert.Throws<OperationCanceledException>(() => Export.SplitVideo(result, dir, cancellationToken: new CancellationToken(true)));
             Assert.Empty(Directory.GetFiles(dir));
         }
         finally

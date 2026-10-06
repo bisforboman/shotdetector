@@ -5,6 +5,10 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+- `SplitVideo` takes `SplitOptions` (CLI `--split-copy`, `--split-high-quality`, `--split-crf`,
+  `--split-preset`, `--split-args`, `--split-expand`), scenedetect's split-video options.
+- Fix: split-video now always drops subtitle streams (`-sn`), as scenedetect 0.7.1 does too; only the
+  0.6.4 mode did before.
 - `DetectionOptions.FrameRate` / CLI `--frame-rate`: scenedetect's `-f/--frame-rate` override, including
   the rate of image sequences (`frames/%04d.png`).
 - `DecodeThreads` is nullable; the default (null) is 8 decoder threads on the yuv420p fast path (~13% faster
