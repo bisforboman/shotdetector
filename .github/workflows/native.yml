@@ -19,6 +19,7 @@ jobs:
   # this way the platforms not asked for don't start a runner at all.
   plan:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       include: ${{ steps.plan.outputs.include }}
     steps:
@@ -46,10 +47,12 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.include) }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     container: ${{ matrix.container }}
     steps:
       - name: Tools (Alpine)
         if: matrix.container
+        timeout-minutes: 10   # package mirrors sometimes hang
         run: apk add --no-cache build-base nasm curl tar xz git perl coreutils
 
       - uses: actions/checkout@v7
@@ -62,6 +65,7 @@ jobs:
 
       - name: Tools (Linux)
         if: steps.cache.outputs.cache-hit != 'true' && !matrix.container && runner.os == 'Linux'
+        timeout-minutes: 10   # package mirrors sometimes hang
         run: sudo apt-get update -q && sudo apt-get install -y -q nasm ${{ matrix.rid == 'win-x64' && 'mingw-w64' || '' }}
 
       - name: Build FFmpeg

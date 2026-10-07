@@ -17,6 +17,7 @@ jobs:
   changes:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
     steps:
@@ -41,6 +42,7 @@ jobs:
   build:
     needs: [changes, native]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -51,6 +53,7 @@ jobs:
 
       - name: Install ffmpeg   # the video tests make clips with it, and the library runs it
         if: needs.changes.outputs.docs_only != 'true'
+        timeout-minutes: 10   # package mirrors sometimes hang
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       # In-process decoding with our FFmpeg build (ShotDetector.Native's): InProcessTests compare it with FFmpeg
@@ -99,6 +102,7 @@ jobs:
           - { rid: win-x64, os: windows-latest }
           - { rid: osx-arm64, os: macos-latest }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     container: ${{ matrix.container }}
     defaults:
       run:
@@ -109,6 +113,7 @@ jobs:
       - name: Native toolchain (Alpine)
         if: needs.changes.outputs.docs_only != 'true' && (matrix.rid == 'linux-musl-x64')
         shell: sh   # bash isn't installed yet
+        timeout-minutes: 10   # package mirrors sometimes hang
         run: apk add --no-cache clang build-base zlib-dev bash
 
       - uses: actions/setup-dotnet@v6
@@ -150,12 +155,14 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container: mcr.microsoft.com/dotnet/sdk:10.0-alpine
     steps:
       - uses: actions/checkout@v7
 
       - name: Install ffmpeg
         if: needs.changes.outputs.docs_only != 'true'
+        timeout-minutes: 10   # package mirrors sometimes hang
         run: apk add --no-cache ffmpeg && ffmpeg -hide_banner -version | head -1
 
       - name: Test
@@ -170,6 +177,7 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:

@@ -16,6 +16,7 @@ jobs:
   changes:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
     steps:
@@ -43,6 +44,7 @@ jobs:
 
       - name: Install ffmpeg
         if: needs.changes.outputs.docs_only != 'true'
+        timeout-minutes: 10   # package mirrors sometimes hang
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Mutate the guards

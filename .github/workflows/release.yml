@@ -17,6 +17,7 @@ jobs:
   release:
     needs: native
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: ${{ contains(github.ref_name, '-') && 'prerelease' || 'release' }}
     permissions:
       contents: write   # create the GitHub release
@@ -33,6 +34,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - name: Install ffmpeg   # for the video tests
+        timeout-minutes: 10   # package mirrors sometimes hang
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Test
@@ -96,6 +98,7 @@ jobs:
           - { rid: win-x64, os: windows-latest }
           - { rid: osx-arm64, os: macos-latest }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     container: ${{ matrix.container }}
     permissions:
       contents: write   # upload release assets
@@ -110,6 +113,7 @@ jobs:
       - name: Native toolchain (Alpine)
         if: matrix.rid == 'linux-musl-x64'
         shell: sh   # bash isn't installed yet
+        timeout-minutes: 10   # package mirrors sometimes hang
         run: apk add --no-cache clang build-base zlib-dev bash github-cli zip
 
       - uses: actions/setup-dotnet@v6
