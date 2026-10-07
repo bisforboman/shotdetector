@@ -25,11 +25,15 @@ dotnet add package ShotDetector.Native.linux-x64  # optional, LGPL: FFmpeg's lib
 dotnet tool install -g ShotDetector.Cli         # the shotdetect command (bundles those libraries)
 ```
 
-ffmpeg and ffprobe must be on `PATH` (or set `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`). When FFmpeg 8's
-shared libraries are available, frames are decoded in-process: faster and lighter, with the same results (see
-Performance). The `ShotDetector.Native.<rid>` packages (`win-x64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`,
-`osx-arm64`) carry them, built by us for decoding only; the CLI tool and binaries bundle them. Otherwise a
-"shared" FFmpeg build, or `ffmpeg-libs` on Alpine, works too.
+When FFmpeg 8's shared libraries are available, video files are read and decoded in-process, with no ffmpeg or
+ffprobe needed: faster and lighter, with the same results (see Performance). The `ShotDetector.Native.<rid>`
+packages (`win-x64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `osx-arm64`) carry them, built by us for
+decoding only; the CLI tool and binaries bundle them. A "shared" FFmpeg build, or `ffmpeg-libs` on Alpine, works
+too.
+
+The ffmpeg and ffprobe executables (on `PATH`, or in `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`) are still
+needed without those libraries, and for streams and URLs, image sequences, rotated video, deinterlacing, AV1 (our
+build has no AV1 decoder) and the image and clip exports.
 
 Releases are built by GitHub Actions from the tagged commit: packages carry SourceLink and symbol packages, and
 every package and binary has a signed build attestation (`gh attestation verify <file> --repo bisforboman/shotdetector`).

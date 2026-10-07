@@ -14,6 +14,9 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 - The libraries are looked for next to the app first (`runtimes/<rid>/native/`, then the app's folder), then in
   the system's usual places. In `Auto`, a codec they can't decode (AV1: no software decoder in our build) is
   decoded by the ffmpeg executable instead. FFmpeg's log is quiet in-process. The CLI summary says how it decoded.
+- Probing in-process: with FFmpeg's libraries available, a video file's properties and packet timestamps (and
+  MPEG-PS frame timestamps) are read with them instead of ffprobe, identical by test. With ShotDetector.Native or
+  the CLI's bundled libraries, detecting shots in a file needs no ffmpeg installed at all.
 
 ### Changed
 

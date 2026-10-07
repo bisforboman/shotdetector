@@ -31,21 +31,17 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// <summary>The current frame's best-effort timestamp (what ffmpeg's command line gives each frame).</summary>
     public long Pts => _frame->best_effort_timestamp;
 
+    /// <summary>The current frame's own pts, if set (ffprobe's frame pts).</summary>
+    public long? FramePts => _frame->pts == ffmpeg.AV_NOPTS_VALUE ? null : _frame->pts;
+
+    /// <summary>The dts of the packet the current frame came from, if set (ffprobe's frame pkt_dts).</summary>
+    public long? FramePacketDts => _frame->pkt_dts == ffmpeg.AV_NOPTS_VALUE ? null : _frame->pkt_dts;
+
     public InProcessDecoder(string path, string? libraryDirectory, int threads)
     {
         Load(libraryDirectory);
-        AVFormatContext* fmt = null;
-        Check(ffmpeg.avformat_open_input(&fmt, path, null, null), "open " + path, ShotDetectionError.InvalidInput);
-        _fmt = fmt;
-        Check(ffmpeg.avformat_find_stream_info(_fmt, null), "read stream info", ShotDetectionError.InvalidInput);
-        // The first video stream, as -map 0:v:0 (and ffprobe -select_streams v:0) take it.
-        _stream = -1;
-        for (int i = 0; i < _fmt->nb_streams; i++)
-            if (_fmt->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO)
-            {
-                _stream = i;
-                break;
-            }
+        _fmt = InProcessProbe.Open(path);
+        _stream = InProcessProbe.FirstVideoStream(_fmt);
         if (_stream < 0)
             throw new ShotDetectionException(ShotDetectionError.InvalidInput, "The input has no video stream.");
         var st = _fmt->streams[_stream];
@@ -289,7 +285,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// Loads FFmpeg's shared libraries from a folder or the system's usual places, once per process: the first copy
     /// loaded is the one used, whatever folder is asked for later.
     /// </summary>
-    static void Load(string? directory)
+    internal static void Load(string? directory)
     {
         lock (InitLock)
         {
@@ -329,10 +325,15 @@ internal sealed unsafe class InProcessDecoder : IDisposable
 
     static void Check(int ret, string what, ShotDetectionError reason = ShotDetectionError.DecodeFailed)
     {
-        if (ret >= 0)
-            return;
+        if (ret < 0)
+            throw new ShotDetectionException(reason, $"FFmpeg ({what}): {Error(ret)}");
+    }
+
+    /// <summary>FFmpeg's message for an error code.</summary>
+    internal static string Error(int ret)
+    {
         byte* buf = stackalloc byte[256];
         ffmpeg.av_strerror(ret, buf, 256);
-        throw new ShotDetectionException(reason, $"FFmpeg ({what}): {Marshal.PtrToStringAnsi((IntPtr)buf)}");
+        return Marshal.PtrToStringAnsi((IntPtr)buf) ?? ret.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 }
