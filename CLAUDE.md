@@ -15,8 +15,9 @@ differ is documented in README.md and in `docs/decisions.md`.
 
 ## Status
 
-0.5.0 released 2026-10-06 (timeline exports, several detectors, load-scenes, config file, templates, the MIT core's
-sampled pipeline from issue #7, the 1.0 API review); see CHANGELOG.md. The release notes are the version's
+0.6.0 released 2026-10-07 (opt-in in-process decoding with FFmpeg 8.1's libraries, deinterlacing,
+`ShotDetectionException` reasons, ActivitySource tracing, SourceLink/attestations; issues #12, #16-#19); see CHANGELOG.md.
+InProcessTests need `SHOTDETECTOR_FFMPEG_LIBS` (an FFmpeg 8.1 shared build's folder) or they pass without checking. The release notes are the version's
 CHANGELOG section (release.yml extracts it), so keep sections grouped: breaking changes, new, faster, fixed.
 All five detectors, both compatibility modes (`PySceneDetectVersion.V0_7_1` default and `V0_6_4`), exports
 (save-images, save-html, split-video), stats, streaming out (`DetectStreamAsync`) and in (`Detect(Stream)`, URLs,

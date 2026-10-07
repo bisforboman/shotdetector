@@ -5,26 +5,46 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
-- `Deinterlace` / `--deinterlace`: ffmpeg's yadif before analysis, for interlaced sources; results equal
-  scenedetect's on a lossless `-vf yadif` copy, seeking included (issue #16).
-- `ShotDetectionException` with a `Reason` (FfmpegNotFound, InvalidInput, DecodeFailed, ExportFailed) for every
-  ffmpeg/ffprobe/input failure; it is an `InvalidOperationException`, so existing catches still work. A file
-  without a video stream now says so (issue #17).
-- Tracing: `ShotDetection.ActivitySourceName`, one span per detection (issue #19).
-- Packages: SourceLink, symbol packages (.snupkg), deterministic CI builds; release packages and binaries carry
-  GitHub build attestations (`gh attestation verify`, issue #18).
+## 0.6.0 – 2026-10-07
+
+Every result is still identical to scenedetect's; in-process decoding and deinterlacing are tested equal to the
+ffmpeg executable and to a lossless yadif copy.
+
+### Changed
+
+- ffmpeg, ffprobe and input failures throw `ShotDetectionException` (with a `Reason`: FfmpegNotFound,
+  InvalidInput, DecodeFailed, ExportFailed) instead of a plain `InvalidOperationException`. It derives from
+  `InvalidOperationException`, so `catch` blocks still work; only exact type checks (such as xunit's
+  `Assert.Throws<InvalidOperationException>`) see the difference. A file without a video stream now says so
+  (issue #17).
+- Default decoder threads: one fewer than the CPUs available (1 in a 2-CPU container, where it used the same wall
+  time as more for ~9% less CPU), still at most 4, or 8 on the yuv420p path.
+
+### New
+
 - In-process decoding, opt-in: `DetectionOptions.Decoder = VideoDecoder.InProcess` / `--decoder inprocess`
   decodes with FFmpeg 8.1's shared libraries (FFmpeg.AutoGen bindings, MIT) instead of the ffmpeg executable.
   Same frames and results; about 40% less CPU for decoding on Linux (issue #12). Streams, URLs, image
-  sequences and rotated video still use the executable.
-- Faster scoring: frames as small as scenedetect's (at most 256 wide) no longer split across threads, which cost
-  3-4x their CPU; the resize reads the sampled rows directly; difference sums use 256-bit vectors. Same results.
+  sequences, rotated video and deinterlacing still use the executable.
+- `Deinterlace` / `--deinterlace`: ffmpeg's yadif before analysis, for interlaced sources; results equal
+  scenedetect's on a lossless `-vf yadif` copy, seeking included (issue #16).
+- Tracing: `ShotDetection.ActivitySourceName`, one span per detection with the video's size, frame rate,
+  pipeline, decoder, frames and shots (issue #19).
+- Packages: SourceLink, symbol packages (.snupkg), deterministic CI builds; release packages and binaries carry
+  GitHub build attestations (`gh attestation verify <file> --repo bisforboman/shotdetector`, issue #18).
+
+### Faster
+
+- Scoring: frames as small as scenedetect's (at most 256 wide) no longer split across threads, which cost 3-4x
+  their CPU; the resize reads the sampled rows directly; difference sums use 256-bit vectors. Same results.
   On Linux with 2 CPUs: 17% faster, 9% less CPU than 0.5.0 (issue #12).
-- Default decoder threads: one fewer than the CPUs available (1 in a 2-CPU container, where it used the same wall
-  time as more for ~9% less CPU), still at most 4, or 8 on the yuv420p path.
+
+### Fixed
+
 - Correction to 0.5.0: "on 2 CPUs it now uses less CPU than scenedetect" holds on the Windows machine it was
   measured on (ffmpeg 7.1), not on Linux: there, with 2 CPUs, ShotDetector uses ~1.5x scenedetect's CPU and
   ~1.6x its wall time (issue #12). The README has both measurements.
+
 ## 0.5.0 – 2026-10-06
 
 Every new output and option below is byte-identical to scenedetect 0.7.1's (checked in CI).
