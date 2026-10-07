@@ -122,7 +122,10 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         var recorder = new Recorder();
         var result = ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { Progress = recorder });
         Assert.NotEmpty(recorder.Reports);
-        Assert.Equal(new DetectionProgress(150, 150), recorder.Reports[^1]);
+        Assert.Equal((150, 150), (recorder.Reports[^1].FramesProcessed, recorder.Reports[^1].ExpectedFrames));
+        // The first report comes before any frame, and every report says how this run decodes.
+        Assert.Equal(0, recorder.Reports[0].FramesProcessed);
+        Assert.All(recorder.Reports, r => Assert.Equal((result.Video.DecodesInProcess, result.Video.Pipeline), (r.DecodesInProcess, r.Pipeline)));
         Assert.Equal(1.0, recorder.Reports[^1].Fraction);
         Assert.True(recorder.Reports.Zip(recorder.Reports.Skip(1)).All(p => p.First.FramesProcessed <= p.Second.FramesProcessed));
         Assert.Equal(150, result.FrameCount);

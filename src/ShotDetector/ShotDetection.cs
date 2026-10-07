@@ -77,8 +77,10 @@ public enum FieldOrder
 /// <param name="PixelFormat">FFmpeg's pixel format name (yuv420p, yuv420p10le, ...).</param>
 /// <param name="FieldOrder">Progressive, interlaced (which field first), or unknown.</param>
 /// <param name="Rotation">The display rotation in degrees, 0 if none.</param>
+/// <param name="Container">FFmpeg's name for the container (its demuxer): mxf, matroska,webm, mov,mp4,m4a,3gp,3g2,mj2, ...</param>
+/// <param name="HasAudio">Whether the file has an audio stream; null for streamed input.</param>
 public sealed record VideoInfo(int Width, int Height, Fps FrameRate, long? FrameCount, TimeSpan? Duration, string Codec,
-    string PixelFormat, FieldOrder FieldOrder, int Rotation)
+    string PixelFormat, FieldOrder FieldOrder, int Rotation, string Container, bool? HasAudio)
 {
     /// <summary>Whether the stream is flagged interlaced (what <see cref="DeinterlaceMode.Auto"/> goes by).</summary>
     public bool IsInterlaced => FieldOrder is FieldOrder.TopFirst or FieldOrder.BottomFirst
@@ -327,6 +329,12 @@ public sealed record DetectionOptions
 /// <param name="ExpectedFrames">Frames the video is expected to have (from its packets); 0 if unknown.</param>
 public readonly record struct DetectionProgress(int FramesProcessed, int ExpectedFrames)
 {
+    /// <summary>Whether frames are decoded in-process (FFmpeg's libraries) rather than by the ffmpeg executable.</summary>
+    public bool DecodesInProcess { get; init; }
+
+    /// <summary>How frames get to the detectors (<see cref="VideoReader.Pipeline"/>).</summary>
+    public FramePipeline Pipeline { get; init; }
+
     /// <summary>0..1, or null when the frame count is unknown.</summary>
     public double? Fraction => ExpectedFrames > 0 ? Math.Min(1.0, FramesProcessed / (double)ExpectedFrames) : null;
 }
@@ -366,6 +374,14 @@ public static class ShotDetection
     /// <param name="cancellationToken">Cancels probing.</param>
     public static VideoInfo Probe(string videoPath, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
         VideoReader.Headers(videoPath, options, cancellationToken).Info;
+
+    /// <summary>
+    /// Whether FFmpeg 8's shared libraries load, so <see cref="VideoDecoder.Auto"/> decodes in-process: a cheap check for
+    /// a worker's startup. Looks where detection does (<paramref name="ffmpegDirectory"/>, else next to the app, else
+    /// the system's usual places); once loaded they stay loaded for the process.
+    /// </summary>
+    /// <param name="ffmpegDirectory">As <see cref="DetectionOptions.FfmpegDirectory"/>.</param>
+    public static bool CanDecodeInProcess(string? ffmpegDirectory = null) => InProcessDecoder.CanLoad(ffmpegDirectory);
 
     /// <summary><see cref="Probe(string, DetectionOptions?, CancellationToken)"/> on a background thread.</summary>
     /// <param name="videoPath">A file path or URL.</param>
@@ -628,6 +644,10 @@ public static class ShotDetection
         int frameCount = 0, stride = o.FrameSkip + 1;
         bool readToEnd = true;
         long lastReport = 0;
+        DetectionProgress Progress(int done, int expected) =>
+            new(done, expected) { DecodesInProcess = video.DecodesInProcess, Pipeline = video.Pipeline };
+        // A first report before any frame: which decoder and pipeline this run uses.
+        o.Progress?.Report(Progress(0, Math.Max(0, video.ExpectedFrames - startFrame)));
         foreach (var frame in video.Frames(startFrame, null, cancellationToken))
         {
             int index = startFrame + frameCount;
@@ -638,7 +658,7 @@ public static class ShotDetection
             frameCount++;
             if (o.Progress is not null && Environment.TickCount64 - lastReport >= 100)
             {
-                o.Progress.Report(new(frameCount, Math.Max(0, video.ExpectedFrames - startFrame)));
+                o.Progress.Report(Progress(frameCount, Math.Max(0, video.ExpectedFrames - startFrame)));
                 lastReport = Environment.TickCount64;
             }
             // scenedetect analyses a frame, skips the next FrameSkip frames, then stops if the last
@@ -649,7 +669,7 @@ public static class ShotDetection
                 break;
             }
         }
-        o.Progress?.Report(new(frameCount, frameCount));
+        o.Progress?.Report(Progress(frameCount, frameCount));
         if (frameCount > 0)
         {
             // Where scenedetect finds the stream after the loop: past the end if it read until EOF,
