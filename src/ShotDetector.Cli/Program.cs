@@ -281,7 +281,7 @@ try
         $"{(input == "-" ? "stdin" : Path.GetFileName(input))}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, " +
         $"{result.FrameCount} frames, processed at {video.Width}x{video.Height}, " +
         $"detector={string.Join('+', (options.Detectors?.Select(d => d.Kind) ?? [options.Detector]).Select(k => k.ToString().ToLowerInvariant()))}, " +
-        $"min-scene-len={result.MinSceneLengthFrames} frames"));
+        $"min-scene-len={result.MinSceneLengthFrames} frames, decoded {(video.DecodesInProcess ? "in-process" : "by ffmpeg")}"));
 
     if (!quiet)
         Console.WriteLine(Shots.Table(result.Shots));

@@ -8,7 +8,10 @@ public sealed partial class VideoReader
     /// executable: streams and URLs, image sequences, rotated video, and deinterlacing.
     /// </summary>
     public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && _stream is null && !Streaming && _inputOptions.Length == 0
-        && _rotation == 0 && !_deinterlace && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory));
+        && _rotation == 0 && !_deinterlace && !_inProcessGaveNothing
+        && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory));
+
+    bool _inProcessGaveNothing; // Auto, and the libraries decoded no frame of this video: the executable instead
 
     /// <summary>Frames(startFrame, count) decoded in-process: the same bytes per pipeline as the ffmpeg pipe, then the same resize.</summary>
     IEnumerable<byte[]> FramesInProcess(int startFrame, int? count, CancellationToken cancellationToken)
