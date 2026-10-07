@@ -7,6 +7,9 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ### Faster
 
+- HSV conversion 8 pixels at a time (AVX2; tested on all 2^24 colours). With the items below, on Linux with
+  2 CPUs in-process decoding is faster than scenedetect on Sintel 1080p (4.6 s vs 5.1 s) and Tears of Steel
+  (32.1 s vs 33.2 s) and within 4% on Big Buck Bunny, at the same or less CPU (issue #12).
 - The exact resize (every pipeline): no bounds checks in the horizontal pass, 256-bit vertical pass; same
   results. Big Buck Bunny (640x360) on one core: ~25% less CPU for a whole detection.
 - In-process decoding converts only the row slices the resize reads, set up from the frame's colour tags as
