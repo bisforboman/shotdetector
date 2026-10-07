@@ -700,16 +700,15 @@ public class HistogramDetectorTests
         Assert.Equal([5], cuts);
     }
 
-    [Theory]
-    [InlineData(PySceneDetectVersion.V0_7_1, new long[] { 2 })]
-    [InlineData(PySceneDetectVersion.V0_6_4, new long[0])] // last cut re-initialised at frame 1: 2 - 1 < min length
-    public void Version064CountsTheMinimumLengthFromFrameOne(PySceneDetectVersion version, long[] expected)
+    [Fact]
+    public void CountsTheMinimumLengthFromFrameZero()
     {
+        // scenedetect 0.7.1 keeps frame 0 as the last cut (a FrameTimecode is always truthy): a cut at 2 is long enough.
         var fps = new Fps(25, 1);
-        var d = new HistogramDetector(i => FrameTime.Frame(i, fps), minSceneLen: 2, version: version);
+        var d = new HistogramDetector(i => FrameTime.Frame(i, fps), minSceneLen: 2);
         var cuts = new List<long>();
         for (int i = 0; i < 6; i++)
             if (d.ProcessFrame(i, i < 2 ? Image : Brighter()) is { } cut) cuts.Add(cut.FrameNum);
-        Assert.Equal(expected, cuts);
+        Assert.Equal([2], cuts);
     }
 }

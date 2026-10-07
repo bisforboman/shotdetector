@@ -21,15 +21,16 @@ on the executable path). 0.6.0 released 2026-10-07 (opt-in in-process decoding w
 `ShotDetectionException` reasons, ActivitySource tracing, SourceLink/attestations; issues #12, #16-#19); see CHANGELOG.md.
 InProcessTests need `SHOTDETECTOR_FFMPEG_LIBS` (an FFmpeg 8.1 shared build's folder) or they pass without checking. The release notes are the version's
 CHANGELOG section (release.yml extracts it), so keep sections grouped: breaking changes, new, faster, fixed.
-All five detectors, both compatibility modes (`PySceneDetectVersion.V0_7_1` default and `V0_6_4`), exports
+All five detectors, scenedetect 0.7.1 (`PySceneDetectVersion.V0_7_1`; the 0.6.4 mode was dropped in 0.9.0), exports
 (save-images, save-html, split-video), stats, streaming out (`DetectStreamAsync`) and in (`Detect(Stream)`, URLs,
-CLI `-i -`). CI compares every sample clip against scenedetect 0.7.1 and 0.6.4 on Linux for the core and FastYuv
+CLI `-i -`). CI compares every sample clip against scenedetect 0.7.1 on Linux for the core and FastYuv
 paths; detect-hash and 10-bit video are informational. `realworld.yml` runs whole films nightly; `benchmark.yml`
 weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what the user decided and why.
 
-**Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Tag `vX.Y.Z`
-on `main`; prerelease tags (`-`) publish without approval, stable ones wait for the user's approval of the `release`
-environment. Move the `## Unreleased` section of CHANGELOG.md to the version first.
+**Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Open a release
+PR that moves CHANGELOG.md's `## Unreleased` section to `## X.Y.Z – date`; merging it releases: release.yml (on every
+push to main) tags `vX.Y.Z` when that version isn't tagged yet and publishes. Prereleases (`-`) publish without
+approval, stable ones wait for the user's approval of the `release` environment. A hand-pushed `v*` tag still works.
 
 ## Working on this repository
 
@@ -57,7 +58,7 @@ environment. Move the `## Unreleased` section of CHANGELOG.md to the version fir
 - `src/ShotDetector.Cli`: `shotdetect` (list-scenes table/CSV/JSON, `--stats`, `--save-images`, `--split-video`,
   time/crop/skip options). `-p:WithFastYuv=true` builds a dev-only LGPL variant for `compare.py --fast-yuv`.
 - `tests/ShotDetector.Tests`: xunit. `Clips` fixture makes mpeg4 clips with ffmpeg (150 frames @ 25 fps, cuts at
-  50/100). RangeTests (time/skip/crop), VideoTests (reader, streaming, cancellation), Compat064Tests, HashDetectorTests.
+  50/100). RangeTests (time/skip/crop), VideoTests (reader, streaming, cancellation), InProcessTests, HashDetectorTests.
 - `tools/compare.py`: runs scenedetect and shotdetect on videos, diffs cuts/CSVs/stats, Markdown report.
   `tools/make-samples.ps1`: synthetic + Blender trailers + VFR/rotation/colour variants. `tools/realworld.py`:
   whole Blender films and codec clips, pinned by SHA-256. `tools/mutation/`: guard mutations.
@@ -77,8 +78,6 @@ environment. Move the `## Unreleased` section of CHANGELOG.md to the version fir
   `-e`/`-d` rounded to frames at the average rate; frame skip reads ahead before checking.
 - FFmpeg 8+ ignores `in_color_matrix`: we follow the colour tags like OpenCV with FFmpeg 8 (Windows OpenCV wheels
   still carry FFmpeg 7.1 and differ on BT.709; Linux is the reference).
-- scenedetect 0.6.4's ThresholdDetector is nondeterministic on Linux (excluded from CI compare); its histogram
-  detector re-initialises at frame 1 (`if not last_cut` is false for 0) — reproduced.
 - MPEG-PS packets mostly lack a pts: OpenCV uses the frame's dts, so the reader takes per-frame timestamps
   from an ffprobe decoding pass when any packet has none (`FrameTimestamps`).
 - 10-bit on Linux: OpenCV's FFmpeg converts to BGR with ±1 differences no ffmpeg CLI flag reproduces (FFmpeg 8.1/9.0,
@@ -86,8 +85,7 @@ environment. Move the `## Unreleased` section of CHANGELOG.md to the version fir
   decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments.
 - Frame labels (0.7.1): each decoded frame's showinfo time is matched to its packet (`PacketOf`), so frames
   the decoder drops make numbers skip as in OpenCV. Files always run with `-copyts` (absolute times); streamed
-  times already start at 0 (ffmpeg shifts them), so `_startPts` must not be subtracted there. 0.6.4 labels
-  are plain counters and skip neither.
+  times already start at 0 (ffmpeg shifts them), so `_startPts` must not be subtracted there.
 - The core path's frames: ffmpeg converts to BGR, then `remap` (two looping 16-bit PGM maps, x and y) keeps only
   `CvResize.SourceCols` x `SourceRows`; `ResizeSampled` resizes from that. Equivalent to the full frames by test
   (`SampledFramesAreTheFullFramesResized`); `DetectionOptions.FullFrames` (internal) brings the old path back.

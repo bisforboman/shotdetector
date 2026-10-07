@@ -3,7 +3,7 @@
 Usage: python tools/compare.py <video>... [--detector adaptive|content|threshold|both|all] [--tolerance 2]
                                [--ffmpeg-resize] [--fast-yuv] [--report summary.md] [--stats]
                                [--weights "1 1 1 1"] [--kernel-size 5]
-                               [--compat 0.6.4 --scenedetect-python path/to/python]
+                               [--compat 0.7.1 --scenedetect-python path/to/python]
 """
 
 import argparse
@@ -150,7 +150,7 @@ def main() -> int:
     ap.add_argument("--tolerance", type=int, default=2)
     ap.add_argument("--ffmpeg-resize", action="store_true", help="pass --ffmpeg-resize to ShotDetector")
     ap.add_argument("--fast-yuv", action="store_true", help="use the ShotDetector.FastYuv path")
-    ap.add_argument("--compat", help="PySceneDetect release ShotDetector reproduces (e.g. 0.6.4)")
+    ap.add_argument("--compat", help="PySceneDetect release ShotDetector reproduces (e.g. 0.7.1)")
     ap.add_argument("--scenedetect-python", default=sys.executable,
                     help="Python interpreter whose scenedetect is the reference (default: this one)")
     ap.add_argument("--report", help="also write a Markdown summary table to this file")

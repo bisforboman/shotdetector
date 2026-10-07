@@ -5,6 +5,12 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+### Breaking changes
+
+- The scenedetect 0.6.4 compatibility mode is gone: `PySceneDetectVersion.V0_6_4` and CLI `--compat 0.6.4`. 0.7.1
+  stays the default and only mode (`PySceneDetectVersion` remains, for the next scenedetect release); use
+  ShotDetector 0.8 to reproduce 0.6.4.
+
 ### Faster
 
 - ARM (Apple Silicon, Graviton, Ampere): the HSV conversion has a NEON path and the resize's vertical pass and the
