@@ -12,19 +12,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Docs-only pull requests (docs/ and *.md): the jobs below still run, so their required checks report, but skip
+  # their steps. Decided here, on a runner with git, from the PR's merge commit against its base.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.diff.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+      - id: diff
+        if: github.event_name == 'pull_request'
+        run: |
+          files=$(git diff --name-only HEAD^1 HEAD)
+          if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$'; then echo docs_only=true >> "$GITHUB_OUTPUT"; fi
+
   mutation:
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
+        if: needs.changes.outputs.docs_only != 'true'
         with:
           dotnet-version: 10.0.x
 
       - name: Install ffmpeg
+        if: needs.changes.outputs.docs_only != 'true'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Mutate the guards
+        if: needs.changes.outputs.docs_only != 'true'
         shell: pwsh
         run: ./tools/mutation/Invoke-Mutations.ps1

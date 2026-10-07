@@ -11,36 +11,60 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Docs-only pull requests (docs/ and *.md): the jobs below still run, so their required checks report, but skip
+  # their steps. Decided here, on a runner with git, from the PR's merge commit against its base.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.diff.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+      - id: diff
+        if: github.event_name == 'pull_request'
+        run: |
+          files=$(git diff --name-only HEAD^1 HEAD)
+          if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$'; then echo docs_only=true >> "$GITHUB_OUTPUT"; fi
+
   build:
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
+        if: needs.changes.outputs.docs_only != 'true'
         with:
           dotnet-version: 10.0.x
 
       - name: Install ffmpeg   # the video tests make clips with it, and the library runs it
+        if: needs.changes.outputs.docs_only != 'true'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       # In-process decoding needs FFmpeg 8.1's shared libraries; InProcessTests compare it with that build's
       # executable, so both go in one folder.
       - name: FFmpeg 8.1 shared libraries
+        if: needs.changes.outputs.docs_only != 'true'
         run: |
           curl -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-shared-8.1.tar.xz | tar -xJ
           cp ffmpeg-n8.1-latest-linux64-gpl-shared-8.1/bin/* ffmpeg-n8.1-latest-linux64-gpl-shared-8.1/lib/
           echo "SHOTDETECTOR_FFMPEG_LIBS=$PWD/ffmpeg-n8.1-latest-linux64-gpl-shared-8.1/lib" >> "$GITHUB_ENV"
 
       - name: Test
+        if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx
 
       - name: Pack
+        if: needs.changes.outputs.docs_only != 'true'
         run: |
           dotnet pack src/ShotDetector --output artifacts
           dotnet pack src/ShotDetector.FastYuv --output artifacts
           dotnet pack src/ShotDetector.Cli --output artifacts
 
       - uses: actions/upload-artifact@v7
+        if: needs.changes.outputs.docs_only != 'true'
         with:
           name: nupkg
           path: artifacts/*.nupkg
@@ -48,6 +72,7 @@ jobs:
   # The shotdetect CLI as a Native AOT binary for each platform the release ships (see release.yml):
   # it must build, start, and (on Linux, where ffmpeg is easy to install) detect the cuts in a clip.
   aot:
+    needs: changes
     strategy:
       fail-fast: false
       matrix:
@@ -65,23 +90,25 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Native toolchain (Alpine)
-        if: matrix.rid == 'linux-musl-x64'
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.rid == 'linux-musl-x64')
         shell: sh   # bash isn't installed yet
         run: apk add --no-cache clang build-base zlib-dev bash
 
       - uses: actions/setup-dotnet@v6
-        if: matrix.rid != 'linux-musl-x64'
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.rid != 'linux-musl-x64')
         with:
           dotnet-version: 10.0.x
 
       - name: Publish
+        if: needs.changes.outputs.docs_only != 'true'
         run: dotnet publish src/ShotDetector.Cli -c Release -r ${{ matrix.rid }} -p:PublishAot=true -o out
 
       - name: Starts
+        if: needs.changes.outputs.docs_only != 'true'
         run: ./out/shotdetect --help | head -3
 
       - name: Detects cuts
-        if: startsWith(matrix.rid, 'linux')
+        if: needs.changes.outputs.docs_only != 'true' && (startsWith(matrix.rid, 'linux'))
         run: |
           if [ -f /etc/alpine-release ]; then apk add --no-cache ffmpeg; else sudo apt-get update && sudo apt-get install -y ffmpeg; fi
           ffmpeg -v error -f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 \
@@ -93,15 +120,18 @@ jobs:
   # the video tests check real detection, cancellation, and that Alpine's ffmpeg converts colours
   # exactly like the FastYuv converter (which the parity job ties to scenedetect).
   alpine:
+    needs: changes
     runs-on: ubuntu-latest
     container: mcr.microsoft.com/dotnet/sdk:10.0-alpine
     steps:
       - uses: actions/checkout@v7
 
       - name: Install ffmpeg
+        if: needs.changes.outputs.docs_only != 'true'
         run: apk add --no-cache ffmpeg && ffmpeg -hide_banner -version | head -1
 
       - name: Test
+        if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx
 
   # ShotDetector and scenedetect run on the same clips; cuts, scene list CSVs and per-frame stats must
@@ -109,6 +139,7 @@ jobs:
   # the matching compatibility mode). The reference is scenedetect on Linux, whose OpenCV wheel
   # bundles FFmpeg 8 and so follows colour tags (the Windows wheel's FFmpeg 7.1 doesn't).
   parity:
+    needs: changes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -121,25 +152,31 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
+        if: needs.changes.outputs.docs_only != 'true'
         with:
           dotnet-version: 10.0.x
 
       - uses: actions/setup-python@v6
+        if: needs.changes.outputs.docs_only != 'true'
         with:
           python-version: '3.12'
 
       - name: Install ffmpeg ${{ env.FFMPEG }}
+        if: needs.changes.outputs.docs_only != 'true'
         run: |
           curl -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG.tar.xz" | tar -xJ
           echo "$PWD/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG/bin" >> "$GITHUB_PATH"
 
       - name: ffmpeg version
+        if: needs.changes.outputs.docs_only != 'true'
         run: ffmpeg -hide_banner -version | head -1
 
       - name: Install scenedetect
+        if: needs.changes.outputs.docs_only != 'true'
         run: pip install scenedetect==${{ matrix.scenedetect }} opencv-python-headless==5.0.0.93
 
       - name: Make sample clips
+        if: needs.changes.outputs.docs_only != 'true'
         shell: pwsh
         run: ./tools/make-samples.ps1
 
@@ -147,6 +184,7 @@ jobs:
       # frame over with the wrong frame number; repeated runs differ), so for 0.6.4 only the content
       # and adaptive detectors are compared. On Windows all three matched 0.6.4 exactly.
       - name: Compare with scenedetect
+        if: needs.changes.outputs.docs_only != 'true'
         run: |
           status=0
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
@@ -157,7 +195,7 @@ jobs:
 
       # Time range, frame skip and crop must give scenedetect's results too (constant frame rate clips).
       - name: Compare with scenedetect's time, --frame-skip and --crop options
-        if: matrix.scenedetect == '0.7.1'
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1')
         run: |
           status=0
           python tools/compare.py samples/sintel_trailer-480p.mp4 samples/bbb_trailer_400p.ogg samples/sintel_rotated.mp4             --detector both --stats --report options.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }}             --scenedetect-args "--crop 100 50 700 400 time -s 2s -e 00:00:20.000" --ours-args "--crop 100 50 700 400 -s 2s -e 00:00:20.000" || status=$?
@@ -168,24 +206,24 @@ jobs:
       # save-edl, save-fcp (fcpx and fcp7), save-otio and save-qp must be byte-identical (the CLI was built
       # by the compare steps above). Once: the exports don't depend on the frame pipeline.
       - name: Compare timeline exports with scenedetect's
-        if: matrix.scenedetect == '0.7.1' && matrix.path == 'core'
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.path == 'core')
         run: python tools/compare-timeline.py
 
       # Several detectors, per-detector options, drop/merge, suppress, -d downscale: CSVs and stats identical.
       - name: Compare detection options with scenedetect
-        if: matrix.scenedetect == '0.7.1' && matrix.path == 'core'
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.path == 'core')
         run: python tools/compare-options.py
 
       # load-scenes: shots read back from a scene list, then re-exported; byte-identical.
       - name: Compare load-scenes with scenedetect
-        if: matrix.scenedetect == '0.7.1' && matrix.path == 'core'
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.path == 'core')
         run: python tools/compare-load-scenes.py
 
       # detect-hash is informational: on flat frames (fades to black) the perceptual hash is DCT
       # rounding noise, in scenedetect itself as much as here, so a few frames and the odd cut inside
       # a fade differ. Everything else should match; eyeball the table if it changes.
       - name: Compare detect-hash with scenedetect (informational)
-        if: matrix.scenedetect == '0.7.1'
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1')
         run: |
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg             --detector hash --stats --report hash.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### detect-hash (informational), ${{ matrix.path }} path"; cat hash.md; } >> "$GITHUB_STEP_SUMMARY"
@@ -194,7 +232,7 @@ jobs:
       # green on some pixels that no ffmpeg CLI option reproduces, so per-frame stats differ a little.
       # Cuts should still match; eyeball the table if they don't.
       - name: Compare 10-bit video with scenedetect (informational)
-        if: matrix.scenedetect == '0.7.1'
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1')
         run: |
           python tools/compare.py samples/informational/*.mp4 --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### 10-bit (informational), ${{ matrix.path }} path"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
