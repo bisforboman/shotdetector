@@ -7,9 +7,20 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ### Breaking changes
 
+- `VideoDecoder.InProcess` without loadable FFmpeg libraries throws with `Reason = ShotDetectionError.FfmpegLibrariesNotFound`
+  (new), no longer `FfmpegNotFound`, which now means the executable only (issue #42).
+- `VideoInfo` has two more positional members, `Container` and `HasAudio` (issue #42).
 - The scenedetect 0.6.4 compatibility mode is gone: `PySceneDetectVersion.V0_6_4` and CLI `--compat 0.6.4`. 0.7.1
   stays the default and only mode (`PySceneDetectVersion` remains, for the next scenedetect release); use
   ShotDetector 0.8 to reproduce 0.6.4.
+
+### New
+
+- Which decoder a run uses: `DetectionProgress.DecodesInProcess` and `.Pipeline`, in every report from a first one
+  sent before any frame, so `DetectStreamAsync` callers see it too (issue #42).
+- `ShotDetection.CanDecodeInProcess(ffmpegDirectory)`: whether FFmpeg's libraries load, for a worker's startup check.
+- `VideoInfo.Container` (FFmpeg's demuxer name) and `HasAudio` (null for streamed input), so a probe can replace a
+  separate ffprobe call (issue #42).
 
 ### Faster
 

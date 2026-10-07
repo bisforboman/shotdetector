@@ -171,6 +171,14 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
     }
 
     [Fact]
+    public void CanDecodeInProcessFindsTheLibraries()
+    {
+        if (Libs is null)
+            return;
+        Assert.True(ShotDetection.CanDecodeInProcess(Libs));
+    }
+
+    [Fact]
     public void RotatedVideoUsesTheExecutable()
     {
         if (Libs is null)

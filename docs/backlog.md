@@ -69,6 +69,9 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | Probing in-process (stream properties, packet timestamps, rotation) when the libraries load, instead of ffprobe | With ShotDetector.Native, the last reason ffmpeg must be installed. Same text as ffprobe prints, compared in tests (7 clips, 7 colour formats) | Done (2026-10-07) |
 | 10-bit exactness via the in-process converter (OpenCV converts with the legacy swscale interface, which the sliced path uses) | Closes the known 10-bit divergence on Linux if it matches. Tried on Linux (10-bit 4:2:0, 4:2:2, BT.709 h264 against scenedetect 0.7.1): in-process gives exactly the executable's values, both differ from OpenCV's as before; the difference isn't the swscale interface | Dropped (2026-10-07) |
 | Issue #35: `DeinterlaceMode.Auto` (field order) and `ShotDetection.Probe` (headers only) | A worker can drop its own ffprobe call | Done (2026-10-07) |
+| Issue #42: decoder in progress reports, `FfmpegLibrariesNotFound`, `CanDecodeInProcess`, `VideoInfo.Container`/`HasAudio` | API for 0.9.0 | Done (2026-10-07) |
+| Issue #42: deinterlacing in-process (libavfilter with only yadif in our build) | 1080i broadcast is most of a user's input: 15.2 s with the executable vs 3.9 s in-process without deinterlacing | Open |
+| Issue #42: interlaced broadcast samples in CI (XDCAM HD MPEG-2 4:2:2 MXF, AVC-Intra, ProRes), parity with Off and against a lossless yadif copy with Auto | Confidence for broadcast input | Open |
 | 1.0 release plan: what must hold (parity matrix green for N releases of scenedetect/ffmpeg), version policy afterwards | So 1.0 means something. Plan (revised 2026-10-08): 1.0 when stable, from fixing and testing; no quiet period. Policy in README "Versions" (decisions.md) | Done (2026-10-08) |
 
 ## Done
