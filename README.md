@@ -238,7 +238,8 @@ Decoding is then the bottleneck, so ffmpeg gets 8 decoder threads there (`--thre
 
 In-process decoding (`Decoder = VideoDecoder.InProcess`, CLI `--decoder inprocess`) decodes with FFmpeg's
 shared libraries inside our process, as OpenCV does, instead of running the ffmpeg executable: the same
-frames (CI compares them), with ~40% less CPU for decoding and converting on Linux. It needs FFmpeg 8.1's
+frames (CI compares them), faster and with less CPU than the executable: on Linux with 2 CPUs, 1.2-1.5x the
+executable path's speed for 9-33% less CPU. It needs FFmpeg 8.1's
 shared libraries (a "shared" build; `--ffmpeg-dir` / `FfmpegDirectory` names their folder). Streams and URLs,
 image sequences and rotated video still use the executable.
 

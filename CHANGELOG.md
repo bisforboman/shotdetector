@@ -24,7 +24,8 @@ ffmpeg executable and to a lossless yadif copy.
 
 - In-process decoding, opt-in: `DetectionOptions.Decoder = VideoDecoder.InProcess` / `--decoder inprocess`
   decodes with FFmpeg 8.1's shared libraries (FFmpeg.AutoGen bindings, MIT) instead of the ffmpeg executable.
-  Same frames and results; about 40% less CPU for decoding on Linux (issue #12). Streams, URLs, image
+  Same frames and results. On Linux with 2 CPUs: 1.2-1.5x faster than the ffmpeg executable for 9-33% less
+  CPU; it decodes with all the CPUs, as OpenCV does (`--threads 1` uses the least CPU) (issue #12). Streams, URLs, image
   sequences, rotated video and deinterlacing still use the executable.
 - `Deinterlace` / `--deinterlace`: ffmpeg's yadif before analysis, for interlaced sources; results equal
   scenedetect's on a lossless `-vf yadif` copy, seeking included (issue #16).
