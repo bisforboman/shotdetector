@@ -37,4 +37,18 @@
     <ProjectReference Include="..\ShotDetector.FastYuv\ShotDetector.FastYuv.csproj" />
   </ItemGroup>
 
+  <!--
+    Our FFmpeg libraries (ShotDetector.Native's: native/<rid>/ at the repository root, put there by CI and the
+    release), bundled so shotdetect decodes in-process. A platform-specific publish (the AOT binaries) gets its
+    platform's next to the binary; the dotnet tool, which runs anywhere, gets them all under runtimes/<rid>/native/.
+  -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <None Include="..\..\native\$(RuntimeIdentifier)\*.dll;..\..\native\$(RuntimeIdentifier)\*.so.*;..\..\native\$(RuntimeIdentifier)\*.dylib"
+          Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == ''">
+    <None Include="..\..\native\**\*.dll;..\..\native\**\*.so.*;..\..\native\**\*.dylib"
+          Link="runtimes\%(RecursiveDir)native\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
 </Project>

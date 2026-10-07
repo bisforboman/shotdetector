@@ -5,12 +5,18 @@ name: Native libraries
 # release.yml and the tests take them from here (workflow_call).
 on:
   workflow_call:
+    inputs:
+      rids:
+        description: JSON array of the platforms to build (default all)
+        type: string
+        default: '["win-x64","linux-x64","linux-arm64","linux-musl-x64","osx-arm64"]'
   workflow_dispatch:
   pull_request:
     paths: ['tools/native/**', '.github/workflows/native.yml']
 
 jobs:
   build:
+    if: contains(fromJSON(inputs.rids || '["win-x64","linux-x64","linux-arm64","linux-musl-x64","osx-arm64"]'), matrix.rid)
     strategy:
       fail-fast: false
       matrix:
