@@ -5,6 +5,10 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+## 0.8.0 – 2026-10-07
+
+Automatic deinterlacing and a public probe (issue #35). Results are unchanged unless you turn deinterlacing on.
+
 ### Breaking changes
 
 - `DetectionOptions.Deinterlace` is a `DeinterlaceMode` (`Off`, `On`, `Auto`) instead of a `bool`: `Deinterlace = true`
