@@ -9,7 +9,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
 {
     static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
 
-    public static TheoryData<string> Cases => ["plain", "start", "end", "crop", "full", "scale", "fastyuv", "dropped", "mpegps", "skip"];
+    public static TheoryData<string> Cases => ["plain", "start", "end", "crop", "full", "scale", "fastyuv", "dropped", "mpegps", "skip", "mpegps-start", "deinterlace", "deinterlace-start", "deinterlace-fastyuv"];
 
     [Theory]
     [MemberData(nameof(Cases))]
@@ -17,7 +17,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
     {
         if (Libs is null)
             return;
-        string path = name switch { "dropped" => clips.ThreeShotsDropped, "mpegps" => clips.ThreeShotsMpegPs, _ => clips.ThreeShots };
+        string path = name switch { "dropped" => clips.ThreeShotsDropped, "mpegps" or "mpegps-start" => clips.ThreeShotsMpegPs, _ when name.StartsWith("deinterlace") => clips.Interlaced, _ => clips.ThreeShots };
         var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = name != "skip", FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess };
         options = name switch
         {
@@ -28,6 +28,10 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             "scale" => options with { Downscale = 1 },
             "fastyuv" => options with { Yuv420Converter = new SwscaleYuv420() },
             "skip" => options with { FrameSkip = 2 },
+            "mpegps-start" => options with { StartTime = "2.5" },
+            "deinterlace" => options with { Deinterlace = DeinterlaceMode.On },
+            "deinterlace-start" => options with { Deinterlace = DeinterlaceMode.On, StartTime = "2.5" },
+            "deinterlace-fastyuv" => options with { Deinterlace = DeinterlaceMode.On, Yuv420Converter = new SwscaleYuv420() },
             _ => options,
         };
         var pipe = ShotDetection.Detect(path, options);

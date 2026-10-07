@@ -8,10 +8,13 @@ public sealed partial class VideoReader
     /// executable: streams and URLs, image sequences, rotated video, and deinterlacing.
     /// </summary>
     public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && _stream is null && !Streaming && _inputOptions.Length == 0
-        && _rotation == 0 && !_deinterlace && !_inProcessGaveNothing
-        && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory));
+        && _rotation == 0 && !_inProcessGaveNothing
+        && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory))
+        // Deinterlacing needs libavfilter's yadif too (ShotDetector.Native has it since 0.9).
+        && (!_deinterlace || InProcessDecoder.CanDeinterlace(_ffmpegDirectory));
 
     bool _inProcessGaveNothing; // Auto, and the libraries decoded no frame of this video: the executable instead
+    bool _ptsFromFrames;        // MPEG-PS and the like: packets without pts, timestamps from a decoding pass
 
     /// <summary>Frames(startFrame, count) decoded in-process: the same bytes per pipeline as the ffmpeg pipe, then the same resize.</summary>
     IEnumerable<byte[]> FramesInProcess(int startFrame, int? count, CancellationToken cancellationToken)
@@ -32,10 +35,13 @@ public sealed partial class VideoReader
         int[]? rows = resizer?.SourceRows.Select(r => r + CropRegion.Y).ToArray();
         byte[] raw = new byte[size], small = new byte[Width * Height * 3];
 
-        using var decoder = new InProcessDecoder(_path, _ffmpegDirectory, _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true));
-        // Seek as the command line does: two frames early, then drop every frame before the wanted one's pts.
+        using var decoder = new InProcessDecoder(_path, _ffmpegDirectory, _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true),
+            deinterlace: _deinterlace);
+        // Seek as the command line does: two frames early, then drop every frame before the wanted one's pts. Not when
+        // the packets carry no pts (MPEG-PS): there libavformat's seek lands after the wanted frame (no index to go
+        // by), so decode from the start and drop.
         long? from = startFrame > 0 && startFrame < _pts.Length ? _pts[startFrame] : null;
-        if (from is not null && startFrame - 2 > 0)
+        if (from is not null && startFrame - 2 > 0 && !_ptsFromFrames)
             decoder.Seek(_pts[startFrame - 2]);
         int emitted = 0;
         while ((count is null || emitted < count) && decoder.Next())

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds FFmpeg's shared libraries for ShotDetector.Native.<rid>: decoding only (libavcodec decoders, libavformat
-# demuxers, libswscale, libavutil; libswresample too, which FFmpeg.AutoGen loads with libavcodec), LGPL, no
-# external libraries. Run on the platform itself, except win-x64, which
+# demuxers, libswscale, libavutil; libswresample too, which FFmpeg.AutoGen loads with libavcodec), plus libavfilter
+# with only yadif (deinterlacing) and a graph's buffer/buffersink ends; LGPL, no external libraries. Run on the platform itself, except win-x64, which
 # cross-compiles from Linux with mingw-w64.
 #
 #   tools/native/build-ffmpeg.sh <rid> <output dir>
@@ -22,10 +22,11 @@ echo "$SHA256  ffmpeg.tar.xz" | sha256sum -c - 2>/dev/null || echo "$SHA256  ffm
 tar -xJf ffmpeg.tar.xz
 cd "ffmpeg-$VERSION"
 
-# Decoding only: what OpenCV's FFmpeg does for scenedetect, minus everything that writes or filters. No
-# --enable-gpl/--enable-nonfree, and --disable-autodetect keeps system libraries (and their licences) out.
+# Decoding only: what OpenCV's FFmpeg does for scenedetect, minus everything that writes, plus yadif for
+# DeinterlaceMode (LGPL, like the rest). No --enable-gpl/--enable-nonfree, and --disable-autodetect keeps system
+# libraries (and their licences) out.
 set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
-  --disable-programs --disable-doc --disable-avdevice --disable-avfilter \
+  --disable-programs --disable-doc --disable-avdevice --disable-filters --enable-filter=buffer,buffersink,yadif \
   --disable-network --disable-encoders --disable-muxers --disable-autodetect \
   --disable-debug --enable-stripping --enable-optimizations
 
@@ -42,7 +43,7 @@ esac
 make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)" > make.log 2>&1 || { tail -60 make.log; exit 1; }
 make install > /dev/null
 
-for lib in avutil swresample swscale avcodec avformat; do
+for lib in avutil swresample swscale avcodec avformat avfilter; do
   case "$rid" in
     win-x64) cp "$work"/install/bin/$lib-*.dll "$out/" ;;
     linux-*) f=$(ls "$work"/install/lib/lib$lib.so.* | grep -E "lib$lib\.so\.[0-9]+$"); cp -L "$f" "$out/" ;;
