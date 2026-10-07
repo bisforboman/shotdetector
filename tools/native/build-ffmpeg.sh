@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds FFmpeg's shared libraries for ShotDetector.Native.<rid>: decoding only (libavcodec decoders, libavformat
-# demuxers, libswscale, libavutil), LGPL, no external libraries. Run on the platform itself, except win-x64, which
+# demuxers, libswscale, libavutil; libswresample too, which FFmpeg.AutoGen loads with libavcodec), LGPL, no
+# external libraries. Run on the platform itself, except win-x64, which
 # cross-compiles from Linux with mingw-w64.
 #
 #   tools/native/build-ffmpeg.sh <rid> <output dir>
@@ -24,7 +25,7 @@ cd "ffmpeg-$VERSION"
 # Decoding only: what OpenCV's FFmpeg does for scenedetect, minus everything that writes or filters. No
 # --enable-gpl/--enable-nonfree, and --disable-autodetect keeps system libraries (and their licences) out.
 set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
-  --disable-programs --disable-doc --disable-avdevice --disable-avfilter --disable-swresample \
+  --disable-programs --disable-doc --disable-avdevice --disable-avfilter \
   --disable-network --disable-encoders --disable-muxers --disable-autodetect \
   --disable-debug --enable-stripping --enable-optimizations
 
@@ -40,7 +41,7 @@ esac
 make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)" > make.log 2>&1 || { tail -60 make.log; exit 1; }
 make install > /dev/null
 
-for lib in avutil swscale avcodec avformat; do
+for lib in avutil swresample swscale avcodec avformat; do
   case "$rid" in
     win-x64) cp "$work"/install/bin/$lib-*.dll "$out/" ;;
     linux-*) f=$(ls "$work"/install/lib/lib$lib.so.* | grep -E "lib$lib\.so\.[0-9]+$"); cp -L "$f" "$out/" ;;
