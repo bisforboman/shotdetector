@@ -27,6 +27,9 @@ VIDEOS = {
     # Tears of Steel, the full film: 1280x534 h264 in a mov, 24 fps, 12 minutes, live action with fades.
     "tears_of_steel_1280x534_h264.mov": ("https://download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov",
                                          "efa9062d9cdb7a338e40ad530dfdf234806743f29ae6a1a136b97ece4e588e8f"),
+    # The Sintel trailer at 1080p h264, 24 fps, 52 seconds: the benchmark's full-HD case.
+    "sintel_trailer_1920x1080_h264.mp4": ("https://download.blender.org/durian/trailer/sintel_trailer-1080p.mp4",
+                                          "34bbd52a4b89fdf63c8ace50b268da26653a59508288100cd3c23de276db7931"),
     # The same 10 seconds of Big Buck Bunny at 720p in four codecs (test-videos.co.uk).
     "bbb_10s_h264.mp4": ("https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4",
                          "18b99ec25f32f6bd2223aa54e4b5632533328bf5cc81c283eba7604c42649f75"),
