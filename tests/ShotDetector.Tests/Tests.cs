@@ -30,6 +30,13 @@ public class DecodeThreadsTests
     [InlineData(6, FramePipeline.Yuv420Sampled, 5)]
     public void DefaultLeavesOneCpu(int cpus, FramePipeline pipeline, int threads) =>
         Assert.Equal(threads, VideoReader.DefaultDecodeThreads(pipeline, cpus));
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 2)]
+    [InlineData(16, 4)]
+    public void InProcessUsesEveryCpu(int cpus, int threads) =>
+        Assert.Equal(threads, VideoReader.DefaultDecodeThreads(FramePipeline.SampledBgr, cpus, inProcess: true));
 }
 
 public class ContentScorerTests
