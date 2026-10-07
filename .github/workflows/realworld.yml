@@ -4,9 +4,8 @@ name: Real world
 # clips in every common codec): cuts, scene lists and per-frame stats must be identical for every detector.
 # Nightly, so a new ffmpeg/scenedetect/OpenCV release that changes a result is noticed the next morning.
 on:
-  push:
-    branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]   # drafts run nothing until marked ready
   workflow_dispatch:
   schedule:
     - cron: '17 2 * * *'
@@ -19,6 +18,7 @@ jobs:
   # Docs-only pull requests (docs/ and *.md): the jobs below still run, so their required checks report, but skip
   # their steps. Decided here, on a runner with git, from the PR's merge commit against its base.
   changes:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
