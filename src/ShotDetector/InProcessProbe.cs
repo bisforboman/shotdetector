@@ -16,7 +16,7 @@ internal static unsafe class InProcessProbe
     /// <c>ffprobe -select_streams v:0 -show_entries stream=...:stream_side_data=rotation:format=duration:packet=pts
     /// -of default=nw=1</c>'s output (the entries VideoReader reads).
     /// </summary>
-    public static string Properties(string path, string? libraryDirectory)
+    public static string Properties(string path, string? libraryDirectory, bool packets = true)
     {
         InProcessDecoder.Load(libraryDirectory);
         var fmt = Open(path);
@@ -29,6 +29,13 @@ internal static unsafe class InProcessProbe
             var st = fmt->streams[index];
             var par = st->codecpar;
             void Line(string key, string value) => sb.Append(key).Append('=').Append(value).Append('\n');
+            Line("codec_name", Name(ffmpeg.avcodec_get_name(par->codec_id)) ?? "unknown");
+            // ffprobe's names for the field order.
+            Line("field_order", par->field_order switch
+            {
+                AVFieldOrder.AV_FIELD_PROGRESSIVE => "progressive", AVFieldOrder.AV_FIELD_TT => "tt", AVFieldOrder.AV_FIELD_BB => "bb",
+                AVFieldOrder.AV_FIELD_TB => "tb", AVFieldOrder.AV_FIELD_BT => "bt", _ => "unknown",
+            });
             Line("width", par->width.ToString(CultureInfo.InvariantCulture));
             Line("height", par->height.ToString(CultureInfo.InvariantCulture));
             Line("pix_fmt", Name(ffmpeg.av_get_pix_fmt_name((AVPixelFormat)par->format)) ?? "unknown");
@@ -51,6 +58,8 @@ internal static unsafe class InProcessProbe
                 Line("rotation", ((long)ffmpeg.av_display_rotation_get(in m)).ToString(CultureInfo.InvariantCulture));
             }
             Line("duration", Time(fmt->duration, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }));
+            if (!packets)
+                return sb.ToString();
             var pkt = ffmpeg.av_packet_alloc();
             try
             {

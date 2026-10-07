@@ -107,7 +107,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
-    public static TheoryData<string> ProbeClips => ["three", "rotated", "mkv", "faststart", "mpegps", "dropped", "long"];
+    public static TheoryData<string> ProbeClips => ["three", "rotated", "mkv", "faststart", "mpegps", "dropped", "long", "interlaced"];
 
     [Theory]
     [MemberData(nameof(ProbeClips))]
@@ -119,7 +119,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         string path = name switch
         {
             "rotated" => clips.Rotated, "mkv" => clips.ThreeShotsMkv, "faststart" => clips.ThreeShotsFaststart,
-            "mpegps" => clips.ThreeShotsMpegPs, "dropped" => clips.ThreeShotsDropped, "long" => clips.Long, _ => clips.ThreeShots,
+            "mpegps" => clips.ThreeShotsMpegPs, "dropped" => clips.ThreeShotsDropped, "long" => clips.Long, "interlaced" => clips.Interlaced, _ => clips.ThreeShots,
         };
         string ffprobe = Path.Combine(Libs, OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
         var expected = Parse(VideoReader.Run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries",

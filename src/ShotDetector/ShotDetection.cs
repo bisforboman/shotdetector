@@ -34,6 +34,62 @@ public enum DetectorKind
     Hash,
 }
 
+/// <summary>Whether frames are deinterlaced before analysis (<see cref="DetectionOptions.Deinterlace"/>).</summary>
+public enum DeinterlaceMode
+{
+    /// <summary>Never (the default; as scenedetect).</summary>
+    Off,
+
+    /// <summary>Always, with ffmpeg's yadif.</summary>
+    On,
+
+    /// <summary>When the video stream is flagged interlaced (its field order is not progressive or unknown).</summary>
+    Auto,
+}
+
+/// <summary>A video stream's field order, as its container or codec reports it (ffprobe's field_order).</summary>
+public enum FieldOrder
+{
+    /// <summary>Not reported.</summary>
+    Unknown,
+
+    /// <summary>Progressive frames.</summary>
+    Progressive,
+
+    /// <summary>Interlaced, top field coded and shown first (ffprobe: tt).</summary>
+    TopFirst,
+
+    /// <summary>Interlaced, bottom field coded and shown first (bb).</summary>
+    BottomFirst,
+
+    /// <summary>Interlaced, top field coded first, bottom shown first (tb).</summary>
+    TopCodedBottomFirst,
+
+    /// <summary>Interlaced, bottom field coded first, top shown first (bt).</summary>
+    BottomCodedTopFirst,
+}
+
+/// <summary>
+/// A video's properties from its headers (<see cref="ShotDetection.Probe(string, DetectionOptions?, CancellationToken)"/>):
+/// fast, without reading the packets.
+/// </summary>
+/// <param name="Width">Width as shown (a 90° rotation tag swaps it with the height, as decoding does).</param>
+/// <param name="Height">Height as shown.</param>
+/// <param name="FrameRate">The frame rate detection uses (the average rate, as OpenCV reports it).</param>
+/// <param name="FrameCount">The frame count scenedetect takes as the video's length; null if the headers don't say.</param>
+/// <param name="Duration">The container's duration; null if unknown.</param>
+/// <param name="Codec">The video codec's FFmpeg name (h264, hevc, mpeg2video, ...).</param>
+/// <param name="PixelFormat">FFmpeg's pixel format name (yuv420p, yuv420p10le, ...).</param>
+/// <param name="FieldOrder">Progressive, interlaced (which field first), or unknown.</param>
+/// <param name="Rotation">The display rotation in degrees, 0 if none.</param>
+public sealed record VideoInfo(int Width, int Height, Fps FrameRate, long? FrameCount, TimeSpan? Duration, string Codec,
+    string PixelFormat, FieldOrder FieldOrder, int Rotation)
+{
+    /// <summary>Whether the stream is flagged interlaced (what <see cref="DeinterlaceMode.Auto"/> goes by).</summary>
+    public bool IsInterlaced => FieldOrder is FieldOrder.TopFirst or FieldOrder.BottomFirst
+        or FieldOrder.TopCodedBottomFirst or FieldOrder.BottomCodedTopFirst;
+}
+
 /// <summary>How frames are decoded.</summary>
 public enum VideoDecoder
 {
@@ -201,10 +257,12 @@ public sealed record DetectionOptions
 
     /// <summary>
     /// Deinterlace with ffmpeg's yadif filter (default settings, one frame out per frame in) before analysis, for
-    /// interlaced sources such as 1080i broadcast. Results match scenedetect run on a lossless copy made with
-    /// <c>ffmpeg -vf yadif</c>. Only detection sees deinterlaced frames; exported images and clips are the original's.
+    /// interlaced sources such as 1080i broadcast: <see cref="DeinterlaceMode.On"/> always,
+    /// <see cref="DeinterlaceMode.Auto"/> when the stream is flagged interlaced. Results match scenedetect run on a
+    /// lossless copy made with <c>ffmpeg -vf yadif</c>. Only detection sees deinterlaced frames; exported images and
+    /// clips are the original's.
     /// </summary>
-    public bool Deinterlace { get; init; }
+    public DeinterlaceMode Deinterlace { get; init; }
 
     /// <summary>
     /// ffmpeg decoder threads; 0 = ffmpeg's choice. Null (the default) is one fewer than the CPUs available (so 1 on a
@@ -300,6 +358,26 @@ public static class ShotDetection
     /// <c>.AddSource(ShotDetection.ActivitySourceName)</c>.
     /// </summary>
     public const string ActivitySourceName = "ShotDetector";
+
+    /// <summary>
+    /// A video's properties from its headers: size, frame rate, frame count, duration, codec, pixel format, field
+    /// order (to decide <see cref="DetectionOptions.Deinterlace"/>, or leave it to <see cref="DeinterlaceMode.Auto"/>)
+    /// and rotation. Quick: it doesn't read the packets. In-process when FFmpeg's libraries load, else with ffprobe.
+    /// </summary>
+    /// <param name="videoPath">A file path or URL.</param>
+    /// <param name="options">Where ffmpeg is and how to decode (<see cref="DetectionOptions.FfmpegDirectory"/>,
+    /// <see cref="DetectionOptions.Decoder"/>), and the compatibility mode and frame rate override, which the reported
+    /// frame rate follows.</param>
+    /// <param name="cancellationToken">Cancels probing.</param>
+    public static VideoInfo Probe(string videoPath, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
+        VideoReader.Headers(videoPath, options, cancellationToken).Info;
+
+    /// <summary><see cref="Probe(string, DetectionOptions?, CancellationToken)"/> on a background thread.</summary>
+    /// <param name="videoPath">A file path or URL.</param>
+    /// <param name="options">See <see cref="Probe(string, DetectionOptions?, CancellationToken)"/>.</param>
+    /// <param name="cancellationToken">Cancels probing.</param>
+    public static Task<VideoInfo> ProbeAsync(string videoPath, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
+        Task.Run(() => Probe(videoPath, options, cancellationToken), cancellationToken);
 
     static readonly System.Diagnostics.ActivitySource Tracing =
         new(ActivitySourceName, typeof(ShotDetection).Assembly.GetName().Version?.ToString());
