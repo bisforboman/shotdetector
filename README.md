@@ -24,7 +24,9 @@ dotnet add package ShotDetector.FastYuv         # optional, LGPL: faster on larg
 dotnet tool install -g ShotDetector.Cli         # the shotdetect command
 ```
 
-ffmpeg and ffprobe must be on `PATH` (or set `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`).
+ffmpeg and ffprobe must be on `PATH` (or set `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`). When FFmpeg 8's
+shared libraries are there too (a "shared" build, or `ffmpeg-libs` on Alpine), frames are decoded in-process:
+faster and lighter, with the same results (see Performance).
 
 Releases are built by GitHub Actions from the tagged commit: packages carry SourceLink and symbol packages, and
 every package and binary has a signed build attestation (`gh attestation verify <file> --repo bisforboman/shotdetector`).
@@ -236,12 +238,12 @@ The FastYuv path goes further: ffmpeg sends raw yuv420p (no conversion at all) a
 `SwscaleYuv420.cs`, a bit-exact port of swscale's converter, converts only the pixels the resize reads.
 Decoding is then the bottleneck, so ffmpeg gets 8 decoder threads there (`--threads`; 4 on the core path).
 
-In-process decoding (`Decoder = VideoDecoder.InProcess`, CLI `--decoder inprocess`) decodes with FFmpeg's
-shared libraries inside our process, as OpenCV does, instead of running the ffmpeg executable: the same
-frames (CI compares them), faster and with less CPU than the executable: on Linux with 2 CPUs, 1.2-1.5x the
-executable path's speed for 9-33% less CPU. It needs FFmpeg 8.1's
-shared libraries (a "shared" build; `--ffmpeg-dir` / `FfmpegDirectory` names their folder). Streams and URLs,
-image sequences and rotated video still use the executable.
+In-process decoding decodes with FFmpeg's shared libraries inside our process, as OpenCV does, instead of
+running the ffmpeg executable: the same frames (CI compares them), faster, with less CPU and about half the
+memory. It is the default whenever FFmpeg 8's shared libraries load (`Decoder = VideoDecoder.Auto`; from
+`FfmpegDirectory` / `--ffmpeg-dir`, else the system's usual places); otherwise the executable is used.
+`--decoder inprocess` insists on the libraries, `--decoder process` on the executable. Streams and URLs, image
+sequences, rotated video and deinterlacing always use the executable.
 
 Memory: most of it is ffmpeg's own frame queues and decoder threads (whole decoded frames); our
 process takes ~50 MB. `--threads 1` (`DecodeThreads = 1`) lowers ffmpeg's share on many-core machines,

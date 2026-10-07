@@ -64,7 +64,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | Issue #19: `ActivitySource` "ShotDetector", one span per detection (frames, fps, size, pipeline, decoder) | Shows in OpenTelemetry traces without wrapping each call | Done (2026-10-06) |
 | Issue #18: SourceLink and symbol packages, CI-deterministic builds, GitHub build attestations for packages and binaries (decisions.md) | Approval of a production dependency | Done (2026-10-06) |
 | Issue #16: `Deinterlace` option (yadif before the resize); results match scenedetect on a losslessly deinterlaced copy | 1080i broadcast files without a re-encode | Done (2026-10-06) |
-| In-process decoding by default when FFmpeg 8.1's libraries load, the ffmpeg executable otherwise (decisions.md) | Faster than scenedetect and ~half the memory for users who pass no flag | Open |
+| In-process decoding by default when FFmpeg 8.1's libraries load, the ffmpeg executable otherwise (decisions.md) | Faster than scenedetect and ~half the memory for users who pass no flag | Done (2026-10-07) |
 | `ShotDetector.Native` (LGPL): FFmpeg 8.1 shared libraries for win-x64, linux-x64, linux-musl-x64, osx-arm64 | In-process with no ffmpeg install | Open |
 | 10-bit exactness via the in-process converter (OpenCV converts with the legacy swscale interface, which the sliced path uses) | Closes the known 10-bit divergence on Linux if it matches | Open |
 | 1.0 release plan: what must hold (parity matrix green for N releases of scenedetect/ffmpeg), version policy afterwards | So 1.0 means something | Open |
