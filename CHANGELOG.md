@@ -5,6 +5,14 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+### Changed
+
+- In-process decoding is the default when FFmpeg 8's shared libraries load (`VideoDecoder.Auto`, the new default;
+  CLI `--decoder auto`), else the ffmpeg executable as before. Same results either way; in-process is faster than
+  scenedetect on 2 CPUs on most films and uses about half the memory of the executable path. `--decoder process`
+  keeps the executable. FFmpeg's libraries load once per process: a later `FfmpegDirectory` no longer errors, the
+  first copy is used.
+
 ## 0.6.1 – 2026-10-07
 
 Speed only: every result is unchanged (byte-identical stats on Sintel, Big Buck Bunny and Tears of Steel).

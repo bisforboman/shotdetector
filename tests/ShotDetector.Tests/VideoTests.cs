@@ -155,7 +155,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         };
         System.Diagnostics.ActivitySource.AddActivityListener(listener);
         var parent = new System.Diagnostics.Activity("test").Start();
-        ShotDetection.Detect(clips.ThreeShots);
+        var result = ShotDetection.Detect(clips.ThreeShots);
         parent.Stop();
         // Other tests may run detections meanwhile: take this one's span by its parent.
         var span = Assert.Single(spans, a => a.ParentSpanId == parent.SpanId);
@@ -163,7 +163,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(150, span.GetTagItem("shotdetector.frames"));
         Assert.Equal(3, span.GetTagItem("shotdetector.shots"));
         Assert.Equal(320, span.GetTagItem("shotdetector.video.width"));
-        Assert.Equal("process", span.GetTagItem("shotdetector.decoder"));
+        Assert.Equal(result.Video.DecodesInProcess ? "inprocess" : "process", span.GetTagItem("shotdetector.decoder"));
     }
 
     [Fact]
