@@ -15,17 +15,36 @@ on:
     paths: ['tools/native/**', '.github/workflows/native.yml']
 
 jobs:
+  # The platforms asked for (all by default), as the build job's matrix: a job-level `if` can't see `matrix`, and
+  # this way the platforms not asked for don't start a runner at all.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.plan.outputs.include }}
+    steps:
+      - id: plan
+        env:
+          RIDS: ${{ inputs.rids || '["win-x64","linux-x64","linux-arm64","linux-musl-x64","osx-arm64"]' }}
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, os
+          all = [
+              {"rid": "win-x64", "os": "ubuntu-22.04"},          # cross-compiled with mingw-w64
+              {"rid": "linux-x64", "os": "ubuntu-22.04"},        # an older glibc, so the libraries load on more systems
+              {"rid": "linux-arm64", "os": "ubuntu-22.04-arm"},
+              {"rid": "linux-musl-x64", "os": "ubuntu-latest", "container": "alpine:3.20"},
+              {"rid": "osx-arm64", "os": "macos-14"},
+          ]
+          wanted = json.loads(os.environ["RIDS"])
+          print("include=" + json.dumps([p for p in all if p["rid"] in wanted]))
+          EOF
+
   build:
-    if: contains(fromJSON(inputs.rids || '["win-x64","linux-x64","linux-arm64","linux-musl-x64","osx-arm64"]'), matrix.rid)
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { rid: win-x64, os: ubuntu-22.04 }   # cross-compiled with mingw-w64
-          - { rid: linux-x64, os: ubuntu-22.04 }  # an older glibc, so the libraries load on more systems
-          - { rid: linux-arm64, os: ubuntu-22.04-arm }
-          - { rid: linux-musl-x64, os: ubuntu-latest, container: 'alpine:3.20' }
-          - { rid: osx-arm64, os: macos-14 }
+        include: ${{ fromJSON(needs.plan.outputs.include) }}
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     steps:
