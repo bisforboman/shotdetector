@@ -10,6 +10,7 @@
     <Rid Condition="'$(Rid)' == ''">linux-x64</Rid>
     <NativeDir>$(MSBuildThisFileDirectory)..\..\native\$(Rid)\</NativeDir>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
     <!-- No code, so no dependency group for the target framework. -->
     <NoWarn>$(NoWarn);NU5128</NoWarn>
 
