@@ -5,20 +5,24 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+## 0.6.1 – 2026-10-07
+
+Speed only: every result is unchanged (byte-identical stats on Sintel, Big Buck Bunny and Tears of Steel).
+In-process decoding (`--decoder inprocess`, FFmpeg 8.1's libraries) is now faster than scenedetect on most
+films; the default ffmpeg-executable path is up to 41% faster on small video.
+
 ### Faster
 
+- In-process decoding, on Linux with 2 CPUs (wall time against scenedetect 0.7.1): Sintel 1080p 4.6 s vs
+  5.1 s, Tears of Steel 32.1 s vs 33.2 s, Big Buck Bunny within 4% (was 1.7x), at the same or less CPU (issue #12):
+  - it converts only the row slices the resize reads, set up from the frame's colour tags (tested exact for
+    BT.709, full range, 4:2:2, 4:4:4, 10-bit and odd heights);
+  - the exact resize (every pipeline) has no bounds checks in the horizontal pass and a 256-bit vertical pass;
+    stage timing showed it cost more than decoding at 640x360;
+  - HSV conversion runs 8 pixels at a time (AVX2; tested on all 2^24 colours).
 - Default path (ffmpeg executable), small video: ffmpeg sends whole frames when the resize reads at least a
   quarter of the pixels, instead of filtering them (remap): on Linux with 2 CPUs, 37% faster on 640x360 and 41% on
-  426x240, with less memory; 1080p keeps the filter. Same results.
-- HSV conversion 8 pixels at a time (AVX2; tested on all 2^24 colours). With the items below, on Linux with
-  2 CPUs in-process decoding is faster than scenedetect on Sintel 1080p (4.6 s vs 5.1 s) and Tears of Steel
-  (32.1 s vs 33.2 s) and within 4% on Big Buck Bunny, at the same or less CPU (issue #12).
-- The exact resize (every pipeline): no bounds checks in the horizontal pass, 256-bit vertical pass; same
-  results. Big Buck Bunny (640x360) on one core: ~25% less CPU for a whole detection.
-- In-process decoding converts only the row slices the resize reads, set up from the frame's colour tags as
-  before (tested exact for BT.709, full range, 4:2:2, 4:4:4, 10-bit and odd heights). On Linux with 2 CPUs it
-  is now faster than scenedetect on Sintel 1080p (4.8 s vs 5.3 s, 11% less CPU), level on Tears of Steel, and
-  1.2x on Big Buck Bunny (was 1.7x) (issue #12).
+  426x240, with less memory; 1080p keeps the filter.
 
 ## 0.6.0 – 2026-10-07
 
