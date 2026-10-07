@@ -5,6 +5,15 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+### Faster
+
+- The exact resize (every pipeline): no bounds checks in the horizontal pass, 256-bit vertical pass; same
+  results. Big Buck Bunny (640x360) on one core: ~25% less CPU for a whole detection.
+- In-process decoding converts only the row slices the resize reads, set up from the frame's colour tags as
+  before (tested exact for BT.709, full range, 4:2:2, 4:4:4, 10-bit and odd heights). On Linux with 2 CPUs it
+  is now faster than scenedetect on Sintel 1080p (4.8 s vs 5.3 s, 11% less CPU), level on Tears of Steel, and
+  1.2x on Big Buck Bunny (was 1.7x) (issue #12).
+
 ## 0.6.0 – 2026-10-07
 
 Every result is still identical to scenedetect's; in-process decoding and deinterlacing are tested equal to the
