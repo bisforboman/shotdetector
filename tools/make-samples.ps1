@@ -1,5 +1,8 @@
 # Recreates samples/ (gitignored): a synthetic clip, Blender open-movie trailers (CC-BY, ~45 MB
 # total from download.blender.org) and frame-rate variants. Results: docs/verification-table.md.
+# Stop at the first failing ffmpeg, rather than leaving a sample out and failing later on a missing file.
+$ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 $out = Join-Path $PSScriptRoot "../samples"
 New-Item -ItemType Directory -Force $out | Out-Null
 Push-Location $out
@@ -54,6 +57,19 @@ try {
     # Linux and the ffmpeg CLI (any version, flags or dithering); cuts stay the same. See README.
     New-Item -ItemType Directory -Force informational | Out-Null
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libx264 -pix_fmt yuv420p10le -crf 18 informational/sintel_10bit.mp4
+
+    # Interlaced broadcast video (issue #42): 10 s of 1080i25, top field first, made from the 1080p trailer
+    # (50p woven into fields). XDCAM HD (MPEG-2 4:2:2, 50 Mbit/s, in MXF) is compared exactly (samples/broadcast/);
+    # AVC-Intra 100 and ProRes 422 are 10-bit, so informational like the 10-bit h264 above.
+    New-Item -ItemType Directory -Force broadcast | Out-Null
+    # The interlace filter marks the frames top field first (FFmpeg 9 dropped the -top encoder option).
+    $i25 = "fps=50,scale=1920:1080,setsar=1,interlace=scan=tff"
+    ffmpeg -v error -y -i sintel_trailer-1080p.mp4 -an -t 10 -vf "$i25,format=yuv422p" -c:v mpeg2video -b:v 50M `
+      -minrate 50M -maxrate 50M -bufsize 17825792 -g 12 -flags +ildct+ilme -f mxf broadcast/xdcam_hd422_1080i25.mxf
+    ffmpeg -v error -y -i sintel_trailer-1080p.mp4 -an -t 10 -vf "$i25,format=yuv422p10le" -c:v libx264 `
+      -avcintra-class 100 -flags +ildct+ilme -f mxf informational/avcintra100_1080i25.mxf
+    ffmpeg -v error -y -i sintel_trailer-1080p.mp4 -an -t 10 -vf "$i25,format=yuv422p10le" -c:v prores_ks -profile:v 2 `
+      -flags +ildct informational/prores422_1080i25.mov
 
     # Colour handling: full-range yuv420p (tagged "pc"), full-range MJPEG (yuvj420p) and 4:4:4.
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -vf "scale=out_range=full" -color_range pc -c:v libx264 -crf 18 -pix_fmt yuv420p sintel_fullrange.mp4
