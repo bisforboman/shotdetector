@@ -205,59 +205,49 @@ ignores colour tags (see below). With `--ffmpeg-resize`, cuts on real footage di
 
 ## Performance
 
-Results depend on the platform and the ffmpeg build more than one would hope, so here are both.
+Measured by `benchmark.yml` (weekly, `tools/bench.py`) on a GitHub-hosted Linux runner, content detector, best of 3.
+ShotDetector runs as installed: in-process decoding with its bundled FFmpeg libraries (the default), and, for
+comparison, with the ffmpeg executable (`--decoder process`, FFmpeg 9.0). CPU time counts every process
+(ffmpeg included); memory is the peak of the whole process tree. All give identical results.
 
-**Linux, 2 CPUs** (GitHub runner, Alpine container with ffmpeg 8.1.2 for ShotDetector, scenedetect on the
-host; Sintel trailer 1080p H.264, 1253 frames, content detector):
+**Pinned to 2 CPUs** (a small container):
 
-| | Wall time | CPU time |
-|---|---|---|
-| scenedetect 0.7.1 | 1.00x | 1.00x |
-| ShotDetector 0.5.0 (core, MIT) | 1.55x | 1.51x |
-| ShotDetector, unreleased (core, MIT) | 1.31x | 1.24x |
-| ShotDetector, unreleased + FastYuv (LGPL) | 1.40x | 1.40x |
+| Video | scenedetect 0.7.1 | ShotDetector (in-process) | ShotDetector (ffmpeg executable) |
+|---|---|---|---|
+| Sintel trailer, 1920x1080, 1253 frames | 6.6 s, 11.7 s CPU, 140 MB | **6.0 s**, 10.5 s CPU, 107 MB | 8.2 s, 12.8 s CPU, 172 MB |
+| Tears of Steel, 1280x534, 17620 frames | 44.8 s, 74.1 s CPU, 103 MB | **42.3 s**, 70.4 s CPU, 85 MB | 56.4 s, 93.3 s CPU, 164 MB |
+| Big Buck Bunny, 640x360, 14315 frames | 13.3 s, 22.3 s CPU, 93 MB | **13.0 s**, 21.2 s CPU, 76 MB | 15.6 s, 29.0 s CPU, 135 MB |
+| Elephants Dream, 426x240, 15691 frames | 10.2 s, 16.3 s CPU, 90 MB | **8.4 s**, 12.5 s CPU, 74 MB | 10.4 s, 19.2 s CPU, 125 MB |
 
-(Relative to scenedetect on the same runner, best of 3; runners differ in absolute speed.) Most of what
-remains is the ffmpeg command line itself, which spends ~35% more CPU than OpenCV's in-process FFmpeg on
-the same decoding and conversion (issue #12). Here the core path is faster than FastYuv, which still pipes
-whole yuv420p frames.
+**All the runner's CPUs:**
 
-**Windows desktop** (ffmpeg 7.1), 1920x1080 H.264, 2880 frames (2 minutes), content detector, pinned to
-2 CPUs and with all 16; best of 2, wall times vary ±10% between runs. Memory is the peak of the whole
-process tree (ShotDetector plus its ffmpeg, scenedetect's Python with OpenCV's FFmpeg inside):
+| Video | scenedetect 0.7.1 | ShotDetector (in-process) | ShotDetector (ffmpeg executable) |
+|---|---|---|---|
+| Sintel trailer 1080p | 3.9 s, 155 MB | **3.4 s**, 120 MB | 4.5 s, 204 MB |
+| Tears of Steel | 25.9 s, 110 MB | **24.3 s**, 91 MB | 31.7 s, 171 MB |
+| Big Buck Bunny | **8.4 s**, 95 MB | 9.3 s, 79 MB | 8.8 s, 143 MB |
+| Elephants Dream | **6.8 s**, 92 MB | 6.9 s, 76 MB | 7.2 s, 129 MB |
 
-| | 2 CPUs | 16 CPUs |
-|---|---|---|
-| scenedetect 0.7.1 | 19 s, 236 MB | 9.3 s, 231 MB |
-| ShotDetector (core, MIT) | 19 s, 305 MB | 8.7 s, 284 MB |
-| ShotDetector + FastYuv (LGPL) | 20 s, 268 MB | 5.1 s |
+Runners differ in absolute speed; compare within a table. In-process decoding is faster than scenedetect on 2 CPUs
+and on HD video, within 10% on small video with more CPUs, and always uses less CPU and memory. The ffmpeg
+executable costs ~35% more CPU than decoding in-process (issue #12) and twice the memory (its own frame queues).
 
-All exact variants give identical results. CPU time on 2 CPUs on this machine: ShotDetector 26 s
-(ffmpeg 20, ours 6), scenedetect 30 s; on Linux the balance tips the other way (above).
+In-process decoding uses FFmpeg's shared libraries inside our process, as OpenCV does: the `ShotDetector.Native`
+packages or the CLI's bundled ones, or a system install. It is the default whenever they load
+(`Decoder = VideoDecoder.Auto`; from `FfmpegDirectory` / `--ffmpeg-dir`, else next to the app, else the system's
+usual places); otherwise the executable is used. `--decoder inprocess` insists on the libraries, `--decoder
+process` on the executable. Streams and URLs, image sequences, rotated video, deinterlacing and AV1 use the
+executable.
 
-How the core path keeps up without converting pixels itself:
-- ffmpeg converts each frame to BGR exactly as OpenCV does, then its `remap` filter keeps only the
-  pixels the exact `cv2.resize` port reads (512 x 288 of a 1080p frame: 0.44 MB instead of 6.2 MB per
-  frame through the pipe, which used to cost as much CPU as the decoding);
-- the resize and the HSV + difference scoring run on several cores; reading overlaps processing.
+How it keeps up while computing exactly what OpenCV and scenedetect compute:
+- only the pixels the exact `cv2.resize` port reads are converted to BGR (in-process, the row slices that hold
+  them; with the executable, ffmpeg's `remap` filter keeps just those, or whole frames when that is cheaper);
+- the resize, BGR to HSV and the frame differences are vectorised (AVX2), with the same integer arithmetic;
+- decoding overlaps scoring, with all the CPUs as decoder threads in-process (`--threads` to change).
 
-The FastYuv path goes further: ffmpeg sends raw yuv420p (no conversion at all) and
-`SwscaleYuv420.cs`, a bit-exact port of swscale's converter, converts only the pixels the resize reads.
-Decoding is then the bottleneck, so ffmpeg gets 8 decoder threads there (`--threads`; 4 on the core path).
-
-In-process decoding decodes with FFmpeg's shared libraries inside our process, as OpenCV does, instead of
-running the ffmpeg executable: the same frames (CI compares them), faster, with less CPU and about half the
-memory. It is the default whenever FFmpeg 8's shared libraries load (`Decoder = VideoDecoder.Auto`; from
-`FfmpegDirectory` / `--ffmpeg-dir`, else the system's usual places); otherwise the executable is used.
-`--decoder inprocess` insists on the libraries, `--decoder process` on the executable. Streams and URLs, image
-sequences, rotated video and deinterlacing always use the executable.
-
-Memory: most of it is ffmpeg's own frame queues and decoder threads (whole decoded frames); our
-process takes ~50 MB. `--threads 1` (`DecodeThreads = 1`) lowers ffmpeg's share on many-core machines,
-at the cost of decoding speed.
-
-Files in other pixel formats (10-bit, 4:2:2/4:4:4, full-range MJPEG) or with an odd height take a
-slower path where ffmpeg converts whole frames, still with identical results.
+The FastYuv package (LGPL) is an alternative for the executable path: ffmpeg sends raw yuv420p and a bit-exact
+port of swscale's converter converts only the pixels the resize reads. Files in other pixel formats (10-bit,
+4:2:2/4:4:4, full-range MJPEG) or with an odd height convert whole frames, still with identical results.
 
 ## Where this differs from PySceneDetect
 
