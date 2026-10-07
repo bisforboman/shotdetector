@@ -7,6 +7,9 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ### Faster
 
+- Default path (ffmpeg executable), small video: ffmpeg sends whole frames when the resize reads at least a
+  quarter of the pixels, instead of filtering them (remap): on Linux with 2 CPUs, 37% faster on 640x360 and 41% on
+  426x240, with less memory; 1080p keeps the filter. Same results.
 - HSV conversion 8 pixels at a time (AVX2; tested on all 2^24 colours). With the items below, on Linux with
   2 CPUs in-process decoding is faster than scenedetect on Sintel 1080p (4.6 s vs 5.1 s) and Tears of Steel
   (32.1 s vs 33.2 s) and within 4% on Big Buck Bunny, at the same or less CPU (issue #12).
