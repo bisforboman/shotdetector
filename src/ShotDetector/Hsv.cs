@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 
 namespace ShotDetector;
@@ -38,7 +39,7 @@ internal static class Hsv
         ref byte pv = ref System.Runtime.InteropServices.MemoryMarshal.GetReference(v);
         ref int sdiv = ref System.Runtime.InteropServices.MemoryMarshal.GetArrayDataReference(SDiv);
         ref int hdiv = ref System.Runtime.InteropServices.MemoryMarshal.GetArrayDataReference(HDiv);
-        int i = Avx2.IsSupported ? ConvertAvx2(bgr, h, s, v) : 0;
+        int i = Avx2.IsSupported ? ConvertAvx2(bgr, h, s, v) : AdvSimd.Arm64.IsSupported ? ConvertNeon(bgr, h, s, v) : 0;
         for (; i < n; i++)
         {
             int b = System.Runtime.CompilerServices.Unsafe.Add(ref src, 3 * i);
@@ -95,6 +96,64 @@ internal static class Hsv
             }
         }
         return i;
+    }
+
+    /// <summary>
+    /// The same arithmetic 16 pixels at a time on ARM: one de-interleaving load gives B, G and R, max/min/difference
+    /// run on bytes, and the rest on four 4-lane int vectors. NEON can't gather, so the two table reads are scalar.
+    /// Returns how many pixels it converted.
+    /// </summary>
+    static unsafe int ConvertNeon(ReadOnlySpan<byte> bgr, Span<byte> h, Span<byte> s, Span<byte> v)
+    {
+        int n = h.Length, i = 0;
+        int* sd = stackalloc int[16], hd = stackalloc int[16];
+        byte* vm = stackalloc byte[16], df = stackalloc byte[16];
+        var half = Vector128.Create(1 << (Shift - 1));
+        var c180 = Vector128.Create(180);
+        fixed (byte* src = bgr, ph = h, ps = s, pv = v)
+        fixed (int* sdiv = SDiv, hdiv = HDiv)
+        {
+            for (; i + 16 <= n; i += 16)
+            {
+                var (b8, g8, r8) = AdvSimd.Arm64.Load3xVector128AndUnzip(src + 3 * i);
+                var vmax8 = Vector128.Max(b8, Vector128.Max(g8, r8));
+                var diff8 = vmax8 - Vector128.Min(b8, Vector128.Min(g8, r8));
+                vmax8.Store(pv + i);
+                vmax8.Store(vm);
+                diff8.Store(df);
+                for (int k = 0; k < 16; k++)
+                {
+                    sd[k] = sdiv[vm[k]];
+                    hd[k] = hdiv[df[k]];
+                }
+                var (bl, bh) = Vector128.Widen(b8);
+                var (gl, gh) = Vector128.Widen(g8);
+                var (rl, rh) = Vector128.Widen(r8);
+                var (ml, mh) = Vector128.Widen(vmax8);
+                var (dl, dh) = Vector128.Widen(diff8);
+                Vector128<int> S0, S1, S2, S3, H0, H1, H2, H3;
+                Quarter(Vector128.WidenLower(bl), Vector128.WidenLower(gl), Vector128.WidenLower(rl), Vector128.WidenLower(ml), Vector128.WidenLower(dl), sd, hd, out S0, out H0);
+                Quarter(Vector128.WidenUpper(bl), Vector128.WidenUpper(gl), Vector128.WidenUpper(rl), Vector128.WidenUpper(ml), Vector128.WidenUpper(dl), sd + 4, hd + 4, out S1, out H1);
+                Quarter(Vector128.WidenLower(bh), Vector128.WidenLower(gh), Vector128.WidenLower(rh), Vector128.WidenLower(mh), Vector128.WidenLower(dh), sd + 8, hd + 8, out S2, out H2);
+                Quarter(Vector128.WidenUpper(bh), Vector128.WidenUpper(gh), Vector128.WidenUpper(rh), Vector128.WidenUpper(mh), Vector128.WidenUpper(dh), sd + 12, hd + 12, out S3, out H3);
+                // All in 0..255 (hue 0..179), so narrowing keeps every value.
+                Vector128.Narrow(Vector128.Narrow(S0, S1), Vector128.Narrow(S2, S3)).AsByte().Store(ps + i);
+                Vector128.Narrow(Vector128.Narrow(H0, H1), Vector128.Narrow(H2, H3)).AsByte().Store(ph + i);
+            }
+        }
+        return i;
+
+        void Quarter(Vector128<uint> bu, Vector128<uint> gu, Vector128<uint> ru, Vector128<uint> mu, Vector128<uint> du, int* sdq, int* hdq,
+            out Vector128<int> sat, out Vector128<int> hue)
+        {
+            Vector128<int> b = bu.AsInt32(), g = gu.AsInt32(), r = ru.AsInt32(), vmax = mu.AsInt32(), diff = du.AsInt32();
+            var vr = Vector128.Equals(vmax, r);
+            var vg = Vector128.Equals(vmax, g);
+            sat = (diff * Vector128.Load(sdq) + half) >> Shift;
+            var x = (vr & (g - b)) + (~vr & ((vg & (b - r + diff + diff)) + (~vg & (r - g + (diff << 2)))));
+            x = (x * Vector128.Load(hdq) + half) >> Shift;
+            hue = x + (Vector128.LessThan(x, Vector128<int>.Zero) & c180);
+        }
     }
 
     /// <summary>8 ints in 0..255 as 8 bytes.</summary>

@@ -103,6 +103,30 @@ internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, 
 
     internal static double MeanPixelDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b) => AbsDiffSum(a, b) / (double)a.Length;
 
+    /// <summary>Σ|a[i] - b[i]| 16 bytes at a time with 128-bit vectors (ARM): the sum so far and how many bytes it took.</summary>
+    internal static (long Sum, int Done) AbsDiffSum128(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+    {
+        var total = System.Runtime.Intrinsics.Vector128<uint>.Zero;
+        int i = 0;
+        while (i + 16 <= a.Length)
+        {
+            // Up to 128 rounds of 2 x 255 fit a 16-bit lane; then move them to 32-bit lanes.
+            var acc = System.Runtime.Intrinsics.Vector128<ushort>.Zero;
+            for (int round = 0; round < 128 && i + 16 <= a.Length; round++, i += 16)
+            {
+                var x = System.Runtime.Intrinsics.Vector128.Create(a.Slice(i, 16));
+                var y = System.Runtime.Intrinsics.Vector128.Create(b.Slice(i, 16));
+                var d = System.Runtime.Intrinsics.Vector128.Max(x, y) - System.Runtime.Intrinsics.Vector128.Min(x, y);
+                var (lo, hi) = System.Runtime.Intrinsics.Vector128.Widen(d);
+                acc += lo + hi;
+            }
+            var (l32, h32) = System.Runtime.Intrinsics.Vector128.Widen(acc);
+            total += l32 + h32;
+        }
+        return ((long)(System.Runtime.Intrinsics.Vector128.Sum(System.Runtime.Intrinsics.Vector128.WidenLower(total))
+            + System.Runtime.Intrinsics.Vector128.Sum(System.Runtime.Intrinsics.Vector128.WidenUpper(total))), i);
+    }
+
     /// <summary>Σ|a[i] - b[i]|, 32 bytes at a time where the hardware has 256-bit vectors.</summary>
     internal static long AbsDiffSum(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {
@@ -129,6 +153,8 @@ internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, 
             sum = (long)(System.Runtime.Intrinsics.Vector256.Sum(System.Runtime.Intrinsics.Vector256.WidenLower(total))
                 + System.Runtime.Intrinsics.Vector256.Sum(System.Runtime.Intrinsics.Vector256.WidenUpper(total)));
         }
+        else if (System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated)
+            (sum, i) = AbsDiffSum128(a, b);
         for (; i < a.Length; i++)
             sum += Math.Abs(a[i] - b[i]);
         return sum;

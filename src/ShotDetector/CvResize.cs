@@ -230,11 +230,37 @@ internal sealed class CvResize
                 Vector256.Narrow(Vector256.Narrow(p, q), Vector256.Narrow(r, t)).AsByte().StoreUnsafe(ref o, (nuint)x);
             }
         }
+        else if (Vector128.IsHardwareAccelerated)
+            x = VResize128(ref r0, ref r1, ref MemoryMarshal.GetReference(d), n, b0, b1);
         for (; x < n; x++)
         {
             int v = (((b0 * (Unsafe.Add(ref r0, x) >> 4)) >> 16) + ((b1 * (Unsafe.Add(ref r1, x) >> 4)) >> 16) + 2) >> 2;
             d[x] = (byte)Math.Clamp(v, 0, 255);
         }
+    }
+
+    /// <summary>The vertical pass 16 values at a time with 128-bit vectors (ARM); returns how many it did.</summary>
+    internal static int VResize128(ref int r0, ref int r1, ref byte o, int n, int b0, int b1)
+    {
+        var vb0 = Vector128.Create(b0);
+        var vb1 = Vector128.Create(b1);
+        int x = 0;
+        for (; x <= n - 16; x += 16)
+        {
+            var p = Pass(ref r0, ref r1, (nuint)x, vb0, vb1);
+            var q = Pass(ref r0, ref r1, (nuint)x + 4, vb0, vb1);
+            var r = Pass(ref r0, ref r1, (nuint)x + 8, vb0, vb1);
+            var t = Pass(ref r0, ref r1, (nuint)x + 12, vb0, vb1);
+            Vector128.Narrow(Vector128.Narrow(p, q), Vector128.Narrow(r, t)).AsByte().StoreUnsafe(ref o, (nuint)x);
+        }
+        return x;
+    }
+
+    static Vector128<int> Pass(ref int r0, ref int r1, nuint x, Vector128<int> b0, Vector128<int> b1)
+    {
+        var v = (((b0 * (Vector128.LoadUnsafe(ref r0, x) >> 4)) >> 16) + ((b1 * (Vector128.LoadUnsafe(ref r1, x) >> 4)) >> 16)
+            + Vector128.Create(2)) >> 2;
+        return Vector128.Min(Vector128.Max(v, Vector128<int>.Zero), Vector128.Create(255));
     }
 
     static Vector256<int> Pass(ref int r0, ref int r1, nuint x, Vector256<int> b0, Vector256<int> b1)
