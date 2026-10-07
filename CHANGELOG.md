@@ -5,26 +5,34 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
-### New
+## 0.7.0 – 2026-10-07
 
-- `ShotDetector.Native.<rid>` packages (LGPL) for win-x64, linux-x64, linux-arm64, linux-musl-x64 and osx-arm64:
-  FFmpeg 8.1.3's libraries built by us for decoding only (7-10 MB per platform), so in-process decoding needs no
-  FFmpeg libraries installed. The shotdetect tool and binaries bundle them. Byte-identical stats to the FFmpeg 8.1
-  executable on H.264, HEVC and VP9.
-- The libraries are looked for next to the app first (`runtimes/<rid>/native/`, then the app's folder), then in
-  the system's usual places. In `Auto`, a codec they can't decode (AV1: no software decoder in our build) is
-  decoded by the ffmpeg executable instead. FFmpeg's log is quiet in-process. The CLI summary says how it decoded.
-- Probing in-process: with FFmpeg's libraries available, a video file's properties and packet timestamps (and
-  MPEG-PS frame timestamps) are read with them instead of ffprobe, identical by test. With ShotDetector.Native or
-  the CLI's bundled libraries, detecting shots in a file needs no ffmpeg installed at all.
+ShotDetector now decodes in-process by default and needs no ffmpeg installed for video files: the CLI bundles
+FFmpeg's libraries, and the new `ShotDetector.Native.<rid>` packages carry them for library users. On 2 CPUs it is
+faster than scenedetect on every benchmark film, with less CPU and memory (README "Performance"). Results are
+unchanged.
 
 ### Changed
 
 - In-process decoding is the default when FFmpeg 8's shared libraries load (`VideoDecoder.Auto`, the new default;
-  CLI `--decoder auto`), else the ffmpeg executable as before. Same results either way; in-process is faster than
-  scenedetect on 2 CPUs on most films and uses about half the memory of the executable path. `--decoder process`
-  keeps the executable. FFmpeg's libraries load once per process: a later `FfmpegDirectory` no longer errors, the
-  first copy is used.
+  CLI `--decoder auto`), else the ffmpeg executable as before. Same results either way. `--decoder process` keeps
+  the executable. FFmpeg's libraries load once per process: a later `FfmpegDirectory` no longer errors, the first
+  copy is used.
+
+### New
+
+- `ShotDetector.Native.<rid>` packages (LGPL) for win-x64, linux-x64, linux-arm64, linux-musl-x64 and osx-arm64:
+  FFmpeg 8.1.3's libraries built by us for decoding only (7-10 MB per platform). The shotdetect tool and binaries
+  bundle them. Byte-identical stats to the FFmpeg 8.1 executable on H.264, HEVC and VP9.
+- Probing in-process: with the libraries available, a video file's properties and packet timestamps (and MPEG-PS
+  frame timestamps) are read with them instead of ffprobe, identical by test. With ShotDetector.Native or the CLI,
+  detecting shots in a file needs no ffmpeg at all (streams, URLs, image sequences, rotated video, deinterlacing,
+  AV1 and the image/clip exports still use the executable).
+- The libraries are looked for next to the app first (`runtimes/<rid>/native/`, then the app's folder), then in
+  the system's usual places. In `Auto`, a codec they can't decode (AV1: no software decoder in our build) is
+  decoded by the ffmpeg executable instead. FFmpeg's log is quiet in-process. The CLI summary says how it decoded.
+- Benchmark (`benchmark.yml`, `tools/bench.py`): the default and executable modes, CPU time and the whole process
+  tree's memory, on four films including Sintel at 1080p; the README's performance tables come from it.
 
 ## 0.6.1 – 2026-10-07
 
