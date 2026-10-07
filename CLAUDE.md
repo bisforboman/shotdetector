@@ -80,6 +80,9 @@ approval, stable ones wait for the user's approval of the `release` environment.
   still carry FFmpeg 7.1 and differ on BT.709; Linux is the reference).
 - MPEG-PS packets mostly lack a pts: OpenCV uses the frame's dts, so the reader takes per-frame timestamps
   from an ffprobe decoding pass when any packet has none (`FrameTimestamps`).
+- Interlaced video: opencv-python 5.0.0.93 can't convert interlaced frames (FFmpeg 8 swscale: "Cannot convert
+  interlaced to progressive") and gives scenedetect one nearly black frame throughout; we read the real frames. CI:
+  informational with deinterlacing off, exact with `--deinterlace auto` vs scenedetect on a lossless yadif copy.
 - 10-bit on Linux: OpenCV's FFmpeg converts to BGR with ±1 differences no ffmpeg CLI flag reproduces (FFmpeg 8.1/9.0,
   sws flags, dither, cpuflags all tried); compared informationally (`samples/informational/`). Linux OpenCV can't
   decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments.

@@ -274,6 +274,11 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   that, taking the pts from an extra demux-only ffprobe pass. That assumes OpenCV's best-effort
   timestamps equal the sorted packet pts, which held for every sample but may not for streams with
   missing or broken timestamps.
+- **Interlaced video, not deinterlaced:** opencv-python 5.0.0.93 (FFmpeg 8) can't convert interlaced frames to BGR
+  (swscale: "Cannot convert interlaced to progressive frames") and returns the same nearly black image for every
+  frame, so scenedetect finds nothing (or a fade at frame 0) on interlaced MPEG-2, AVC-Intra or ProRes. ShotDetector
+  analyses the real frames instead of reproducing that. With `DeinterlaceMode.On` or `Auto` the results equal
+  scenedetect's on a deinterlaced copy, which OpenCV reads correctly (checked in CI on 1080i XDCAM HD).
 - **10-bit video (Linux):** OpenCV's bundled FFmpeg converts 10-bit frames to 8-bit BGR with ±1
   differences in red and green on some pixels that no ffmpeg command-line option reproduces (tested
   FFmpeg 8.1 and 9.0, every swscale flag and dither mode). Per-frame stats differ slightly; the cuts
