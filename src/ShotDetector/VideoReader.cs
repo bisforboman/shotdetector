@@ -126,7 +126,21 @@ public sealed partial class VideoReader
 
     /// <summary>These properties as a <see cref="VideoInfo"/>.</summary>
     public VideoInfo Info => new(SourceWidth, SourceHeight, Fps, OpenCvFrameCount > 0 ? OpenCvFrameCount : null, Duration,
-        Codec, _pixelFormat, FieldOrder, _rotation);
+        Codec, _pixelFormat, FieldOrder, _rotation, Container, HasAudio);
+
+    /// <summary>FFmpeg's name for the container (its demuxer).</summary>
+    public string Container { get; }
+
+    /// <summary>
+    /// Whether the file has an audio stream; null for streamed input. Looked up on first use (in-process when the
+    /// libraries load, else one ffprobe call), as detection doesn't need it.
+    /// </summary>
+    public bool? HasAudio => _hasAudio ??= _stream is not null || Streaming ? null
+        : _probesInProcess ? InProcessProbe.HasAudio(_path, _ffmpegDirectory)
+        : Run(_ffprobe, ["-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", .. _inputOptions, _path],
+            CancellationToken.None).Trim().Length > 0;
+    bool? _hasAudio;
+    readonly string _ffprobe;
 
     /// <summary>Which PySceneDetect release's frame rate, downscaling and positions this reader reproduces.</summary>
     public PySceneDetectVersion Compatibility { get; }
@@ -161,7 +175,7 @@ public sealed partial class VideoReader
     readonly bool _probesInProcess;    // read with FFmpeg's libraries rather than ffprobe
 
     /// <summary>The stream entries read from ffprobe (or the same in-process, <see cref="InProcessProbe"/>); files add :packet=pts.</summary>
-    internal const string ProbeEntries = "stream=codec_name,field_order,width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration";
+    internal const string ProbeEntries = "stream=codec_name,field_order,width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration,format_name";
     readonly IYuv420Converter? _yuv420;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
     readonly List<long> _livePts = []; // the same, as frames arrive, when streaming (from the stream's start)
@@ -217,7 +231,7 @@ public sealed partial class VideoReader
         // One demux-only pass: stream properties, plus every packet's pts for a file (no decoding).
         // A Stream is probed from its first bytes, which are kept to feed ffmpeg later.
         string entries = ProbeEntries + (Streaming || headersOnly ? "" : ":packet=pts");
-        string ffprobe = Executable(o.FfmpegDirectory, "ffprobe");
+        string ffprobe = _ffprobe = Executable(o.FfmpegDirectory, "ffprobe");
         string[] probeArgs = ["-v", "error", .. _inputOptions, "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", path];
         string probed;
         // A file, with FFmpeg's libraries available (as for decoding in-process): read the same with them, no ffprobe.
@@ -303,6 +317,7 @@ public sealed partial class VideoReader
             "tb" => FieldOrder.TopCodedBottomFirst, "bt" => FieldOrder.BottomCodedTopFirst, _ => FieldOrder.Unknown,
         };
         Codec = stream.GetValueOrDefault("codec_name", "");
+        Container = stream.GetValueOrDefault("format_name", "");
         Duration = double.TryParse(stream.GetValueOrDefault("duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out double length)
             ? TimeSpan.FromSeconds(length) : null;
         _deinterlace = o.Deinterlace == DeinterlaceMode.On

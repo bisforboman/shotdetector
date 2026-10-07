@@ -105,12 +105,18 @@ before analysis, so there is no need to re-encode first; results equal scenedete
 copy. `DeinterlaceMode.Auto` (`--deinterlace auto`) does so only when the stream is flagged interlaced.
 
 `ShotDetection.Probe(path)` / `ProbeAsync` reads a video's headers in milliseconds, without ffprobe when FFmpeg's
-libraries load: size, frame rate, frame count, duration, codec, pixel format, field order (`IsInterlaced`) and
-rotation. The same properties are on `DetectionResult.Video` after a detection.
+libraries load: size, frame rate, frame count, duration, codec, pixel format, field order (`IsInterlaced`),
+rotation, container name and whether there is an audio stream. The same properties are on `DetectionResult.Video`
+after a detection.
+
+Which decoder a run uses is in every `DetectionProgress` report (`DecodesInProcess`, `Pipeline`), from a first report
+sent before any frame, so `DetectStreamAsync` callers see it too. `ShotDetection.CanDecodeInProcess()` tells a worker at
+startup whether FFmpeg's libraries load; `VideoDecoder.InProcess` without them throws `ShotDetectionException` with
+`Reason = FfmpegLibrariesNotFound`, where `Auto` falls back to the executable.
 
 Failures from ffmpeg, ffprobe or the input throw `ShotDetectionException` (an `InvalidOperationException`) whose
-`Reason` tells a deployment problem (`FfmpegNotFound`) from bad input (`InvalidInput`), a decode failure
-(`DecodeFailed`) or a failed export (`ExportFailed`).
+`Reason` tells a deployment problem (`FfmpegNotFound`, `FfmpegLibrariesNotFound`) from bad input (`InvalidInput`), a
+decode failure (`DecodeFailed`) or a failed export (`ExportFailed`).
 
 Each detection is an OpenTelemetry-ready span: `.AddSource(ShotDetection.ActivitySourceName)` shows
 "ShotDetection.Detect" with the video's size, frame rate, pipeline, frames and shots.
@@ -305,8 +311,8 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
 
 ## Versions
 
-Until 1.0, minor versions may change the API. 1.0 follows a quiet 0.7: two weeks with no API change and the
-nightly real-world comparisons green. From 1.0, semantic versioning:
+Until 1.0, minor versions may change the API. 1.0 comes when it is stable: the known issues fixed and the parity,
+real-world and ARM checks green. From 1.0, semantic versioning:
 
 - **Major**: removing or changing public API, or changing default results (cuts, scene list CSVs, stats) for
   any reason other than the one below.
