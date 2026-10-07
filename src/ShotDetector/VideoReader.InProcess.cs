@@ -30,7 +30,7 @@ public sealed partial class VideoReader
         int[]? rows = resizer?.SourceRows.Select(r => r + CropRegion.Y).ToArray();
         byte[] raw = new byte[size], small = new byte[Width * Height * 3];
 
-        using var decoder = new InProcessDecoder(_path, _ffmpegDirectory, _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount));
+        using var decoder = new InProcessDecoder(_path, _ffmpegDirectory, _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true));
         // Seek as the command line does: two frames early, then drop every frame before the wanted one's pts.
         long? from = startFrame > 0 && startFrame < _pts.Length ? _pts[startFrame] : null;
         if (from is not null && startFrame - 2 > 0)

@@ -720,9 +720,11 @@ public sealed partial class VideoReader
     /// The default decoder threads: one fewer than the CPUs available (Environment.ProcessorCount honours container
     /// limits), leaving one for the conversion and our scoring; at least 1, at most 8 on the yuv420p path (bound by
     /// decoding) and 4 elsewhere. With 2 CPUs, 1 thread gave the same wall time as 2-8 for ~9% less CPU (issue #12).
+    /// In-process there's no ffmpeg process to leave room for: all the CPUs, as OpenCV uses (with 2 CPUs, 10-23% less
+    /// wall time than 1 thread for 30-48% more CPU; the user chose speed, decisions.md).
     /// </summary>
-    internal static int DefaultDecodeThreads(FramePipeline pipeline, int cpus) =>
-        Math.Clamp(cpus - 1, 1, pipeline == FramePipeline.Yuv420Sampled ? 8 : 4);
+    internal static int DefaultDecodeThreads(FramePipeline pipeline, int cpus, bool inProcess = false) =>
+        Math.Clamp(inProcess ? cpus : cpus - 1, 1, pipeline == FramePipeline.Yuv420Sampled ? 8 : 4);
 
     /// <summary>remap's maps as 16-bit PGM files in a new temp folder: x.pgm (source column) and y.pgm (source row).</summary>
     string WriteMaps(CvResize resizer)
