@@ -309,8 +309,23 @@ jobs:
       # 10-bit video: OpenCV's bundled FFmpeg converts it to 8-bit BGR with +-1 differences in red and
       # green on some pixels that no ffmpeg CLI option reproduces, so per-frame stats differ a little.
       # Cuts should still match; eyeball the table if they don't.
+      # Interlaced broadcast video (issue #42): exact with deinterlacing off, and with --deinterlace auto against
+      # scenedetect on a lossless yadif copy (FFV1), which is what deinterlacing stands for.
+      - name: Compare interlaced broadcast video with scenedetect
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1')
+        run: |
+          status=0
+          fast="${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }}"
+          for f in samples/broadcast/*.mxf; do ffmpeg -v error -y -i "$f" -an -vf yadif -c:v ffv1 "$f.yadif.mkv"; done
+          python tools/compare.py samples/broadcast/*.mxf --detector all --stats --report off.md $fast || status=$?
+          python tools/compare.py samples/broadcast/*.mxf --detector all --stats --report auto.md $fast \
+            --ours-args "--deinterlace auto" --scenedetect-on .yadif.mkv || status=$?
+          { echo "### Interlaced broadcast, deinterlacing off, ${{ matrix.path }} path"; cat off.md
+            echo "### Interlaced broadcast, --deinterlace auto vs a yadif copy, ${{ matrix.path }} path"; cat auto.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
       - name: Compare 10-bit video with scenedetect (informational)
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1')
         run: |
-          python tools/compare.py samples/informational/*.mp4 --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
+          python tools/compare.py samples/informational/*.mp4 samples/informational/*.mov samples/informational/*.mxf --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### 10-bit (informational), ${{ matrix.path }} path"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"

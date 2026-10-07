@@ -88,6 +88,7 @@ def diff_stats(ref_path: Path, our_path: Path) -> dict[str, int]:
 
 
 REF_EXTRA: list[str] = []
+REF_SUFFIX = ""  # --scenedetect-on
 OUR_EXTRA: list[str] = []
 
 
@@ -98,7 +99,7 @@ def compare(video: str, detector: str, tol: int, extra_args: list[str], stats: b
         ref_csv, our_csv = Path(tmp, "ref.csv"), Path(tmp, "ours.csv")
         ref_stats, our_stats = Path(tmp, "ref_stats.csv"), Path(tmp, "our_stats.csv")
         ref_secs = timed(
-            [SCENEDETECT_PYTHON, "-m", "scenedetect", "-q", "-i", video, "-o", tmp,
+            [SCENEDETECT_PYTHON, "-m", "scenedetect", "-q", "-i", video + REF_SUFFIX, "-o", tmp,
              *(["-s", str(ref_stats)] if stats else []), *REF_EXTRA, f"detect-{detector}", *shared, "list-scenes", "-f", ref_csv.name])
         our_secs = timed([str(EXE), "-i", video, "-d", detector, "--csv", str(our_csv), *extra_args, *shared, *OUR_EXTRA,
                           *(["--stats", str(our_stats)] if stats else [])])
@@ -158,12 +159,15 @@ def main() -> int:
     ap.add_argument("--kernel-size", help="edge kernel size for both tools")
     ap.add_argument("--scenedetect-args", default="", help='extra scenedetect options/commands, e.g. "-fs 2 -c 0 0 400 300 time -s 10s -e 20s"')
     ap.add_argument("--ours-args", default="", help='extra shotdetect options, e.g. "--frame-skip 2 --crop 0 0 400 300 -s 10s -e 20s"')
+    ap.add_argument("--scenedetect-on", default="",
+                    help='give scenedetect <video><suffix> instead of the video, e.g. ".yadif.mkv" for a deinterlaced copy')
     ap.add_argument("--stats", action="store_true",
                     help="also diff per-frame stats files (slows scenedetect: it computes edges then)")
     a = ap.parse_args()
 
-    global EXE, SCENEDETECT_PYTHON, REF_EXTRA, OUR_EXTRA
+    global EXE, SCENEDETECT_PYTHON, REF_EXTRA, OUR_EXTRA, REF_SUFFIX
     SCENEDETECT_PYTHON = a.scenedetect_python
+    REF_SUFFIX = a.scenedetect_on
     REF_EXTRA, OUR_EXTRA = a.scenedetect_args.split(), a.ours_args.split()
     if a.fast_yuv:
         subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", "-p:WithFastYuv=true", "-o", str(FAST_DIR),
