@@ -54,7 +54,10 @@ jobs:
       - name: Install ffmpeg   # the video tests make clips with it, and the library runs it
         if: needs.changes.outputs.docs_only != 'true'
         timeout-minutes: 10   # package mirrors sometimes hang
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: |
+          # BtbN's static FFmpeg 8.1, from GitHub's servers: the apt mirrors hung twice (2026-10-07).
+          curl -fsSL --retry 3 https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz | tar -xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/ffmpeg-n8.1-latest-linux64-gpl-8.1/bin" >> "$GITHUB_PATH"
 
       # In-process decoding with our FFmpeg build (ShotDetector.Native's): InProcessTests compare it with FFmpeg
       # 8.1's executables, put beside it (BtbN's static build, so they don't load these libraries).
@@ -67,8 +70,7 @@ jobs:
       - name: FFmpeg 8.1 executables beside our libraries
         if: needs.changes.outputs.docs_only != 'true'
         run: |
-          curl -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz | tar -xJ
-          cp ffmpeg-n8.1-latest-linux64-gpl-8.1/bin/ffmpeg ffmpeg-n8.1-latest-linux64-gpl-8.1/bin/ffprobe native/linux-x64/
+          cp "$RUNNER_TEMP"/ffmpeg-n8.1-latest-linux64-gpl-8.1/bin/ffmpeg "$RUNNER_TEMP"/ffmpeg-n8.1-latest-linux64-gpl-8.1/bin/ffprobe native/linux-x64/
           echo "SHOTDETECTOR_FFMPEG_LIBS=$PWD/native/linux-x64" >> "$GITHUB_ENV"
 
       - name: Test
@@ -139,7 +141,7 @@ jobs:
       - name: Detects cuts
         if: needs.changes.outputs.docs_only != 'true' && (startsWith(matrix.rid, 'linux'))
         run: |
-          if [ -f /etc/alpine-release ]; then apk add --no-cache ffmpeg; else sudo apt-get update && sudo apt-get install -y ffmpeg; fi
+          if [ -f /etc/alpine-release ]; then apk add --no-cache ffmpeg; else curl -fsSL --retry 3 https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz | tar -xJ -C "$RUNNER_TEMP" && export PATH="$RUNNER_TEMP/ffmpeg-n8.1-latest-linux64-gpl-8.1/bin:$PATH"; fi
           ffmpeg -v error -f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 \
             -filter_complex "[0][1]concat=n=2:v=1:a=0,format=yuv420p" -r 25 -c:v mpeg4 clip.mp4
           ./out/shotdetect -i clip.mp4 -d content --csv shots.csv 2> summary.txt
