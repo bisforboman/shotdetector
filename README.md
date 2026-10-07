@@ -100,8 +100,13 @@ jpg/png/webp).
 expected total about 10 times a second. ffmpeg and ffprobe are found on `PATH`, or in
 `DetectionOptions.FfmpegDirectory` (CLI: `--ffmpeg-dir`).
 
-Interlaced sources (1080i broadcast): `Deinterlace = true` (CLI `--deinterlace`) runs ffmpeg's yadif before
-analysis, so there is no need to re-encode first; results equal scenedetect's on a lossless `ffmpeg -vf yadif` copy.
+Interlaced sources (1080i broadcast): `Deinterlace = DeinterlaceMode.On` (CLI `--deinterlace`) runs ffmpeg's yadif
+before analysis, so there is no need to re-encode first; results equal scenedetect's on a lossless `ffmpeg -vf yadif`
+copy. `DeinterlaceMode.Auto` (`--deinterlace auto`) does so only when the stream is flagged interlaced.
+
+`ShotDetection.Probe(path)` / `ProbeAsync` reads a video's headers in milliseconds, without ffprobe when FFmpeg's
+libraries load: size, frame rate, frame count, duration, codec, pixel format, field order (`IsInterlaced`) and
+rotation. The same properties are on `DetectionResult.Video` after a detection.
 
 Failures from ffmpeg, ffprobe or the input throw `ShotDetectionException` (an `InvalidOperationException`) whose
 `Reason` tells a deployment problem (`FfmpegNotFound`) from bad input (`InvalidInput`), a decode failure

@@ -5,6 +5,23 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+## 0.8.0 – 2026-10-07
+
+Automatic deinterlacing and a public probe (issue #35). Results are unchanged unless you turn deinterlacing on.
+
+### Breaking changes
+
+- `DetectionOptions.Deinterlace` is a `DeinterlaceMode` (`Off`, `On`, `Auto`) instead of a `bool`: `Deinterlace = true`
+  becomes `Deinterlace = DeinterlaceMode.On`. The default is still off.
+
+### New
+
+- `DeinterlaceMode.Auto` (CLI `--deinterlace auto`): deinterlace when the video stream is flagged interlaced (its
+  field order), so a worker no longer needs ffprobe to decide (issue #35).
+- `ShotDetection.Probe` / `ProbeAsync`: a video's properties from its headers (size, frame rate, frame count,
+  duration, codec, pixel format, field order, rotation) as a `VideoInfo`, in milliseconds, in-process when FFmpeg's
+  libraries load. `VideoReader` has `FieldOrder`, `Codec`, `Duration`, `Deinterlaces` and `Info` too (issue #35).
+
 ## 0.7.0 – 2026-10-07
 
 ShotDetector now decodes in-process by default and needs no ffmpeg installed for video files: the CLI bundles

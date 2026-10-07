@@ -125,6 +125,22 @@ public sealed partial class VideoReader
     /// <summary>The frame count OpenCV reports (CAP_PROP_FRAME_COUNT), which scenedetect takes as the video's end.</summary>
     internal long OpenCvFrameCount { get; }
 
+    /// <summary>The video stream's field order (progressive, interlaced, or unknown).</summary>
+    public FieldOrder FieldOrder { get; }
+
+    /// <summary>The video codec's FFmpeg name.</summary>
+    public string Codec { get; }
+
+    /// <summary>The container's duration; null if unknown.</summary>
+    public TimeSpan? Duration { get; }
+
+    /// <summary>Whether frames are deinterlaced (<see cref="DetectionOptions.Deinterlace"/>, Auto resolved).</summary>
+    public bool Deinterlaces => _deinterlace;
+
+    /// <summary>These properties as a <see cref="VideoInfo"/>.</summary>
+    public VideoInfo Info => new(SourceWidth, SourceHeight, Fps, OpenCvFrameCount > 0 ? OpenCvFrameCount : null, Duration,
+        Codec, _pixelFormat, FieldOrder, _rotation);
+
     /// <summary>Which PySceneDetect release's frame rate, downscaling and positions this reader reproduces.</summary>
     public PySceneDetectVersion Compatibility { get; }
 
@@ -148,7 +164,7 @@ public sealed partial class VideoReader
     readonly Stream? _stream;
     readonly byte[] _prefix = [];      // what was read from _stream to probe it; fed to ffmpeg first
     readonly bool _ffmpegResize;
-    readonly bool _deinterlace;
+    readonly bool _deinterlace;        // DeinterlaceMode.On, or Auto with an interlaced stream
     readonly int? _decodeThreads;
     readonly string[] _inputOptions;   // ffmpeg/ffprobe options for the input (an image sequence's rate)
     readonly bool _fullFrames;         // tests: the full-frame pipeline instead of the sampled one
@@ -158,7 +174,7 @@ public sealed partial class VideoReader
     readonly bool _probesInProcess;    // read with FFmpeg's libraries rather than ffprobe
 
     /// <summary>The stream entries read from ffprobe (or the same in-process, <see cref="InProcessProbe"/>); files add :packet=pts.</summary>
-    internal const string ProbeEntries = "stream=width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration";
+    internal const string ProbeEntries = "stream=codec_name,field_order,width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration";
     readonly IYuv420Converter? _yuv420;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
     readonly List<long> _livePts = []; // the same, as frames arrive, when streaming (from the stream's start)
@@ -179,6 +195,10 @@ public sealed partial class VideoReader
     public VideoReader(string path, DetectionOptions? options = null, CancellationToken cancellationToken = default)
         : this(path, null, options, cancellationToken) { }
 
+    /// <summary>Probes only the headers (no packet timestamps): for <see cref="ShotDetection.Probe(string, DetectionOptions?, CancellationToken)"/>.</summary>
+    internal static VideoReader Headers(string path, DetectionOptions? options, CancellationToken cancellationToken) =>
+        new(path, null, options, cancellationToken, headersOnly: true);
+
     /// <param name="video">The video's bytes, read once, so the container headers must come first:
     /// mkv, webm, ts, mov, or an mp4 written with "faststart" (an ordinary mp4 keeps them at the end).</param>
     /// <param name="options">See <see cref="VideoReader(string, DetectionOptions?, CancellationToken)"/>.</param>
@@ -186,7 +206,7 @@ public sealed partial class VideoReader
     public VideoReader(Stream video, DetectionOptions? options = null, CancellationToken cancellationToken = default)
         : this("pipe:0", video, options, cancellationToken) { }
 
-    VideoReader(string path, Stream? video, DetectionOptions? options, CancellationToken cancellationToken)
+    VideoReader(string path, Stream? video, DetectionOptions? options, CancellationToken cancellationToken, bool headersOnly = false)
     {
         var o = options ?? new DetectionOptions();
         var compatibility = o.Compatibility;
@@ -195,7 +215,6 @@ public sealed partial class VideoReader
         _path = path;
         _stream = video;
         _ffmpegResize = o.FfmpegResize;
-        _deinterlace = o.Deinterlace;
         _decodeThreads = o.DecodeThreads;
         _fullFrames = o.FullFrames;
         _decoder = o.Decoder;
@@ -210,7 +229,7 @@ public sealed partial class VideoReader
             ? ["-framerate", $"{r.Num}/{r.Den}"] : [];
         // One demux-only pass: stream properties, plus every packet's pts for a file (no decoding).
         // A Stream is probed from its first bytes, which are kept to feed ffmpeg later.
-        string entries = ProbeEntries + (Streaming ? "" : ":packet=pts");
+        string entries = ProbeEntries + (Streaming || headersOnly ? "" : ":packet=pts");
         string ffprobe = Executable(o.FfmpegDirectory, "ffprobe");
         string[] probeArgs = ["-v", "error", .. _inputOptions, "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", path];
         string probed;
@@ -218,7 +237,7 @@ public sealed partial class VideoReader
         _probesInProcess = video is null && !Streaming && _inputOptions.Length == 0 && _decoder != VideoDecoder.FfmpegProcess
             && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory));
         if (_probesInProcess)
-            probed = InProcessProbe.Properties(path, _ffmpegDirectory);
+            probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly);
         else if (video is not null)
         {
             _prefix = ReadPrefix(video, o.ProbeBytes, cancellationToken);
@@ -293,6 +312,16 @@ public sealed partial class VideoReader
             ? DownscaledSize064(effective.Item1, effective.Item2, CropRegion.Width, CropRegion.Height)
             : DownscaledSize(effective.Item1, effective.Item2, CropRegion.Width, CropRegion.Height);
         _pixelFormat = stream.GetValueOrDefault("pix_fmt", "");
+        FieldOrder = stream.GetValueOrDefault("field_order") switch
+        {
+            "progressive" => FieldOrder.Progressive, "tt" => FieldOrder.TopFirst, "bb" => FieldOrder.BottomFirst,
+            "tb" => FieldOrder.TopCodedBottomFirst, "bt" => FieldOrder.BottomCodedTopFirst, _ => FieldOrder.Unknown,
+        };
+        Codec = stream.GetValueOrDefault("codec_name", "");
+        Duration = double.TryParse(stream.GetValueOrDefault("duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out double length)
+            ? TimeSpan.FromSeconds(length) : null;
+        _deinterlace = o.Deinterlace == DeinterlaceMode.On
+            || o.Deinterlace == DeinterlaceMode.Auto && FieldOrder is not (FieldOrder.Progressive or FieldOrder.Unknown);
         // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
         bool fullRange = _pixelFormat == "yuvj420p" || stream.GetValueOrDefault("color_range") == "pc";
         _yuv420ForVideo = _yuv420?.ForColor(stream.GetValueOrDefault("color_space", ""), fullRange);
