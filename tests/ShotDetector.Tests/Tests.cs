@@ -59,6 +59,23 @@ public class ContentScorerTests
     }
 
     [Fact]
+    public void HsvPlanesMatchThePerPixelConversionForEveryColour()
+    {
+        // All 2^24 BGR values, a blue value at a time, through the planar (vectorised) conversion.
+        var bgr = new byte[3 * 65536];
+        var (h, s, v) = (new byte[65536], new byte[65536], new byte[65536]);
+        for (int b = 0; b < 256; b++)
+        {
+            for (int k = 0; k < 65536; k++)
+                (bgr[3 * k], bgr[3 * k + 1], bgr[3 * k + 2]) = ((byte)b, (byte)(k >> 8), (byte)k);
+            Hsv.Convert(bgr, h, s, v);
+            for (int k = 0; k < 65536; k++)
+                if ((h[k], s[k], v[k]) != Hsv.FromBgr((byte)b, (byte)(k >> 8), (byte)k))
+                    Assert.Fail($"BGR {b},{k >> 8},{k & 255}: {(h[k], s[k], v[k])} != {Hsv.FromBgr((byte)b, (byte)(k >> 8), (byte)k)}");
+        }
+    }
+
+    [Fact]
     public void HsvPlanesMatchThePerPixelConversion()
     {
         var rnd = new Random(7);
