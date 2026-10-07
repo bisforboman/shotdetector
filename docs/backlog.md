@@ -68,6 +68,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | `ShotDetector.Native` (LGPL): FFmpeg 8.1 shared libraries for win-x64, linux-x64, linux-musl-x64, osx-arm64 | In-process with no FFmpeg libraries installed (built by native.yml, packed and bundled by release.yml) | Done (2026-10-07) |
 | Probing in-process (stream properties, packet timestamps, rotation) when the libraries load, instead of ffprobe | With ShotDetector.Native, the last reason ffmpeg must be installed. Same text as ffprobe prints, compared in tests (7 clips, 7 colour formats) | Done (2026-10-07) |
 | 10-bit exactness via the in-process converter (OpenCV converts with the legacy swscale interface, which the sliced path uses) | Closes the known 10-bit divergence on Linux if it matches. Tried on Linux (10-bit 4:2:0, 4:2:2, BT.709 h264 against scenedetect 0.7.1): in-process gives exactly the executable's values, both differ from OpenCV's as before; the difference isn't the swscale interface | Dropped (2026-10-07) |
+| Issue #35: `DeinterlaceMode.Auto` (field order) and `ShotDetection.Probe` (headers only) | A worker can drop its own ffprobe call | Done (2026-10-07) |
 | 1.0 release plan: what must hold (parity matrix green for N releases of scenedetect/ffmpeg), version policy afterwards | So 1.0 means something. Plan: 1.0 after a quiet 0.7 (two weeks, no API change, nightlies green); policy in README "Versions" (decisions.md) | Done (2026-10-07) |
 
 ## Done
