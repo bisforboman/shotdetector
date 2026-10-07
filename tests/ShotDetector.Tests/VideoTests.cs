@@ -32,6 +32,9 @@ public sealed class Clips : IDisposable
     /// </summary>
     public string ThreeShotsDropped { get; }
 
+    /// <summary><see cref="ThreeShots"/> as interlaced MPEG-2 (top field first), as broadcast video is flagged.</summary>
+    public string Interlaced { get; }
+
     public Clips()
     {
         ThreeShots = Make("three.mp4",
@@ -46,6 +49,8 @@ public sealed class Clips : IDisposable
         Run($"-v error -y -i {ThreeShots} -c copy -movflags +faststart {ThreeShotsFaststart}");
         ThreeShotsMpegPs = Path.Combine(_dir, "three.mpg");
         Run($"-v error -y -i {ThreeShots} -c:v mpeg2video -q:v 3 {ThreeShotsMpegPs}");
+        Interlaced = Path.Combine(_dir, "interlaced.mpg");
+        Run($"-v error -y -i {ThreeShots} -c:v mpeg2video -q:v 3 -flags +ildct+ilme -top 1 {Interlaced}");
         Directory.CreateDirectory(Path.Combine(_dir, "frames"));
         ThreeShotsImages = Path.Combine(_dir, "frames", "%04d.png");
         Run($"-v error -y -i {ThreeShots} {ThreeShotsImages}");
