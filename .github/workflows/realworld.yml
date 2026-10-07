@@ -16,7 +16,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Docs-only pull requests (docs/ and *.md): the jobs below still run, so their required checks report, but skip
+  # their steps. Decided here, on a runner with git, from the PR's merge commit against its base.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.diff.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+      - id: diff
+        if: github.event_name == 'pull_request'
+        run: |
+          files=$(git diff --name-only HEAD^1 HEAD)
+          if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$'; then echo docs_only=true >> "$GITHUB_OUTPUT"; fi
+
   realworld:
+    needs: changes
     name: Real world (${{ matrix.video }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -38,31 +56,38 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
+        if: needs.changes.outputs.docs_only != 'true'
         with:
           dotnet-version: 10.0.x
 
       - uses: actions/setup-python@v6
+        if: needs.changes.outputs.docs_only != 'true'
         with:
           python-version: '3.12'
 
       - name: Install ffmpeg ${{ env.FFMPEG }}
+        if: needs.changes.outputs.docs_only != 'true'
         run: |
           curl -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG.tar.xz" | tar -xJ
           echo "$PWD/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG/bin" >> "$GITHUB_PATH"
 
       - name: Install scenedetect
+        if: needs.changes.outputs.docs_only != 'true'
         run: pip install scenedetect==0.7.1 opencv-python-headless==5.0.0.93
 
       - name: Build
+        if: needs.changes.outputs.docs_only != 'true'
         run: dotnet build src/ShotDetector.Cli -c Release
 
       - name: Cache the video
+        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/cache@v5
         with:
           path: samples/realworld
           key: realworld-${{ matrix.video }}-${{ hashFiles('tools/realworld.py') }}
 
       - name: Compare with scenedetect
+        if: needs.changes.outputs.docs_only != 'true'
         run: |
           python tools/realworld.py ${{ matrix.video }} --report realworld.md || status=$?
           { echo "### ${{ matrix.video }}"; cat realworld.md; } >> "$GITHUB_STEP_SUMMARY"
