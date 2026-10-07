@@ -61,6 +61,10 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             var inProcess = ShotDetection.Detect(copy, options with { Decoder = VideoDecoder.InProcess });
             Assert.True(inProcess.Video.DecodesInProcess);
             Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
+            // The colour tags, pixel format and the rest, read in-process as ffprobe reads them.
+            string ffprobe = Path.Combine(Libs, OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
+            Assert.Equal(Values(VideoReader.Run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", VideoReader.ProbeEntries, "-of", "default=nw=1", copy], default)),
+                Values(InProcessProbe.Properties(copy, Libs).Split('\n').Where(l => !l.StartsWith("pts=")).Aggregate("", (a, l) => a + l + "\n")));
         }
         finally
         {
@@ -101,6 +105,70 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         {
             File.Delete(av1);
         }
+    }
+
+    public static TheoryData<string> ProbeClips => ["three", "rotated", "mkv", "faststart", "mpegps", "dropped", "long"];
+
+    [Theory]
+    [MemberData(nameof(ProbeClips))]
+    public void ProbesLikeFfprobe(string name)
+    {
+        // The in-process probe must read what ffprobe prints: the same values once parsed, the same packet timestamps.
+        if (Libs is null)
+            return;
+        string path = name switch
+        {
+            "rotated" => clips.Rotated, "mkv" => clips.ThreeShotsMkv, "faststart" => clips.ThreeShotsFaststart,
+            "mpegps" => clips.ThreeShotsMpegPs, "dropped" => clips.ThreeShotsDropped, "long" => clips.Long, _ => clips.ThreeShots,
+        };
+        string ffprobe = Path.Combine(Libs, OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
+        var expected = Parse(VideoReader.Run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries",
+            VideoReader.ProbeEntries + ":packet=pts", "-of", "default=nw=1", path], default));
+        var actual = Parse(InProcessProbe.Properties(path, Libs));
+        Assert.Equal(expected.Values, actual.Values);
+        Assert.Equal(expected.Pts, actual.Pts);
+        if (name == "mpegps")
+        {
+            var frames = VideoReader.Run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "frame=pts,pkt_dts", "-of", "default=nw=1", path], default);
+            Assert.Equal(FrameTimes(frames), InProcessProbe.FrameTimestamps(path, Libs));
+        }
+
+        // As VideoReader reads it: the last value of a key wins (format=duration after the stream's).
+        static (SortedDictionary<string, string> Values, List<string> Pts) Parse(string text)
+        {
+            var values = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            var pts = new List<string>();
+            foreach (var line in text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                int eq = line.IndexOf('=');
+                if (line[..eq] == "pts") pts.Add(line[(eq + 1)..]); else values[line[..eq]] = line[(eq + 1)..];
+            }
+            return (values, pts);
+        }
+
+        static List<long> FrameTimes(string text)
+        {
+            var result = new List<long>();
+            long? framePts = null;
+            foreach (var line in text.Split('\n', StringSplitOptions.TrimEntries))
+                if (line.StartsWith("pts="))
+                    framePts = long.TryParse(line[4..], out long p) && p != 0 ? p : null;
+                else if (line.StartsWith("pkt_dts="))
+                {
+                    result.Add(framePts ?? (long.TryParse(line[8..], out long d) ? d : 0));
+                    framePts = null;
+                }
+            return result;
+        }
+    }
+
+    /// <summary>ffprobe's key=value lines as VideoReader reads them: the last value of a key wins.</summary>
+    static SortedDictionary<string, string> Values(string text)
+    {
+        var values = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var line in text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            values[line[..line.IndexOf('=')]] = line[(line.IndexOf('=') + 1)..];
+        return values;
     }
 
     [Fact]

@@ -155,6 +155,10 @@ public sealed partial class VideoReader
     readonly VideoDecoder _decoder;
     readonly string? _ffmpegDirectory;
     readonly int _rotation;            // the display rotation ffmpeg applies (degrees); 0 if none
+    readonly bool _probesInProcess;    // read with FFmpeg's libraries rather than ffprobe
+
+    /// <summary>The stream entries read from ffprobe (or the same in-process, <see cref="InProcessProbe"/>); files add :packet=pts.</summary>
+    internal const string ProbeEntries = "stream=width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration";
     readonly IYuv420Converter? _yuv420;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
     readonly List<long> _livePts = []; // the same, as frames arrive, when streaming (from the stream's start)
@@ -206,12 +210,16 @@ public sealed partial class VideoReader
             ? ["-framerate", $"{r.Num}/{r.Den}"] : [];
         // One demux-only pass: stream properties, plus every packet's pts for a file (no decoding).
         // A Stream is probed from its first bytes, which are kept to feed ffmpeg later.
-        string entries = "stream=width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration"
-            + (Streaming ? "" : ":packet=pts");
+        string entries = ProbeEntries + (Streaming ? "" : ":packet=pts");
         string ffprobe = Executable(o.FfmpegDirectory, "ffprobe");
         string[] probeArgs = ["-v", "error", .. _inputOptions, "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", path];
         string probed;
-        if (video is not null)
+        // A file, with FFmpeg's libraries available (as for decoding in-process): read the same with them, no ffprobe.
+        _probesInProcess = video is null && !Streaming && _inputOptions.Length == 0 && _decoder != VideoDecoder.FfmpegProcess
+            && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory));
+        if (_probesInProcess)
+            probed = InProcessProbe.Properties(path, _ffmpegDirectory);
+        else if (video is not null)
         {
             _prefix = ReadPrefix(video, o.ProbeBytes, cancellationToken);
             try
@@ -298,7 +306,7 @@ public sealed partial class VideoReader
         // dts (its pts when set and non-zero, else pkt_dts), in output order: get exactly that
         // from a decoding pass, which only such files pay for.
         if (missingPts)
-            pts = FrameTimestamps(ffprobe, path, cancellationToken);
+            pts = _probesInProcess ? InProcessProbe.FrameTimestamps(path, _ffmpegDirectory) : FrameTimestamps(ffprobe, path, cancellationToken);
         _pts = [.. pts];
     }
 

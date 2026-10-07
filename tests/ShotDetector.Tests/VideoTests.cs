@@ -137,7 +137,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     public void MissingFfmpegSaysWhatToDo()
     {
         var e = Assert.Throws<ShotDetectionException>(() =>
-            ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { FfmpegDirectory = Path.GetTempPath() }));
+            ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { FfmpegDirectory = Path.GetTempPath(), Decoder = VideoDecoder.FfmpegProcess }));
         Assert.Equal(ShotDetectionError.FfmpegNotFound, e.Reason);
         Assert.Contains("FfmpegDirectory", e.Message);
     }
