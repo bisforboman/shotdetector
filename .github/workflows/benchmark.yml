@@ -1,7 +1,8 @@
 name: Benchmark
 
-# Wall time, frames per second and peak memory (process tree) of scenedetect and shotdetect on the real-world
-# films (tools/bench.py, best of 3), in the run summary. On demand and weekly: a hosted runner is quieter than a
+# Wall time, frames per second, CPU time and peak memory (whole process tree) of scenedetect and shotdetect, in its
+# default mode (in-process, with our bundled FFmpeg libraries) and with the ffmpeg executable, on the real-world
+# films (tools/bench.py, best of 3), in the run summary; README "Performance" comes from it. On demand and weekly: a hosted runner is quieter than a
 # desktop, but numbers still vary by a few percent between runs.
 on:
   workflow_dispatch:
@@ -9,7 +10,13 @@ on:
     - cron: '43 3 * * 0'
 
 jobs:
+  native:
+    uses: ./.github/workflows/native.yml
+    with:
+      rids: '["linux-x64"]'
+
   benchmark:
+    needs: native
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -33,6 +40,12 @@ jobs:
       - name: Install scenedetect
         run: pip install scenedetect==0.7.1 opencv-python-headless==5.0.0.93 psutil
 
+      # Our FFmpeg libraries in native/: the CLI bundles them, so its default decodes in-process, as users get it.
+      - uses: actions/download-artifact@v7
+        with:
+          name: native-linux-x64
+          path: native/linux-x64
+
       - name: Build
         run: dotnet build src/ShotDetector.Cli -c Release
 
@@ -44,7 +57,7 @@ jobs:
 
       - name: Benchmark
         run: |
-          films="bbb_640x360_h264.mp4 elephants_dream_426x240_h264.mp4 tears_of_steel_1280x534_h264.mov"
+          films="sintel_trailer_1920x1080_h264.mp4 tears_of_steel_1280x534_h264.mov bbb_640x360_h264.mp4 elephants_dream_426x240_h264.mp4"
           python tools/realworld.py $films --download
           echo "Runner: $(nproc) CPUs, $(free -g | awk '/Mem:/ {print $2}') GB" >> "$GITHUB_STEP_SUMMARY"
           for d in content adaptive; do

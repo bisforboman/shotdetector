@@ -1,8 +1,12 @@
-"""Time scenedetect and shotdetect on the same videos and report wall time, frames per second and peak memory
-(resident set, polled with psutil: `pip install psutil`).
+"""Time scenedetect and shotdetect on the same videos: wall time, CPU time and peak memory of the whole process tree.
+
+shotdetect runs in its default mode (in-process decoding when FFmpeg's libraries are found, e.g. bundled from
+native/) and with --decoder process (the ffmpeg executable). CPU time is the user + system time of the finished
+child processes (Unix: getrusage(RUSAGE_CHILDREN), which counts ffmpeg too once shotdetect has waited for it);
+memory is the peak RSS of the process tree, polled with psutil (`pip install psutil`).
 
 Usage: python tools/bench.py <video>... [--detector adaptive|content|threshold|hist|hash] [--runs 1]
-                             [--threads 4] [--fast-yuv] [--report bench.md]
+                             [--threads N] [--fast-yuv] [--report bench.md]
 Builds first: dotnet build src/ShotDetector.Cli -c Release (and compare.py's --fast-yuv build for --fast-yuv)."""
 import argparse
 import subprocess
@@ -18,10 +22,22 @@ try:
     import psutil
 except ImportError:
     psutil = None
+try:
+    import resource
+except ImportError:  # Windows: no CPU time
+    resource = None
 
 
-def run(cmd: list[str]) -> tuple[float, float]:
-    """Wall seconds and peak RSS in MB of the process tree (0 without psutil)."""
+def cpu_children() -> float:
+    if resource is None:
+        return 0.0
+    r = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return r.ru_utime + r.ru_stime
+
+
+def run(cmd: list[str]) -> tuple[float, float, float, str]:
+    """Wall seconds, CPU seconds, peak RSS in MB of the process tree (0 without psutil), and stderr."""
+    cpu0 = cpu_children()
     start = time.perf_counter()
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     peak = 0.0
@@ -41,9 +57,10 @@ def run(cmd: list[str]) -> tuple[float, float]:
         t = threading.Thread(target=poll, daemon=True)
         t.start()
     _, err = proc.communicate()
+    wall = time.perf_counter() - start
     if proc.returncode != 0:
         sys.exit(f"{cmd[0]} failed:\n{err}")
-    return time.perf_counter() - start, peak
+    return wall, cpu_children() - cpu0, peak, err
 
 
 def frames(video: str) -> int:
@@ -56,29 +73,34 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("videos", nargs="+")
     ap.add_argument("--detector", default="content", choices=["adaptive", "content", "threshold", "hist", "hash"])
-    ap.add_argument("--runs", type=int, default=1, help="best of N")
-    ap.add_argument("--threads", type=int, default=4, help="shotdetect --threads")
+    ap.add_argument("--runs", type=int, default=1, help="best of N (by wall time)")
+    ap.add_argument("--threads", type=int, help="shotdetect --threads (default: its own)")
     ap.add_argument("--fast-yuv", action="store_true")
     ap.add_argument("--report")
     a = ap.parse_args()
     exe = str(FAST_DIR / EXE_NAME if a.fast_yuv else EXE)
     sd_cmd = {"hist": "detect-hist", "hash": "detect-hash"}.get(a.detector, f"detect-{a.detector}")
-    rows = []
+    threads = ["--threads", str(a.threads)] if a.threads else []
+    tools = (
+        ("scenedetect 0.7.1", [sys.executable, "-m", "scenedetect", "-q", "-i", "{v}", sd_cmd, "list-scenes", "-n"]),
+        ("shotdetect", [exe, "-i", "{v}", "-d", a.detector, *threads]),
+        ("shotdetect --decoder process", [exe, "-i", "{v}", "-d", a.detector, "--decoder", "process", *threads]),
+    )
+    table = ["| Video | Frames | Tool | Wall | fps | CPU | Peak MB | vs scenedetect |", "|---|---|---|---|---|---|---|---|"]
     for video in a.videos:
         n = frames(video)
-        best = {}
-        for name, cmd in (
-            ("scenedetect", [sys.executable, "-m", "scenedetect", "-q", "-i", video, sd_cmd, "list-scenes", "-n"]),
-            ("shotdetect", [exe, "-i", video, "-d", a.detector, "--threads", str(a.threads)]),
-        ):
-            results = [run(cmd) for _ in range(a.runs)]
-            best[name] = (min(r[0] for r in results), max(r[1] for r in results))
-        (sd_t, sd_m), (our_t, our_m) = best["scenedetect"], best["shotdetect"]
-        rows.append((Path(video).name, n, sd_t, n / sd_t, sd_m, our_t, n / our_t, our_m, sd_t / our_t))
-        print(f"{Path(video).name}: scenedetect {sd_t:.1f}s ({n / sd_t:.0f} fps, {sd_m:.0f} MB), "
-              f"shotdetect {our_t:.1f}s ({n / our_t:.0f} fps, {our_m:.0f} MB), x{sd_t / our_t:.2f}", flush=True)
-    table = ["| Video | Frames | scenedetect | fps | MB | shotdetect | fps | MB | Speed-up |", "|---|---|---|---|---|---|---|---|---|"]
-    table += [f"| {v} | {n} | {st:.1f} s | {sf:.0f} | {sm:.0f} | {ot:.1f} s | {of:.0f} | {om:.0f} | x{x:.2f} |" for v, n, st, sf, sm, ot, of, om, x in rows]
+        base = None
+        for name, cmd in tools:
+            results = [run([c.replace("{v}", video) for c in cmd]) for _ in range(a.runs)]
+            wall, cpu, _, err = min(results, key=lambda r: r[0])
+            peak = max(r[2] for r in results)
+            if name == "shotdetect" and "decoded in-process" in err:
+                name += " (in-process)"
+            base = base or wall
+            cpu_s = f"{cpu:.1f} s" if resource else "-"
+            table.append(f"| {Path(video).name} | {n} | {name} | {wall:.1f} s | {n / wall:.0f} | {cpu_s} | {peak:.0f} | "
+                         f"{'1.00x' if wall == base else f'{wall / base:.2f}x'} |")
+            print(table[-1], flush=True)
     print("\n".join(table))
     if a.report:
         Path(a.report).write_text("\n".join(table) + "\n", encoding="utf-8")
