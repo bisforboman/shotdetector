@@ -16,6 +16,11 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ### New
 
+- Deinterlacing in-process: our FFmpeg build (ShotDetector.Native, the CLI) adds libavfilter with only yadif, and
+  the in-process decoder runs it as ffmpeg's `-vf yadif` does, so deinterlaced detection no longer needs the ffmpeg
+  executable. Identical results (tested against the executable, from the start and after a seek, and against a
+  lossless yadif copy). Not faster: on an 80 s 1080i25 MPEG-2 4:2:2 MXF with 2 CPUs, 13.3 s in-process vs 13.4 s
+  with the executable, yadif itself being most of the cost (issue #42).
 - Which decoder a run uses: `DetectionProgress.DecodesInProcess` and `.Pipeline`, in every report from a first one
   sent before any frame, so `DetectStreamAsync` callers see it too (issue #42).
 - `ShotDetection.CanDecodeInProcess(ffmpegDirectory)`: whether FFmpeg's libraries load, for a worker's startup check.
@@ -28,6 +33,12 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
   frame differences fall back to 128-bit vectors, where they ran scalar. On a 2-CPU Neoverse-N2, in-process
   decoding is now faster than scenedetect on all four benchmark films (Big Buck Bunny 0.95x, was 1.16x) with less
   CPU. CI runs the whole test suite on ARM, and the benchmark covers ARM too.
+
+### Fixed
+
+- In-process decoding with a start time on MPEG program streams (packets without timestamps) began up to a GOP late:
+  libavformat's seek lands after the wanted frame there. Such files now decode from the start and drop the frames
+  before it, as the executable's results (since 0.7.0).
 
 ## 0.8.0 – 2026-10-07
 
