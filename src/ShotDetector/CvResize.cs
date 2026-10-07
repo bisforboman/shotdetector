@@ -1,3 +1,7 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+
 namespace ShotDetector;
 
 /// <summary>
@@ -37,6 +41,9 @@ internal sealed class CvResize
     int[]? _sampledX0, _sampledX1;
     short[]? _sampledW0, _sampledW1;
     int[]? _shiftedCols;
+    // The same for a whole row (Resize, ResizeYuv420).
+    readonly int[] _fullX0, _fullX1;
+    readonly short[] _fullW0, _fullW1;
 
     public CvResize(int sw, int sh, int dw, int dh)
     {
@@ -49,6 +56,14 @@ internal sealed class CvResize
         _chunks = Enumerable.Range(0, chunks).Select(c => new Chunk(c * dh / chunks, (c + 1) * dh / chunks, dw, sw)).ToArray();
         SourceCols = _xofs.SelectMany(x => x >= sw - 1 ? new[] { x } : new[] { x, x + 1 }).Distinct().Order().ToArray();
         SourceRows = Enumerable.Range(0, dh).SelectMany(dy => new[] { Row0(dy), Row1(dy) }).Distinct().Order().ToArray();
+        (_fullX0, _fullX1, _fullW0, _fullW1) = (new int[dw], new int[dw], new short[dw], new short[dw]);
+        for (int dx = 0; dx < dw; dx++)
+        {
+            int sx = _xofs[dx];
+            bool edge = sx >= sw - 1;
+            (_fullX0[dx], _fullX1[dx]) = (sx * 3, edge ? sx * 3 : sx * 3 + 3);
+            (_fullW0[dx], _fullW1[dx]) = edge ? ((short)CoefScale, (short)0) : (_xa0[dx], _xa1[dx]);
+        }
     }
 
     /// <summary>
@@ -97,16 +112,30 @@ internal sealed class CvResize
     }
 
     /// <summary>HResize from a sampled row: the same products and sums, read from the packed columns.</summary>
-    void HResizeSampled(ReadOnlySpan<byte> s, int[] d)
+    void HResizeSampled(ReadOnlySpan<byte> s, int[] d) => HResize(s, d, _sampledX0!, _sampledX1!, _sampledW0!, _sampledW1!);
+
+    /// <summary>
+    /// OpenCV's horizontal pass: per output pixel, the two source pixels at byte offsets x0/x1 times 11-bit weights
+    /// (at the right border the second weight is 0: s * CoefScale). The offsets are in range by construction, so no
+    /// bounds checks: this runs for every row of every frame.
+    /// </summary>
+    static unsafe void HResize(ReadOnlySpan<byte> s, int[] d, int[] x0, int[] x1, short[] w0, short[] w1)
     {
-        int[] x0 = _sampledX0!, x1 = _sampledX1!;
-        short[] w0 = _sampledW0!, w1 = _sampledW1!;
-        for (int dx = 0; dx < x0.Length; dx++)
+        if (x0.Length > 0 && Math.Max(x0[^1], x1[^1]) + 2 >= s.Length)
+            throw new ArgumentException("The row is shorter than the resize reads.");
+        fixed (byte* sp = s)
+        fixed (int* dp = d, a0 = x0, a1 = x1)
+        fixed (short* v0 = w0, v1 = w1)
         {
-            int a = x0[dx], b = x1[dx], wa = w0[dx], wb = w1[dx], o = dx * 3;
-            d[o] = s[a] * wa + s[b] * wb;
-            d[o + 1] = s[a + 1] * wa + s[b + 1] * wb;
-            d[o + 2] = s[a + 2] * wa + s[b + 2] * wb;
+            int* o = dp;
+            for (int dx = 0; dx < x0.Length; dx++, o += 3)
+            {
+                byte* a = sp + a0[dx], b = sp + a1[dx];
+                int wa = v0[dx], wb = v1[dx];
+                o[0] = a[0] * wa + b[0] * wb;
+                o[1] = a[1] * wa + b[1] * wb;
+                o[2] = a[2] * wa + b[2] * wb;
+            }
         }
     }
 
@@ -177,28 +206,42 @@ internal sealed class CvResize
     int Row0(int dy) => Math.Clamp(_yofs[dy], 0, _sh - 1);
     int Row1(int dy) => Math.Clamp(_yofs[dy] + 1, 0, _sh - 1);
 
-    void HResize(ReadOnlySpan<byte> s, int[] d)
+    void HResize(ReadOnlySpan<byte> s, int[] d) => HResize(s, d, _fullX0, _fullX1, _fullW0, _fullW1);
+
+    /// <summary>OpenCV's vertical pass (VResizeLinearVec_32s8u's arithmetic), 32 values at a time where possible.</summary>
+    void VResize(int dy, Chunk c, byte[] dst)
     {
-        for (int dx = 0; dx < _xofs.Length; dx++)
+        int b0 = _yb0[dy], b1 = _yb1[dy], n = _dw * 3, x = 0;
+        var d = dst.AsSpan(dy * n, n);
+        ref int r0 = ref MemoryMarshal.GetArrayDataReference(c.Row0);
+        ref int r1 = ref MemoryMarshal.GetArrayDataReference(c.Row1);
+        if (Vector256.IsHardwareAccelerated)
         {
-            int sx = _xofs[dx];
-            for (int c = 0; c < 3; c++)
+            var vb0 = Vector256.Create(b0);
+            var vb1 = Vector256.Create(b1);
+            ref byte o = ref MemoryMarshal.GetReference(d);
+            for (; x <= n - 32; x += 32)
             {
-                int i = sx * 3 + c;
-                d[dx * 3 + c] = sx >= _sw - 1 ? s[i] * CoefScale : s[i] * _xa0[dx] + s[i + 3] * _xa1[dx];
+                var p = Pass(ref r0, ref r1, (nuint)x, vb0, vb1);
+                var q = Pass(ref r0, ref r1, (nuint)x + 8, vb0, vb1);
+                var r = Pass(ref r0, ref r1, (nuint)x + 16, vb0, vb1);
+                var t = Pass(ref r0, ref r1, (nuint)x + 24, vb0, vb1);
+                // Clamped to 0..255, so narrowing keeps every value.
+                Vector256.Narrow(Vector256.Narrow(p, q), Vector256.Narrow(r, t)).AsByte().StoreUnsafe(ref o, (nuint)x);
             }
+        }
+        for (; x < n; x++)
+        {
+            int v = (((b0 * (Unsafe.Add(ref r0, x) >> 4)) >> 16) + ((b1 * (Unsafe.Add(ref r1, x) >> 4)) >> 16) + 2) >> 2;
+            d[x] = (byte)Math.Clamp(v, 0, 255);
         }
     }
 
-    void VResize(int dy, Chunk c, byte[] dst)
+    static Vector256<int> Pass(ref int r0, ref int r1, nuint x, Vector256<int> b0, Vector256<int> b1)
     {
-        int b0 = _yb0[dy], b1 = _yb1[dy];
-        var d = dst.AsSpan(dy * _dw * 3, _dw * 3);
-        for (int x = 0; x < d.Length; x++)
-        {
-            int v = (((b0 * (c.Row0[x] >> 4)) >> 16) + ((b1 * (c.Row1[x] >> 4)) >> 16) + 2) >> 2;
-            d[x] = (byte)Math.Clamp(v, 0, 255);
-        }
+        var v = (((b0 * (Vector256.LoadUnsafe(ref r0, x) >> 4)) >> 16) + ((b1 * (Vector256.LoadUnsafe(ref r1, x) >> 4)) >> 16)
+            + Vector256.Create(2)) >> 2;
+        return Vector256.Min(Vector256.Max(v, Vector256<int>.Zero), Vector256.Create(255));
     }
 
     /// <summary>Source offset and the two fixed-point weights for each destination index.</summary>
