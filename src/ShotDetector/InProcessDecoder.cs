@@ -118,17 +118,39 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     public void WriteSampledBgr(byte[] dst, int[] columns, int[] rows)
     {
         byte* bgr = ToBgr(out int stride, rows);
-        int o = 0;
-        foreach (int r in rows)
+        if (!ReferenceEquals(columns, _runsFor))
+            (_runs, _runsFor) = (Runs(columns), columns);
+        fixed (byte* d = dst)
         {
-            byte* row = bgr + r * stride;
-            foreach (int c in columns)
+            byte* o = d;
+            foreach (int r in rows)
             {
-                dst[o++] = row[3 * c];
-                dst[o++] = row[3 * c + 1];
-                dst[o++] = row[3 * c + 2];
+                byte* row = bgr + r * stride;
+                foreach (var (start, length) in _runs!)
+                {
+                    Buffer.MemoryCopy(row + 3 * start, o, 3 * length, 3 * length);
+                    o += 3 * length;
+                }
             }
         }
+    }
+
+    (int Start, int Length)[]? _runs;
+    int[]? _runsFor;
+
+    /// <summary>Ascending columns as runs of consecutive ones, copied a run at a time.</summary>
+    static (int Start, int Length)[] Runs(int[] columns)
+    {
+        var runs = new List<(int, int)>();
+        for (int i = 0; i < columns.Length;)
+        {
+            int j = i + 1;
+            while (j < columns.Length && columns[j] == columns[j - 1] + 1)
+                j++;
+            runs.Add((columns[i], j - i));
+            i = j;
+        }
+        return [.. runs];
     }
 
     /// <summary>The converted frame's crop region, packed BGR (scale,format=bgr24,crop).</summary>
