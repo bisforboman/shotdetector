@@ -293,23 +293,37 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     {
         lock (InitLock)
         {
-            string dir = directory ?? "";
             if (_loaded)
                 return;
-            try
+            Exception? error = null;
+            // A folder given is the only place; otherwise next to the app first (a ShotDetector.Native.<rid> package:
+            // runtimes/<rid>/native/ in a build's output, the app's folder once published), then the system's.
+            string[] places = directory is not null ? [directory]
+                : [Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native"), AppContext.BaseDirectory, ""];
+            foreach (string dir in places)
             {
-                ffmpeg.RootPath = dir;
-                DynamicallyLoadedBindings.Initialize();
-                _ = ffmpeg.avcodec_version(); // fails here if the libraries aren't there or aren't FFmpeg 8.1's
+                if (dir.Length > 0 && !Directory.Exists(dir))
+                    continue;
+                try
+                {
+                    ffmpeg.RootPath = dir;
+                    DynamicallyLoadedBindings.Initialize();
+                    _ = ffmpeg.avcodec_version(); // fails here if the libraries aren't there or aren't FFmpeg 8's
+                    // A library doesn't write to stderr; failures surface as exceptions (the executable runs with -v error).
+                    ffmpeg.av_log_set_level(ffmpeg.AV_LOG_QUIET);
+                    _loaded = true;
+                    return;
+                }
+                catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException or BadImageFormatException)
+                {
+                    error = e;
+                }
             }
-            catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException or BadImageFormatException)
-            {
-                throw new ShotDetectionException(ShotDetectionError.FfmpegNotFound,
-                    "In-process decoding needs FFmpeg 8.1's shared libraries (libavcodec 62, libavformat 62, libswscale 9, " +
-                    "libavutil 60): on Alpine `apk add ffmpeg-libs`, on Windows a \"shared\" FFmpeg 8.1 build (set FfmpegDirectory " +
-                    $"to its bin folder). Or use the default decoder (the ffmpeg executable). ({e.Message})", e);
-            }
-            _loaded = true;
+            throw new ShotDetectionException(ShotDetectionError.FfmpegNotFound,
+                "In-process decoding needs FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, " +
+                "libavutil 60): add the ShotDetector.Native.<rid> package for your platform, or install them (Alpine: " +
+                "`apk add ffmpeg-libs`; Windows: a \"shared\" FFmpeg 8 build, with FfmpegDirectory set to its bin folder). " +
+                $"Or decode with the ffmpeg executable (VideoDecoder.FfmpegProcess). ({error?.Message})", error);
         }
     }
 

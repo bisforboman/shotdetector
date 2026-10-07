@@ -497,9 +497,17 @@ public sealed partial class VideoReader
             throw new NotSupportedException("A streamed input can't be seeked.");
         if (DecodesInProcess)
         {
+            bool any = false;
             foreach (var frame in FramesInProcess(startFrame, count, cancellationToken))
+            {
+                any = true;
                 yield return frame;
-            yield break;
+            }
+            // Auto: libraries that can't decode this codec (AV1 needs dav1d, which ShotDetector.Native leaves out)
+            // give no frames at all; the ffmpeg executable decodes it instead, from here on.
+            if (any || _decoder != VideoDecoder.Auto || ExpectedFrames <= startFrame)
+                yield break;
+            _inProcessGaveNothing = true;
         }
         var pipeline = Pipeline;
         bool resizeHere = pipeline != FramePipeline.FfmpegScale, yuv = pipeline == FramePipeline.Yuv420Sampled;

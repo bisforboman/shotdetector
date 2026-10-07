@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/ShotDetector.Cli/ShotDetector.Cli.csproj" />
     <Project Path="src/ShotDetector.FastYuv/ShotDetector.FastYuv.csproj" />
+    <Project Path="src/ShotDetector.Native/ShotDetector.Native.csproj" />
     <Project Path="src/ShotDetector/ShotDetector.csproj" />
   </Folder>
   <Folder Name="/tests/">

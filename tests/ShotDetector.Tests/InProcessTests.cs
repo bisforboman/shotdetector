@@ -82,6 +82,28 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
     }
 
     [Fact]
+    public void AutoFindsTheFramesTheLibrariesCannotDecode()
+    {
+        // AV1: our build (ShotDetector.Native) has no software AV1 decoder, so Auto must fall back to the executable
+        // rather than give an empty scene list. With libraries that do decode it, it stays in-process.
+        if (Libs is null)
+            return;
+        string av1 = Path.Combine(Path.GetTempPath(), $"shotdetector-av1-{Guid.NewGuid():N}.mkv");
+        try
+        {
+            try { VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c:v", "libaom-av1", "-cpu-used", "8", "-crf", "40", av1], default); }
+            catch (ShotDetectionException) { return; } // this ffmpeg can't encode AV1
+            var result = ShotDetection.Detect(av1, new DetectionOptions { FfmpegDirectory = Libs });
+            Assert.Equal(150, result.FrameCount);
+            Assert.Equal(3, result.Shots.Count);
+        }
+        finally
+        {
+            File.Delete(av1);
+        }
+    }
+
+    [Fact]
     public void RotatedVideoUsesTheExecutable()
     {
         if (Libs is null)

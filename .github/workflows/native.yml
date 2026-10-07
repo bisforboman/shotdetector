@@ -1,0 +1,84 @@
+name: Native libraries
+
+# FFmpeg's shared libraries for ShotDetector.Native.<rid> (tools/native/build-ffmpeg.sh), one job per platform,
+# cached by the script's hash: they are rebuilt only when the FFmpeg version or the configure line changes.
+# release.yml and the tests take them from here (workflow_call).
+on:
+  workflow_call:
+    inputs:
+      rids:
+        description: JSON array of the platforms to build (default all)
+        type: string
+        default: '["win-x64","linux-x64","linux-arm64","linux-musl-x64","osx-arm64"]'
+  workflow_dispatch:
+  pull_request:
+    paths: ['tools/native/**', '.github/workflows/native.yml']
+
+jobs:
+  # The platforms asked for (all by default), as the build job's matrix: a job-level `if` can't see `matrix`, and
+  # this way the platforms not asked for don't start a runner at all.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.plan.outputs.include }}
+    steps:
+      - id: plan
+        env:
+          RIDS: ${{ inputs.rids || '["win-x64","linux-x64","linux-arm64","linux-musl-x64","osx-arm64"]' }}
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, os
+          all = [
+              {"rid": "win-x64", "os": "ubuntu-22.04"},          # cross-compiled with mingw-w64
+              {"rid": "linux-x64", "os": "ubuntu-22.04"},        # an older glibc, so the libraries load on more systems
+              {"rid": "linux-arm64", "os": "ubuntu-22.04-arm"},
+              {"rid": "linux-musl-x64", "os": "ubuntu-latest", "container": "alpine:3.20"},
+              {"rid": "osx-arm64", "os": "macos-14"},
+          ]
+          wanted = json.loads(os.environ["RIDS"])
+          print("include=" + json.dumps([p for p in all if p["rid"] in wanted]))
+          EOF
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.include) }}
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    steps:
+      - name: Tools (Alpine)
+        if: matrix.container
+        run: apk add --no-cache build-base nasm curl tar xz git perl coreutils
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/cache@v5
+        id: cache
+        with:
+          path: native
+          key: ffmpeg-${{ matrix.rid }}-${{ hashFiles('tools/native/build-ffmpeg.sh') }}
+
+      - name: Tools (Linux)
+        if: steps.cache.outputs.cache-hit != 'true' && !matrix.container && runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q nasm ${{ matrix.rid == 'win-x64' && 'mingw-w64' || '' }}
+
+      - name: Build FFmpeg
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sh tools/native/build-ffmpeg.sh ${{ matrix.rid }} native
+
+      - name: What the libraries link against
+        shell: sh
+        run: |
+          ls -l native
+          case "${{ matrix.rid }}" in
+            win-x64) command -v x86_64-w64-mingw32-objdump > /dev/null && for f in native/*.dll; do echo "$f:"; x86_64-w64-mingw32-objdump -p "$f" | grep "DLL Name"; done || true ;;
+            osx-*) for f in native/*.dylib; do otool -L "$f"; done ;;
+            *) for f in native/*.so.*; do echo "$f:"; readelf -d "$f" | grep -E "NEEDED|RUNPATH|SONAME"; done ;;
+          esac
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ matrix.rid }}
+          path: native/

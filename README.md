@@ -21,12 +21,15 @@ installed and on `PATH`; all detection logic is plain C#.
 ```
 dotnet add package ShotDetector                 # the library
 dotnet add package ShotDetector.FastYuv         # optional, LGPL: faster on large video
-dotnet tool install -g ShotDetector.Cli         # the shotdetect command
+dotnet add package ShotDetector.Native.linux-x64  # optional, LGPL: FFmpeg's libraries for in-process decoding
+dotnet tool install -g ShotDetector.Cli         # the shotdetect command (bundles those libraries)
 ```
 
 ffmpeg and ffprobe must be on `PATH` (or set `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`). When FFmpeg 8's
-shared libraries are there too (a "shared" build, or `ffmpeg-libs` on Alpine), frames are decoded in-process:
-faster and lighter, with the same results (see Performance).
+shared libraries are available, frames are decoded in-process: faster and lighter, with the same results (see
+Performance). The `ShotDetector.Native.<rid>` packages (`win-x64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`,
+`osx-arm64`) carry them, built by us for decoding only; the CLI tool and binaries bundle them. Otherwise a
+"shared" FFmpeg build, or `ffmpeg-libs` on Alpine, works too.
 
 Releases are built by GitHub Actions from the tagged commit: packages carry SourceLink and symbol packages, and
 every package and binary has a signed build attestation (`gh attestation verify <file> --repo bisforboman/shotdetector`).

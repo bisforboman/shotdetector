@@ -5,6 +5,16 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+### New
+
+- `ShotDetector.Native.<rid>` packages (LGPL) for win-x64, linux-x64, linux-arm64, linux-musl-x64 and osx-arm64:
+  FFmpeg 8.1.3's libraries built by us for decoding only (7-10 MB per platform), so in-process decoding needs no
+  FFmpeg libraries installed. The shotdetect tool and binaries bundle them. Byte-identical stats to the FFmpeg 8.1
+  executable on H.264, HEVC and VP9.
+- The libraries are looked for next to the app first (`runtimes/<rid>/native/`, then the app's folder), then in
+  the system's usual places. In `Auto`, a codec they can't decode (AV1: no software decoder in our build) is
+  decoded by the ffmpeg executable instead. FFmpeg's log is quiet in-process. The CLI summary says how it decoded.
+
 ### Changed
 
 - In-process decoding is the default when FFmpeg 8's shared libraries load (`VideoDecoder.Auto`, the new default;

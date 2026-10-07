@@ -1,11 +1,13 @@
 # Third-party notices
 
 ShotDetector contains C# ports of algorithms from the projects below, written so that its results
-match theirs exactly. It does not include their source or binaries. At run time it calls an
-`ffmpeg`/`ffprobe` you install yourself.
+match theirs exactly. At run time it calls an `ffmpeg`/`ffprobe` you install yourself, and loads FFmpeg's
+shared libraries when they are there.
 
-The ShotDetector library and CLI (MIT) contain ports from PySceneDetect and OpenCV only. The
-FFmpeg port lives in the separate ShotDetector.FastYuv package, which is LGPL-2.1-or-later.
+The ShotDetector library (MIT) contains ports from PySceneDetect and OpenCV only. The FFmpeg port lives in
+the separate ShotDetector.FastYuv package, which is LGPL-2.1-or-later. FFmpeg's own libraries, built by us
+for decoding only, ship in the ShotDetector.Native.<rid> packages and are bundled with the shotdetect CLI
+(tool and binaries); see the last section.
 
 ## PySceneDetect (BSD 3-Clause)
 
@@ -87,4 +89,13 @@ Ported: the yuv420p → BGR24 converter (`src/ShotDetector.FastYuv/SwscaleYuv420
 `libswscale/yuv2rgb.c` and `libswscale/x86/yuv_2_rgb.asm`. The package is therefore licensed
 LGPL-2.1-or-later (`src/ShotDetector.FastYuv/COPYING.LGPL`).
 Copyright (C) 2001-2007 Michael Niedermayer, (C) 2009-2010 Konstantin Shishkov.
-https://ffmpeg.org, license: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+https://ffmpeg.org, license: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+
+## FFmpeg libraries (GNU LGPL 2.1 or later), ShotDetector.Native.<rid> and the shotdetect CLI
+
+libavcodec, libavformat, libavutil, libswscale and libswresample from FFmpeg 8.1.3
+(https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz), built with `tools/native/build-ffmpeg.sh` for decoding only:
+no encoders, muxers, filters, devices, network protocols, GPL parts or external libraries. Each package and
+release archive has the exact configure line (`configure.txt`) and the licence (`COPYING.LGPL`). The libraries
+are loaded dynamically, so they can be replaced with another build of the same FFmpeg version.
+https://ffmpeg.org/legal.html

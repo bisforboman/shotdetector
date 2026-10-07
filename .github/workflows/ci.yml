@@ -30,8 +30,16 @@ jobs:
           files=$(git diff --name-only HEAD^1 HEAD)
           if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$'; then echo docs_only=true >> "$GITHUB_OUTPUT"; fi
 
-  build:
+  # Our FFmpeg build for linux-x64 (native.yml, cached by the build script's hash): the in-process tests and the
+  # AOT binary use it.
+  native:
     needs: changes
+    uses: ./.github/workflows/native.yml
+    with:
+      rids: '["linux-x64"]'
+
+  build:
+    needs: [changes, native]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -45,14 +53,20 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      # In-process decoding needs FFmpeg 8.1's shared libraries; InProcessTests compare it with that build's
-      # executable, so both go in one folder.
-      - name: FFmpeg 8.1 shared libraries
+      # In-process decoding with our FFmpeg build (ShotDetector.Native's): InProcessTests compare it with FFmpeg
+      # 8.1's executables, put beside it (BtbN's static build, so they don't load these libraries).
+      - uses: actions/download-artifact@v7
+        if: needs.changes.outputs.docs_only != 'true'
+        with:
+          name: native-linux-x64
+          path: native/linux-x64
+
+      - name: FFmpeg 8.1 executables beside our libraries
         if: needs.changes.outputs.docs_only != 'true'
         run: |
-          curl -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-shared-8.1.tar.xz | tar -xJ
-          cp ffmpeg-n8.1-latest-linux64-gpl-shared-8.1/bin/* ffmpeg-n8.1-latest-linux64-gpl-shared-8.1/lib/
-          echo "SHOTDETECTOR_FFMPEG_LIBS=$PWD/ffmpeg-n8.1-latest-linux64-gpl-shared-8.1/lib" >> "$GITHUB_ENV"
+          curl -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz | tar -xJ
+          cp ffmpeg-n8.1-latest-linux64-gpl-8.1/bin/ffmpeg ffmpeg-n8.1-latest-linux64-gpl-8.1/bin/ffprobe native/linux-x64/
+          echo "SHOTDETECTOR_FFMPEG_LIBS=$PWD/native/linux-x64" >> "$GITHUB_ENV"
 
       - name: Test
         if: needs.changes.outputs.docs_only != 'true'
@@ -74,7 +88,7 @@ jobs:
   # The shotdetect CLI as a Native AOT binary for each platform the release ships (see release.yml):
   # it must build, start, and (on Linux, where ffmpeg is easy to install) detect the cuts in a clip.
   aot:
-    needs: changes
+    needs: [changes, native]
     if: github.event_name == 'pull_request'   # main: build and tests only
     strategy:
       fail-fast: false
@@ -102,6 +116,13 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # linux-x64 bundles our FFmpeg build next to the binary, as the release does: then it decodes in-process.
+      - uses: actions/download-artifact@v7
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.rid == 'linux-x64')
+        with:
+          name: native-linux-x64
+          path: native/linux-x64
+
       - name: Publish
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet publish src/ShotDetector.Cli -c Release -r ${{ matrix.rid }} -p:PublishAot=true -o out
@@ -116,8 +137,11 @@ jobs:
           if [ -f /etc/alpine-release ]; then apk add --no-cache ffmpeg; else sudo apt-get update && sudo apt-get install -y ffmpeg; fi
           ffmpeg -v error -f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 \
             -filter_complex "[0][1]concat=n=2:v=1:a=0,format=yuv420p" -r 25 -c:v mpeg4 clip.mp4
-          ./out/shotdetect -i clip.mp4 -d content --csv shots.csv
+          ./out/shotdetect -i clip.mp4 -d content --csv shots.csv 2> summary.txt
+          cat summary.txt
           test "$(tail -n +3 shots.csv | wc -l)" -eq 2   # after the "Timecode List:" row and the header
+          # With the bundled libraries, the AOT binary decodes in-process (FFmpeg.AutoGen under Native AOT).
+          if [ "${{ matrix.rid }}" = linux-x64 ]; then grep -q "decoded in-process" summary.txt; fi
 
   # Alpine (musl), with Alpine's own ffmpeg. scenedetect can't run here (no musl OpenCV wheels), but
   # the video tests check real detection, cancellation, and that Alpine's ffmpeg converts colours
