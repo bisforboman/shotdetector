@@ -5,6 +5,12 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+### Breaking changes
+
+- The scenedetect 0.6.4 compatibility mode is gone: `PySceneDetectVersion.V0_6_4` and CLI `--compat 0.6.4`. 0.7.1
+  stays the default and only mode (`PySceneDetectVersion` remains, for the next scenedetect release); use
+  ShotDetector 0.8 to reproduce 0.6.4.
+
 ## 0.8.0 – 2026-10-07
 
 Automatic deinterlacing and a public probe (issue #35). Results are unchanged unless you turn deinterlacing on.

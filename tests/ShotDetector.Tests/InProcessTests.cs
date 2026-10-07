@@ -9,7 +9,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
 {
     static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
 
-    public static TheoryData<string> Cases => ["plain", "start", "end", "crop", "full", "scale", "fastyuv", "compat064", "dropped", "mpegps", "skip"];
+    public static TheoryData<string> Cases => ["plain", "start", "end", "crop", "full", "scale", "fastyuv", "dropped", "mpegps", "skip"];
 
     [Theory]
     [MemberData(nameof(Cases))]
@@ -27,7 +27,6 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             "full" => options with { FullFrames = true },
             "scale" => options with { Downscale = 1 },
             "fastyuv" => options with { Yuv420Converter = new SwscaleYuv420() },
-            "compat064" => options with { Compatibility = PySceneDetectVersion.V0_6_4 },
             "skip" => options with { FrameSkip = 2 },
             _ => options,
         };

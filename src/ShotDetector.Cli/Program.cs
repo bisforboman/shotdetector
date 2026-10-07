@@ -30,7 +30,7 @@ const string Usage = """
           --hash-size <n>                hash: hash is n x n bits (default 16)
           --hash-lowpass <n>             hash: shrink frames to size*n pixels per side first (default 2)
       -f, --fade-bias <-1..1>            threshold: cut position between fade-out (-1) and fade-in (+1)
-          --compat <0.7.1|0.6.4>         Which PySceneDetect release to reproduce (default 0.7.1)
+          --compat <0.7.1>               Which PySceneDetect release to reproduce (default and only: 0.7.1)
           --frame-rate <fps>             Override the detected frame rate (scenedetect -f); also the
                                          rate of an image sequence such as frames/%04d.png (default 25)
           --ffmpeg-dir <dir>             Folder containing ffmpeg and ffprobe (default: found on PATH)
@@ -171,8 +171,7 @@ try
                     Compatibility = Next() switch
                     {
                         "0.7.1" => PySceneDetectVersion.V0_7_1,
-                        "0.6.4" => PySceneDetectVersion.V0_6_4,
-                        var v => throw new ArgumentException($"Unknown --compat version '{v}' (0.7.1 or 0.6.4)"),
+                        var v => throw new ArgumentException($"Unknown --compat version '{v}' (0.7.1; 0.6.4 was dropped in 0.9.0)"),
                     },
                 };
                 break;

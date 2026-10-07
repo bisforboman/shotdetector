@@ -164,8 +164,6 @@ internal sealed class AdaptiveDetector(
 /// (the CLI's add-last-scene, which cannot be turned off there).
 /// Differs: CEILING method is not ported. The scenedetect CLI passes --fade-bias through unscaled
 /// even though its option range is -100..100; here it takes the detector's -1..1 meaning.
-/// In 0.6.4 mode the split frame is int((fade_in + fade_out + int(bias * (fade_in - fade_out))) / 2),
-/// as 0.6.4 computes it, instead of 0.7.1's fade_out + round((fade_in - fade_out) * (1 + bias) / 2).
 /// </summary>
 internal sealed class ThresholdDetector(
     Func<int, FrameTime> position,
@@ -173,7 +171,6 @@ internal sealed class ThresholdDetector(
     double threshold = 12,
     int minSceneLen = 15,
     double fadeBias = 0,
-    PySceneDetectVersion version = PySceneDetectVersion.V0_7_1,
     bool addLastScene = true) : IDetector
 {
     readonly int _threshold = (int)threshold; // PySceneDetect truncates it to an int
@@ -224,9 +221,7 @@ internal sealed class ThresholdDetector(
             {
                 // The split is computed as a bare frame number from the (time-derived) frame numbers.
                 long fadeOut = position(_lastFadeFrame).FrameNum, fadeIn = position(frame).FrameNum;
-                cut = version == PySceneDetectVersion.V0_6_4
-                    ? FrameTime.Frame064((long)((fadeIn + fadeOut + (long)(fadeBias * (fadeIn - fadeOut))) / 2.0), fps)
-                    : FrameTime.Frame(fadeOut + (long)Math.Round((fadeIn - fadeOut) * (1.0 + fadeBias) / 2.0), fps);
+                cut = FrameTime.Frame(fadeOut + (long)Math.Round((fadeIn - fadeOut) * (1.0 + fadeBias) / 2.0), fps);
                 _lastSceneCut = frame;
             }
             _fadedOut = false;
@@ -253,8 +248,7 @@ internal sealed class HistogramDetector(
     Func<int, FrameTime> position,
     double threshold = 0.05,
     int bins = 256,
-    int minSceneLen = 15,
-    PySceneDetectVersion version = PySceneDetectVersion.V0_7_1) : IDetector
+    int minSceneLen = 15) : IDetector
 {
     readonly double _maxCorrelation = Math.Max(0.0, Math.Min(1.0, 1.0 - threshold));
     readonly string _key = $"hist_diff [bins={bins}]";
@@ -267,9 +261,7 @@ internal sealed class HistogramDetector(
     /// <inheritdoc/>
     public FrameTime? ProcessFrame(int frame, byte[] bgr)
     {
-        // 0.6.4 tests `if not self._last_scene_cut` on a plain frame number, which is false for 0, so
-        // it re-initialises at frame 1; 0.7.1's FrameTimecode is always truthy.
-        if (_lastCut is null || (version == PySceneDetectVersion.V0_6_4 && _lastCut == 0))
+        if (_lastCut is null)
             _lastCut = frame;
         var hist = Histogram(bgr, bins);
         FrameTime? cut = null;

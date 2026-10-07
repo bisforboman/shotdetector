@@ -18,7 +18,6 @@ public sealed partial class VideoReader
     {
         var pipeline = Pipeline;
         var resizer = pipeline != FramePipeline.FfmpegScale ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
-        bool live = Compatibility != PySceneDetectVersion.V0_6_4;
         _livePackets.Clear();
         _liveStart = startFrame;
         int size = pipeline switch
@@ -45,8 +44,7 @@ public sealed partial class VideoReader
             long pts = decoder.Pts;
             if (from is { } f && pts < f)
                 continue;
-            if (live)
-                _livePackets.Add(PacketOf(pts * decoder.TimeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
+            _livePackets.Add(PacketOf(pts * decoder.TimeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
             emitted++;
             switch (pipeline)
             {

@@ -12,11 +12,6 @@ public enum PySceneDetectVersion
 {
     /// <summary>scenedetect 0.7.1: real frame timestamps (handles variable frame rate), fractional downscale.</summary>
     V0_7_1,
-    /// <summary>
-    /// scenedetect 0.6.4: frame numbers at OpenCV's average frame rate, a whole-number downscale factor
-    /// from the width (854x480 is analysed at 285x160), and its own fade-cut rounding.
-    /// </summary>
-    V0_6_4,
 }
 
 /// <summary>Which PySceneDetect detector to run.</summary>
@@ -426,8 +421,7 @@ public static class ShotDetection
             throw new ArgumentException($"The scene list has no column '{column}'.");
         // FrameTimecode(value, fps): digits are a frame number, anything else a time in seconds.
         FrameTime Time(string value, int shift = 0) => value.All(char.IsDigit)
-            ? (o.Compatibility == PySceneDetectVersion.V0_6_4 ? FrameTime.Frame064(Math.Max(0, long.Parse(value, CultureInfo.InvariantCulture) - shift), fps)
-                : FrameTime.Frame(Math.Max(0, long.Parse(value, CultureInfo.InvariantCulture) - shift), fps))
+            ? FrameTime.Frame(Math.Max(0, long.Parse(value, CultureInfo.InvariantCulture) - shift), fps)
             : FrameTime.FromSeconds(TimecodeSeconds(value, fps), fps);
         // Start Frame values are 1-based in the CLI's output.
         FrameTime Parse(string value) => Time(value, shift: 1);
@@ -708,9 +702,9 @@ public static class ShotDetection
         {
             DetectorKind.Content => new ContentDetector(Scorer(), video.Position, video.Fps, st.Threshold ?? 27.0, min,
                 (st.FilterMode ?? o.FilterMode) == FlashFilterMode.Suppress),
-            DetectorKind.Threshold => new ThresholdDetector(video.Position, video.Fps, st.Threshold ?? 12.0, min, st.FadeBias ?? o.FadeBias, o.Compatibility,
+            DetectorKind.Threshold => new ThresholdDetector(video.Position, video.Fps, st.Threshold ?? 12.0, min, st.FadeBias ?? o.FadeBias,
                 st.AddLastScene ?? o.AddLastScene),
-            DetectorKind.Histogram => new HistogramDetector(video.Position, st.Threshold ?? 0.05, bins, min, o.Compatibility),
+            DetectorKind.Histogram => new HistogramDetector(video.Position, st.Threshold ?? 0.05, bins, min),
             DetectorKind.Hash => new HashDetector(video.Position, st.Threshold ?? 0.395, hashSize, hashLowpass, min),
             _ => new AdaptiveDetector(Scorer(), video.Position, st.Threshold ?? 3.0, min, frameWindow, st.MinContentVal ?? o.MinContentVal),
         };

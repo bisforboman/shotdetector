@@ -49,19 +49,6 @@ public readonly record struct Fps(int Num, int Den)
         return new((int)n, (int)d);
     }
 
-    /// <summary>The fps as a decimal fraction (29.97 → 2997/100), so <see cref="Value"/> is exactly the given double.</summary>
-    internal static Fps FromDecimal(double fps)
-    {
-        decimal d = (decimal)fps;
-        int den = 1;
-        while (d != decimal.Floor(d) && den < 1_000_000)
-        {
-            d *= 10;
-            den *= 10;
-        }
-        return Reduce((long)d, den);
-    }
-
     static Fps Reduce(long n, long d)
     {
         long g = (long)BigInteger.GreatestCommonDivisor(n, d);
@@ -224,7 +211,7 @@ public sealed partial class VideoReader
         // scenedetect's frame rate override; an image sequence (no timestamps of its own) is read at that rate.
         Fps? frameRate = o.FrameRate is not { } fr ? null
             : fr <= 0 ? throw new ArgumentException("FrameRate must be positive.")
-            : compatibility == PySceneDetectVersion.V0_6_4 ? Fps.FromDecimal(fr) : Fps.FromFloat(fr);
+            : Fps.FromFloat(fr);
         _inputOptions = frameRate is { } r && video is null && path.Contains('%') && !IsUrl(path)
             ? ["-framerate", $"{r.Num}/{r.Den}"] : [];
         // One demux-only pass: stream properties, plus every packet's pts for a file (no decoding).
@@ -282,8 +269,8 @@ public sealed partial class VideoReader
         // which matters for variable frame rate video.
         var avg = Fps.Parse(stream.GetValueOrDefault("avg_frame_rate", "0/0"));
         var rate = avg.Num > 0 && avg.Den > 0 ? avg : Fps.Parse(stream["r_frame_rate"]);
-        // 0.7.1 turns it into a clean fraction (framerate_to_fraction); 0.6.4 uses the float as is.
-        Fps = frameRate ?? (compatibility == PySceneDetectVersion.V0_6_4 ? rate : Fps.FromFloat(rate.Value));
+        // scenedetect turns it into a clean fraction (framerate_to_fraction).
+        Fps = frameRate ?? Fps.FromFloat(rate.Value);
         FrameCountHint = long.TryParse(stream.GetValueOrDefault("nb_frames"), out var n) ? n : 0;
         // OpenCV's CAP_PROP_FRAME_COUNT: the stream's frame count, else round(duration * fps), where the
         // duration is the container's (format=duration is printed after the stream's, so it wins here).
@@ -308,8 +295,6 @@ public sealed partial class VideoReader
         (Width, Height) = o.Downscale is { } d
             ? d <= 1 ? (CropRegion.Width, CropRegion.Height)
                 : (Math.Max(1, (int)Math.Round(CropRegion.Width / (double)d)), Math.Max(1, (int)Math.Round(CropRegion.Height / (double)d)))
-            : compatibility == PySceneDetectVersion.V0_6_4
-            ? DownscaledSize064(effective.Item1, effective.Item2, CropRegion.Width, CropRegion.Height)
             : DownscaledSize(effective.Item1, effective.Item2, CropRegion.Width, CropRegion.Height);
         _pixelFormat = stream.GetValueOrDefault("pix_fmt", "");
         FieldOrder = stream.GetValueOrDefault("field_order") switch
@@ -406,12 +391,9 @@ public sealed partial class VideoReader
     /// ((pts - start) * time_base * 1000) rounded to µs, or (frame - 1) / fps when that is not positive.
     /// Assumes OpenCV's best-effort timestamps equal the sorted packet pts, which holds for the
     /// sample clips (mp4, mov, m4v, mkv, ogg) but not for every stream (e.g. missing pts).
-    /// In 0.6.4 a position is just the frame number.
     /// </summary>
     public FrameTime Position(int frame)
     {
-        if (Compatibility == PySceneDetectVersion.V0_6_4)
-            return FrameTime.Frame064(frame, Fps);
         int packet = frame - _liveStart is int k && k >= 0 && k < _livePackets.Count ? _livePackets[k] : frame;
         long? pts = Streaming ? (frame < _livePts.Count ? _livePts[frame] : null) : (packet < _pts.Length ? _pts[packet] : null);
         if (pts is { } p)
@@ -464,22 +446,7 @@ public sealed partial class VideoReader
     /// as 0 at that point, so it is always the frame-number fallback for the last frame.
     /// The last scene ends one frame after it.
     /// </summary>
-    internal FrameTime PositionAfterDecoding(int frameCount) => Compatibility == PySceneDetectVersion.V0_6_4
-        ? FrameTime.Frame064(frameCount - 1, Fps)
-        : FrameTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps);
-
-    /// <summary>
-    /// PySceneDetect 0.6.4's downscale: a whole-number factor width // 256 (from the width only), then
-    /// cv2.resize to (round(w / factor), round(h / factor)); no resize when the factor is 1.
-    /// </summary>
-    internal static (int W, int H) DownscaledSize064(int width, int height, int minWidth = 256) => DownscaledSize064(width, height, width, height, minWidth);
-
-    /// <summary>The factor comes from the effective size, the result from the frame's actual size.</summary>
-    internal static (int W, int H) DownscaledSize064(int effectiveWidth, int effectiveHeight, int width, int height, int minWidth = 256)
-    {
-        int factor = effectiveWidth < minWidth ? 1 : effectiveWidth / minWidth;
-        return factor <= 1 ? (width, height) : ((int)Math.Round(width / (double)factor), (int)Math.Round(height / (double)factor));
-    }
+    internal FrameTime PositionAfterDecoding(int frameCount) => FrameTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps);
 
     /// <summary>PySceneDetect 0.7.1's compute_downscale_factor + resize size (Python round = half to even).</summary>
     internal static (int W, int H) DownscaledSize(int width, int height, int minWidth = 256) => DownscaledSize(width, height, width, height, minWidth);
@@ -582,13 +549,11 @@ public sealed partial class VideoReader
         // whole frame and scenedetect slices the result; in the yuv420p pipeline it happens here instead.
         string crop = CropRegion.Width == SourceWidth && CropRegion.Height == SourceHeight
             ? "" : $",crop={CropRegion.Width}:{CropRegion.Height}:{CropRegion.X}:{CropRegion.Y}";
-        // When streaming, each frame's timestamp is read from showinfo's log line (there is no
-        // packet list), so ffmpeg logs at info level and the lines are parsed as they arrive.
-        // Files (0.7.1 positions) too: there each frame's timestamp says which packet it is.
-        bool live = Streaming || Compatibility != PySceneDetectVersion.V0_6_4;
+        // Each frame's timestamp is read from showinfo's log line, so ffmpeg logs at info level and the lines are
+        // parsed as they arrive: when streaming there is no packet list, and for a file it says which packet it is.
         // Absolute timestamps for files, so they compare with the packet list as they are (without
         // -copyts ffmpeg shifts by the container's start, which can differ from the video stream's).
-        if (live && !Streaming && seek.Length == 0)
+        if (!Streaming && seek.Length == 0)
             seek = ["-copyts"];
         string[] noStdin = _stream is null ? ["-nostdin"] : [];
         // SampledBgr: two 16-bit maps (source column and row of every pixel the resize reads, crop included)
@@ -597,11 +562,10 @@ public sealed partial class VideoReader
         var resizer = resizeHere ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
         string? maps = sampled ? WriteMaps(resizer!) : null;
         string[] mapInputs = maps is null ? [] : ["-loop", "1", "-i", Path.Combine(maps, "x.pgm"), "-loop", "1", "-i", Path.Combine(maps, "y.pgm")];
-        string[] args = ["-v", live ? "info" : "error", "-nostats", .. noStdin, "-y",
+        string[] args = ["-v", "info", "-nostats", .. noStdin, "-y",
             "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount)}", .. seek, .. _inputOptions, "-i", _path,
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
-        if (live)
-            select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
+        select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
         // Deinterlacing first, so the frames a seek decodes early still feed yadif, as in the copy it stands for.
         if (_deinterlace)
             select = ["-vf", "yadif" + (select.Length > 0 ? "," + select[1] : "")];
@@ -632,9 +596,8 @@ public sealed partial class VideoReader
             _liveStart = startFrame;
         }
         var log = new System.Text.StringBuilder();
-        // stderr: when streaming, timestamps come out of it; otherwise it's just kept for errors.
-        var stderr = live
-            ? Task.Run(() =>
+        // stderr: the frames' timestamps come out of it, and anything else is kept for errors.
+        var stderr = Task.Run(() =>
             {
                 string? line;
                 while ((line = proc.StandardError.ReadLine()) is not null)
@@ -659,8 +622,7 @@ public sealed partial class VideoReader
                 }
                 livePts.CompleteAdding();
                 return log.ToString();
-            })
-            : proc.StandardError.ReadToEndAsync();
+            });
         // A Stream is fed to ffmpeg's stdin: the probed prefix first, then the rest.
         var feeder = _stream is null ? Task.CompletedTask : Task.Run(() =>
         {
@@ -729,16 +691,13 @@ public sealed partial class VideoReader
             {
                 if (previous is not null)
                     free.Add(previous);
-                if (live)
-                {
-                    // The frame's timestamp precedes it on stderr; without one the frame can't be placed.
-                    if (!livePts.TryTake(out long pts, Timeout.Infinite, cancel.Token))
-                        throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg gave no timestamp for frame {_livePts.Count + _livePackets.Count}: {stderr.Result}");
-                    if (Streaming)
-                        _livePts.Add(pts); // from the start already: ffmpeg shifts input timestamps to start at 0
-                    else
-                        _livePackets.Add(PacketOf(pts * liveTimeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
-                }
+                // The frame's timestamp precedes it on stderr; without one the frame can't be placed.
+                if (!livePts.TryTake(out long pts, Timeout.Infinite, cancel.Token))
+                    throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg gave no timestamp for frame {_livePts.Count + _livePackets.Count}: {stderr.Result}");
+                if (Streaming)
+                    _livePts.Add(pts); // from the start already: ffmpeg shifts input timestamps to start at 0
+                else
+                    _livePackets.Add(PacketOf(pts * liveTimeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
                 if (resizer is null)
                 {
                     previous = buffer;
