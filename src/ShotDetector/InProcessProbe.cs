@@ -57,6 +57,7 @@ internal static unsafe class InProcessProbe
                 // ffprobe prints it with print_int: the double, truncated.
                 Line("rotation", ((long)ffmpeg.av_display_rotation_get(in m)).ToString(CultureInfo.InvariantCulture));
             }
+            Line("format_name", Marshal.PtrToStringAnsi((IntPtr)fmt->iformat->name) ?? "");
             Line("duration", Time(fmt->duration, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }));
             if (!packets)
                 return sb.ToString();
@@ -75,6 +76,24 @@ internal static unsafe class InProcessProbe
                 ffmpeg.av_packet_free(&pkt);
             }
             return sb.ToString();
+        }
+        finally
+        {
+            ffmpeg.avformat_close_input(&fmt);
+        }
+    }
+
+    /// <summary>Whether the file has an audio stream (<c>ffprobe -select_streams a</c> finds one).</summary>
+    public static bool HasAudio(string path, string? libraryDirectory)
+    {
+        InProcessDecoder.Load(libraryDirectory);
+        var fmt = Open(path);
+        try
+        {
+            for (int i = 0; i < fmt->nb_streams; i++)
+                if (fmt->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_AUDIO)
+                    return true;
+            return false;
         }
         finally
         {

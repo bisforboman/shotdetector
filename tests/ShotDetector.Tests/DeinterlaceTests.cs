@@ -4,6 +4,27 @@ using ShotDetector.FastYuv;
 /// <summary>Deinterlace gives what detection on a lossless <c>ffmpeg -vf yadif</c> copy gives (issue #16).</summary>
 public class DeinterlaceTests(Clips clips) : IClassFixture<Clips>
 {
+    [Theory]
+    [InlineData(VideoDecoder.Auto)]
+    [InlineData(VideoDecoder.FfmpegProcess)] // ffprobe
+    public void ProbeReportsTheContainerAndAudio(VideoDecoder decoder)
+    {
+        var options = new DetectionOptions { Decoder = decoder };
+        var mp4 = ShotDetection.Probe(clips.ThreeShots, options);
+        Assert.Equal(("mov,mp4,m4a,3gp,3g2,mj2", false), (mp4.Container, mp4.HasAudio));
+        Assert.Equal("matroska,webm", ShotDetection.Probe(clips.ThreeShotsMkv, options).Container);
+        string withAudio = Path.Combine(Path.GetTempPath(), $"shotdetector-audio-{Guid.NewGuid():N}.mkv");
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-f", "lavfi", "-i", "sine=d=6", "-c:v", "copy", "-shortest", withAudio], default);
+        try
+        {
+            Assert.True(ShotDetection.Probe(withAudio, options).HasAudio);
+        }
+        finally
+        {
+            File.Delete(withAudio);
+        }
+    }
+
     [Fact]
     public void ProbeReportsTheFieldOrder()
     {

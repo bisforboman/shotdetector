@@ -315,7 +315,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
                     error = e;
                 }
             }
-            throw new ShotDetectionException(ShotDetectionError.FfmpegNotFound,
+            throw new ShotDetectionException(ShotDetectionError.FfmpegLibrariesNotFound,
                 "In-process decoding needs FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, " +
                 "libavutil 60): add the ShotDetector.Native.<rid> package for your platform, or install them (Alpine: " +
                 "`apk add ffmpeg-libs`; Windows: a \"shared\" FFmpeg 8 build, with FfmpegDirectory set to its bin folder). " +
