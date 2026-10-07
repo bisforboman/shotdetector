@@ -2,9 +2,8 @@ name: Mutation testing
 
 # Breaks each guard listed in tools/mutation/mutations.psd1 and checks that a test fails.
 on:
-  push:
-    branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]   # drafts run nothing until marked ready
   workflow_dispatch:
 
 concurrency:
@@ -15,6 +14,7 @@ jobs:
   # Docs-only pull requests (docs/ and *.md): the jobs below still run, so their required checks report, but skip
   # their steps. Decided here, on a runner with git, from the PR's merge commit against its base.
   changes:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
