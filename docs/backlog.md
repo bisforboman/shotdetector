@@ -40,6 +40,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | Probe cost: scanning packets in the background while ffmpeg decodes | Measured no gain (the end check needs timestamps from the first frame; short files scan fast); reverted | Dropped (2026-10-06) |
 | In-process decoding (FFmpeg.AutoGen / Sdcb.FFmpeg, the C# counterparts of PyAV) instead of the ffmpeg pipe | Removes the pipe (~15% on HD, core path) and the separate ffmpeg executable; costs native FFmpeg libraries per platform (AOT, Alpine) and their LGPL/GPL terms | Done (opt-in, next row) |
 | In-process decoding as an opt-in backend (FFmpeg.AutoGen, FFmpeg 8.1 libraries): prototype exact and 40% less CPU than the ffmpeg command line on 2 CPUs (decisions.md) | Issue #12: the command line is two thirds of the gap to scenedetect on Linux | Done |
+| Big Buck Bunny (720p h264) in-process: ~1.7x scenedetect's wall time and 1.4x its CPU on 2 CPUs, where the other films are within 4-13%; find out why (decoder settings, audio packets, the conversion) | Issue #12; the outlier in the 0.6.0 measurements | Open |
 | SIMD in the resize/HSV/score loops | ~4% of the time; not worth it until the above are done | Maybe |
 
 ## 3. Toward 1.0
