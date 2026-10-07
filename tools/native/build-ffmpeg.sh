@@ -32,7 +32,8 @@ set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
 case "$rid" in
   win-x64) set -- "$@" --arch=x86_64 --target-os=mingw32 --cross-prefix=x86_64-w64-mingw32- \
              --extra-ldflags=-static-libgcc --enable-w32threads ;;
-  linux-*) set -- "$@" --enable-pthreads --extra-ldflags='-Wl,-rpath,$$ORIGIN' ;;
+  # No RUNPATH on Linux: the loader loads each library's dependencies first, by full path.
+  linux-*) set -- "$@" --enable-pthreads ;;
   osx-*)   set -- "$@" --enable-pthreads --install-name-dir=@rpath --extra-ldflags=-Wl,-rpath,@loader_path ;;
   *) echo "unknown rid $rid" >&2; exit 1 ;;
 esac
