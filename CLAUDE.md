@@ -27,9 +27,10 @@ CLI `-i -`). CI compares every sample clip against scenedetect 0.7.1 and 0.6.4 o
 paths; detect-hash and 10-bit video are informational. `realworld.yml` runs whole films nightly; `benchmark.yml`
 weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what the user decided and why.
 
-**Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Tag `vX.Y.Z`
-on `main`; prerelease tags (`-`) publish without approval, stable ones wait for the user's approval of the `release`
-environment. Move the `## Unreleased` section of CHANGELOG.md to the version first.
+**Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Open a release
+PR that moves CHANGELOG.md's `## Unreleased` section to `## X.Y.Z – date`; merging it releases: release.yml (on every
+push to main) tags `vX.Y.Z` when that version isn't tagged yet and publishes. Prereleases (`-`) publish without
+approval, stable ones wait for the user's approval of the `release` environment. A hand-pushed `v*` tag still works.
 
 ## Working on this repository
 
