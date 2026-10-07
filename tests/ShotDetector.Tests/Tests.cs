@@ -66,6 +66,40 @@ public class ContentScorerTests
         Assert.Equal(expected, ContentScorer.AbsDiffSum(a, b));
     }
 
+    [Theory]
+    [InlineData(16)]
+    [InlineData(1000)]
+    [InlineData(70000)] // more than 128 rounds of 16: the 16-bit lanes are flushed
+    public void AbsDiffSum128MatchesTheScalarSum(int length)
+    {
+        // The 128-bit path ARM takes, run here directly: the bytes it covers sum as the plain loop does.
+        var rnd = new Random(length);
+        var (a, b) = (new byte[length], new byte[length]);
+        rnd.NextBytes(a);
+        rnd.NextBytes(b);
+        var (sum, done) = ContentScorer.AbsDiffSum128(a, b);
+        Assert.Equal(length - length % 16, done);
+        Assert.Equal(Enumerable.Range(0, done).Sum(i => (long)Math.Abs(a[i] - b[i])), sum);
+    }
+
+    [Fact]
+    public void VResize128MatchesTheScalarFormula()
+    {
+        // The vertical pass ARM takes: row values as the horizontal pass makes them (up to 255 * 2048).
+        var rnd = new Random(3);
+        int n = 768;
+        var (r0, r1, o) = (new int[n], new int[n], new byte[n]);
+        for (int k = 0; k < n; k++)
+            (r0[k], r1[k]) = (rnd.Next(255 * 2048 + 1), rnd.Next(255 * 2048 + 1));
+        foreach (var (b0, b1) in new[] { (2048, 0), (1024, 1024), (100, 1948), (0, 2048) })
+        {
+            int done = CvResize.VResize128(ref r0[0], ref r1[0], ref o[0], n, b0, b1);
+            Assert.Equal(n, done);
+            for (int x = 0; x < n; x++)
+                Assert.Equal((byte)Math.Clamp((((b0 * (r0[x] >> 4)) >> 16) + ((b1 * (r1[x] >> 4)) >> 16) + 2) >> 2, 0, 255), o[x]);
+        }
+    }
+
     [Fact]
     public void HsvPlanesMatchThePerPixelConversionForEveryColour()
     {

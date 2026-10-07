@@ -11,6 +11,13 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
   stays the default and only mode (`PySceneDetectVersion` remains, for the next scenedetect release); use
   ShotDetector 0.8 to reproduce 0.6.4.
 
+### Faster
+
+- ARM (Apple Silicon, Graviton, Ampere): the HSV conversion has a NEON path and the resize's vertical pass and the
+  frame differences fall back to 128-bit vectors, where they ran scalar. On a 2-CPU Neoverse-N2, in-process
+  decoding is now faster than scenedetect on all four benchmark films (Big Buck Bunny 0.95x, was 1.16x) with less
+  CPU. CI runs the whole test suite on ARM, and the benchmark covers ARM too.
+
 ## 0.8.0 – 2026-10-07
 
 Automatic deinterlacing and a public probe (issue #35). Results are unchanged unless you turn deinterlacing on.
