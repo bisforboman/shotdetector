@@ -133,16 +133,13 @@ public static partial class Export
 
         // (frame index, file name) for every image; a frame may be wanted twice.
         var wanted = new List<(int Frame, string File)>();
-        // 0.7.1 picks times and seeks to them; 0.6.4 picks frame numbers directly.
-        int[][] picked = video.Compatibility == PySceneDetectVersion.V0_6_4
-            ? ImageFrames064(shots, numImages, frameMargin)
-            : ImageTimes(shots, video.Fps, numImages, frameMargin).Select(t => t.Select(video.FrameAt).ToArray()).ToArray();
-        double[][]? times = video.Compatibility == PySceneDetectVersion.V0_6_4 ? null : ImageTimes(shots, video.Fps, numImages, frameMargin);
+        // scenedetect picks times and seeks to them.
+        double[][] times = ImageTimes(shots, video.Fps, numImages, frameMargin);
+        int[][] picked = times.Select(t => t.Select(video.FrameAt).ToArray()).ToArray();
         for (int i = 0; i < shots.Count; i++)
             for (int j = 0; j < numImages; j++)
             {
-                // The image's own time: 0.7.1 the picked time, 0.6.4 the picked frame.
-                double seconds = times?[i][j] ?? picked[i][j] / video.Fps.Value;
+                double seconds = times[i][j]; // the image's own time: the picked one
                 string file = Substitute(io.FileName, new Dictionary<string, string>
                 {
                     ["VIDEO_NAME"] = name,
@@ -207,32 +204,6 @@ public static partial class Export
         }).ToArray();
     }
 
-    /// <summary>
-    /// Frame numbers of each shot's images as scenedetect 0.6.4's save_images picks them: the shot's
-    /// frames (padded with its last frame to at least <paramref name="numImages"/>) are split into
-    /// equal parts with np.array_split; the first image is <paramref name="frameMargin"/> frames into
-    /// the first part, the last that far from the end of the last part, the others mid-part.
-    /// Differs: on variable frame rate video OpenCV's frame seek can land a frame early; this doesn't.
-    /// </summary>
-    internal static int[][] ImageFrames064(IReadOnlyList<Shot> shots, int numImages, int frameMargin) => shots.Select(shot =>
-    {
-        int start = (int)shot.Start.FrameNum, count = Math.Max(1, (int)(shot.End.FrameNum - shot.Start.FrameNum));
-        var frames = Enumerable.Range(start, count).ToList();
-        while (frames.Count < numImages)
-            frames.Add(frames[^1]);
-        // np.array_split: the first (count % n) parts get one extra element.
-        int size = frames.Count / numImages, extra = frames.Count % numImages, offset = 0;
-        var picked = new int[numImages];
-        for (int j = 0; j < numImages; j++)
-        {
-            var part = frames.GetRange(offset, size + (j < extra ? 1 : 0));
-            offset += part.Count;
-            picked[j] = (0 < j && j < numImages - 1) || numImages == 1 ? part[part.Count / 2]
-                : j == 0 ? Math.Min(part[0] + frameMargin, part[^1])
-                : Math.Max(part[^1] - frameMargin, part[0]);
-        }
-        return picked;
-    }).ToArray();
 
     /// <summary>
     /// split-video: one file per shot, "{video}-Scene-{NNN}.mp4", cut by ffmpeg with scenedetect's

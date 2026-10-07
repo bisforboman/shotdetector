@@ -7,8 +7,7 @@ namespace ShotDetector;
 /// seconds match digit for digit. In 0.7.1 it is either a presentation timestamp (<see cref="Value"/>
 /// in units of 1/<see cref="TbDen"/> s; decoded frame positions) or a bare frame number (TbDen == 0;
 /// cuts that ThresholdDetector computes), or a time in seconds (TbDen == -2, the double's bits in Value;
-/// times typed by the user or read from a scene list). In 0.6.4 it is always a frame number whose seconds are
-/// frame / fps in floating point (TbDen == -1). Arithmetic, conversions and rounding mirror
+/// times typed by the user or read from a scene list). Arithmetic, conversions and rounding mirror
 /// FrameTimecode, including Python's round(), which rounds the exact binary value half to even.
 /// </summary>
 public readonly record struct FrameTime
@@ -29,22 +28,19 @@ public readonly record struct FrameTime
 
     /// <summary>A bare frame number.</summary>
     public static FrameTime Frame(long frame, Fps fps) => new(frame, 0, fps);
-    /// <summary>A frame number as PySceneDetect 0.6.4 holds every position: seconds = frame / fps.</summary>
-    internal static FrameTime Frame064(long frame, Fps fps) => new(frame, -1, fps);
     /// <summary>A presentation timestamp in units of 1/<paramref name="tbDen"/> seconds.</summary>
     internal static FrameTime Pts(long pts, long tbDen, Fps fps) => new(pts, tbDen, fps);
     /// <summary>A time in seconds (FrameTimecode's _Seconds), e.g. "5s" or "00:00:05.000" given by the user.</summary>
     internal static FrameTime FromSeconds(double seconds, Fps fps) => new(BitConverter.DoubleToInt64Bits(seconds), -2, fps);
 
-    bool IsFrame => TbDen is 0 or -1;
+    bool IsFrame => TbDen == 0;
     bool IsSecs => TbDen == -2;
     double FpsValue => Fps.Value; // float(frame_rate)
 
-    /// <summary>FrameTimecode.seconds: an exact rational, rounded once to double (0.6.4: frame / float fps).</summary>
+    /// <summary>FrameTimecode.seconds: an exact rational, rounded once to double.</summary>
     public double Seconds => TbDen switch
     {
         -2 => BitConverter.Int64BitsToDouble(Value),
-        -1 => Value / FpsValue,
         0 => (double)(Value * Fps.Den) / Fps.Num,
         _ => (double)Value / TbDen,
     };

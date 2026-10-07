@@ -117,14 +117,9 @@ Each detection is an OpenTelemetry-ready span: `.AddSource(ShotDetection.Activit
 
 Runs wherever .NET 10 and ffmpeg do, including Alpine (`apk add ffmpeg`), which CI tests.
 
-To reproduce scenedetect 0.6.4 instead of 0.7.1 (for consistency with older results), set
-`Compatibility = PySceneDetectVersion.V0_6_4` (CLI: `--compat 0.6.4`). 0.6.4 analyses frames at a
-different size (a whole-number downscale factor from the width, e.g. 854x480 at 285x160), counts
-time in frames at OpenCV's average frame rate (no real timestamps, so variable frame rate video is
-treated as constant), and rounds fade cuts differently. Cuts, CSVs, stats and exports match 0.6.4
-exactly in that mode; CI checks both releases. (0.6.4's own threshold detector is nondeterministic
-on Linux, where repeated runs give different results, so CI compares 0.6.4 on the content and adaptive
-detectors; on Windows all three matched 0.6.4 exactly.)
+ShotDetector reproduces scenedetect 0.7.1 (`Compatibility = PySceneDetectVersion.V0_7_1`, the default). When
+the default moves to a newer scenedetect, the previous release stays available there (see "Versions"). The
+scenedetect 0.6.4 mode was dropped in 0.9.0; use ShotDetector 0.8 for it.
 
 `Shot.Start`/`End` are `FrameTime`s: `FrameNum` (0-based; `End` is exclusive), `Seconds`,
 `Timecode()` (also what `ToString()` gives). They print exactly as scenedetect prints them.
@@ -181,8 +176,8 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
 
 ## Verifying against PySceneDetect
 
-CI (`.github/workflows/ci.yml`) checks every push on Linux, against scenedetect 0.7.1 and 0.6.4 (in
-the matching compatibility mode), for the core path and the FastYuv path, with the latest stable
+CI (`.github/workflows/ci.yml`) checks every pull request on Linux against scenedetect 0.7.1, for the core path
+and the FastYuv path, with the latest stable
 ffmpeg. On every sample clip and every detector:
 - the cuts are the same frames;
 - the scene list CSVs are identical cell for cell, timecodes and seconds included;
@@ -193,7 +188,7 @@ The comparison table is in each run's job summary. The same check runs locally:
 ```
 pwsh tools/make-samples.ps1
 python tools/compare.py samples/*.mp4 [--detector adaptive|content|threshold|both|all] [--stats] [--fast-yuv]
-    [--compat 0.6.4 --scenedetect-python path/to/python] [--weights 1 1 1 1] [--report table.md]
+    [--compat 0.7.1 --scenedetect-python path/to/python] [--weights 1 1 1 1] [--report table.md]
 dotnet test
 ```
 
