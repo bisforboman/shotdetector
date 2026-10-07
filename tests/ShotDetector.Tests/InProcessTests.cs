@@ -18,7 +18,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         if (Libs is null)
             return;
         string path = name switch { "dropped" => clips.ThreeShotsDropped, "mpegps" => clips.ThreeShotsMpegPs, _ => clips.ThreeShots };
-        var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = name != "skip", FfmpegDirectory = Libs };
+        var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = name != "skip", FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess };
         options = name switch
         {
             "start" => options with { StartTime = "1.5" },
@@ -56,7 +56,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, .. args.Split(' '), "-c:v", "ffv1", copy], default);
         try
         {
-            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs };
+            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess };
             var pipe = ShotDetection.Detect(copy, options);
             var inProcess = ShotDetection.Detect(copy, options with { Decoder = VideoDecoder.InProcess });
             Assert.True(inProcess.Video.DecodesInProcess);
@@ -66,6 +66,19 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         {
             File.Delete(copy);
         }
+    }
+
+    [Fact]
+    public void AutoDecodesInProcessWhenTheLibrariesLoad()
+    {
+        if (Libs is null)
+            return;
+        var auto = new VideoReader(clips.ThreeShots, new DetectionOptions { FfmpegDirectory = Libs });
+        Assert.Equal(VideoDecoder.Auto, new DetectionOptions().Decoder);
+        Assert.True(auto.DecodesInProcess);
+        Assert.False(new VideoReader(clips.ThreeShots, new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess }).DecodesInProcess);
+        // Inputs in-process doesn't handle use the executable, in Auto as with InProcess.
+        Assert.False(new VideoReader(clips.Rotated, new DetectionOptions { FfmpegDirectory = Libs }).DecodesInProcess);
     }
 
     [Fact]

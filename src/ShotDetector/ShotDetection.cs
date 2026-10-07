@@ -37,14 +37,22 @@ public enum DetectorKind
 /// <summary>How frames are decoded.</summary>
 public enum VideoDecoder
 {
-    /// <summary>The ffmpeg executable, frames through a pipe (the default; any ffmpeg version on PATH).</summary>
+    /// <summary>The ffmpeg executable, frames through a pipe (any ffmpeg version on PATH).</summary>
     FfmpegProcess,
 
     /// <summary>
-    /// FFmpeg's libraries in this process (they must be FFmpeg 8.1's shared libraries): the same frames for less CPU,
-    /// without a second process. Streams, URLs, image sequences and rotated video still use the executable.
+    /// FFmpeg's libraries in this process (they must be FFmpeg 8's shared libraries, else an error): the same frames,
+    /// faster and with less memory, without a second process. Streams, URLs, image sequences, rotated video and
+    /// deinterlacing still use the executable.
     /// </summary>
     InProcess,
+
+    /// <summary>
+    /// The default: <see cref="InProcess"/> when FFmpeg 8's shared libraries load (from
+    /// <see cref="DetectionOptions.FfmpegDirectory"/>, else the system's usual places), else <see cref="FfmpegProcess"/>.
+    /// The results are the same either way.
+    /// </summary>
+    Auto,
 }
 
 /// <summary>How ContentDetector enforces the minimum scene length (scenedetect's detect-content --filter-mode).</summary>
@@ -214,8 +222,8 @@ public sealed record DetectionOptions
     /// <summary>Folder containing ffmpeg and ffprobe; null (default) finds them on PATH. With <see cref="VideoDecoder.InProcess"/>, also where FFmpeg's shared libraries are.</summary>
     public string? FfmpegDirectory { get; init; }
 
-    /// <summary>How frames are decoded: by the ffmpeg executable (default) or in this process.</summary>
-    public VideoDecoder Decoder { get; init; }
+    /// <summary>How frames are decoded: in this process when FFmpeg 8's libraries are there (default), or by the ffmpeg executable.</summary>
+    public VideoDecoder Decoder { get; init; } = VideoDecoder.Auto;
 
     /// <summary>
     /// Several detectors in one run (like several detect-* commands): their cuts are combined. Null or empty: the one

@@ -12,7 +12,8 @@ namespace ShotDetector;
 internal sealed unsafe class InProcessDecoder : IDisposable
 {
     static readonly object InitLock = new();
-    static string? _loadedFrom;
+    static bool _loaded;
+    static readonly Dictionary<string, bool> Loadable = [];
 
     AVFormatContext* _fmt;
     AVCodecContext* _dec;
@@ -263,19 +264,38 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         if (_fmt != null) { var f = _fmt; ffmpeg.avformat_close_input(&f); _fmt = null; }
     }
 
-    /// <summary>Loads FFmpeg's shared libraries once per process, from a folder or the system's default places.</summary>
+    /// <summary>
+    /// Whether FFmpeg 8's libraries load from <paramref name="directory"/> (null: the system's usual places), or were
+    /// already loaded; tried once per folder (<see cref="VideoDecoder.Auto"/>).
+    /// </summary>
+    internal static bool CanLoad(string? directory)
+    {
+        lock (InitLock)
+        {
+            if (_loaded)
+                return true;
+            string dir = directory ?? "";
+            if (!Loadable.TryGetValue(dir, out bool ok))
+            {
+                try { Load(directory); ok = true; }
+                catch (ShotDetectionException) { ok = false; }
+                Loadable[dir] = ok;
+            }
+            return ok;
+        }
+    }
+
+    /// <summary>
+    /// Loads FFmpeg's shared libraries from a folder or the system's usual places, once per process: the first copy
+    /// loaded is the one used, whatever folder is asked for later.
+    /// </summary>
     static void Load(string? directory)
     {
         lock (InitLock)
         {
             string dir = directory ?? "";
-            if (_loadedFrom is not null)
-            {
-                if (_loadedFrom != dir)
-                    throw new ShotDetectionException(ShotDetectionError.FfmpegNotFound,
-                        $"FFmpeg's libraries were already loaded from '{_loadedFrom}'; one process can use only one copy.");
+            if (_loaded)
                 return;
-            }
             try
             {
                 ffmpeg.RootPath = dir;
@@ -289,7 +309,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
                     "libavutil 60): on Alpine `apk add ffmpeg-libs`, on Windows a \"shared\" FFmpeg 8.1 build (set FfmpegDirectory " +
                     $"to its bin folder). Or use the default decoder (the ffmpeg executable). ({e.Message})", e);
             }
-            _loadedFrom = dir;
+            _loaded = true;
         }
     }
 
