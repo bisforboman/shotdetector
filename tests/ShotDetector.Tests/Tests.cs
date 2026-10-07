@@ -22,6 +22,14 @@ public class HsvTests
 public class DecodeThreadsTests
 {
     [Theory]
+    [InlineData(1920, 1080, 256, 144, true)]   // 7% of the pixels
+    [InlineData(1280, 534, 256, 107, true)]    // 16%
+    [InlineData(640, 360, 256, 144, false)]    // 64%: whole frames
+    [InlineData(426, 240, 213, 120, false)]    // all of them
+    public void SamplingOnlyWhenItReadsUnderAQuarter(int sw, int sh, int w, int h, bool sampled) =>
+        Assert.Equal(sampled, VideoReader.SampledPays(sw, sh, w, h));
+
+    [Theory]
     [InlineData(1, FramePipeline.SampledBgr, 1)]
     [InlineData(2, FramePipeline.SampledBgr, 1)]    // a 2-CPU container: one decoder thread
     [InlineData(4, FramePipeline.SampledBgr, 3)]

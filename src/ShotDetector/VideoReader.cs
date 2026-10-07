@@ -461,8 +461,18 @@ public sealed partial class VideoReader
     public FramePipeline Pipeline => !_ffmpegResize && (Width, Height) != (CropRegion.Width, CropRegion.Height)
         // swscale's unscaled yuv420p converter (what OpenCV gets) needs an even height.
         ? (_yuv420ForVideo is not null && _pixelFormat is "yuv420p" or "yuvj420p" && SourceHeight % 2 == 0 ? FramePipeline.Yuv420Sampled
-            : _fullFrames ? FramePipeline.FullFrameResize : FramePipeline.SampledBgr)
+            : _fullFrames || !DecodesInProcess && !SampledPays(CropRegion.Width, CropRegion.Height, Width, Height)
+                ? FramePipeline.FullFrameResize : FramePipeline.SampledBgr)
         : FramePipeline.FfmpegScale;
+
+    /// <summary>
+    /// Whether the ffmpeg executable should send only the pixels the resize reads (its remap filter) rather than whole
+    /// frames: when they are under a quarter of the frame. Above that, remap and its looping maps cost ffmpeg more than
+    /// the pipe saves (Linux, 2 CPUs: whole frames 37-41% faster at 640x360 and 426x240, where the resize reads 64% and
+    /// all of the pixels; equal at 1280x534, 16%; sampled far ahead at 1080p, 7%). Same results either way.
+    /// </summary>
+    internal static bool SampledPays(int sourceWidth, int sourceHeight, int width, int height) =>
+        Math.Min(1.0, 2.0 * width / sourceWidth) * Math.Min(1.0, 2.0 * height / sourceHeight) < 0.25;
 
     /// <summary>
     /// Yields every decoded frame, downscaled. A background thread drains the pipe while the caller
