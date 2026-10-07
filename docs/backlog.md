@@ -67,7 +67,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | In-process decoding by default when FFmpeg 8.1's libraries load, the ffmpeg executable otherwise (decisions.md) | Faster than scenedetect and ~half the memory for users who pass no flag | Done (2026-10-07) |
 | `ShotDetector.Native` (LGPL): FFmpeg 8.1 shared libraries for win-x64, linux-x64, linux-musl-x64, osx-arm64 | In-process with no ffmpeg install | Open |
 | 10-bit exactness via the in-process converter (OpenCV converts with the legacy swscale interface, which the sliced path uses) | Closes the known 10-bit divergence on Linux if it matches. Tried on Linux (10-bit 4:2:0, 4:2:2, BT.709 h264 against scenedetect 0.7.1): in-process gives exactly the executable's values, both differ from OpenCV's as before; the difference isn't the swscale interface | Dropped (2026-10-07) |
-| 1.0 release plan: what must hold (parity matrix green for N releases of scenedetect/ffmpeg), version policy afterwards | So 1.0 means something | Open |
+| 1.0 release plan: what must hold (parity matrix green for N releases of scenedetect/ffmpeg), version policy afterwards | So 1.0 means something. Plan: 1.0 after a quiet 0.7 (two weeks, no API change, nightlies green); policy in README "Versions" (decisions.md) | Done (2026-10-07) |
 
 ## Done
 

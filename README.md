@@ -306,6 +306,18 @@ slower path where ffmpeg converts whole frames, still with identical results.
   noise in scenedetect too, a few hash values and the odd cut inside a fade differ.
 - **Not ported:** frame skip, crop.
 
+## Versions
+
+Until 1.0, minor versions may change the API. 1.0 follows a quiet 0.7: two weeks with no API change and the
+nightly real-world comparisons green. From 1.0, semantic versioning:
+
+- **Major**: removing or changing public API, or changing default results (cuts, scene list CSVs, stats) for
+  any reason other than the one below.
+- **Minor**: new options and outputs, speed and memory, and following a new scenedetect release: the default
+  compatibility mode tracks the newest scenedetect, since matching it is the point (the previous release stays
+  available as a `PySceneDetectVersion` value).
+- **Patch**: fixes that make results match scenedetect where they didn't.
+
 ## License
 
 MIT ([LICENSE](LICENSE)), except `src/ShotDetector.FastYuv`, which is LGPL-2.1-or-later because it
