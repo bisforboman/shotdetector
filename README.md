@@ -242,7 +242,7 @@ In-process decoding uses FFmpeg's shared libraries inside our process, as OpenCV
 packages or the CLI's bundled ones, or a system install. It is the default whenever they load
 (`Decoder = VideoDecoder.Auto`; from `FfmpegDirectory` / `--ffmpeg-dir`, else next to the app, else the system's
 usual places); otherwise the executable is used. `--decoder inprocess` insists on the libraries, `--decoder
-process` on the executable. Streams and URLs, image sequences, rotated video, deinterlacing and AV1 use the
+process` on the executable. Streams and URLs, image sequences, rotated video and AV1 use the
 executable.
 
 How it keeps up while computing exactly what OpenCV and scenedetect compute:

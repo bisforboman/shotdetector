@@ -24,12 +24,20 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     readonly int _stream;
     readonly AVRational _timeBase;
     bool _draining, _done;
+    // Deinterlacing: decoded frames go through buffer -> yadif -> buffersink (as ffmpeg's -vf yadif), and _frame is
+    // the sink's output. The graph is built from the first decoded frame.
+    readonly bool _deinterlace;
+    AVFrame* _decoded;
+    AVFilterGraph* _graph;
+    AVFilterContext* _source, _sink;
+    bool _flushed;
 
     /// <summary>The stream's time base in seconds per pts unit.</summary>
     public double TimeBase => _timeBase.num / (double)_timeBase.den;
 
     /// <summary>The current frame's best-effort timestamp (what ffmpeg's command line gives each frame).</summary>
-    public long Pts => _frame->best_effort_timestamp;
+    public long Pts => _sink == null ? _frame->best_effort_timestamp
+        : ffmpeg.av_rescale_q(_frame->pts, _sink->inputs[0]->time_base, _timeBase); // yadif doubles the time base: exact
 
     /// <summary>The current frame's own pts, if set (ffprobe's frame pts).</summary>
     public long? FramePts => _frame->pts == ffmpeg.AV_NOPTS_VALUE ? null : _frame->pts;
@@ -37,9 +45,14 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// <summary>The dts of the packet the current frame came from, if set (ffprobe's frame pkt_dts).</summary>
     public long? FramePacketDts => _frame->pkt_dts == ffmpeg.AV_NOPTS_VALUE ? null : _frame->pkt_dts;
 
-    public InProcessDecoder(string path, string? libraryDirectory, int threads)
+    /// <param name="path">The file.</param>
+    /// <param name="libraryDirectory">Where FFmpeg's libraries are (null: next to the app, then the system).</param>
+    /// <param name="threads">Decoder threads (0: FFmpeg's choice).</param>
+    /// <param name="deinterlace">Deinterlace with yadif (its defaults, as ffmpeg's -vf yadif); needs libavfilter.</param>
+    public InProcessDecoder(string path, string? libraryDirectory, int threads, bool deinterlace = false)
     {
         Load(libraryDirectory);
+        _deinterlace = deinterlace;
         _fmt = InProcessProbe.Open(path);
         _stream = InProcessProbe.FirstVideoStream(_fmt);
         if (_stream < 0)
@@ -56,6 +69,8 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         Check(ffmpeg.avcodec_open2(_dec, codec, null), "open decoder");
         _pkt = ffmpeg.av_packet_alloc();
         _frame = ffmpeg.av_frame_alloc();
+        if (deinterlace)
+            _decoded = ffmpeg.av_frame_alloc();
     }
 
     /// <summary>Seeks to the keyframe at or before <paramref name="pts"/> (stream time base), as ffmpeg's -ss does.</summary>
@@ -69,9 +84,64 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// <summary>Decodes the next frame; false at the end. Packets that don't decode are skipped, as ffmpeg's command line does.</summary>
     public bool Next()
     {
+        if (!_deinterlace)
+            return Decode(_frame);
+        while (true)
+        {
+            if (_sink != null)
+            {
+                ffmpeg.av_frame_unref(_frame);
+                int got = ffmpeg.av_buffersink_get_frame(_sink, _frame);
+                if (got == 0)
+                    return true;
+                if (got == ffmpeg.AVERROR_EOF)
+                    return false;
+                if (got != ffmpeg.AVERROR(ffmpeg.EAGAIN))
+                    Check(got, "deinterlace");
+            }
+            if (_flushed)
+                return false;
+            if (!Decode(_decoded))
+            {
+                // The decoder is done: flush yadif's last frames out.
+                if (_source == null)
+                    return false;
+                Check(ffmpeg.av_buffersrc_add_frame_flags(_source, null, 0), "deinterlace");
+                _flushed = true;
+                continue;
+            }
+            if (_graph == null)
+                BuildGraph(_decoded);
+            // As ffmpeg's command line hands frames to its filters: the best-effort timestamp as the pts.
+            _decoded->pts = _decoded->best_effort_timestamp;
+            Check(ffmpeg.av_buffersrc_add_frame_flags(_source, _decoded, 0), "deinterlace");
+        }
+    }
+
+    /// <summary>buffer (the decoded frames' size, format, aspect and time base) -> yadif -> buffersink.</summary>
+    void BuildGraph(AVFrame* first)
+    {
+        _graph = ffmpeg.avfilter_graph_alloc();
+        var sar = first->sample_aspect_ratio.num > 0 ? first->sample_aspect_ratio : new AVRational { num = 0, den = 1 };
+        string args = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"video_size={first->width}x{first->height}:pix_fmt={first->format}:time_base={_timeBase.num}/{_timeBase.den}:pixel_aspect={sar.num}/{sar.den}");
+        AVFilterContext* source, yadif, sink;
+        Check(ffmpeg.avfilter_graph_create_filter(&source, ffmpeg.avfilter_get_by_name("buffer"), "in", args, null, _graph), "deinterlace");
+        Check(ffmpeg.avfilter_graph_create_filter(&yadif, ffmpeg.avfilter_get_by_name("yadif"), "yadif", null, null, _graph), "deinterlace");
+        Check(ffmpeg.avfilter_graph_create_filter(&sink, ffmpeg.avfilter_get_by_name("buffersink"), "out", null, null, _graph), "deinterlace");
+        Check(ffmpeg.avfilter_link(source, 0, yadif, 0), "deinterlace");
+        Check(ffmpeg.avfilter_link(yadif, 0, sink, 0), "deinterlace");
+        Check(ffmpeg.avfilter_graph_config(_graph, null), "deinterlace");
+        _source = source;
+        _sink = sink;
+    }
+
+    /// <summary>Decodes the next frame into <paramref name="into"/>; false at the end.</summary>
+    bool Decode(AVFrame* into)
+    {
         while (!_done)
         {
-            int got = ffmpeg.avcodec_receive_frame(_dec, _frame);
+            int got = ffmpeg.avcodec_receive_frame(_dec, into);
             if (got == 0)
                 return true;
             if (got == ffmpeg.AVERROR_EOF)
@@ -255,6 +325,8 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         if (_toBgr != null) { var s = _toBgr; ffmpeg.sws_free_context(&s); _toBgr = null; }
         if (_bgr != null) { var f = _bgr; ffmpeg.av_frame_free(&f); _bgr = null; }
         if (_frame != null) { var f = _frame; ffmpeg.av_frame_free(&f); _frame = null; }
+        if (_decoded != null) { var f = _decoded; ffmpeg.av_frame_free(&f); _decoded = null; }
+        if (_graph != null) { var g = _graph; ffmpeg.avfilter_graph_free(&g); _graph = null; _source = null; _sink = null; }
         if (_pkt != null) { var p = _pkt; ffmpeg.av_packet_free(&p); _pkt = null; }
         if (_dec != null) { var d = _dec; ffmpeg.avcodec_free_context(&d); _dec = null; }
         if (_fmt != null) { var f = _fmt; ffmpeg.avformat_close_input(&f); _fmt = null; }
@@ -263,6 +335,26 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// <summary>
     /// Whether FFmpeg 8's libraries load from <paramref name="directory"/> (null: the system's usual places), or were
     /// already loaded; tried once per folder (<see cref="VideoDecoder.Auto"/>).
+    /// </summary>
+    internal static bool CanDeinterlace(string? directory)
+    {
+        if (!CanLoad(directory))
+            return false;
+        lock (InitLock)
+        {
+            if (_canDeinterlace is null)
+            {
+                try { _canDeinterlace = ffmpeg.avfilter_get_by_name("yadif") != null && ffmpeg.avfilter_get_by_name("buffer") != null; }
+                catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException) { _canDeinterlace = false; }
+            }
+            return _canDeinterlace.Value;
+        }
+    }
+    static bool? _canDeinterlace;
+
+    /// <summary>
+    /// Whether FFmpeg 8's libraries load from <paramref name="directory"/>, as <see cref="CanLoad"/>; and libavfilter
+    /// with yadif loads too, for deinterlacing in-process (<see cref="CanDeinterlace"/>).
     /// </summary>
     internal static bool CanLoad(string? directory)
     {

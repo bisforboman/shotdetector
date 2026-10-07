@@ -334,6 +334,7 @@ public sealed partial class VideoReader
         // Some containers (MPEG-PS) carry no pts on every packet. OpenCV then takes the frame's
         // dts (its pts when set and non-zero, else pkt_dts), in output order: get exactly that
         // from a decoding pass, which only such files pay for.
+        _ptsFromFrames = missingPts;
         if (missingPts)
             pts = _probesInProcess ? InProcessProbe.FrameTimestamps(path, _ffmpegDirectory) : FrameTimestamps(ffprobe, path, cancellationToken);
         _pts = [.. pts];
