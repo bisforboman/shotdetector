@@ -13,11 +13,18 @@ jobs:
   native:
     uses: ./.github/workflows/native.yml
     with:
-      rids: '["linux-x64"]'
+      rids: '["linux-x64","linux-arm64"]'
 
+  # x64 and ARM (Neoverse) runners, each with our FFmpeg build for its platform.
   benchmark:
     needs: native
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-x64, os: ubuntu-latest, btbn: linux64 }
+          - { rid: linux-arm64, os: ubuntu-24.04-arm, btbn: linuxarm64 }
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     env:
       FFMPEG: '9.0'
@@ -34,8 +41,8 @@ jobs:
 
       - name: Install ffmpeg ${{ env.FFMPEG }}
         run: |
-          curl -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG.tar.xz" | tar -xJ
-          echo "$PWD/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG/bin" >> "$GITHUB_PATH"
+          curl -fsSL --retry 3 "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n$FFMPEG-latest-${{ matrix.btbn }}-gpl-$FFMPEG.tar.xz" | tar -xJ
+          echo "$PWD/ffmpeg-n$FFMPEG-latest-${{ matrix.btbn }}-gpl-$FFMPEG/bin" >> "$GITHUB_PATH"
 
       - name: Install scenedetect
         run: pip install scenedetect==0.7.1 opencv-python-headless==5.0.0.93 psutil
@@ -43,8 +50,8 @@ jobs:
       # Our FFmpeg libraries in native/: the CLI bundles them, so its default decodes in-process, as users get it.
       - uses: actions/download-artifact@v7
         with:
-          name: native-linux-x64
-          path: native/linux-x64
+          name: native-${{ matrix.rid }}
+          path: native/${{ matrix.rid }}
 
       - name: Build
         run: dotnet build src/ShotDetector.Cli -c Release
@@ -59,7 +66,7 @@ jobs:
         run: |
           films="sintel_trailer_1920x1080_h264.mp4 tears_of_steel_1280x534_h264.mov bbb_640x360_h264.mp4 elephants_dream_426x240_h264.mp4"
           python tools/realworld.py $films --download
-          echo "Runner: $(nproc) CPUs, $(free -g | awk '/Mem:/ {print $2}') GB" >> "$GITHUB_STEP_SUMMARY"
+          echo "### ${{ matrix.rid }}: $(nproc) CPUs ($(lscpu | sed -n 's/^Model name: *//p' | head -1)), $(free -g | awk '/Mem:/ {print $2}') GB" >> "$GITHUB_STEP_SUMMARY"
           for d in content adaptive; do
             python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector $d --runs 3 --report bench.md
             { echo "### detect-$d, all $(nproc) CPUs"; cat bench.md; } >> "$GITHUB_STEP_SUMMARY"

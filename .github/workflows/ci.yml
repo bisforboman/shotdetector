@@ -148,6 +148,48 @@ jobs:
           # With the bundled libraries, the AOT binary decodes in-process (FFmpeg.AutoGen under Native AOT).
           if [ "${{ matrix.rid }}" = linux-x64 ]; then grep -q "decoded in-process" summary.txt; fi
 
+  # ARM (linux-arm64): the whole suite, so the NEON paths (HSV conversion, resize, frame differences) run against
+  # their tests, the HSV one on all 2^24 colours, and the in-process tests use our linux-arm64 FFmpeg build.
+  native-arm:
+    needs: changes
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/native.yml
+    with:
+      rids: '["linux-arm64"]'
+
+  arm:
+    needs: [changes, native-arm]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        if: needs.changes.outputs.docs_only != 'true'
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/download-artifact@v7
+        if: needs.changes.outputs.docs_only != 'true'
+        with:
+          name: native-linux-arm64
+          path: native/linux-arm64
+
+      - name: FFmpeg 8.1 (BtbN's static arm64 build), also beside our libraries
+        if: needs.changes.outputs.docs_only != 'true'
+        timeout-minutes: 10
+        run: |
+          curl -fsSL --retry 3 https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linuxarm64-gpl-8.1.tar.xz | tar -xJ -C "$RUNNER_TEMP"
+          bin="$RUNNER_TEMP/ffmpeg-n8.1-latest-linuxarm64-gpl-8.1/bin"
+          echo "$bin" >> "$GITHUB_PATH"
+          cp "$bin/ffmpeg" "$bin/ffprobe" native/linux-arm64/
+          echo "SHOTDETECTOR_FFMPEG_LIBS=$PWD/native/linux-arm64" >> "$GITHUB_ENV"
+
+      - name: Test
+        if: needs.changes.outputs.docs_only != 'true'
+        run: dotnet test ShotDetector.slnx
+
   # Alpine (musl), with Alpine's own ffmpeg. scenedetect can't run here (no musl OpenCV wheels), but
   # the video tests check real detection, cancellation, and that Alpine's ffmpeg converts colours
   # exactly like the FastYuv converter (which the parity job ties to scenedetect).
