@@ -39,6 +39,35 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(Shots.Csv(pipe.Shots), Shots.Csv(inProcess.Shots));
     }
 
+    // Colour tags, ranges, chroma layouts and bit depths the converter handles differently (lossless ffv1 copies).
+    [Theory]
+    [InlineData("bt709", "-pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709")]
+    [InlineData("fullrange", "-pix_fmt yuv420p -color_range pc")]
+    [InlineData("yuvj", "-pix_fmt yuvj420p")]
+    [InlineData("422", "-pix_fmt yuv422p")]
+    [InlineData("444", "-pix_fmt yuv444p -colorspace bt709")]
+    [InlineData("10bit", "-pix_fmt yuv420p10le")]
+    [InlineData("oddheight", "-vf crop=320:237:0:0 -pix_fmt yuv420p")]
+    public void SameAsTheFfmpegExecutableForEachFormat(string name, string args)
+    {
+        if (Libs is null)
+            return;
+        string copy = Path.Combine(Path.GetTempPath(), $"shotdetector-{name}-{Guid.NewGuid():N}.mkv");
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, .. args.Split(' '), "-c:v", "ffv1", copy], default);
+        try
+        {
+            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs };
+            var pipe = ShotDetection.Detect(copy, options);
+            var inProcess = ShotDetection.Detect(copy, options with { Decoder = VideoDecoder.InProcess });
+            Assert.True(inProcess.Video.DecodesInProcess);
+            Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
+        }
+        finally
+        {
+            File.Delete(copy);
+        }
+    }
+
     [Fact]
     public void RotatedVideoUsesTheExecutable()
     {
