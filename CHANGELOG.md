@@ -18,6 +18,10 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ### Faster
 
+- In-process decoding and conversion run on their own thread, overlapped with the resize and scoring, as the
+  executable path overlaps ffmpeg with them. With all CPUs, small films were slower than scenedetect and now aren't:
+  Big Buck Bunny 360p 5.5 s instead of 8.4 s on a 4-CPU ARM runner (scenedetect 7.9 s), 6.4 s instead of 8.1 s on
+  x64 (7.4 s); Elephants Dream 240p 5.5 s instead of 8.2 s on ARM (6.7 s).
 - Deinterlacing with FastYuv's `Yadif`: an 80 s 1080i25 MPEG-2 4:2:2 MXF takes 7.5 s instead of 11.6 s with 2 CPUs,
   and 5.0 s instead of 5.5 s with all of them (using a third less CPU time); 5.1 s and 4.0 s without deinterlacing.
 
