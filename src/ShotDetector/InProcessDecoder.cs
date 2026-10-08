@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using FFmpeg.AutoGen;
+using FrameReader;
 
 namespace ShotDetector;
 
@@ -11,10 +12,6 @@ namespace ShotDetector;
 /// </summary>
 internal sealed unsafe class InProcessDecoder : IDisposable
 {
-    static readonly object InitLock = new();
-    static bool _loaded;
-    static readonly Dictionary<string, bool> Loadable = [];
-
     AVFormatContext* _fmt;
     AVCodecContext* _dec;
     AVPacket* _pkt;
@@ -726,86 +723,29 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         _io?.Dispose();
     }
 
-    /// <summary>
-    /// Whether FFmpeg 8's libraries load from <paramref name="directory"/> (null: the system's usual places), or were
-    /// already loaded; tried once per folder (<see cref="VideoDecoder.Auto"/>).
-    /// </summary>
-    internal static bool CanDeinterlace(string? directory)
-    {
-        if (!CanLoad(directory))
-            return false;
-        lock (InitLock)
-        {
-            if (_canDeinterlace is null)
-            {
-                try { _canDeinterlace = ffmpeg.avfilter_get_by_name("yadif") != null && ffmpeg.avfilter_get_by_name("buffer") != null; }
-                catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException) { _canDeinterlace = false; }
-            }
-            return _canDeinterlace.Value;
-        }
-    }
-    static bool? _canDeinterlace;
+    // Loading FFmpeg's libraries lives in FrameReader (docs/frame-reader-library.md); these keep ShotDetector's
+    // reasons and messages.
 
-    /// <summary>
-    /// Whether FFmpeg 8's libraries load from <paramref name="directory"/>, as <see cref="CanLoad"/>; and libavfilter
-    /// with yadif loads too, for deinterlacing in-process (<see cref="CanDeinterlace"/>).
-    /// </summary>
-    internal static bool CanLoad(string? directory)
-    {
-        lock (InitLock)
-        {
-            if (_loaded)
-                return true;
-            string dir = directory ?? "";
-            if (!Loadable.TryGetValue(dir, out bool ok))
-            {
-                try { Load(directory); ok = true; }
-                catch (ShotDetectionException) { ok = false; }
-                Loadable[dir] = ok;
-            }
-            return ok;
-        }
-    }
+    /// <summary>Whether the libraries load from <paramref name="directory"/> with libavfilter's yadif too.</summary>
+    internal static bool CanDeinterlace(string? directory) => FFmpegLibraries.CanDeinterlace(directory);
 
-    /// <summary>
-    /// Loads FFmpeg's shared libraries from a folder or the system's usual places, once per process: the first copy
-    /// loaded is the one used, whatever folder is asked for later.
-    /// </summary>
+    /// <summary>Whether FFmpeg 8's libraries load from <paramref name="directory"/>, or already have (<see cref="VideoDecoder.Auto"/>).</summary>
+    internal static bool CanLoad(string? directory) => FFmpegLibraries.CanLoad(directory);
+
+    /// <summary>Loads FFmpeg's shared libraries once per process (<see cref="FFmpegLibraries.Load"/>).</summary>
     internal static void Load(string? directory)
     {
-        lock (InitLock)
+        try
         {
-            if (_loaded)
-                return;
-            Exception? error = null;
-            // A folder given is the only place; otherwise next to the app first (a ShotDetector.Native.<rid> package:
-            // runtimes/<rid>/native/ in a build's output, the app's folder once published), then the system's.
-            string[] places = directory is not null ? [directory]
-                : [Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native"), AppContext.BaseDirectory, ""];
-            foreach (string dir in places)
-            {
-                if (dir.Length > 0 && !Directory.Exists(dir))
-                    continue;
-                try
-                {
-                    ffmpeg.RootPath = dir;
-                    DynamicallyLoadedBindings.Initialize();
-                    _ = ffmpeg.avcodec_version(); // fails here if the libraries aren't there or aren't FFmpeg 8's
-                    // A library doesn't write to stderr; failures surface as exceptions (the executable runs with -v error).
-                    ffmpeg.av_log_set_level(ffmpeg.AV_LOG_QUIET);
-                    _loaded = true;
-                    return;
-                }
-                catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException or BadImageFormatException)
-                {
-                    error = e;
-                }
-            }
+            FFmpegLibraries.Load(directory);
+        }
+        catch (FrameReaderException e) when (e.Reason == FrameReaderError.LibrariesNotFound)
+        {
             throw new ShotDetectionException(ShotDetectionError.FfmpegLibrariesNotFound,
                 "In-process decoding needs FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, " +
                 "libavutil 60): add the ShotDetector.Native.<rid> package for your platform, or install them (Alpine: " +
                 "`apk add ffmpeg-libs`; Windows: a \"shared\" FFmpeg 8 build, with FfmpegDirectory set to its bin folder). " +
-                $"Or decode with the ffmpeg executable (VideoDecoder.FfmpegProcess). ({error?.Message})", error);
+                $"Or decode with the ffmpeg executable (VideoDecoder.FfmpegProcess). ({e.InnerException?.Message})", e);
         }
     }
 
@@ -816,10 +756,5 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     }
 
     /// <summary>FFmpeg's message for an error code.</summary>
-    internal static string Error(int ret)
-    {
-        byte* buf = stackalloc byte[256];
-        ffmpeg.av_strerror(ret, buf, 256);
-        return Marshal.PtrToStringAnsi((IntPtr)buf) ?? ret.ToString(System.Globalization.CultureInfo.InvariantCulture);
-    }
+    internal static string Error(int ret) => FFmpegLibraries.ErrorMessage(ret);
 }
