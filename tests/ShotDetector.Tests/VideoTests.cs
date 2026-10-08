@@ -245,18 +245,40 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
     }
 
+    // Streamed containers: the same frames, timestamps and stats as the file they came from.
     [Theory]
     [InlineData("mkv")]
     [InlineData("faststart")]
+    [InlineData("fragmented")] // fragmented mp4 (empty moov, then moof/mdat pairs)
+    [InlineData("ts")]         // the mpeg4 clip's headers in-band (dump_extra), as TS carries them
     public void PipedInputGivesTheSameShotsAsTheFile(string container)
     {
-        var expected = ShotDetection.Detect(clips.ThreeShots);
-        using var file = File.OpenRead(container == "mkv" ? clips.ThreeShotsMkv : clips.ThreeShotsFaststart);
-        var piped = ShotDetection.Detect(file);
-        Assert.True(piped.Video.Streaming);
-        Assert.Null(piped.VideoPath);
-        Assert.Equal(expected.Shots.Select(s => (s.Start.Timecode(), s.End.Timecode())), piped.Shots.Select(s => (s.Start.Timecode(), s.End.Timecode())));
-        Assert.Equal(expected.FrameCount, piped.FrameCount);
+        var expected = ShotDetection.Detect(clips.ThreeShots, new() { CollectStats = true });
+        string path = container switch
+        {
+            "mkv" => clips.ThreeShotsMkv,
+            "faststart" => clips.ThreeShotsFaststart,
+            _ => Path.Combine(Path.GetTempPath(), $"shotdetector-{container}-{Guid.NewGuid():N}" + (container == "ts" ? ".ts" : ".mp4")),
+        };
+        try
+        {
+            if (container == "fragmented")
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-movflags", "frag_keyframe+empty_moov", path], default);
+            else if (container == "ts")
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-bsf:v", "dump_extra", "-f", "mpegts", path], default);
+            using var file = File.OpenRead(path);
+            var piped = ShotDetection.Detect(file, new() { CollectStats = true });
+            Assert.True(piped.Video.Streaming);
+            Assert.Null(piped.VideoPath);
+            Assert.Equal(expected.Shots.Select(s => (s.Start.Timecode(), s.End.Timecode())), piped.Shots.Select(s => (s.Start.Timecode(), s.End.Timecode())));
+            Assert.Equal(expected.FrameCount, piped.FrameCount);
+            Assert.Equal(expected.Stats!.Csv(expected.Video.Position), piped.Stats!.Csv(piped.Video.Position));
+        }
+        finally
+        {
+            if (path.Contains($"shotdetector-{container}-"))
+                File.Delete(path);
+        }
     }
 
     [Fact]
@@ -318,9 +340,16 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.False(VideoReader.HeadersLast(File.ReadAllBytes(clips.ThreeShotsFaststart)));
     }
 
-    [Fact]
-    public void UrlInputIsStreamed()
+    // Over HTTP: an mp4, and HLS (a playlist of MPEG-TS segments), with the file's stats.
+    [Theory]
+    [InlineData("three.mp4")]
+    [InlineData("play.m3u8")]
+    public void UrlInputIsStreamed(string name)
     {
+        string dir = Directory.CreateTempSubdirectory("shotdetector-url-").FullName;
+        File.Copy(clips.ThreeShotsFaststart, Path.Combine(dir, "three.mp4"));
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-bsf:v", "dump_extra", "-f", "hls", "-hls_time", "2", "-hls_playlist_type", "vod",
+            "-hls_segment_filename", Path.Combine(dir, "seg%03d.ts"), Path.Combine(dir, "play.m3u8")], default);
         using var server = new System.Net.HttpListener();
         int port = Random.Shared.Next(20000, 60000);
         server.Prefixes.Add($"http://localhost:{port}/");
@@ -329,12 +358,20 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         {
             while (server.IsListening)
             {
-                var ctx = await server.GetContextAsync();
-                ctx.Response.ContentType = "video/mp4";
+                System.Net.HttpListenerContext ctx;
+                try { ctx = await server.GetContextAsync(); }
+                catch (Exception e) when (e is System.Net.HttpListenerException or ObjectDisposedException) { return; }
                 try
                 {
-                    await using var f = File.OpenRead(clips.ThreeShotsFaststart);
-                    await f.CopyToAsync(ctx.Response.OutputStream);
+                    string file = Path.Combine(dir, ctx.Request.Url!.AbsolutePath.TrimStart('/'));
+                    if (!File.Exists(file))
+                        ctx.Response.StatusCode = 404;
+                    else
+                    {
+                        await using var f = File.OpenRead(file);
+                        ctx.Response.ContentLength64 = f.Length;
+                        await f.CopyToAsync(ctx.Response.OutputStream);
+                    }
                     ctx.Response.Close();
                 }
                 catch (System.Net.HttpListenerException) { } // ffprobe hangs up after the headers
@@ -342,11 +379,17 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         });
         try
         {
-            var r = ShotDetection.Detect($"http://localhost:{port}/three.mp4");
+            var expected = ShotDetection.Detect(clips.ThreeShots, new() { CollectStats = true });
+            var r = ShotDetection.Detect($"http://localhost:{port}/{name}", new() { CollectStats = true });
             Assert.True(r.Video.Streaming);
             Assert.Equal([0L, 50L, 100L], r.Shots.Select(s => s.Start.FrameNum));
+            Assert.Equal(expected.Stats!.Csv(expected.Video.Position), r.Stats!.Csv(r.Video.Position));
         }
-        finally { server.Stop(); }
+        finally
+        {
+            server.Stop();
+            Directory.Delete(dir, true);
+        }
     }
 
     [Fact]
