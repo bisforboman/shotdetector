@@ -285,13 +285,37 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Throws<ArgumentException>(() => ShotDetection.Detect(file, new() { StartTime = "1s" }));
     }
 
-    [Fact]
-    public void PipedMp4WithoutFaststartIsRefusedClearly()
+    // An mp4 without faststart (headers last) goes to a temporary file and is read as the file is: the same stats,
+    // whether the whole stream fit in the probe's first bytes or not; the file is gone afterwards.
+    [Theory]
+    [InlineData(16 << 20)]
+    [InlineData(4096)]
+    public void PipedMp4WithoutFaststartIsReadThroughATemporaryFile(int probeBytes)
     {
+        static string[] Spills() => [.. Directory.GetFiles(Path.GetTempPath(), "shotdetector-*.mp4")
+            .Where(f => System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(f), "^shotdetector-[0-9a-f]{32}\\.mp4$"))];
+        var before = Spills();
+        var expected = ShotDetection.Detect(clips.ThreeShots, new() { CollectStats = true });
         using var file = File.OpenRead(clips.ThreeShots);
-        var e = Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(file));
-        Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
-        Assert.Contains("faststart", e.Message);
+        var piped = ShotDetection.Detect(file, new() { CollectStats = true, ProbeBytes = probeBytes });
+        Assert.False(piped.Video.Streaming);
+        Assert.Null(piped.VideoPath); // exports need a path of the caller's
+        Assert.Equal(expected.Stats!.Csv(expected.Video.Position), piped.Stats!.Csv(piped.Video.Position));
+        Assert.Equal(Shots.Csv(expected.Shots), Shots.Csv(piped.Shots));
+        Assert.Empty(Spills().Except(before));
+    }
+
+    [Fact]
+    public void HeadersLastIsAnMdatBeforeTheMoov()
+    {
+        static byte[] Box(string type, int size) => [.. BitConverter.GetBytes(size).Reverse(), .. System.Text.Encoding.ASCII.GetBytes(type), .. new byte[size - 8]];
+        Assert.True(VideoReader.HeadersLast([.. Box("ftyp", 32), .. Box("free", 8), .. Box("mdat", 16)]));
+        Assert.False(VideoReader.HeadersLast([.. Box("ftyp", 32), .. Box("moov", 64), .. Box("mdat", 16)]));
+        Assert.True(VideoReader.HeadersLast([.. Box("ftyp", 32), 0, 0, 0, 1, .. "mdat"u8, 0, 0, 0, 0, 0, 0, 0, 16]));  // 64-bit size
+        Assert.False(VideoReader.HeadersLast([.. Box("ftyp", 32)]));                                                     // can't tell yet
+        Assert.False(VideoReader.HeadersLast([0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81, 0x01]));                  // mkv
+        Assert.True(VideoReader.HeadersLast(File.ReadAllBytes(clips.ThreeShots)));
+        Assert.False(VideoReader.HeadersLast(File.ReadAllBytes(clips.ThreeShotsFaststart)));
     }
 
     [Fact]

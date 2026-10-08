@@ -96,7 +96,8 @@ approval, stable ones wait for the user's approval of the `release` environment.
 - Benchmarks on this desktop: pin CPUs with `cmd /c start /affinity 3 ...` (children inherit), compare CPU time
   (more stable than wall time here), and interleave runs.
 - Streamed input needs the container headers first (mkv/webm/ts/mov or faststart mp4); ffmpeg reports a non-faststart
-  mp4 on a pipe as "moov atom not found" or, when the whole file fit the probe prefix, "partial file".
+  mp4 on a pipe as "moov atom not found" or, when the whole file fit the probe prefix, "partial file". ShotDetection
+  spills those to a temp file first (`VideoReader.HeadersLast`: mdat before moov in the first bytes).
 - Windows named pipe path is `\\.\pipe\…`; stdout's 4 KB pipe is far slower. Kill ffmpeg race-free (`Kill` helper).
 - NuGet trusted publishing: the policy's workflow must be `release.yml`, package glob `ShotDetector*`.
 - GitHub Actions queues can stall; re-run rather than diagnose when every job was cancelled at ~15 min.

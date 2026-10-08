@@ -208,7 +208,12 @@ public sealed partial class VideoReader
     public VideoReader(Stream video, DetectionOptions? options = null, CancellationToken cancellationToken = default)
         : this("pipe:0", video, options, cancellationToken) { }
 
-    VideoReader(string path, Stream? video, DetectionOptions? options, CancellationToken cancellationToken, bool headersOnly = false)
+    /// <summary>A Stream whose first bytes (<paramref name="prefix"/>) were already read from it.</summary>
+    internal VideoReader(Stream video, byte[] prefix, DetectionOptions? options, CancellationToken cancellationToken)
+        : this("pipe:0", video, options, cancellationToken, prefix: prefix) { }
+
+    VideoReader(string path, Stream? video, DetectionOptions? options, CancellationToken cancellationToken, bool headersOnly = false,
+        byte[]? prefix = null)
     {
         var o = options ?? new DetectionOptions();
         var compatibility = o.Compatibility;
@@ -243,7 +248,7 @@ public sealed partial class VideoReader
             probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly, _inputOptions);
         else if (video is not null)
         {
-            _prefix = ReadPrefix(video, o.ProbeBytes, cancellationToken);
+            _prefix = prefix ?? ReadPrefix(video, o.ProbeBytes, cancellationToken);
             try
             {
                 probed = Run(ffprobe, probeArgs, cancellationToken, stdin: _prefix);
@@ -390,7 +395,66 @@ public sealed partial class VideoReader
     static bool IsUrl(string path) =>
         Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
 
-    static byte[] ReadPrefix(Stream video, int bytes, CancellationToken cancellationToken)
+    /// <summary>
+    /// Whether an MP4/MOV's media data (mdat) comes before its headers (moov) in these first bytes: an mp4 without
+    /// "faststart", which can't be read from a pipe. False for other containers and when the bytes don't tell.
+    /// </summary>
+    internal static bool HeadersLast(ReadOnlySpan<byte> data)
+    {
+        long pos = 0;
+        while (pos + 8 <= data.Length)
+        {
+            var box = data[(int)pos..];
+            long size = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(box);
+            var type = box.Slice(4, 4);
+            if (pos == 0 && !(type.SequenceEqual("ftyp"u8) || type.SequenceEqual("wide"u8) || type.SequenceEqual("free"u8)
+                || type.SequenceEqual("skip"u8) || type.SequenceEqual("mdat"u8) || type.SequenceEqual("moov"u8)))
+                return false; // not an ISO media file
+            if (type.SequenceEqual("moov"u8))
+                return false;
+            if (type.SequenceEqual("mdat"u8))
+                return true;
+            if (size == 1)
+            {
+                if (box.Length < 16)
+                    return false;
+                size = (long)System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(box[8..]);
+            }
+            if (size < 8)
+                return false; // to the end of the file (0), or not a box
+            pos += size;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// The whole stream (<paramref name="prefix"/>, already read, then the rest) in a temporary file, deleted when the
+    /// result is disposed: for an mp4 without "faststart", whose headers come last.
+    /// </summary>
+    internal static TempFile Spill(byte[] prefix, Stream video, CancellationToken cancellationToken)
+    {
+        var file = new TempFile(Path.Combine(Path.GetTempPath(), $"shotdetector-{Guid.NewGuid():N}.mp4"));
+        try
+        {
+            using var output = File.Create(file.Path);
+            output.Write(prefix);
+            var buffer = new byte[1 << 20];
+            int n;
+            while ((n = video.Read(buffer)) > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                output.Write(buffer, 0, n);
+            }
+            return file;
+        }
+        catch
+        {
+            file.Dispose();
+            throw;
+        }
+    }
+
+    internal static byte[] ReadPrefix(Stream video, int bytes, CancellationToken cancellationToken)
     {
         var buffer = new byte[bytes];
         int total = 0;
@@ -836,5 +900,16 @@ public sealed partial class VideoReader
         if (proc.ExitCode != 0)
             throw new ShotDetectionException(failure, $"{exe} failed ({proc.ExitCode}): {stderr.Result}");
         return output;
+    }
+}
+
+/// <summary>A temporary file, deleted on Dispose.</summary>
+internal sealed class TempFile(string path) : IDisposable
+{
+    public string Path { get; } = path;
+
+    public void Dispose()
+    {
+        try { File.Delete(Path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 }

@@ -75,9 +75,10 @@ A shot arrives once the cut that ends it is confirmed (a few frames later); the 
 The video can come in as a stream too: `Detect(Stream)` and `DetectStreamAsync(Stream)` pipe the bytes
 straight into ffmpeg (no temporary file), so an upload or a pipe can be analysed while it arrives, and a
 URL (`http`, `rtsp`, ...) or `Streaming = true` reads an input once, start to end, as a live feed. The
-CLI reads standard input with `-i -`. The container's headers must come first: mkv, webm, ts, mov, or
-an mp4 written with `-movflags +faststart` (a plain mp4 gives a clear error). Timestamps come from
-ffmpeg as frames arrive, the frame count isn't known up front and `StartTime` isn't available; the
+CLI reads standard input with `-i -`. That works when the container's headers come first: mkv, webm, ts,
+mov, or an mp4 written with `-movflags +faststart`. An ordinary mp4 keeps them at the end, so it is copied to a
+temporary file first (deleted afterwards) and read as a file, with the same results as its path. Timestamps
+come from ffmpeg as frames arrive, the frame count isn't known up front and `StartTime` isn't available; the
 exports need a path.
 
 All five scenedetect detectors are available: `DetectorKind.Adaptive`, `Content`, `Threshold`,
