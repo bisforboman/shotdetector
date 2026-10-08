@@ -66,12 +66,14 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// <param name="threads">Decoder threads (0: FFmpeg's choice).</param>
     /// <param name="deinterlace">Deinterlace with yadif (its defaults, as ffmpeg's -vf yadif); needs libavfilter.</param>
     /// <param name="yadif">Row-wise yadif for deinterlacing (FastYuv's), else FFmpeg's on whole frames.</param>
-    public InProcessDecoder(string path, string? libraryDirectory, int threads, bool deinterlace = false, IYadif? yadif = null)
+    /// <param name="inputOptions">ffmpeg's input options, as name/value pairs (an image sequence's -framerate).</param>
+    public InProcessDecoder(string path, string? libraryDirectory, int threads, bool deinterlace = false, IYadif? yadif = null,
+        string[]? inputOptions = null)
     {
         Load(libraryDirectory);
         _deinterlace = deinterlace;
         _yadif = deinterlace ? yadif : null;
-        _fmt = InProcessProbe.Open(path);
+        _fmt = InProcessProbe.Open(path, inputOptions);
         _stream = InProcessProbe.FirstVideoStream(_fmt);
         if (_stream < 0)
             throw new ShotDetectionException(ShotDetectionError.InvalidInput, "The input has no video stream.");
@@ -122,6 +124,13 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         if (Math.Abs(theta) > 1)
             throw new ShotDetectionException(ShotDetectionError.DecodeFailed, $"Rotation by {theta} degrees isn't supported in-process.");
         return (-1, false, m[4] < 0);
+    }
+
+    /// <summary>Whether these libraries have a decoder for the codec (ffprobe's codec_name); our build lacks a few.</summary>
+    internal static bool HasDecoder(string codec)
+    {
+        var desc = ffmpeg.avcodec_descriptor_get_by_name(codec);
+        return desc != null && ffmpeg.avcodec_find_decoder(desc->id) != null;
     }
 
     /// <summary>Whether a rotation (ffprobe's, degrees) of this pixel format is one in-process decoding applies.</summary>

@@ -174,7 +174,7 @@ jobs:
       - name: Archive
         run: |
           name=shotdetect-v${{ needs.version.outputs.version }}-${{ matrix.rid }}
-          cp LICENSE THIRD-PARTY-NOTICES.md src/ShotDetector.Native/COPYING.LGPL native/${{ matrix.rid }}/configure.txt out/
+          cp LICENSE THIRD-PARTY-NOTICES.md src/ShotDetector.Native/COPYING.LGPL src/ShotDetector.Native/COPYING.dav1d native/${{ matrix.rid }}/configure.txt out/
           if [ "${{ matrix.rid }}" = win-x64 ]; then
             (cd out && 7z a "../$name.zip" . > /dev/null) && file="$name.zip"
           else

@@ -89,8 +89,9 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
     [Fact]
     public void AutoFindsTheFramesTheLibrariesCannotDecode()
     {
-        // AV1: our build (ShotDetector.Native) has no software AV1 decoder, so Auto must fall back to the executable
-        // rather than give an empty scene list. With libraries that do decode it, it stays in-process.
+        // AV1: libraries without dav1d (ShotDetector.Native before 0.10, many system builds) have only the native av1
+        // decoder, which needs a GPU and gives no frames; Auto must fall back to the executable rather than give an
+        // empty scene list. With libraries that do decode it, it stays in-process.
         if (Libs is null)
             return;
         string av1 = Path.Combine(Path.GetTempPath(), $"shotdetector-av1-{Guid.NewGuid():N}.mkv");
@@ -224,6 +225,47 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         finally
         {
             File.Delete(clip);
+        }
+    }
+
+    // Image sequences: PNG (zlib in our build), JPEG (yuvj420p), at -framerate (FrameRate) or ffmpeg's default 25 fps;
+    // AV1 (dav1d in our build).
+    [Theory]
+    [InlineData("png", "%04d.png", "", 50.0)]
+    [InlineData("png-start", "%04d.png", "start", 50.0)]
+    [InlineData("png-default-rate", "%04d.png", "", 0.0)]
+    [InlineData("jpg", "%04d.jpg", "", 30.0)]
+    [InlineData("av1", "av1.mkv", "", 0.0)]
+    [InlineData("av1-start", "av1.mkv", "start", 0.0)]
+    public void DecodesImageSequencesAndAv1AsTheFfmpegExecutable(string name, string file, string variant, double rate)
+    {
+        if (Libs is null)
+            return;
+        string dir = Path.Combine(Path.GetTempPath(), $"shotdetector-{name}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, file);
+        try
+        {
+            if (file.EndsWith(".mkv"))
+            {
+                try { VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c:v", "libaom-av1", "-cpu-used", "8", "-crf", "40", path], default); }
+                catch (ShotDetectionException) { return; } // this ffmpeg can't encode AV1
+            }
+            else
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, .. file.EndsWith(".jpg") ? new[] { "-q:v", "3" } : [], path], default);
+            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess,
+                FrameRate = rate > 0 ? rate : null, StartTime = variant == "start" ? "1.5" : null };
+            var pipe = ShotDetection.Detect(path, options);
+            var inProcess = ShotDetection.Detect(path, options with { Decoder = VideoDecoder.InProcess });
+            Assert.True(inProcess.Video.DecodesInProcess);
+            Assert.Equal(pipe.FrameCount, inProcess.FrameCount);
+            Assert.Equal((pipe.Video.Fps, pipe.Video.Codec), (inProcess.Video.Fps, inProcess.Video.Codec));
+            Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
+            Assert.Equal(Shots.Csv(pipe.Shots), Shots.Csv(inProcess.Shots));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
         }
     }
 

@@ -16,10 +16,10 @@ internal static unsafe class InProcessProbe
     /// <c>ffprobe -select_streams v:0 -show_entries stream=...:stream_side_data=rotation:format=duration:packet=pts
     /// -of default=nw=1</c>'s output (the entries VideoReader reads).
     /// </summary>
-    public static string Properties(string path, string? libraryDirectory, bool packets = true)
+    public static string Properties(string path, string? libraryDirectory, bool packets = true, string[]? inputOptions = null)
     {
         InProcessDecoder.Load(libraryDirectory);
-        var fmt = Open(path);
+        var fmt = Open(path, inputOptions);
         try
         {
             int index = FirstVideoStream(fmt);
@@ -105,21 +105,26 @@ internal static unsafe class InProcessProbe
     /// <c>ffprobe -select_streams v:0 -show_entries frame=pts,pkt_dts</c> as VideoReader uses it (MPEG-PS, packets
     /// without pts): each decoded frame's pts when set and non-zero, else its packet's dts, in output order.
     /// </summary>
-    public static List<long> FrameTimestamps(string path, string? libraryDirectory)
+    public static List<long> FrameTimestamps(string path, string? libraryDirectory, string[]? inputOptions = null)
     {
         var result = new List<long>();
-        using var decoder = new InProcessDecoder(path, libraryDirectory, threads: 0);
+        using var decoder = new InProcessDecoder(path, libraryDirectory, threads: 0, inputOptions: inputOptions);
         while (decoder.Next())
             result.Add(decoder.FramePts is long p && p != 0 ? p : decoder.FramePacketDts ?? 0);
         return result;
     }
 
-    /// <summary>Opens a file as ffprobe and ffmpeg do (scan_all_pmts for MPEG-TS) and reads its stream info.</summary>
-    internal static AVFormatContext* Open(string path)
+    /// <summary>
+    /// Opens a file as ffprobe and ffmpeg do (scan_all_pmts for MPEG-TS), with their input options (<c>-framerate</c>
+    /// for an image sequence), and reads its stream info.
+    /// </summary>
+    internal static AVFormatContext* Open(string path, string[]? inputOptions = null)
     {
         AVFormatContext* fmt = null;
         AVDictionary* options = null;
         ffmpeg.av_dict_set(&options, "scan_all_pmts", "1", ffmpeg.AV_DICT_DONT_OVERWRITE);
+        for (int i = 0; inputOptions != null && i + 1 < inputOptions.Length; i += 2)
+            ffmpeg.av_dict_set(&options, inputOptions[i].TrimStart('-'), inputOptions[i + 1], 0);
         int ret = ffmpeg.avformat_open_input(&fmt, path, null, &options);
         ffmpeg.av_dict_free(&options);
         if (ret < 0)

@@ -11,6 +11,10 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
   in-process deinterlacing computes only the rows the resize reads, in parallel, instead of FFmpeg's yadif on whole
   frames. Identical results for 8-bit video. For 9 to 16 bits it follows FFmpeg's C code, since FFmpeg 8.1's x86
   SIMD yadif gives a different result on every run there.
+- More in-process, with identical per-frame stats to the executable: rotated and flipped video (the display matrix
+  applied as ffmpeg's autorotate does), image sequences (`%04d.png`, with `FrameRate`), and AV1. Our FFmpeg build
+  (ShotDetector.Native, the CLI) now links in zlib (PNG) and dav1d (AV1, BSD-2-Clause). Streams and URLs still use
+  the executable, as do codecs the loaded libraries can't decode (checked up front now, also with other builds).
 
 ### Faster
 
