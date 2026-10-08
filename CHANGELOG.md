@@ -5,6 +5,12 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+## 0.10.0 – 2026-10-08
+
+In-process for nearly everything, and faster: rotated video, image sequences, AV1 and streams now decode with
+FFmpeg's libraries (only URLs and the exports still need the ffmpeg executable), deinterlacing computes only the rows
+it uses, and with all CPUs in-process detection is faster than scenedetect on every benchmark film, on x64 and ARM.
+
 ### New
 
 - `DetectionOptions.Yadif` (`IYadif`), with `Yadif` in ShotDetector.FastYuv (LGPL, a port of FFmpeg's yadif):
@@ -13,9 +19,8 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
   SIMD yadif gives a different result on every run there.
 - More in-process, with identical per-frame stats to the executable: rotated and flipped video (the display matrix
   applied as ffmpeg's autorotate does), image sequences (`%04d.png`, with `FrameRate`), and AV1. Our FFmpeg build
-  (ShotDetector.Native, the CLI) now links in zlib (PNG) and dav1d (AV1, BSD-2-Clause). Streams and URLs still use
-  the executable, as do codecs the loaded libraries can't decode (checked up front now, also with other builds).
-
+  (ShotDetector.Native, the CLI) now links in zlib (PNG) and dav1d (AV1, BSD-2-Clause). Codecs the loaded libraries
+  can't decode are checked up front and go to the executable, also with other FFmpeg builds.
 - Streamed mp4s without "faststart" (headers last, as most mp4s are) work: `Detect(Stream)`, `DetectStreamAsync`
   and CLI `-i -` copy them to a temporary file, deleted afterwards, and read that as a file, with the same results
   as the file's path. Other streams still stream (issue #7).
@@ -25,7 +30,7 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 - Streams (`Detect(Stream)`, `DetectStreamAsync`, CLI `-i -`) decode in-process when FFmpeg's libraries load, read
   through a custom AVIOContext, with the executable's results (frame times from the stream's start). A piped 480p
   film takes 1.3 s, as its file path does, instead of 1.6-2.0 s through ffmpeg (issue #7: 3.8 s vs 1.4 s on 2 CPUs).
-
+  A Stream can't be read twice, so one the libraries fail on no longer falls back to the executable.
 - In-process decoding and conversion run on their own thread, overlapped with the resize and scoring, as the
   executable path overlaps ffmpeg with them. With all CPUs, small films were slower than scenedetect and now aren't:
   Big Buck Bunny 360p 5.5 s instead of 8.4 s on a 4-CPU ARM runner (scenedetect 7.9 s), 6.4 s instead of 8.1 s on
