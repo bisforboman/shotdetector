@@ -107,11 +107,27 @@ jobs:
           user: ${{ vars.NUGET_USER }}
 
       - name: Push to nuget.org
-        run: >
-          dotnet nuget push artifacts/*.nupkg
-          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
-          --source https://api.nuget.org/v3/index.json
-          --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        # One file at a time, each with a few tries, packages first and then their symbols: an error from nuget.org on
+        # one (1.0.0's Cli push got a 500 after a 5-minute upload) doesn't stop the others, and a re-run still sends the
+        # symbols of a package that is already there (--skip-duplicate skips both together otherwise).
+        run: |
+          failed=0
+          for f in artifacts/*.nupkg artifacts/*.snupkg; do
+            case "$f" in *.nupkg) only=--no-symbols ;; *) only= ;; esac   # a package's symbols get their own turn
+            for try in 1 2 3; do
+              if dotnet nuget push "$f" $only --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate; then
+                break
+              elif [ "$try" -lt 3 ]; then
+                sleep 60
+              else
+                echo "::error::Pushing $f failed"
+                failed=1
+              fi
+            done
+          done
+          exit $failed
 
       - name: GitHub release
         env:
