@@ -320,8 +320,8 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
 
 ## Versions
 
-Until 1.0, minor versions may change the API. 1.0 comes when it is stable: the known issues fixed and the parity,
-real-world and ARM checks green. From 1.0, semantic versioning:
+From 1.0, semantic versioning (before it, minor versions could change the API); packing the libraries fails on a
+breaking change against the last stable release (the SDK's package validation):
 
 - **Major**: removing or changing public API, or changing default results (cuts, scene list CSVs, stats) for
   any reason other than the one below.

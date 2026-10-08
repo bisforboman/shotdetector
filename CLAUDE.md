@@ -15,6 +15,7 @@ differ is documented in README.md and in `docs/decisions.md`.
 
 ## Status
 
+1.0.0 released 2026-10-08 (API frozen: semantic versioning, package validation once ApiBaselineVersion is set).
 0.10.0 released 2026-10-08 (in-process rotation/image sequences/AV1/streams, row-wise yadif in FastYuv, decoding
 on its own thread; zlib and dav1d in our build). 0.9.0 released 2026-10-08 (0.6.4 dropped, ARM NEON, in-process deinterlacing, decoder visibility, probe
 container/audio; issue #42). 0.8.0 released 2026-10-07 (DeinterlaceMode Auto/On/Off, ShotDetection.Probe; issue #35). 0.7.0 released 2026-10-07 (in-process by default, ShotDetector.Native.<rid> packages, CLI bundles FFmpeg's

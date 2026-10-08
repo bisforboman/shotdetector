@@ -1,12 +1,15 @@
 # Changelog
 
-Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. Until
-1.0, minor versions may change the public API.
+Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
+semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 
 ## Unreleased
 
-The public API as it will be frozen for 1.0 (docs/decisions.md): a few types change shape so that adding to them later
-isn't a breaking change, and the decoding internals stop being public.
+## 1.0.0 – 2026-10-08
+
+The first stable release: identical results to scenedetect 0.7.1, the public API frozen under semantic versioning,
+and CI failing any breaking change to it. Compared with 0.10.0, a few types change shape so that adding to them later
+isn't a breaking change, and the decoding internals stop being public (docs/decisions.md).
 
 ### Breaking changes
 
