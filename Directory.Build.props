@@ -17,5 +17,8 @@
     <RepositoryUrl>https://github.com/bisforboman/shotdetector</RepositoryUrl>
     <!-- Local builds; releases take the version from the git tag (see .github/workflows/release.yml). -->
     <Version>0.1.0-alpha.1</Version>
+    <!-- The libraries' API guard (SDK package validation): packing fails on a breaking change against this release.
+         Empty until 1.0 is on nuget.org; then the last stable version (docs/decisions.md, 2026-10-08). -->
+    <ApiBaselineVersion></ApiBaselineVersion>
   </PropertyGroup>
 </Project>

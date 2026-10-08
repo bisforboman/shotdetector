@@ -68,20 +68,43 @@ public enum FieldOrder
 /// A video's properties from its headers (<see cref="ShotDetection.Probe(string, DetectionOptions?, CancellationToken)"/>):
 /// fast, without reading the packets.
 /// </summary>
-/// <param name="Width">Width as shown (a 90° rotation tag swaps it with the height, as decoding does).</param>
-/// <param name="Height">Height as shown.</param>
-/// <param name="FrameRate">The frame rate detection uses (the average rate, as OpenCV reports it).</param>
-/// <param name="FrameCount">The frame count scenedetect takes as the video's length; null if the headers don't say.</param>
-/// <param name="Duration">The container's duration; null if unknown.</param>
-/// <param name="Codec">The video codec's FFmpeg name (h264, hevc, mpeg2video, ...).</param>
-/// <param name="PixelFormat">FFmpeg's pixel format name (yuv420p, yuv420p10le, ...).</param>
-/// <param name="FieldOrder">Progressive, interlaced (which field first), or unknown.</param>
-/// <param name="Rotation">The display rotation in degrees, 0 if none.</param>
-/// <param name="Container">FFmpeg's name for the container (its demuxer): mxf, matroska,webm, mov,mp4,m4a,3gp,3g2,mj2, ...</param>
-/// <param name="HasAudio">Whether the file has an audio stream; null for streamed input.</param>
-public sealed record VideoInfo(int Width, int Height, Fps FrameRate, long? FrameCount, TimeSpan? Duration, string Codec,
-    string PixelFormat, FieldOrder FieldOrder, int Rotation, string Container, bool? HasAudio)
+public sealed record VideoInfo
 {
+    internal VideoInfo() { }
+
+    /// <summary>Width as shown (a 90° rotation tag swaps it with the height, as decoding does).</summary>
+    public int Width { get; init; }
+
+    /// <summary>Height as shown.</summary>
+    public int Height { get; init; }
+
+    /// <summary>The frame rate detection uses (the average rate, as OpenCV reports it).</summary>
+    public Fps FrameRate { get; init; }
+
+    /// <summary>The frame count scenedetect takes as the video's length; null if the headers don't say.</summary>
+    public long? FrameCount { get; init; }
+
+    /// <summary>The container's duration; null if unknown.</summary>
+    public TimeSpan? Duration { get; init; }
+
+    /// <summary>The video codec's FFmpeg name (h264, hevc, mpeg2video, ...).</summary>
+    public string Codec { get; init; } = "";
+
+    /// <summary>FFmpeg's pixel format name (yuv420p, yuv420p10le, ...).</summary>
+    public string PixelFormat { get; init; } = "";
+
+    /// <summary>Progressive, interlaced (which field first), or unknown.</summary>
+    public FieldOrder FieldOrder { get; init; }
+
+    /// <summary>The display rotation in degrees, 0 if none.</summary>
+    public int Rotation { get; init; }
+
+    /// <summary>FFmpeg's name for the container (its demuxer): mxf, matroska,webm, mov,mp4,m4a,3gp,3g2,mj2, ...</summary>
+    public string Container { get; init; } = "";
+
+    /// <summary>Whether the file has an audio stream; null for streamed input.</summary>
+    public bool? HasAudio { get; init; }
+
     /// <summary>Whether the stream is flagged interlaced (what <see cref="DeinterlaceMode.Auto"/> goes by).</summary>
     public bool IsInterlaced => FieldOrder is FieldOrder.TopFirst or FieldOrder.BottomFirst
         or FieldOrder.TopCodedBottomFirst or FieldOrder.BottomCodedTopFirst;
@@ -331,10 +354,14 @@ public sealed record DetectionOptions
 }
 
 /// <summary>How far <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/> has got.</summary>
-/// <param name="FramesProcessed">Frames decoded and analysed so far.</param>
-/// <param name="ExpectedFrames">Frames the video is expected to have (from its packets); 0 if unknown.</param>
-public readonly record struct DetectionProgress(int FramesProcessed, int ExpectedFrames)
+public readonly record struct DetectionProgress
 {
+    /// <summary>Frames decoded and analysed so far.</summary>
+    public int FramesProcessed { get; init; }
+
+    /// <summary>Frames the video is expected to have (from its packets); 0 if unknown.</summary>
+    public int ExpectedFrames { get; init; }
+
     /// <summary>Whether frames are decoded in-process (FFmpeg's libraries) rather than by the ffmpeg executable.</summary>
     public bool DecodesInProcess { get; init; }
 
@@ -346,17 +373,31 @@ public readonly record struct DetectionProgress(int FramesProcessed, int Expecte
 }
 
 /// <summary>The outcome of <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/>.</summary>
-/// <param name="VideoPath">The video analysed: a path or URL, or null for a Stream input (exports need a path).</param>
-/// <param name="Video">Its properties (size, frame rate, ...).</param>
-/// <param name="Shots">The shots, in order, covering the whole video.</param>
-/// <param name="FrameCount">Frames decoded.</param>
-/// <param name="MinSceneLengthFrames"><see cref="DetectionOptions.MinSceneLength"/> in frames of this video.</param>
-/// <param name="Stats">Per-frame metrics when <see cref="DetectionOptions.CollectStats"/> was set, else null.</param>
-/// <param name="Cuts">Every cut, sorted: the shot starts after the first, unless shots were dropped or merged
-/// (scenedetect's cut list, which its CSV's first row, the HTML page and the QP file use).</param>
-public sealed record DetectionResult(
-    string? VideoPath, VideoReader Video, IReadOnlyList<Shot> Shots, int FrameCount, int MinSceneLengthFrames, Stats? Stats,
-    IReadOnlyList<FrameTime> Cuts);
+public sealed record DetectionResult
+{
+    internal DetectionResult() { }
+
+    /// <summary>The video analysed: a path or URL, or null for a Stream input (exports need a path).</summary>
+    public string? VideoPath { get; init; }
+
+    /// <summary>Its properties (size, frame rate, ...).</summary>
+    public VideoReader Video { get; init; } = null!;
+
+    /// <summary>The shots, in order, covering the whole video.</summary>
+    public IReadOnlyList<Shot> Shots { get; init; } = [];
+
+    /// <summary>Frames decoded.</summary>
+    public int FrameCount { get; init; }
+
+    /// <summary><see cref="DetectionOptions.MinSceneLength"/> in frames of this video.</summary>
+    public int MinSceneLengthFrames { get; init; }
+
+    /// <summary>Per-frame metrics when <see cref="DetectionOptions.CollectStats"/> was set, else null.</summary>
+    public Stats? Stats { get; init; }
+
+    /// <summary>Every cut, sorted: the shot starts after the first, unless shots were dropped or merged (scenedetect's cut list, which its CSV's first row, the HTML page and the QP file use).</summary>
+    public IReadOnlyList<FrameTime> Cuts { get; init; } = [];
+}
 
 /// <summary>Runs shot detection on a video file.</summary>
 public static class ShotDetection
@@ -470,7 +511,11 @@ public static class ShotDetection
         cuts = [.. cuts.Where(c => c.FrameNum < end.FrameNum)];
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, fps);
         var shots = Scenes(cuts, start, end, o.MergeLastScene, o.DropShortScenes ? minSceneLen : 0, minSceneLen);
-        return new(videoPath, video, shots, (int)video.OpenCvFrameCount, minSceneLen, null, cuts);
+        return new()
+        {
+            VideoPath = videoPath, Video = video, Shots = shots, FrameCount = (int)video.OpenCvFrameCount, MinSceneLengthFrames = minSceneLen,
+            Stats = null, Cuts = cuts,
+        };
     }
 
     /// <summary>One CSV row (RFC 4180 quoting), as Python's csv.reader reads it.</summary>
@@ -658,7 +703,7 @@ public static class ShotDetection
         bool readToEnd = true;
         long lastReport = 0;
         DetectionProgress Progress(int done, int expected) =>
-            new(done, expected) { DecodesInProcess = video.DecodesInProcess, Pipeline = video.Pipeline };
+            new() { FramesProcessed = done, ExpectedFrames = expected, DecodesInProcess = video.DecodesInProcess, Pipeline = video.Pipeline };
         // A first report before any frame: which decoder and pipeline this run uses.
         o.Progress?.Report(Progress(0, Math.Max(0, video.ExpectedFrames - startFrame)));
         foreach (var frame in video.Frames(startFrame, null, cancellationToken))
@@ -704,7 +749,11 @@ public static class ShotDetection
                     onShot?.Invoke(shot);
             }
         }
-        return new(videoPath, video, shots, frameCount, minSceneLen, stats, Unique(cuts));
+        return new()
+        {
+            VideoPath = videoPath, Video = video, Shots = shots, FrameCount = frameCount, MinSceneLengthFrames = minSceneLen,
+            Stats = stats, Cuts = Unique(cuts),
+        };
     }
 
     static IDetector Build(DetectorSettings st, DetectionOptions o, VideoReader video, int minSceneLen, Stats? stats)

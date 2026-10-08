@@ -10,11 +10,13 @@ namespace ShotDetector;
 /// </summary>
 public sealed class Stats
 {
+    internal Stats() { }
+
     readonly SortedDictionary<int, Dictionary<string, double>> _rows = [];
     readonly SortedSet<string> _keys = new(StringComparer.Ordinal); // Python sorts by code point
 
     /// <summary>Records a metric for a frame (0-based index).</summary>
-    public void Set(int frame, string key, double value)
+    internal void Set(int frame, string key, double value)
     {
         _keys.Add(key);
         if (!_rows.TryGetValue(frame, out var row))

@@ -125,8 +125,12 @@ public sealed partial class VideoReader
     public bool Deinterlaces => _deinterlace;
 
     /// <summary>These properties as a <see cref="VideoInfo"/>.</summary>
-    public VideoInfo Info => new(SourceWidth, SourceHeight, Fps, OpenCvFrameCount > 0 ? OpenCvFrameCount : null, Duration,
-        Codec, _pixelFormat, FieldOrder, _rotation, Container, HasAudio);
+    public VideoInfo Info => new()
+    {
+        Width = SourceWidth, Height = SourceHeight, FrameRate = Fps, FrameCount = OpenCvFrameCount > 0 ? OpenCvFrameCount : null,
+        Duration = Duration, Codec = Codec, PixelFormat = _pixelFormat, FieldOrder = FieldOrder, Rotation = _rotation,
+        Container = Container, HasAudio = HasAudio,
+    };
 
     /// <summary>FFmpeg's name for the container (its demuxer).</summary>
     public string Container { get; }
@@ -194,7 +198,7 @@ public sealed partial class VideoReader
     /// <param name="path">Video file, or a URL (http(s), rtsp, ... ; read as a stream).</param>
     /// <param name="options">Uses FfmpegResize, DecodeThreads, Yuv420Converter, Compatibility, Crop, FfmpegDirectory, Streaming and ProbeBytes.</param>
     /// <param name="cancellationToken">Cancels the ffprobe run (the process is killed).</param>
-    public VideoReader(string path, DetectionOptions? options = null, CancellationToken cancellationToken = default)
+    internal VideoReader(string path, DetectionOptions? options = null, CancellationToken cancellationToken = default)
         : this(path, null, options, cancellationToken) { }
 
     /// <summary>Probes only the headers (no packet timestamps): for <see cref="ShotDetection.Probe(string, DetectionOptions?, CancellationToken)"/>.</summary>
@@ -205,7 +209,7 @@ public sealed partial class VideoReader
     /// mkv, webm, ts, mov, or an mp4 written with "faststart" (an ordinary mp4 keeps them at the end).</param>
     /// <param name="options">See <see cref="VideoReader(string, DetectionOptions?, CancellationToken)"/>.</param>
     /// <param name="cancellationToken">Cancels the ffprobe run (the process is killed).</param>
-    public VideoReader(Stream video, DetectionOptions? options = null, CancellationToken cancellationToken = default)
+    internal VideoReader(Stream video, DetectionOptions? options = null, CancellationToken cancellationToken = default)
         : this("pipe:0", video, options, cancellationToken) { }
 
     /// <summary>A Stream whose first bytes (<paramref name="prefix"/>) were already read from it.</summary>
@@ -581,13 +585,13 @@ public sealed partial class VideoReader
     /// and converts only the pixels cv2.resize reads; "bgr24+resize" has ffmpeg convert whole frames;
     /// "ffmpeg-scale" has ffmpeg downscale (--ffmpeg-resize, or when no resize is needed).
     /// </summary>
-    public IEnumerable<byte[]> Frames(CancellationToken cancellationToken = default) => Frames(0, null, cancellationToken);
+    internal IEnumerable<byte[]> Frames(CancellationToken cancellationToken = default) => Frames(0, null, cancellationToken);
 
     /// <summary>
     /// Yields frames <paramref name="startFrame"/> .. <paramref name="startFrame"/> + <paramref name="count"/> - 1
     /// (count null: to the end), downscaled; see <see cref="Frames(CancellationToken)"/>.
     /// </summary>
-    public IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken = default)
+    internal IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (count is <= 0)
