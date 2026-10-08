@@ -12,10 +12,19 @@ using ShotDetector.FastYuv;
 var result = ShotDetection.Detect("video.mp4", new DetectionOptions { Yuv420Converter = new SwscaleYuv420() });
 ```
 
+It also has `Yadif`, a port of FFmpeg's yadif deinterlacer, row by row: with in-process decoding and
+deinterlacing on, only the rows the resize reads are deinterlaced (identical results; on 1080i25 MPEG-2 with
+2 CPUs, 7.5 s instead of 11.6 s for 2000 frames).
+
+```csharp
+var result = ShotDetection.Detect("broadcast.mxf", new DetectionOptions { Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() });
+```
+
 The converter is a bit-exact port of FFmpeg libswscale's yuv420p → BGR24 conversion (verified for
 all 2^24 Y/U/V values), so this package is licensed under the **GNU LGPL 2.1 or later**
 (COPYING.LGPL). The ShotDetector package itself is MIT. Video that isn't 8-bit yuv420p with an
 even height uses the normal path anyway.
 
-Copyright (C) 2001-2007 Michael Niedermayer, (C) 2009-2010 Konstantin Shishkov (FFmpeg);
+Copyright (C) 2001-2007 Michael Niedermayer, (C) 2009-2010 Konstantin Shishkov (FFmpeg); yadif (C) 2006-2011
+Michael Niedermayer, 2010 James Darnley (FFmpeg);
 C# port (C) 2026 Jakob Boman.

@@ -227,6 +227,10 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         for (int p = 0; p < _rPlanes; p++)
             if (prev->linesize[(uint)p] != cur->linesize[(uint)p] || next->linesize[(uint)p] != cur->linesize[(uint)p])
                 throw new ShotDetectionException(ShotDetectionError.DecodeFailed, "Deinterlacing: frames with differing strides.");
+        // copy_props adds to the side data and metadata already there: without this, every frame's would pile up
+        // (and sws_frame_start refs them all).
+        ffmpeg.av_frame_side_data_free(&_frame->side_data, &_frame->nb_side_data);
+        ffmpeg.av_dict_free(&_frame->metadata);
         Check(ffmpeg.av_frame_copy_props(_frame, cur), "deinterlace");
         _frame->flags &= ~ffmpeg.AV_FRAME_FLAG_INTERLACED;
         _rPts = cur->best_effort_timestamp;
