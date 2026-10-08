@@ -32,8 +32,9 @@ decoding only; the CLI tool and binaries bundle them. A "shared" FFmpeg build, o
 too.
 
 The ffmpeg and ffprobe executables (on `PATH`, or in `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`) are still
-needed without those libraries, and for streams and URLs, image sequences, rotated video, deinterlacing, AV1 (our
-build has no AV1 decoder) and the image and clip exports.
+needed without those libraries, and for streams and URLs and the image and clip exports. Files of every kind decode
+in-process, including image sequences, rotated phone video, AV1 (dav1d in our build) and deinterlacing; a codec the
+libraries can't decode, a rotation that isn't a quarter turn and rotated video that is deinterlaced use the executable.
 
 Releases are built by GitHub Actions from the tagged commit: packages carry SourceLink and symbol packages, and
 every package and binary has a signed build attestation (`gh attestation verify <file> --repo bisforboman/shotdetector`).
@@ -244,8 +245,7 @@ In-process decoding uses FFmpeg's shared libraries inside our process, as OpenCV
 packages or the CLI's bundled ones, or a system install. It is the default whenever they load
 (`Decoder = VideoDecoder.Auto`; from `FfmpegDirectory` / `--ffmpeg-dir`, else next to the app, else the system's
 usual places); otherwise the executable is used. `--decoder inprocess` insists on the libraries, `--decoder
-process` on the executable. Streams and URLs, image sequences, rotated video and AV1 use the
-executable.
+process` on the executable. Streams and URLs use the executable.
 
 How it keeps up while computing exactly what OpenCV and scenedetect compute:
 - only the pixels the exact `cv2.resize` port reads are converted to BGR (in-process, the row slices that hold

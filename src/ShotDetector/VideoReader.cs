@@ -237,10 +237,10 @@ public sealed partial class VideoReader
         string[] probeArgs = ["-v", "error", .. _inputOptions, "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", path];
         string probed;
         // A file, with FFmpeg's libraries available (as for decoding in-process): read the same with them, no ffprobe.
-        _probesInProcess = video is null && !Streaming && _inputOptions.Length == 0 && _decoder != VideoDecoder.FfmpegProcess
+        _probesInProcess = video is null && !Streaming && _decoder != VideoDecoder.FfmpegProcess
             && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory));
         if (_probesInProcess)
-            probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly);
+            probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly, _inputOptions);
         else if (video is not null)
         {
             _prefix = ReadPrefix(video, o.ProbeBytes, cancellationToken);
@@ -338,7 +338,7 @@ public sealed partial class VideoReader
         // from a decoding pass, which only such files pay for.
         _ptsFromFrames = missingPts;
         if (missingPts)
-            pts = _probesInProcess ? InProcessProbe.FrameTimestamps(path, _ffmpegDirectory) : FrameTimestamps(ffprobe, path, cancellationToken);
+            pts = _probesInProcess ? InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions) : FrameTimestamps(ffprobe, path, cancellationToken);
         _pts = [.. pts];
     }
 

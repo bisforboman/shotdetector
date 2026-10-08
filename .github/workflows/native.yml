@@ -53,7 +53,7 @@ jobs:
       - name: Tools (Alpine)
         if: matrix.container
         timeout-minutes: 10   # package mirrors sometimes hang
-        run: apk add --no-cache build-base nasm curl tar xz git perl coreutils
+        run: apk add --no-cache build-base nasm curl tar xz git perl coreutils meson samurai pkgconf
 
       - uses: actions/checkout@v7
 
@@ -66,7 +66,12 @@ jobs:
       - name: Tools (Linux)
         if: steps.cache.outputs.cache-hit != 'true' && !matrix.container && runner.os == 'Linux'
         timeout-minutes: 10   # package mirrors sometimes hang
-        run: sudo apt-get update -q && sudo apt-get install -y -q nasm ${{ matrix.rid == 'win-x64' && 'mingw-w64' || '' }}
+        run: sudo apt-get update -q && sudo apt-get install -y -q nasm meson ninja-build pkg-config ${{ matrix.rid == 'win-x64' && 'mingw-w64' || '' }}
+
+      - name: Tools (macOS)
+        if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'macOS'
+        timeout-minutes: 10
+        run: brew install meson ninja pkgconf
 
       - name: Build FFmpeg
         if: steps.cache.outputs.cache-hit != 'true'

@@ -93,9 +93,44 @@ https://ffmpeg.org, license: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.
 
 ## FFmpeg libraries (GNU LGPL 2.1 or later), ShotDetector.Native.<rid> and the shotdetect CLI
 
-libavcodec, libavformat, libavutil, libswscale and libswresample from FFmpeg 8.1.3
+libavcodec, libavformat, libavutil, libswscale, libswresample and libavfilter (yadif only) from FFmpeg 8.1.3
 (https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz), built with `tools/native/build-ffmpeg.sh` for decoding only:
-no encoders, muxers, filters, devices, network protocols, GPL parts or external libraries. Each package and
+no encoders, muxers, devices, network protocols or GPL parts; zlib and dav1d (below) linked in. Each package and
 release archive has the exact configure line (`configure.txt`) and the licence (`COPYING.LGPL`). The libraries
 are loaded dynamically, so they can be replaced with another build of the same FFmpeg version.
 https://ffmpeg.org/legal.html
+
+## dav1d (BSD 2-Clause), ShotDetector.Native.<rid> and the shotdetect CLI
+
+dav1d 1.5.1 (https://code.videolan.org/videolan/dav1d), linked into libavcodec as FFmpeg's AV1 decoder.
+
+```
+Copyright © 2018-2019, VideoLAN and dav1d authors
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## zlib (zlib licence), ShotDetector.Native.<rid> and the shotdetect CLI
+
+zlib 1.3.1 (https://zlib.net), linked into FFmpeg's libraries. Copyright (C) 1995-2024 Jean-loup Gailly and Mark
+Adler. Provided 'as-is', without any express or implied warranty; see https://zlib.net/zlib_license.html.

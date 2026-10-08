@@ -15,7 +15,7 @@
     <NoWarn>$(NoWarn);NU5128</NoWarn>
 
     <PackageId>ShotDetector.Native.$(Rid)</PackageId>
-    <Description>FFmpeg 8.1.3's shared libraries for $(Rid), built for decoding only (no encoders, muxers, filters or external libraries), so ShotDetector decodes in-process: faster and with about half the memory of the ffmpeg executable, with the same results. LGPL-2.1-or-later, as FFmpeg; the build recipe is configure.txt in the package.</Description>
+    <Description>FFmpeg 8.1.3's shared libraries for $(Rid), built for decoding only (no encoders or muxers; yadif the only filter; zlib and dav1d for PNG and AV1 linked in), so ShotDetector decodes and probes in-process: faster and with about half the memory of the ffmpeg executable, with the same results. LGPL-2.1-or-later, as FFmpeg (dav1d: BSD-2-Clause); the build recipe is configure.txt in the package.</Description>
     <PackageTags>video;scene-detection;shot-detection;ffmpeg;native</PackageTags>
     <PackageLicenseExpression>LGPL-2.1-or-later</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -28,6 +28,7 @@
     <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="COPYING.LGPL" Pack="true" PackagePath="\" />
+    <None Include="COPYING.dav1d" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <Target Name="NeedsTheLibraries" BeforeTargets="GenerateNuspec">

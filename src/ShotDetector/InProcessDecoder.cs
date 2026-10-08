@@ -41,6 +41,12 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     bool _rTff;
     int _rPlanes, _rChromaW, _rChromaH, _rBytes;
     bool[][]? _rRows; // per plane: rows computed for the current output frame
+    // The display matrix applied as ffmpeg's autorotate does: transpose (its dir, -1 for none), then hflip, vflip. The
+    // oriented frame is swapped in as _frame until the next frame.
+    readonly int _transpose = -1;
+    readonly bool _hflip, _vflip;
+    AVFrame* _oriented;
+    bool _swapped;
 
     /// <summary>The stream's time base in seconds per pts unit.</summary>
     public double TimeBase => _timeBase.num / (double)_timeBase.den;
@@ -60,12 +66,14 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// <param name="threads">Decoder threads (0: FFmpeg's choice).</param>
     /// <param name="deinterlace">Deinterlace with yadif (its defaults, as ffmpeg's -vf yadif); needs libavfilter.</param>
     /// <param name="yadif">Row-wise yadif for deinterlacing (FastYuv's), else FFmpeg's on whole frames.</param>
-    public InProcessDecoder(string path, string? libraryDirectory, int threads, bool deinterlace = false, IYadif? yadif = null)
+    /// <param name="inputOptions">ffmpeg's input options, as name/value pairs (an image sequence's -framerate).</param>
+    public InProcessDecoder(string path, string? libraryDirectory, int threads, bool deinterlace = false, IYadif? yadif = null,
+        string[]? inputOptions = null)
     {
         Load(libraryDirectory);
         _deinterlace = deinterlace;
         _yadif = deinterlace ? yadif : null;
-        _fmt = InProcessProbe.Open(path);
+        _fmt = InProcessProbe.Open(path, inputOptions);
         _stream = InProcessProbe.FirstVideoStream(_fmt);
         if (_stream < 0)
             throw new ShotDetectionException(ShotDetectionError.InvalidInput, "The input has no video stream.");
@@ -83,6 +91,57 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         _frame = ffmpeg.av_frame_alloc();
         if (deinterlace)
             _decoded = ffmpeg.av_frame_alloc();
+        (_transpose, _hflip, _vflip) = Orientation(st->codecpar);
+        if (_transpose >= 0 || _hflip || _vflip)
+        {
+            // ffmpeg's command line orients before the -vf chain, so before yadif; here it would come after.
+            if (deinterlace)
+                throw new ShotDetectionException(ShotDetectionError.DecodeFailed, "Deinterlacing rotated or flipped video isn't supported in-process.");
+            _oriented = ffmpeg.av_frame_alloc();
+        }
+    }
+
+    /// <summary>
+    /// What ffmpeg's command line inserts for the stream's display matrix (fftools' autorotate): transpose=clock (dir 1),
+    /// cclock (2), cclock_flip (0) or clock_flip (3) for 90 and 270 degrees, hflip and vflip for 180, vflip for 0.
+    /// </summary>
+    static (int Transpose, bool HFlip, bool VFlip) Orientation(AVCodecParameters* par)
+    {
+        var sd = ffmpeg.av_packet_side_data_get(par->coded_side_data, par->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_DISPLAYMATRIX);
+        if (sd == null || sd->size < 36)
+            return (-1, false, false);
+        var m = new int_array9();
+        for (uint i = 0; i < 9; i++)
+            m[i] = ((int*)sd->data)[i];
+        double theta = -Math.Round(ffmpeg.av_display_rotation_get(in m)); // get_rotation
+        theta -= 360 * Math.Floor(theta / 360 + 0.9 / 360);
+        if (Math.Abs(theta - 90) < 1)
+            return (m[3] > 0 ? 0 : 1, false, false);
+        if (Math.Abs(theta - 180) < 1)
+            return (-1, m[0] < 0, m[4] < 0);
+        if (Math.Abs(theta - 270) < 1)
+            return (m[3] < 0 ? 3 : 2, false, false);
+        if (Math.Abs(theta) > 1)
+            throw new ShotDetectionException(ShotDetectionError.DecodeFailed, $"Rotation by {theta} degrees isn't supported in-process.");
+        return (-1, false, m[4] < 0);
+    }
+
+    /// <summary>Whether these libraries have a decoder for the codec (ffprobe's codec_name); our build lacks a few.</summary>
+    internal static bool HasDecoder(string codec)
+    {
+        var desc = ffmpeg.avcodec_descriptor_get_by_name(codec);
+        return desc != null && ffmpeg.avcodec_find_decoder(desc->id) != null;
+    }
+
+    /// <summary>Whether a rotation (ffprobe's, degrees) of this pixel format is one in-process decoding applies.</summary>
+    internal static bool CanRotate(int rotation, string? pixelFormat)
+    {
+        if (rotation % 90 != 0)
+            return false;
+        if (rotation % 180 == 0)
+            return true;
+        var desc = ffmpeg.av_pix_fmt_desc_get(ffmpeg.av_get_pix_fmt(pixelFormat ?? ""));
+        return desc != null && desc->log2_chroma_w == desc->log2_chroma_h; // as the transpose filter's formats
     }
 
     /// <summary>Seeks to the keyframe at or before <paramref name="pts"/> (stream time base), as ffmpeg's -ss does.</summary>
@@ -95,6 +154,101 @@ internal sealed unsafe class InProcessDecoder : IDisposable
 
     /// <summary>Decodes the next frame; false at the end. Packets that don't decode are skipped, as ffmpeg's command line does.</summary>
     public bool Next()
+    {
+        if (_swapped)
+            SwapOriented();
+        if (!NextFrame())
+            return false;
+        if (_oriented != null)
+        {
+            Orient();
+            SwapOriented();
+        }
+        return true;
+    }
+
+    void SwapOriented()
+    {
+        var f = _frame;
+        _frame = _oriented;
+        _oriented = f;
+        _swapped = !_swapped;
+    }
+
+    /// <summary>
+    /// _frame transposed and/or flipped into _oriented, as ffmpeg's transpose, hflip and vflip filters do: a pure
+    /// rearrangement of each plane's samples (planar formats, up to 16 bits).
+    /// </summary>
+    void Orient()
+    {
+        EnsureRows(0, _frame->height);
+        var desc = ffmpeg.av_pix_fmt_desc_get((AVPixelFormat)_frame->format);
+        int bytes = desc == null ? 0 : desc->comp[0].depth > 8 ? 2 : 1, planes = 0;
+        for (uint i = 0; desc != null && i < desc->nb_components; i++)
+        {
+            planes = Math.Max(planes, desc->comp[i].plane + 1);
+            if (desc->comp[i].step != bytes)
+                bytes = 0;
+        }
+        if (bytes == 0 || (desc->flags & (ffmpeg.AV_PIX_FMT_FLAG_PAL | ffmpeg.AV_PIX_FMT_FLAG_BITSTREAM | ffmpeg.AV_PIX_FMT_FLAG_HWACCEL)) != 0
+            || ((desc->flags & ffmpeg.AV_PIX_FMT_FLAG_PLANAR) == 0 && desc->nb_components > 1))
+            throw new ShotDetectionException(ShotDetectionError.DecodeFailed, $"Rotating {(AVPixelFormat)_frame->format} isn't supported in-process.");
+        bool t = _transpose >= 0;
+        int w = _frame->width, h = _frame->height, ow = t ? h : w, oh = t ? w : h;
+        if (_oriented->width != ow || _oriented->height != oh || _oriented->format != _frame->format)
+        {
+            ffmpeg.av_frame_unref(_oriented);
+            (_oriented->format, _oriented->width, _oriented->height) = (_frame->format, ow, oh);
+            Check(ffmpeg.av_frame_get_buffer(_oriented, 64), "rotate");
+        }
+        ffmpeg.av_frame_side_data_free(&_oriented->side_data, &_oriented->nb_side_data);
+        ffmpeg.av_dict_free(&_oriented->metadata);
+        Check(ffmpeg.av_frame_copy_props(_oriented, _frame), "rotate");
+        if (t && _frame->sample_aspect_ratio.num != 0)
+            _oriented->sample_aspect_ratio = new AVRational { num = _frame->sample_aspect_ratio.den, den = _frame->sample_aspect_ratio.num };
+        for (int p = 0; p < planes; p++)
+        {
+            int sx = p is 1 or 2 ? desc->log2_chroma_w : 0, sy = p is 1 or 2 ? desc->log2_chroma_h : 0;
+            int pw = -((-w) >> sx), ph = -((-h) >> sy); // the source plane
+            int opw = t ? ph : pw, oph = t ? pw : ph;
+            byte* src = _frame->data[(uint)p], dst = _oriented->data[(uint)p];
+            int ss = _frame->linesize[(uint)p], ds = _oriented->linesize[(uint)p];
+            for (int y = 0; y < oph; y++)
+            {
+                byte* d = dst + (long)y * ds;
+                if (!t)
+                {
+                    byte* s = src + (long)(_vflip ? ph - 1 - y : y) * ss;
+                    if (!_hflip)
+                        Buffer.MemoryCopy(s, d, opw * bytes, opw * bytes);
+                    else if (bytes == 1)
+                        for (int x = 0; x < opw; x++)
+                            d[x] = s[opw - 1 - x];
+                    else
+                        for (int x = 0; x < opw; x++)
+                            ((ushort*)d)[x] = ((ushort*)s)[opw - 1 - x];
+                    continue;
+                }
+                // transpose: output row y is source column y (dir & 2: counted from the right), read top down (dir & 1: bottom up)
+                int col = (_transpose & 2) != 0 ? pw - 1 - y : y;
+                byte* s0 = src + (long)col * bytes;
+                long step = ss;
+                if ((_transpose & 1) != 0)
+                {
+                    s0 += (long)(ph - 1) * ss;
+                    step = -step;
+                }
+                if (bytes == 1)
+                    for (int x = 0; x < opw; x++)
+                        d[x] = s0[x * step];
+                else
+                    for (int x = 0; x < opw; x++)
+                        ((ushort*)d)[x] = *(ushort*)(s0 + x * step);
+            }
+        }
+    }
+
+    bool NextFrame()
     {
         if (!_deinterlace)
             return Decode(_frame);
@@ -260,7 +414,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// </summary>
     void EnsureRows(int from, int to)
     {
-        if (_rowMode != true)
+        if (_rowMode != true || _swapped)
             return;
         MarkRows(from, to);
         ComputeRows();
@@ -305,6 +459,8 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// <summary>Collects the rows <see cref="EnsureRows"/> needs that aren't computed yet.</summary>
     void MarkRows(int from, int to)
     {
+        if (_swapped)
+            return; // the oriented frame: Orient computed every row first
         for (int p = 0; p < _rPlanes; p++)
         {
             // Converting a row reads that row; with vertically subsampled chroma, the chroma rows around it too.
@@ -540,6 +696,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         if (_toBgr != null) { var s = _toBgr; ffmpeg.sws_free_context(&s); _toBgr = null; }
         if (_bgr != null) { var f = _bgr; ffmpeg.av_frame_free(&f); _bgr = null; }
         if (_frame != null) { var f = _frame; ffmpeg.av_frame_free(&f); _frame = null; }
+        if (_oriented != null) { var f = _oriented; ffmpeg.av_frame_free(&f); _oriented = null; }
         if (_decoded != null) { var f = _decoded; ffmpeg.av_frame_free(&f); _decoded = null; }
         if (_rNext != null) { var f = _rNext; ffmpeg.av_frame_free(&f); _rNext = null; }
         if (_rPrev != null && _rPrev != _rCur) { var f = _rPrev; ffmpeg.av_frame_free(&f); }

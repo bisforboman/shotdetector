@@ -5,11 +5,14 @@ public sealed partial class VideoReader
     /// <summary>
     /// Whether frames are decoded in this process (<see cref="VideoDecoder.InProcess"/>, or <see cref="VideoDecoder.Auto"/>
     /// with FFmpeg 8's libraries available) rather than by the ffmpeg executable. Inputs it doesn't handle yet use the
-    /// executable: streams and URLs, image sequences, rotated video, and deinterlacing.
+    /// executable: streams and URLs, codecs the libraries have no decoder for, rotations other than quarter turns, and
+    /// rotated video deinterlaced (ffmpeg rotates before yadif there).
     /// </summary>
-    public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && _stream is null && !Streaming && _inputOptions.Length == 0
-        && _rotation == 0 && !_inProcessGaveNothing
+    public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && _stream is null && !Streaming
+        && !_inProcessGaveNothing
         && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory))
+        && InProcessDecoder.HasDecoder(Codec)
+        && (_rotation == 0 || (!_deinterlace && InProcessDecoder.CanRotate(_rotation, _pixelFormat)))
         // Deinterlacing needs libavfilter's yadif too (ShotDetector.Native has it since 0.9).
         && (!_deinterlace || InProcessDecoder.CanDeinterlace(_ffmpegDirectory));
 
@@ -36,7 +39,7 @@ public sealed partial class VideoReader
         byte[] raw = new byte[size], small = new byte[Width * Height * 3];
 
         using var decoder = new InProcessDecoder(_path, _ffmpegDirectory, _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true),
-            deinterlace: _deinterlace, yadif: _yadif);
+            deinterlace: _deinterlace, yadif: _yadif, inputOptions: _inputOptions);
         // Seek as the command line does: two frames early, then drop every frame before the wanted one's pts. Not when
         // the packets carry no pts (MPEG-PS): there libavformat's seek lands after the wanted frame (no index to go
         // by), so decode from the start and drop.
