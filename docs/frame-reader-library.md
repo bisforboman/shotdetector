@@ -47,17 +47,16 @@ package rather than contributing to FFMediaToolkit (which would mean its FFmpeg 
 
 Feasibility of extracting from ShotDetector:
 
-- Feasible: all the code involved is internal, so ShotDetector's frozen API is untouched; package validation, parity,
-  mutation and AOT jobs guard against slips. Most of it is proven on five platforms already.
+- Feasible: all the code involved is internal; parity, mutation and AOT jobs guard ShotDetector's results. Most of it
+  is proven on five platforms already. ShotDetector's API may change where that makes the split cleaner (see below).
 - The hard part is milestone 3: `InProcessDecoder` mixes the general decoder with ShotDetector's writers
   (`WriteSampledBgr`, `WriteYuv420`, the CLI-matching swscale context), and the row-wise yadif is woven into the
   sliced conversion (only the rows the resize reads). The library needs a lower-level hook (decoded planes, or a
   conversion callback) for ShotDetector to keep byte-identical frames.
-- `IYadif` is public in ShotDetector (frozen) and FastYuv's `Yadif` is LGPL: the library gets its own hook,
-  ShotDetector adapts `IYadif` to it, and the LGPL port stays out of the MIT library.
-- Errors: the decoder throws `ShotDetectionException` with reasons that are part of the frozen API
-  (`FfmpegLibrariesNotFound`, `DecodeFailed`, ...). The library needs its own exception; ShotDetector maps back to
-  exactly the same reasons and messages.
+- `IYadif` is public in ShotDetector and FastYuv's `Yadif` is LGPL: the hook can move to the library (or ShotDetector
+  adapts it), and the LGPL port stays out of the MIT library either way.
+- Errors: the decoder throws `ShotDetectionException` (`FfmpegLibrariesNotFound`, `DecodeFailed`, ...). The library
+  needs its own exception; ShotDetector maps it, or exposes the library's, whichever is simpler.
 - Native packages: cheapest is that the library loads from the same files as ShotDetector.Native.<rid> (the loader
   is name-agnostic: next to the app, runtimes/<rid>/native, a given folder). New <Name>.Native.<rid> packages mean
   publishing twice or migrating existing users.
@@ -66,9 +65,10 @@ Feasibility of extracting from ShotDetector:
 
 ## Constraints
 
-- ShotDetector 1.0's public API is frozen (package validation against 1.0.0). Everything above is internal, so the
-  extraction must change neither ShotDetector's public API nor its results: parity, real-world, mutation and AOT
-  jobs stay green, and frames stay byte-identical.
+- ShotDetector's results must not change: parity, real-world, mutation and AOT jobs stay green, and frames stay
+  byte-identical. Its public API may change if that makes the split cleaner: nobody but the user depends on it yet
+  (user, 2026-10-08). Under semantic versioning that means 2.0.0, and package validation needs its baseline moved
+  (or `ApiBaselineVersion` emptied) in the same PR.
 - ShotDetector's exactness tricks (the CLI-equivalent swscale flags and colour tags, `FramePipeline` layouts, the
   remap sampling for `CvResize`, `PacketOf` frame labels, MPEG-PS timestamps from a decoding pass) are about
   matching scenedetect/OpenCV. Decide per item whether it belongs in the library or stays in ShotDetector on top
