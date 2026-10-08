@@ -242,9 +242,22 @@ public sealed partial class VideoReader
         string[] probeArgs = ["-v", "error", .. _inputOptions, "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", path];
         string probed;
         // A file, with FFmpeg's libraries available (as for decoding in-process): read the same with them, no ffprobe.
-        _probesInProcess = video is null && !Streaming && _decoder != VideoDecoder.FfmpegProcess
+        // A Stream too: its first bytes, as ffprobe reads them from stdin.
+        _probesInProcess = (video is not null || !Streaming) && _decoder != VideoDecoder.FfmpegProcess
             && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory));
-        if (_probesInProcess)
+        if (_probesInProcess && video is not null)
+        {
+            _prefix = prefix ?? ReadPrefix(video, o.ProbeBytes, cancellationToken);
+            try
+            {
+                probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: false, streamPrefix: _prefix);
+            }
+            catch (ShotDetectionException e)
+            {
+                throw Failed(e.Reason, e.Message, e);
+            }
+        }
+        else if (_probesInProcess)
             probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly, _inputOptions);
         else if (video is not null)
         {
@@ -591,7 +604,8 @@ public sealed partial class VideoReader
             }
             // Auto: libraries that can't decode this codec (AV1 needs dav1d, which ShotDetector.Native leaves out)
             // give no frames at all; the ffmpeg executable decodes it instead, from here on.
-            if (any || _decoder != VideoDecoder.Auto || ExpectedFrames <= startFrame)
+            // A Stream can't be read twice: what it gave is what there is.
+            if (any || _decoder != VideoDecoder.Auto || ExpectedFrames <= startFrame || _stream is not null)
                 yield break;
             _inProcessGaveNothing = true;
         }

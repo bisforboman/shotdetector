@@ -22,6 +22,10 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ### Faster
 
+- Streams (`Detect(Stream)`, `DetectStreamAsync`, CLI `-i -`) decode in-process when FFmpeg's libraries load, read
+  through a custom AVIOContext, with the executable's results (frame times from the stream's start). A piped 480p
+  film takes 1.3 s, as its file path does, instead of 1.6-2.0 s through ffmpeg (issue #7: 3.8 s vs 1.4 s on 2 CPUs).
+
 - In-process decoding and conversion run on their own thread, overlapped with the resize and scoring, as the
   executable path overlaps ffmpeg with them. With all CPUs, small films were slower than scenedetect and now aren't:
   Big Buck Bunny 360p 5.5 s instead of 8.4 s on a 4-CPU ARM runner (scenedetect 7.9 s), 6.4 s instead of 8.1 s on
