@@ -8,7 +8,7 @@ namespace ShotDetector;
 /// <summary>
 /// What VideoReader asks ffprobe for, read with FFmpeg's libraries in this process instead (when they load): the
 /// same text ffprobe prints, field by field with its formatting, so the parsing and everything after it stay as
-/// they are. Files only (streams, URLs and image sequences keep ffprobe).
+/// they are. Files and streams (a Stream's first bytes, as ffprobe reads them from stdin); URLs keep ffprobe.
 /// </summary>
 internal static unsafe class InProcessProbe
 {
@@ -16,10 +16,13 @@ internal static unsafe class InProcessProbe
     /// <c>ffprobe -select_streams v:0 -show_entries stream=...:stream_side_data=rotation:format=duration:packet=pts
     /// -of default=nw=1</c>'s output (the entries VideoReader reads).
     /// </summary>
-    public static string Properties(string path, string? libraryDirectory, bool packets = true, string[]? inputOptions = null)
+    /// <param name="streamPrefix">A Stream's first bytes, probed instead of <paramref name="path"/> (no packets).</param>
+    public static string Properties(string path, string? libraryDirectory, bool packets = true, string[]? inputOptions = null,
+        byte[]? streamPrefix = null)
     {
         InProcessDecoder.Load(libraryDirectory);
-        var fmt = Open(path, inputOptions);
+        using var io = streamPrefix is null ? null : new StreamInput(streamPrefix, null);
+        var fmt = Open(path, inputOptions, io);
         try
         {
             int index = FirstVideoStream(fmt);
@@ -118,9 +121,16 @@ internal static unsafe class InProcessProbe
     /// Opens a file as ffprobe and ffmpeg do (scan_all_pmts for MPEG-TS), with their input options (<c>-framerate</c>
     /// for an image sequence), and reads its stream info.
     /// </summary>
-    internal static AVFormatContext* Open(string path, string[]? inputOptions = null)
+    internal static AVFormatContext* Open(string path, string[]? inputOptions = null, StreamInput? io = null)
     {
         AVFormatContext* fmt = null;
+        if (io != null)
+        {
+            // Read from a Stream: avformat_close_input leaves the context to its owner.
+            fmt = ffmpeg.avformat_alloc_context();
+            fmt->pb = io.Context;
+            fmt->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO;
+        }
         AVDictionary* options = null;
         ffmpeg.av_dict_set(&options, "scan_all_pmts", "1", ffmpeg.AV_DICT_DONT_OVERWRITE);
         for (int i = 0; inputOptions != null && i + 1 < inputOptions.Length; i += 2)

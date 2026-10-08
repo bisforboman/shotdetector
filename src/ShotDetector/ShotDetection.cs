@@ -411,7 +411,7 @@ public static class ShotDetection
 
     /// <summary>
     /// As <see cref="Detect(string, DetectionOptions?, CancellationToken)"/>, reading the video's bytes
-    /// from <paramref name="video"/> (piped straight into ffmpeg, no temporary file) when the container headers come
+    /// from <paramref name="video"/> (in-process with FFmpeg's libraries, else piped into ffmpeg; no temporary file) when the container headers come
     /// first: mkv, webm, ts, mov, or an mp4 written with "faststart". An mp4 with its headers last is copied to a
     /// temporary file first, deleted afterwards, and read as a file.
     /// </summary>

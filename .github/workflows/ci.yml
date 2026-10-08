@@ -149,6 +149,12 @@ jobs:
           test "$(tail -n +3 shots.csv | wc -l)" -eq 2   # after the "Timecode List:" row and the header
           # With the bundled libraries, the AOT binary decodes in-process (FFmpeg.AutoGen under Native AOT).
           if [ "${{ matrix.rid }}" = linux-x64 ]; then grep -q "decoded in-process" summary.txt; fi
+          # Standard input, in-process with the libraries: FFmpeg calls back into .NET to read it (a custom AVIOContext).
+          ffmpeg -v error -i clip.mp4 -c copy -f matroska clip.mkv
+          ./out/shotdetect -i - -d content --csv piped.csv < clip.mkv 2> piped.txt
+          cat piped.txt
+          test "$(tail -n +3 piped.csv | wc -l)" -eq 2
+          if [ "${{ matrix.rid }}" = linux-x64 ]; then grep -q "decoded in-process" piped.txt; fi
 
   # ARM (linux-arm64): the whole suite, so the NEON paths (HSV conversion, resize, frame differences) run against
   # their tests, the HSV one on all 2^24 colours, and the in-process tests use our linux-arm64 FFmpeg build.

@@ -32,7 +32,7 @@ decoding only; the CLI tool and binaries bundle them. A "shared" FFmpeg build, o
 too.
 
 The ffmpeg and ffprobe executables (on `PATH`, or in `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`) are still
-needed without those libraries, and for streams and URLs and the image and clip exports. Files of every kind decode
+needed without those libraries, and for URLs and the image and clip exports. Files of every kind decode
 in-process, including image sequences, rotated phone video, AV1 (dav1d in our build) and deinterlacing; a codec the
 libraries can't decode, a rotation that isn't a quarter turn and rotated video that is deinterlaced use the executable.
 
@@ -72,8 +72,9 @@ await foreach (var shot in ShotDetection.DetectStreamAsync("video.mp4", options,
 
 A shot arrives once the cut that ends it is confirmed (a few frames later); the last one at the end.
 
-The video can come in as a stream too: `Detect(Stream)` and `DetectStreamAsync(Stream)` pipe the bytes
-straight into ffmpeg (no temporary file), so an upload or a pipe can be analysed while it arrives, and a
+The video can come in as a stream too: `Detect(Stream)` and `DetectStreamAsync(Stream)` read the bytes as they
+come (no temporary file; in-process with FFmpeg's libraries, else piped into ffmpeg), so an upload or a pipe can be
+analysed while it arrives, and a
 URL (`http`, `rtsp`, ...) or `Streaming = true` reads an input once, start to end, as a live feed. The
 CLI reads standard input with `-i -`. That works when the container's headers come first: mkv, webm, ts,
 mov, or an mp4 written with `-movflags +faststart`. An ordinary mp4 keeps them at the end, so it is copied to a
@@ -246,7 +247,7 @@ In-process decoding uses FFmpeg's shared libraries inside our process, as OpenCV
 packages or the CLI's bundled ones, or a system install. It is the default whenever they load
 (`Decoder = VideoDecoder.Auto`; from `FfmpegDirectory` / `--ffmpeg-dir`, else next to the app, else the system's
 usual places); otherwise the executable is used. `--decoder inprocess` insists on the libraries, `--decoder
-process` on the executable. Streams and URLs use the executable.
+process` on the executable. URLs use the executable (our build has no network protocols).
 
 How it keeps up while computing exactly what OpenCV and scenedetect compute:
 - only the pixels the exact `cv2.resize` port reads are converted to BGR (in-process, the row slices that hold

@@ -269,6 +269,53 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // A Stream read in-process (a custom AVIOContext): the same frames, times and stats as the executable reading it
+    // from a pipe, which match the file's.
+    [Theory]
+    [InlineData("mkv", "")]
+    [InlineData("faststart", "")]
+    [InlineData("fragmented", "-movflags frag_keyframe+empty_moov")]
+    [InlineData("ts", "-bsf:v dump_extra -f mpegts")]
+    [InlineData("ts-offset", "-bsf:v dump_extra -output_ts_offset 10 -f mpegts")] // a stream that starts at 10 s
+    [InlineData("small-probe", "")]
+    public void StreamsAsTheFfmpegExecutable(string name, string remux)
+    {
+        if (Libs is null)
+            return;
+        string path = name switch
+        {
+            "mkv" => clips.ThreeShotsMkv,
+            "faststart" or "small-probe" => clips.ThreeShotsFaststart,
+            _ => Path.Combine(Path.GetTempPath(), $"shotdetector-stream-{name}-{Guid.NewGuid():N}" + (remux.Contains("mpegts") ? ".ts" : ".mp4")),
+        };
+        try
+        {
+            if (remux.Length > 0)
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", .. remux.Split(' '), path], default);
+            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess,
+                ProbeBytes = name == "small-probe" ? 4096 : 16 << 20 };
+            DetectionResult Piped(DetectionOptions o)
+            {
+                using var stream = File.OpenRead(path);
+                return ShotDetection.Detect(stream, o);
+            }
+            var pipe = Piped(options);
+            var inProcess = Piped(options with { Decoder = VideoDecoder.InProcess });
+            Assert.False(pipe.Video.DecodesInProcess);
+            Assert.True(inProcess.Video.DecodesInProcess);
+            Assert.True(inProcess.Video.Streaming);
+            Assert.Equal(pipe.FrameCount, inProcess.FrameCount);
+            Assert.Equal((pipe.Video.Width, pipe.Video.Height, pipe.Video.Fps), (inProcess.Video.Width, inProcess.Video.Height, inProcess.Video.Fps));
+            Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
+            Assert.Equal(Shots.Csv(pipe.Shots), Shots.Csv(inProcess.Shots));
+        }
+        finally
+        {
+            if (path.Contains("shotdetector-stream-"))
+                File.Delete(path);
+        }
+    }
+
     // Display matrices (rotations and flips) as ffmpeg's autorotate applies them: transpose, hflip, vflip.
     [Theory]
     [InlineData("90", "-pix_fmt yuv420p", "-display_rotation 90", "")]

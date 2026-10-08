@@ -7,10 +7,10 @@ public sealed partial class VideoReader
     /// <summary>
     /// Whether frames are decoded in this process (<see cref="VideoDecoder.InProcess"/>, or <see cref="VideoDecoder.Auto"/>
     /// with FFmpeg 8's libraries available) rather than by the ffmpeg executable. Inputs it doesn't handle yet use the
-    /// executable: streams and URLs, codecs the libraries have no decoder for, rotations other than quarter turns, and
+    /// executable: URLs (and Streaming on a path), codecs the libraries have no decoder for, rotations other than quarter turns, and
     /// rotated video deinterlaced (ffmpeg rotates before yadif there).
     /// </summary>
-    public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && _stream is null && !Streaming
+    public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && (_stream is not null || !Streaming)
         && !_inProcessGaveNothing
         && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory))
         && InProcessDecoder.HasDecoder(Codec)
@@ -55,8 +55,11 @@ public sealed partial class VideoReader
             try
             {
                 using var decoder = new InProcessDecoder(_path, _ffmpegDirectory, _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true),
-                    deinterlace: _deinterlace, yadif: _yadif, inputOptions: _inputOptions);
+                    deinterlace: _deinterlace, yadif: _yadif, inputOptions: _inputOptions,
+                    io: _stream is null ? null : new StreamInput(_prefix, _stream));
                 timeBase = decoder.TimeBase;
+                // Streamed: times from the stream's start, as ffmpeg gives them without -copyts.
+                long offset = Streaming ? decoder.StartOffset : 0;
                 // Seek as the command line does: two frames early, then drop every frame before the wanted one's pts.
                 // Not when the packets carry no pts (MPEG-PS): there libavformat's seek lands after the wanted frame (no
                 // index to go by), so decode from the start and drop.
@@ -77,9 +80,11 @@ public sealed partial class VideoReader
                         case FramePipeline.FullFrameResize: decoder.WriteBgr(buffer, CropRegion); break;
                         default: decoder.WriteScaledBgr(buffer, CropRegion, Width, Height); break;
                     }
-                    full.Add((buffer, pts), cancel.Token);
+                    full.Add((buffer, pts + offset), cancel.Token);
                     emitted++;
                 }
+                if (decoder.InputError is { } e)
+                    throw new ShotDetectionException(ShotDetectionError.DecodeFailed, $"Reading the stream failed: {e.Message}", e);
             }
             catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
             finally
@@ -96,7 +101,13 @@ public sealed partial class VideoReader
                 if (previous is not null)
                     free.Add(previous);
                 previous = null;
-                _livePackets.Add(PacketOf(pts * timeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
+                if (Streaming)
+                {
+                    _timeBase = timeBase;
+                    _livePts.Add(pts);
+                }
+                else
+                    _livePackets.Add(PacketOf(pts * timeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
                 switch (pipeline)
                 {
                     case FramePipeline.Yuv420Sampled:

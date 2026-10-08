@@ -48,6 +48,18 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     AVFrame* _oriented;
     bool _swapped;
 
+    readonly StreamInput? _io;
+
+    /// <summary>What reading a Stream input threw, if it did.</summary>
+    public Exception? InputError => _io?.Error;
+
+    /// <summary>
+    /// What ffmpeg's command line adds to each timestamp without -copyts (its ts_offset, -start_time), in the stream's
+    /// time base: streamed input's frame times start at 0.
+    /// </summary>
+    public long StartOffset => _fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0
+        : ffmpeg.av_rescale_q(-_fmt->start_time, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase);
+
     /// <summary>The stream's time base in seconds per pts unit.</summary>
     public double TimeBase => _timeBase.num / (double)_timeBase.den;
 
@@ -67,13 +79,15 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// <param name="deinterlace">Deinterlace with yadif (its defaults, as ffmpeg's -vf yadif); needs libavfilter.</param>
     /// <param name="yadif">Row-wise yadif for deinterlacing (FastYuv's), else FFmpeg's on whole frames.</param>
     /// <param name="inputOptions">ffmpeg's input options, as name/value pairs (an image sequence's -framerate).</param>
+    /// <param name="io">A Stream to read instead of <paramref name="path"/>; the decoder disposes it.</param>
     public InProcessDecoder(string path, string? libraryDirectory, int threads, bool deinterlace = false, IYadif? yadif = null,
-        string[]? inputOptions = null)
+        string[]? inputOptions = null, StreamInput? io = null)
     {
         Load(libraryDirectory);
         _deinterlace = deinterlace;
         _yadif = deinterlace ? yadif : null;
-        _fmt = InProcessProbe.Open(path, inputOptions);
+        _io = io;
+        _fmt = InProcessProbe.Open(path, inputOptions, io);
         _stream = InProcessProbe.FirstVideoStream(_fmt);
         if (_stream < 0)
             throw new ShotDetectionException(ShotDetectionError.InvalidInput, "The input has no video stream.");
@@ -130,6 +144,9 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     internal static bool HasDecoder(string codec)
     {
         var desc = ffmpeg.avcodec_descriptor_get_by_name(codec);
+        if (desc != null && desc->id == AVCodecID.AV_CODEC_ID_AV1)
+            // FFmpeg's own av1 decoder needs a GPU (it gives no frames): dav1d or libaom it is.
+            return ffmpeg.avcodec_find_decoder_by_name("libdav1d") != null || ffmpeg.avcodec_find_decoder_by_name("libaom-av1") != null;
         return desc != null && ffmpeg.avcodec_find_decoder(desc->id) != null;
     }
 
@@ -706,6 +723,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         if (_pkt != null) { var p = _pkt; ffmpeg.av_packet_free(&p); _pkt = null; }
         if (_dec != null) { var d = _dec; ffmpeg.avcodec_free_context(&d); _dec = null; }
         if (_fmt != null) { var f = _fmt; ffmpeg.avformat_close_input(&f); _fmt = null; }
+        _io?.Dispose();
     }
 
     /// <summary>
