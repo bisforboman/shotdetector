@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace ShotDetector;
 
 public sealed partial class VideoReader
@@ -36,47 +38,90 @@ public sealed partial class VideoReader
         // The sampled pixels, with the crop's offset, as the remap maps hold them.
         int[]? cols = resizer?.SourceCols.Select(c => c + CropRegion.X).ToArray();
         int[]? rows = resizer?.SourceRows.Select(r => r + CropRegion.Y).ToArray();
-        byte[] raw = new byte[size], small = new byte[Width * Height * 3];
+        var small = new byte[Width * Height * 3];
 
-        using var decoder = new InProcessDecoder(_path, _ffmpegDirectory, _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true),
-            deinterlace: _deinterlace, yadif: _yadif, inputOptions: _inputOptions);
-        // Seek as the command line does: two frames early, then drop every frame before the wanted one's pts. Not when
-        // the packets carry no pts (MPEG-PS): there libavformat's seek lands after the wanted frame (no index to go
-        // by), so decode from the start and drop.
-        long? from = startFrame > 0 && startFrame < _pts.Length ? _pts[startFrame] : null;
-        if (from is not null && startFrame - 2 > 0 && !_ptsFromFrames)
-            decoder.Seek(_pts[startFrame - 2]);
-        int emitted = 0;
-        while ((count is null || emitted < count) && decoder.Next())
+        // Decoding and converting run on their own thread and the resize and scoring on the caller's, overlapped as
+        // with the executable (where ffmpeg is the other side). Eight buffers, so neither side waits for the other on
+        // every frame (with three, the handoffs cost as much as the decoding on small video). Cancelled by the
+        // caller's token, or by us when the caller stops iterating.
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var free = new BlockingCollection<byte[]>();
+        using var full = new BlockingCollection<(byte[] Buffer, long Pts)>();
+        for (int i = 0; i < 8; i++)
+            free.Add(new byte[size]);
+        double timeBase = 0;
+        var producer = Task.Run(() =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            long pts = decoder.Pts;
-            if (from is { } f && pts < f)
-                continue;
-            _livePackets.Add(PacketOf(pts * decoder.TimeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
-            emitted++;
-            switch (pipeline)
+            try
             {
-                case FramePipeline.Yuv420Sampled:
-                    decoder.WriteYuv420(raw);
-                    resizer!.ResizeYuv420(raw, small, _yuv420ForVideo!, SourceWidth, SourceHeight, CropRegion.X, CropRegion.Y);
-                    yield return small;
-                    break;
-                case FramePipeline.SampledBgr:
-                    decoder.WriteSampledBgr(raw, cols!, rows!);
-                    resizer!.ResizeSampled(raw, small);
-                    yield return small;
-                    break;
-                case FramePipeline.FullFrameResize:
-                    decoder.WriteBgr(raw, CropRegion);
-                    resizer!.Resize(raw, small);
-                    yield return small;
-                    break;
-                default:
-                    decoder.WriteScaledBgr(raw, CropRegion, Width, Height);
-                    yield return raw;
-                    break;
+                using var decoder = new InProcessDecoder(_path, _ffmpegDirectory, _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true),
+                    deinterlace: _deinterlace, yadif: _yadif, inputOptions: _inputOptions);
+                timeBase = decoder.TimeBase;
+                // Seek as the command line does: two frames early, then drop every frame before the wanted one's pts.
+                // Not when the packets carry no pts (MPEG-PS): there libavformat's seek lands after the wanted frame (no
+                // index to go by), so decode from the start and drop.
+                long? from = startFrame > 0 && startFrame < _pts.Length ? _pts[startFrame] : null;
+                if (from is not null && startFrame - 2 > 0 && !_ptsFromFrames)
+                    decoder.Seek(_pts[startFrame - 2]);
+                int emitted = 0;
+                while ((count is null || emitted < count) && decoder.Next())
+                {
+                    long pts = decoder.Pts;
+                    if (from is { } f && pts < f)
+                        continue;
+                    var buffer = free.Take(cancel.Token);
+                    switch (pipeline)
+                    {
+                        case FramePipeline.Yuv420Sampled: decoder.WriteYuv420(buffer); break;
+                        case FramePipeline.SampledBgr: decoder.WriteSampledBgr(buffer, cols!, rows!); break;
+                        case FramePipeline.FullFrameResize: decoder.WriteBgr(buffer, CropRegion); break;
+                        default: decoder.WriteScaledBgr(buffer, CropRegion, Width, Height); break;
+                    }
+                    full.Add((buffer, pts), cancel.Token);
+                    emitted++;
+                }
             }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
+            finally
+            {
+                full.CompleteAdding();
+            }
+        });
+
+        try
+        {
+            byte[]? previous = null;
+            foreach (var (buffer, pts) in full.GetConsumingEnumerable(cancel.Token))
+            {
+                if (previous is not null)
+                    free.Add(previous);
+                previous = null;
+                _livePackets.Add(PacketOf(pts * timeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
+                switch (pipeline)
+                {
+                    case FramePipeline.Yuv420Sampled:
+                        resizer!.ResizeYuv420(buffer, small, _yuv420ForVideo!, SourceWidth, SourceHeight, CropRegion.X, CropRegion.Y);
+                        break;
+                    case FramePipeline.SampledBgr:
+                        resizer!.ResizeSampled(buffer, small);
+                        break;
+                    case FramePipeline.FullFrameResize:
+                        resizer!.Resize(buffer, small);
+                        break;
+                    default:
+                        previous = buffer; // the frame itself: back to the pool once the caller is done with it
+                        yield return buffer;
+                        continue;
+                }
+                free.Add(buffer);
+                yield return small;
+            }
+            producer.GetAwaiter().GetResult(); // decoding errors
+        }
+        finally
+        {
+            cancel.Cancel();
+            try { producer.Wait(); } catch (AggregateException) { } // the decoder is disposed on its thread
         }
     }
 }
