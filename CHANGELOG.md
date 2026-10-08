@@ -16,6 +16,10 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
   (ShotDetector.Native, the CLI) now links in zlib (PNG) and dav1d (AV1, BSD-2-Clause). Streams and URLs still use
   the executable, as do codecs the loaded libraries can't decode (checked up front now, also with other builds).
 
+- Streamed mp4s without "faststart" (headers last, as most mp4s are) work: `Detect(Stream)`, `DetectStreamAsync`
+  and CLI `-i -` copy them to a temporary file, deleted afterwards, and read that as a file, with the same results
+  as the file's path. Other streams still stream (issue #7).
+
 ### Faster
 
 - In-process decoding and conversion run on their own thread, overlapped with the resize and scoring, as the

@@ -411,8 +411,9 @@ public static class ShotDetection
 
     /// <summary>
     /// As <see cref="Detect(string, DetectionOptions?, CancellationToken)"/>, reading the video's bytes
-    /// from <paramref name="video"/> (piped straight into ffmpeg, no temporary file). The container
-    /// headers must come first: mkv, webm, ts, mov, or an mp4 written with "faststart".
+    /// from <paramref name="video"/> (piped straight into ffmpeg, no temporary file) when the container headers come
+    /// first: mkv, webm, ts, mov, or an mp4 written with "faststart". An mp4 with its headers last is copied to a
+    /// temporary file first, deleted afterwards, and read as a file.
     /// </summary>
     public static DetectionResult Detect(Stream video, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
         Run(null, video, options, onShot: null, cancellationToken);
@@ -601,7 +602,13 @@ public static class ShotDetection
         if (o.Downscale is < 1)
             throw new ArgumentException("Downscale must be at least 1.");
 
-        var video = videoStream is not null ? new VideoReader(videoStream, o, cancellationToken) : new VideoReader(videoPath!, o, cancellationToken);
+        // A streamed mp4 without "faststart" (headers last) can't be read from a pipe: it goes to a temporary file first,
+        // read as a file and deleted at the end. Other streams stream.
+        byte[]? prefix = videoStream is null ? null : VideoReader.ReadPrefix(videoStream, o.ProbeBytes, cancellationToken);
+        using var spilled = prefix is not null && VideoReader.HeadersLast(prefix) ? VideoReader.Spill(prefix, videoStream!, cancellationToken) : null;
+        var video = spilled is not null ? new VideoReader(spilled.Path, o, cancellationToken)
+            : videoStream is not null ? new VideoReader(videoStream, prefix!, o, cancellationToken)
+            : new VideoReader(videoPath!, o, cancellationToken);
         if (o.StartTime is not null && video.Streaming)
             throw new ArgumentException("StartTime isn't available for a streamed input (a Stream, a URL, or Streaming = true).");
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
