@@ -5,11 +5,13 @@ public sealed partial class VideoReader
     /// <summary>
     /// Whether frames are decoded in this process (<see cref="VideoDecoder.InProcess"/>, or <see cref="VideoDecoder.Auto"/>
     /// with FFmpeg 8's libraries available) rather than by the ffmpeg executable. Inputs it doesn't handle yet use the
-    /// executable: streams and URLs, image sequences, rotated video, and deinterlacing.
+    /// executable: streams and URLs, image sequences, rotations other than quarter turns, and rotated video deinterlaced
+    /// (ffmpeg rotates before yadif there).
     /// </summary>
     public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && _stream is null && !Streaming && _inputOptions.Length == 0
-        && _rotation == 0 && !_inProcessGaveNothing
+        && !_inProcessGaveNothing
         && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory))
+        && (_rotation == 0 || (!_deinterlace && InProcessDecoder.CanRotate(_rotation, _pixelFormat)))
         // Deinterlacing needs libavfilter's yadif too (ShotDetector.Native has it since 0.9).
         && (!_deinterlace || InProcessDecoder.CanDeinterlace(_ffmpegDirectory));
 
