@@ -25,6 +25,45 @@ bindings (FFmpeg.AutoGen and Sdcb.FFmpeg exist) but an idiomatic, low-allocation
 
 So the work is mostly extraction and a general public API, not new decoding code.
 
+## Analysis (2026-10-08, before starting)
+
+Prior art, checked on nuget.org and GitHub:
+
+| Library | What it is | Status |
+|---|---|---|
+| FFMediaToolkit (MIT) | The closest: FFmpeg.AutoGen-based reading (and writing), `TryGetNextFrame` into a `Span<byte>`/buffer, output pixel format (default Bgr24), seek by time, `Stream` input via `MediaFile.Load` | 4.8.1, last commit 2025-09-09; FFmpeg 7.x (AutoGen 7.1.1), netstandard2.0/2.1; Windows and Linux only (macOS "not supported"); no native packages (bring your own FFmpeg); resize not documented |
+| Sdcb.FFmpeg | Bindings with some helpers, not a frame-reader API | 7.0.0 (2024-04), last push 2025-03; FFmpeg 7 |
+| FFmpeg.AutoGen | Raw bindings (what we use) | 9.0.1.1 (2026-08): FFmpeg 9 bindings exist |
+| FFMpegCore | Process-based (spawns ffmpeg/ffprobe per call) | 5.5.0 (2026-09), active; the benchmark's comparison point |
+| OpenCvSharp4 `VideoCapture` | Frames as `Mat` through OpenCV's FFmpeg | Active; a heavy dependency, OpenCV's conversions |
+| SeeShark | Cameras, not files | 4.1.0 (2025-11) |
+
+So the gap is real but narrower than "nothing exists": FFMediaToolkit covers basic in-process reading. What a new
+library would add: FFmpeg 8.1 (and a path to 9), macOS and ARM, ready-made decode-only native packages for five
+platforms, Native AOT, swscale to a requested size and format in one step (a 160x90 Gray8 reader never sees full
+frames), steady-state zero allocation with the decode thread ahead, deinterlacing and autorotate, MPEG-PS
+timestamps, and the ffprobe-equivalent probe. Worth deciding up front whether that set is enough to justify a new
+package rather than contributing to FFMediaToolkit (which would mean its FFmpeg version, netstandard and API).
+
+Feasibility of extracting from ShotDetector:
+
+- Feasible: all the code involved is internal, so ShotDetector's frozen API is untouched; package validation, parity,
+  mutation and AOT jobs guard against slips. Most of it is proven on five platforms already.
+- The hard part is milestone 3: `InProcessDecoder` mixes the general decoder with ShotDetector's writers
+  (`WriteSampledBgr`, `WriteYuv420`, the CLI-matching swscale context), and the row-wise yadif is woven into the
+  sliced conversion (only the rows the resize reads). The library needs a lower-level hook (decoded planes, or a
+  conversion callback) for ShotDetector to keep byte-identical frames.
+- `IYadif` is public in ShotDetector (frozen) and FastYuv's `Yadif` is LGPL: the library gets its own hook,
+  ShotDetector adapts `IYadif` to it, and the LGPL port stays out of the MIT library.
+- Errors: the decoder throws `ShotDetectionException` with reasons that are part of the frozen API
+  (`FfmpegLibrariesNotFound`, `DecodeFailed`, ...). The library needs its own exception; ShotDetector maps back to
+  exactly the same reasons and messages.
+- Native packages: cheapest is that the library loads from the same files as ShotDetector.Native.<rid> (the loader
+  is name-agnostic: next to the app, runtimes/<rid>/native, a given folder). New <Name>.Native.<rid> packages mean
+  publishing twice or migrating existing users.
+- Rough size: milestones 1, 2 and 4 small to medium (moving code and its tests), 3 the large one, 5 (benchmarks)
+  medium.
+
 ## Constraints
 
 - ShotDetector 1.0's public API is frozen (package validation against 1.0.0). Everything above is internal, so the
