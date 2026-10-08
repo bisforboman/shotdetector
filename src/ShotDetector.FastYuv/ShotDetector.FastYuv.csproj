@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <IsAotCompatible>true</IsAotCompatible>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Every public member is documented (it's the package's API reference); keep it that way. -->
     <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>

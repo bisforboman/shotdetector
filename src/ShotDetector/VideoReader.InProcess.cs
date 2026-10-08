@@ -36,7 +36,7 @@ public sealed partial class VideoReader
         byte[] raw = new byte[size], small = new byte[Width * Height * 3];
 
         using var decoder = new InProcessDecoder(_path, _ffmpegDirectory, _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true),
-            deinterlace: _deinterlace);
+            deinterlace: _deinterlace, yadif: _yadif);
         // Seek as the command line does: two frames early, then drop every frame before the wanted one's pts. Not when
         // the packets carry no pts (MPEG-PS): there libavformat's seek lands after the wanted frame (no index to go
         // by), so decode from the start and drop.

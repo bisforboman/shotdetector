@@ -5,6 +5,18 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+### New
+
+- `DetectionOptions.Yadif` (`IYadif`), with `Yadif` in ShotDetector.FastYuv (LGPL, a port of FFmpeg's yadif):
+  in-process deinterlacing computes only the rows the resize reads, in parallel, instead of FFmpeg's yadif on whole
+  frames. Identical results for 8-bit video. For 9 to 16 bits it follows FFmpeg's C code, since FFmpeg 8.1's x86
+  SIMD yadif gives a different result on every run there.
+
+### Faster
+
+- Deinterlacing with FastYuv's `Yadif`: an 80 s 1080i25 MPEG-2 4:2:2 MXF takes 7.5 s instead of 11.6 s with 2 CPUs,
+  and 5.0 s instead of 5.5 s with all of them (using a third less CPU time); 5.1 s and 4.0 s without deinterlacing.
+
 ## 0.9.0 – 2026-10-08
 
 Broadcast and ARM: deinterlacing in-process, which decoder ran and a startup check, more in the probe (issue #42),

@@ -177,6 +177,7 @@ public sealed partial class VideoReader
     /// <summary>The stream entries read from ffprobe (or the same in-process, <see cref="InProcessProbe"/>); files add :packet=pts.</summary>
     internal const string ProbeEntries = "stream=codec_name,field_order,width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration,format_name";
     readonly IYuv420Converter? _yuv420;
+    readonly IYadif? _yadif;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
     readonly List<long> _livePts = []; // the same, as frames arrive, when streaming (from the stream's start)
     // For a file in 0.7.1 mode: the packet (index into _pts) of each decoded frame since _liveStart. Normally
@@ -213,6 +214,7 @@ public sealed partial class VideoReader
         var compatibility = o.Compatibility;
         Compatibility = compatibility;
         _yuv420 = o.Yuv420Converter;
+        _yadif = o.Yadif;
         _path = path;
         _stream = video;
         _ffmpegResize = o.FfmpegResize;

@@ -274,6 +274,12 @@ public sealed record DetectionOptions
     /// </summary>
     public IYuv420Converter? Yuv420Converter { get; init; }
 
+    /// <summary>
+    /// yadif for single rows (the ShotDetector.FastYuv package's <c>Yadif</c>): in-process deinterlacing then computes
+    /// only the rows the resize reads, instead of FFmpeg's yadif on whole frames. Same results.
+    /// </summary>
+    public IYadif? Yadif { get; init; }
+
     /// <summary>Folder containing ffmpeg and ffprobe; null (default) finds them on PATH. With <see cref="VideoDecoder.InProcess"/>, also where FFmpeg's shared libraries are.</summary>
     public string? FfmpegDirectory { get; init; }
 
