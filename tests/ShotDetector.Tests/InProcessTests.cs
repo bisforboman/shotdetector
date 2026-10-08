@@ -182,6 +182,53 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         Assert.True(ShotDetection.CanDecodeInProcess(Libs));
     }
 
+    // Row-wise yadif (FastYuv's Yadif) gives FFmpeg's yadif results: per-frame stats from the whole frames and from the
+    // sampled rows, from the start and after a seek, 8-bit 4:2:0 and 4:2:2, 10-bit 4:2:2, and with FastYuv.
+    [Theory]
+    [InlineData("420", "-pix_fmt yuv420p", "")]
+    [InlineData("420-start", "-pix_fmt yuv420p", "start")]
+    [InlineData("420-full", "-pix_fmt yuv420p", "full")]
+    [InlineData("420-fastyuv", "-pix_fmt yuv420p", "fastyuv")]
+    [InlineData("422", "-pix_fmt yuv422p", "")]
+    [InlineData("422-10bit", "-pix_fmt yuv422p10le", "")]
+    [InlineData("422-10bit-full", "-pix_fmt yuv422p10le", "full")]
+    [InlineData("bff", "-pix_fmt yuv420p -vf setfield=bff", "")]
+    [InlineData("1080i-422", "-t 1 -vf scale=1920:1080,setfield=tff -pix_fmt yuv422p", "")] // sparse rows: 1080 lines sampled to 144
+    [InlineData("1080i-420", "-t 1 -vf scale=1920:1080,setfield=tff -pix_fmt yuv420p", "")]
+    public void RowWiseYadifEqualsFfmpegs(string name, string args, string variant)
+    {
+        if (Libs is null)
+            return;
+        string clip = Path.Combine(Path.GetTempPath(), $"shotdetector-yadif-{name}-{Guid.NewGuid():N}.mkv");
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.Interlaced, .. args.Split(' '), "-c:v", "ffv1", clip], default);
+        try
+        {
+            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Deinterlace = DeinterlaceMode.On };
+            options = variant switch
+            {
+                "start" => options with { StartTime = "2.5" },
+                "full" => options with { FullFrames = true },
+                "fastyuv" => options with { Yuv420Converter = new SwscaleYuv420() },
+                _ => options,
+            };
+            // 9 to 16 bits: FFmpeg 8.1's x86 SIMD yadif gives a different result on every run, so the reference is its C
+            // code (-cpuflags 0) as a lossless copy, read without deinterlacing.
+            bool deep = args.Contains("10le");
+            string reference = Path.ChangeExtension(clip, ".ref.mkv");
+            if (deep)
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-cpuflags", "0", "-i", clip, "-vf", "yadif", "-c:v", "ffv1", reference], default);
+            var ffmpegs = deep ? ShotDetection.Detect(reference, options with { Deinterlace = DeinterlaceMode.Off }) : ShotDetection.Detect(clip, options);
+            var ours = ShotDetection.Detect(clip, options with { Yadif = new Yadif() });
+            File.Delete(reference);
+            Assert.True(ours.Video.DecodesInProcess);
+            Assert.Equal(ffmpegs.Stats!.Csv(ffmpegs.Video.Position), ours.Stats!.Csv(ours.Video.Position));
+        }
+        finally
+        {
+            File.Delete(clip);
+        }
+    }
+
     [Fact]
     public void RotatedVideoUsesTheExecutable()
     {
