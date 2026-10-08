@@ -5,6 +5,23 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+The public API as it will be frozen for 1.0 (docs/decisions.md): a few types change shape so that adding to them later
+isn't a breaking change, and the decoding internals stop being public.
+
+### Breaking changes
+
+- `VideoInfo`, `DetectionResult` and `DetectionProgress` are no longer positional: the same properties (init-only),
+  without the public constructors and `Deconstruct`, so new properties after 1.0 are additions. They come from
+  `ShotDetection` (`with` expressions still work).
+- `VideoReader` is the read-only view of a video in a result (`DetectionResult.Video`): its constructors and
+  `Frames()` are internal. `Position()`, `Info` and the properties stay.
+- `Stats` is read-only for callers: `Set` and the constructor are internal.
+
+### New
+
+- Breaking changes to the libraries' API fail the pack (the SDK's package validation), against the last stable
+  release from 1.0 on (`ApiBaselineVersion` in Directory.Build.props).
+
 ## 0.10.0 – 2026-10-08
 
 In-process for nearly everything, and faster: rotated video, image sequences, AV1 and streams now decode with

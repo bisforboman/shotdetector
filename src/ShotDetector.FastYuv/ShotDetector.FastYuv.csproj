@@ -13,6 +13,10 @@
     <PackageLicenseExpression>LGPL-2.1-or-later</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <!-- Local and CI builds carry the placeholder version; releases the tag's, so the assembly-version check is theirs. -->
+    <NoWarn Condition="'$(Version)' == '0.1.0-alpha.1'">$(NoWarn);CP0003</NoWarn>
+    <PackageValidationBaselineVersion Condition="'$(ApiBaselineVersion)' != ''">$(ApiBaselineVersion)</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <ItemGroup>

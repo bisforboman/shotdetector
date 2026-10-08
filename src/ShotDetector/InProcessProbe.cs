@@ -14,9 +14,9 @@ internal static unsafe class InProcessProbe
 {
     /// <summary>
     /// <c>ffprobe -select_streams v:0 -show_entries stream=...:stream_side_data=rotation:format=duration:packet=pts
-    /// -of default=nw=1</c>'s output (the entries VideoReader reads).
+    /// -of default=nw=1</c>'s output (the entries VideoReader reads). With <c>streamPrefix</c>, a Stream's first bytes are
+    /// probed instead of the path (no packets).
     /// </summary>
-    /// <param name="streamPrefix">A Stream's first bytes, probed instead of <paramref name="path"/> (no packets).</param>
     public static string Properties(string path, string? libraryDirectory, bool packets = true, string[]? inputOptions = null,
         byte[]? streamPrefix = null)
     {
