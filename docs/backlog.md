@@ -78,6 +78,19 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | Issue #42: interlaced broadcast samples in CI (XDCAM HD MPEG-2 4:2:2 MXF, AVC-Intra, ProRes), parity with Off and against a lossless yadif copy with Auto | Confidence for broadcast input | Done (2026-10-08) |
 | 1.0 release plan: what must hold (parity matrix green for N releases of scenedetect/ffmpeg), version policy afterwards | So 1.0 means something. Plan (revised 2026-10-08): 1.0 when stable, from fixing and testing; no quiet period. Policy in README "Versions" (decisions.md) | Done (2026-10-08) |
 
+## 4. After 1.0 (ideas, 2026-10-08)
+
+| Item | Why | Status |
+|---|---|---|
+| Track scenedetect releases: a weekly CI job that opens an issue when PyPI has a newer scenedetect | Matching scenedetect is the point; a new release means a new compatibility mode (the default tracks the newest, README "Versions") | Open |
+| FFmpeg 9's libraries (libavcodec.so.63): load them in-process, or at least test what Auto does | Distros will move; today Auto falls back to the (slower) executable there, and our Native packages stay on 8.1 | Open |
+| README performance: 1.0's x64 and ARM benchmark, 2-CPU figures and memory | Issue #7 asked for 2-CPU numbers; the README table predates in-process decoding | Open |
+| DASH and RTSP input checked against the file | fMP4, TS and HLS are (tests); DASH needs ffmpeg with libxml2, RTSP a test server in CI | Maybe |
+| URLs in-process: network protocols (and TLS for https) in our FFmpeg build | URLs are the last input on the executable; TLS means another linked library (licence, updates) | Maybe |
+| Rotation gaps: 4:2:2 at 90/270 degrees (transpose converts the format first), rotated video deinterlaced (ffmpeg rotates before yadif) | Rare, and the executable handles them exactly | Maybe |
+| Hardware decoding | Only if bit-exact with software decoding, proven per codec; the conversion and analysis would still be ours | Maybe |
+| The CLI's 1.0.0 symbol package (never pushed: the 500 during the release) | Goes up with the next release (release.yml now pushes symbols on their own) | Open |
+
 ## Done
 
 | Item | Landed |
