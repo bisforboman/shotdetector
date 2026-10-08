@@ -15,7 +15,8 @@ differ is documented in README.md and in `docs/decisions.md`.
 
 ## Status
 
-0.8.0 released 2026-10-07 (DeinterlaceMode Auto/On/Off, ShotDetection.Probe; issue #35). 0.7.0 released 2026-10-07 (in-process by default, ShotDetector.Native.<rid> packages, CLI bundles FFmpeg's
+0.9.0 released 2026-10-08 (0.6.4 dropped, ARM NEON, in-process deinterlacing, decoder visibility, probe
+container/audio; issue #42). 0.8.0 released 2026-10-07 (DeinterlaceMode Auto/On/Off, ShotDetection.Probe; issue #35). 0.7.0 released 2026-10-07 (in-process by default, ShotDetector.Native.<rid> packages, CLI bundles FFmpeg's
 libraries, in-process probing: no ffmpeg needed for files). 0.6.1 released 2026-10-07 (speed: in-process faster than scenedetect on most films, whole frames for small video
 on the executable path). 0.6.0 released 2026-10-07 (opt-in in-process decoding with FFmpeg 8.1's libraries, deinterlacing,
 `ShotDetectionException` reasons, ActivitySource tracing, SourceLink/attestations; issues #12, #16-#19); see CHANGELOG.md.

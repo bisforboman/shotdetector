@@ -5,6 +5,13 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 
 ## Unreleased
 
+## 0.9.0 – 2026-10-08
+
+Broadcast and ARM: deinterlacing in-process, which decoder ran and a startup check, more in the probe (issue #42),
+NEON on ARM, and the scenedetect 0.6.4 mode removed. CI now checks interlaced 1080i XDCAM HD, AVC-Intra and ProRes.
+Note for interlaced video: scenedetect's current OpenCV can't read it (one black frame throughout), so compare with
+deinterlacing on (README, "Where this differs").
+
 ### Breaking changes
 
 - `VideoDecoder.InProcess` without loadable FFmpeg libraries throws with `Reason = ShotDetectionError.FfmpegLibrariesNotFound`
