@@ -36,6 +36,13 @@ public sealed record FrameReaderOptions
     /// <summary>The output's pixel format.</summary>
     public FrameFormat Format { get; init; } = FrameFormat.Bgr24;
 
+    /// <summary>
+    /// Frames per second out, through FFmpeg's <c>fps</c> filter (its defaults: nearest-frame rounding, duplicating or
+    /// dropping as needed): the frames <c>-vf fps=R,scale=...</c> gives, only those converted. 1 for a picture every
+    /// second, 1/10 for one every ten seconds. Null: every frame as decoded. Needs libavfilter with fps.
+    /// </summary>
+    public Rational? FrameRate { get; init; }
+
     /// <summary>How to decode (library folder, threads, deinterlacing, input options); null: the defaults.</summary>
     public FrameDecoderOptions? Decoder { get; init; }
 }
@@ -89,6 +96,11 @@ public sealed unsafe class VideoFrameReader : IDisposable
     byte[] _packed = [];
     int _index = -1;
     long? _keepFrom; // after a seek: frames whose pts plus this is below 0 are dropped (ffmpeg's trim)
+    // FrameRate: buffer -> fps -> buffersink, fed the decoded frames, its output converted.
+    AVFilterGraph* _fpsGraph;
+    AVFilterContext* _fpsIn, _fpsOut;
+    AVFrame* _fpsFrame;
+    bool _fpsFlushed;
 
     /// <summary>Opens a file, image sequence pattern or URL FFmpeg can read.</summary>
     /// <param name="path">What to open.</param>
@@ -116,6 +128,8 @@ public sealed unsafe class VideoFrameReader : IDisposable
             FrameFormat.Yuv420p => AVPixelFormat.AV_PIX_FMT_YUV420P,
             _ => throw new ArgumentException($"Unknown format {_options.Format}.", nameof(options)),
         };
+        if (_options.FrameRate is { } r && (r.Num <= 0 || r.Den <= 0))
+            throw new ArgumentException("FrameRate is positive.", nameof(options));
         _decoder = open(_options.Decoder);
     }
 
@@ -132,6 +146,8 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <param name="time">From the input's start (as <see cref="VideoFrame.Time"/>).</param>
     public void Seek(TimeSpan time)
     {
+        if (_options.FrameRate is not null)
+            throw new InvalidOperationException("Seek isn't available with FrameRate.");
         _keepFrom = _decoder.SeekLikeFfmpeg(time);
         _index = -1;
         _current = false;
@@ -152,6 +168,8 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <exception cref="FrameReaderException">Decoding or converting failed.</exception>
     public bool TryRead(out VideoFrame frame)
     {
+        if (_options.FrameRate is { } rate)
+            return TryReadFps(rate, out frame);
         bool got;
         while ((got = _decoder.Next()) && _keepFrom is { } keep && _decoder.Pts + keep < 0)
         {
@@ -178,6 +196,8 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <returns>False when the video ends first.</returns>
     public bool TryReadForwardTo(TimeSpan time, out VideoFrame frame)
     {
+        if (_options.FrameRate is not null)
+            throw new InvalidOperationException("TryReadForwardTo isn't available with FrameRate.");
         long keep = _decoder.TrimOffset(time);
         if (!(_current && _decoder.Pts + keep >= 0))
         {
@@ -198,10 +218,88 @@ public sealed unsafe class VideoFrameReader : IDisposable
 
     bool _current; // the decoder holds a frame read (not past the end)
 
+    /// <summary>The fps filter's next frame: decoded frames go in (shifted as ffmpeg shifts them) until one comes out.</summary>
+    bool TryReadFps(Rational rate, out VideoFrame frame)
+    {
+        while (true)
+        {
+            if (_fpsOut != null)
+            {
+                ffmpeg.av_frame_unref(_fpsFrame);
+                int got = ffmpeg.av_buffersink_get_frame(_fpsOut, _fpsFrame);
+                if (got == 0)
+                {
+                    _index++;
+                    long pts = _fpsFrame->pts; // in 1/rate
+                    Convert(_fpsFrame, pts, TimeSpan.FromSeconds(pts * rate.Den / (double)rate.Num), out frame);
+                    return true;
+                }
+                if (got == ffmpeg.AVERROR_EOF)
+                    break;
+                if (got != ffmpeg.AVERROR(ffmpeg.EAGAIN))
+                    Check(got, "fps");
+            }
+            if (_fpsFlushed)
+                break;
+            if (!_decoder.Next())
+            {
+                if (_fpsIn == null)
+                    break;
+                Check(ffmpeg.av_buffersrc_add_frame_flags(_fpsIn, null, 0), "fps");
+                _fpsFlushed = true;
+                continue;
+            }
+            var src = _decoder.Frame;
+            _decoder.EnsureRows(0, src->height);
+            if (_fpsIn == null)
+                BuildFps(src, rate);
+            var feed = ffmpeg.av_frame_alloc();
+            try
+            {
+                Check(ffmpeg.av_frame_ref(feed, src), "fps");
+                feed->pts = _decoder.Pts + _decoder.StartOffset; // ffmpeg's command line shifts by the start time (no -copyts)
+                Check(ffmpeg.av_buffersrc_add_frame_flags(_fpsIn, feed, 0), "fps");
+            }
+            finally
+            {
+                ffmpeg.av_frame_free(&feed);
+            }
+        }
+        frame = default;
+        return false;
+    }
+
+    /// <summary>buffer (the decoded frames' size, format, aspect and the stream's time base) -> fps -> buffersink.</summary>
+    void BuildFps(AVFrame* first, Rational rate)
+    {
+        if (ffmpeg.avfilter_get_by_name("fps") == null)
+            throw new FrameReaderException(FrameReaderError.DecodeFailed, "FrameRate needs FFmpeg's fps filter, which these libraries leave out.");
+        _fpsGraph = ffmpeg.avfilter_graph_alloc();
+        _fpsFrame = ffmpeg.av_frame_alloc();
+        var sar = first->sample_aspect_ratio.num > 0 ? first->sample_aspect_ratio : new AVRational { num = 0, den = 1 };
+        var tb = _decoder.StreamTimeBase;
+        string args = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"video_size={first->width}x{first->height}:pix_fmt={first->format}:time_base={tb.num}/{tb.den}:pixel_aspect={sar.num}/{sar.den}");
+        AVFilterContext* source, fps, sink;
+        Check(ffmpeg.avfilter_graph_create_filter(&source, ffmpeg.avfilter_get_by_name("buffer"), "in", args, null, _fpsGraph), "fps");
+        Check(ffmpeg.avfilter_graph_create_filter(&fps, ffmpeg.avfilter_get_by_name("fps"), "fps", $"fps={rate.Num}/{rate.Den}", null, _fpsGraph), "fps");
+        Check(ffmpeg.avfilter_graph_create_filter(&sink, ffmpeg.avfilter_get_by_name("buffersink"), "out", null, null, _fpsGraph), "fps");
+        Check(ffmpeg.avfilter_link(source, 0, fps, 0), "fps");
+        Check(ffmpeg.avfilter_link(fps, 0, sink, 0), "fps");
+        Check(ffmpeg.avfilter_graph_config(_fpsGraph, null), "fps");
+        _fpsIn = source;
+        _fpsOut = sink;
+    }
+
     void Convert(out VideoFrame frame)
     {
-        var src = _decoder.Frame;
-        _decoder.EnsureRows(0, src->height);
+        _decoder.EnsureRows(0, _decoder.Frame->height);
+        long pts = _decoder.Pts;
+        Convert(_decoder.Frame, pts, TimeSpan.FromSeconds((pts + _decoder.StartOffset) * _decoder.TimeBase), out frame);
+    }
+
+    void Convert(AVFrame* src, long pts, TimeSpan time, out VideoFrame frame)
+    {
         int width = _options.Width ?? src->width, height = _options.Height ?? src->height;
         if (_out == null)
         {
@@ -229,7 +327,6 @@ public sealed unsafe class VideoFrameReader : IDisposable
         int ret = ffmpeg.sws_scale_frame(_sws, _out, _in);
         ffmpeg.av_frame_unref(_in);
         Check(ret, "convert");
-        long pts = _decoder.Pts;
         int size = ffmpeg.av_image_get_buffer_size(_format, width, height, 1);
         ReadOnlySpan<byte> data;
         if (_options.Format != FrameFormat.Yuv420p)
@@ -250,8 +347,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 Check(ffmpeg.av_image_copy_to_buffer(p, size, in planes, in strides, _format, width, height, 1), "pack");
             data = _packed;
         }
-        frame = new VideoFrame(_index, pts, TimeSpan.FromSeconds((pts + _decoder.StartOffset) * _decoder.TimeBase), width, height,
-            _options.Format, data);
+        frame = new VideoFrame(_index, pts, time, width, height, _options.Format, data);
     }
 
     /// <summary>Frees the decoder, the scaler and the output buffer.</summary>
@@ -260,6 +356,8 @@ public sealed unsafe class VideoFrameReader : IDisposable
         if (_sws != null) { var s = _sws; ffmpeg.sws_free_context(&s); _sws = null; }
         if (_in != null) { var f = _in; ffmpeg.av_frame_free(&f); _in = null; }
         if (_out != null) { var f = _out; ffmpeg.av_frame_free(&f); _out = null; }
+        if (_fpsFrame != null) { var f = _fpsFrame; ffmpeg.av_frame_free(&f); _fpsFrame = null; }
+        if (_fpsGraph != null) { var g = _fpsGraph; ffmpeg.avfilter_graph_free(&g); _fpsGraph = null; _fpsIn = _fpsOut = null; }
         _decoder.Dispose();
     }
 

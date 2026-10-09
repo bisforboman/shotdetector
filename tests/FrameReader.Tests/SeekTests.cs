@@ -100,4 +100,39 @@ public class SeekTests
             Directory.Delete(dir, true);
         }
     }
+
+    // FrameRate: the frames of ffmpeg's -vf fps=R (its rounding, duplicates and drops), byte for byte.
+    [Theory]
+    [InlineData("bframes.mp4", "-c:v mpeg4 -bf 2 -g 12")]
+    [InlineData("late.ts", "-c:v mpeg2video -bf 2 -g 12 -output_ts_offset 10")]
+    public void FrameRateIsFfmpegsFpsFilter(string name, string encode)
+    {
+        if (Libs is null || !FFmpegLibraries.CanLoad(Libs))
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-fps-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=3", .. encode.Split(' '), path]);
+            foreach (var (rate, text) in new[] { (new Rational(1, 1), "1"), (new Rational(1, 2), "1/2"), (new Rational(10, 1), "10"), (new Rational(30, 1), "30") })
+            {
+                byte[] expected = Ffmpeg("-v", "error", "-i", path, "-vf", $"fps={text},scale=160:90:flags=bicubic,format=gray", "-f", "rawvideo", "-");
+                using var reader = new VideoFrameReader(path, new FrameReaderOptions
+                    { Width = 160, Height = 90, Format = FrameFormat.Gray8, FrameRate = rate, Decoder = new FrameDecoderOptions { LibraryDirectory = Libs } });
+                var actual = new MemoryStream();
+                int n = 0;
+                while (reader.TryRead(out var frame))
+                {
+                    Assert.Equal(n++, frame.Index);
+                    actual.Write(frame.Data);
+                }
+                Assert.True(expected.AsSpan().SequenceEqual(actual.ToArray()),
+                    $"{name} fps={text}: {expected.Length / (160 * 90)} frames from ffmpeg, {actual.Length / (160 * 90)} read");
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
