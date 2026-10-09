@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    FrameReader against FFMpegCore's raw-video pipe and the ffmpeg executable (docs/frame-reader-library.md,
+    milestone 5). Not in ShotDetector.slnx: FFMpegCore stays out of everything else. Run it with dotnet run
+    (Release, this project), BenchmarkDotNet's filter argument after the separator: see frame-reader-bench.yml.
+    (SHOTDETECTOR_FFMPEG_LIBS: FFmpeg 8's shared libraries; BENCH_FFMPEG: the folder with ffmpeg, else PATH;
+    BENCH_VIDEOS: the videos, ';'-separated, else samples/realworld's.) CI: .github/workflows/frame-reader-bench.yml.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="FFMpegCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FrameReader\FrameReader.csproj" />
+  </ItemGroup>
+
+</Project>
