@@ -17,6 +17,8 @@ semantic versioning (README, "Versions"); before it, minor versions could change
 
 ### Fixed
 
+- ShotDetector.Native and the CLI's FFmpeg libraries link zlib 1.3.2 and dav1d 1.5.4 (were 1.3.1 and 1.5.1): their
+  security and decoder fixes (issues #91, #92).
 - In-process decoding kept the file open when it failed after opening it (no video stream, no decoder for the codec,
   an unsupported rotation), until the process ended: a file without video couldn't be deleted after the error.
 
