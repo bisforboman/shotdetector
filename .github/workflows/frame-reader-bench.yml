@@ -1,0 +1,71 @@
+name: FrameReader benchmark
+
+# FrameReader vs FFMpegCore's raw-video pipe vs the ffmpeg executable, reading the first 500 frames of three films as
+# whole Bgr24 frames and as 160x90 Gray8 (benchmarks/FrameReader.Benchmarks, BenchmarkDotNet). On demand, and on PRs
+# that change the benchmark or FrameReader; results in the run's summary.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['benchmarks/FrameReader.Benchmarks/**', 'src/FrameReader/**', '.github/workflows/frame-reader-bench.yml']
+
+jobs:
+  native:
+    uses: ./.github/workflows/native.yml
+    with:
+      rids: '["linux-x64","linux-arm64"]'
+
+  benchmark:
+    needs: native
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-x64, os: ubuntu-latest, btbn: linux64 }
+          - { rid: linux-arm64, os: ubuntu-24.04-arm, btbn: linuxarm64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install ffmpeg 8.1 (the executable FFMpegCore and the baseline run)
+        timeout-minutes: 10
+        run: |
+          curl -fsSL --retry 3 "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-${{ matrix.btbn }}-gpl-8.1.tar.xz" | tar -xJ
+          echo "BENCH_FFMPEG=$PWD/ffmpeg-n8.1-latest-${{ matrix.btbn }}-gpl-8.1/bin" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: native-${{ matrix.rid }}
+          path: native/${{ matrix.rid }}
+
+      - name: Cache the videos
+        uses: actions/cache@v5
+        with:
+          path: samples/realworld
+          key: realworld-films-${{ hashFiles('tools/realworld.py') }}
+
+      - name: Benchmark
+        run: |
+          films="sintel_trailer_1920x1080_h264.mp4 tears_of_steel_1280x534_h264.mov bbb_640x360_h264.mp4"
+          python tools/realworld.py $films --download
+          export SHOTDETECTOR_FFMPEG_LIBS="$PWD/native/${{ matrix.rid }}"
+          export BENCH_VIDEOS="$(for f in $films; do printf '%s;' "$PWD/samples/realworld/$f"; done)"
+          dotnet run -c Release --project benchmarks/FrameReader.Benchmarks -- --filter '*' --exporters github
+          {
+            echo "### ${{ matrix.rid }}: $(nproc) CPUs ($(lscpu | sed -n 's/^Model name: *//p' | head -1)), first 500 frames"
+            cat BenchmarkDotNet.Artifacts/results/*-report-github.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: frame-reader-bench-${{ matrix.rid }}
+          path: BenchmarkDotNet.Artifacts/results/
