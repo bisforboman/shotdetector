@@ -88,6 +88,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     AVFrame* _in, _out;
     byte[] _packed = [];
     int _index = -1;
+    long? _keepFrom; // after a seek: frames whose pts plus this is below 0 are dropped (ffmpeg's trim)
 
     /// <summary>Opens a file, image sequence pattern or URL FFmpeg can read.</summary>
     /// <param name="path">What to open.</param>
@@ -121,12 +122,39 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <summary>The stream's time base in seconds per <see cref="VideoFrame.Pts"/> unit.</summary>
     public double TimeBase => _decoder.TimeBase;
 
+    /// <summary>
+    /// Seeks so the next <see cref="TryRead"/> gives the frame ffmpeg's <c>-ss</c> gives for <paramref name="time"/>:
+    /// the first frame at or after it (from the keyframe before it, decoding forward and dropping the frames before,
+    /// as ffmpeg's accurate seek does). <see cref="VideoFrame.Index"/> counts again from 0. With deinterlacing, only
+    /// before the first read.
+    /// </summary>
+    /// <param name="time">From the input's start (as <see cref="VideoFrame.Time"/>).</param>
+    public void Seek(TimeSpan time)
+    {
+        _keepFrom = _decoder.SeekLikeFfmpeg(time);
+        _index = -1;
+    }
+
+    /// <summary>The frame at <paramref name="time"/> (<see cref="Seek"/>, then <see cref="TryRead"/>): a thumbnail.</summary>
+    /// <param name="time">From the input's start.</param>
+    /// <param name="frame">The frame, valid until the next call.</param>
+    /// <returns>False when there's no frame at or after the time.</returns>
+    public bool TryReadAt(TimeSpan time, out VideoFrame frame)
+    {
+        Seek(time);
+        return TryRead(out frame);
+    }
+
     /// <summary>Decodes and converts the next frame; false at the end.</summary>
     /// <param name="frame">The frame, valid until the next call.</param>
     /// <exception cref="FrameReaderException">Decoding or converting failed.</exception>
     public bool TryRead(out VideoFrame frame)
     {
-        if (!_decoder.Next())
+        bool got;
+        while ((got = _decoder.Next()) && _keepFrom is { } keep && _decoder.Pts + keep < 0)
+        {
+        }
+        if (!got)
         {
             frame = default;
             return false;

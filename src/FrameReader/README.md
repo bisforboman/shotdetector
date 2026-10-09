@@ -25,6 +25,17 @@ while (reader.TryRead(out var frame))
 }
 ```
 
+Seeking and thumbnails: `reader.Seek(time)` positions the reader so the next frame is the one `ffmpeg -ss T -i X`
+gives (the first at or after the time: from the keyframe before it, decoding forward, as ffmpeg's accurate seek does;
+forwards or backwards, any number of times), and `reader.TryReadAt(time, out frame)` seeks and reads one frame.
+
+```csharp
+using var thumbs = new VideoFrameReader("video.mp4", new() { Width = 320, Height = 180, Format = FrameFormat.Rgba32 });
+foreach (var t in new[] { 10, 60, 120 })
+    if (thumbs.TryReadAt(TimeSpan.FromSeconds(t), out var frame))
+        Save(frame.Data.ToArray(), frame.Width, frame.Height);
+```
+
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio; optionally every
 packet's timestamp). `FrameDecoder` is the lower level: decoded frames as FFmpeg holds them (`GetPlane`), with

@@ -183,16 +183,48 @@ public sealed unsafe class FrameDecoder : IDisposable
 
     /// <summary>Seeks to the keyframe at or before <paramref name="pts"/> (stream time base), as ffmpeg's -ss does.</summary>
     /// <param name="pts">The timestamp, in <see cref="TimeBase"/> units.</param>
-    public void Seek(long pts)
+    public void Seek(long pts) =>
+        SeekMicroseconds(ffmpeg.av_rescale_q(pts, _timeBase, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }));
+
+    /// <summary>
+    /// Seeks as ffmpeg's <c>-ss</c> does for <paramref name="time"/> from the input's start: to the keyframe at or before
+    /// it (with ffmpeg's margin for formats that seek by dts when a stream has B-frames). Returns what to add to
+    /// <see cref="Pts"/> so that the frames to keep are those at 0 or later (ffmpeg's ts_offset, which its trim then
+    /// compares with 0).
+    /// </summary>
+    internal long SeekLikeFfmpeg(TimeSpan time)
     {
-        long us = ffmpeg.av_rescale_q(pts, _timeBase, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE });
+        long timestamp = time.Ticks / 10; // ffmpeg's -ss in microseconds
+        if (_fmt->start_time != ffmpeg.AV_NOPTS_VALUE)
+            timestamp += _fmt->start_time;
+        long seekTo = timestamp;
+        if ((_fmt->iformat->flags & ffmpeg.AVFMT_SEEK_TO_PTS) == 0)
+            for (int i = 0; i < _fmt->nb_streams; i++)
+                if (_fmt->streams[i]->codecpar->video_delay > 0)
+                {
+                    seekTo -= 3 * ffmpeg.AV_TIME_BASE / 23;
+                    break;
+                }
+        SeekMicroseconds(seekTo);
+        return ffmpeg.av_rescale_q(-timestamp, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase);
+    }
+
+    void SeekMicroseconds(long us)
+    {
+        // Deinterlacing keeps frames in yadif (or the row deinterlacer); only a seek before the first frame is clean.
+        if (_deinterlace && _started)
+            throw new InvalidOperationException("A deinterlacing decoder can seek only before its first frame.");
         Check(ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, us, us, 0), "seek");
         ffmpeg.avcodec_flush_buffers(_dec);
+        _draining = _done = false;
     }
+
+    bool _started;
 
     /// <summary>Decodes the next frame; false at the end. Packets that don't decode are skipped, as ffmpeg's command line does.</summary>
     public bool Next()
     {
+        _started = true;
         if (_swapped)
             SwapOriented();
         if (!NextFrame())
