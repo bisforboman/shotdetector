@@ -1,8 +1,9 @@
 name: Upstream releases
 
 # Weekly: an issue when something ShotDetector matches or builds on has a newer release than the one it uses: scenedetect
-# (a new compatibility mode) and FFmpeg's point releases in our native build's series (security and decoder fixes reach
-# ShotDetector.Native and the CLI only when the build moves). One issue per release (none if one exists, open or closed).
+# (a new compatibility mode), FFmpeg's point releases in our native build's series, and zlib and dav1d, which that build
+# links in (security and decoder fixes reach ShotDetector.Native and the CLI only when the build moves). One issue per
+# release (none if one exists, open or closed).
 on:
   workflow_dispatch:
   schedule:
@@ -81,5 +82,50 @@ jobs:
           - [ ] In \`tools/native/build-ffmpeg.sh\`: \`VERSION=$latest\` and its \`SHA256\` (of https://ffmpeg.org/releases/ffmpeg-$latest.tar.xz, checked against its .asc signature).
           - [ ] The PR rebuilds the libraries for every platform (native.yml, keyed by the script's hash) and runs the in-process, parity and real-world checks on them.
           - [ ] Update the version in the Native package description, its README and THIRD-PARTY-NOTICES.md, and the CHANGELOG (a patch release).
+          EOF
+          )"
+
+  # zlib and dav1d, linked statically into our FFmpeg libraries: any newer release than build-ffmpeg.sh's.
+  libraries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: zlib, var: ZLIB, index: 'https://zlib.net/fossils/', pattern: 'zlib-[0-9]+([.][0-9]+)+[.]tar[.]gz', notes: 'https://zlib.net/ChangeLog.txt', url: 'https://zlib.net/fossils/zlib-$V.tar.gz' }
+          - { name: dav1d, var: DAV1D, index: 'https://downloads.videolan.org/pub/videolan/dav1d/', pattern: 'href="[0-9]+([.][0-9]+)+/"', notes: 'https://code.videolan.org/videolan/dav1d/-/releases', url: 'https://downloads.videolan.org/pub/videolan/dav1d/$V/dav1d-$V.tar.xz' }
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: A newer ${{ matrix.name }}?
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ matrix.name }}
+          INDEX: ${{ matrix.index }}
+          PATTERN: ${{ matrix.pattern }}
+          NOTES: ${{ matrix.notes }}
+          URL: ${{ matrix.url }}
+        run: |
+          ours=$(sed -n 's/^${{ matrix.var }}=//p' tools/native/build-ffmpeg.sh)
+          latest=$(curl -fsSL --retry 3 "$INDEX" | grep -oE "$PATTERN" | grep -oE '[0-9]+([.][0-9]+)+' | sort -V | tail -1)
+          echo "Our native build links $NAME $ours; the newest release is ${latest:-unknown}."
+          newer=$(python3 -c 'import sys; v = lambda s: tuple(int(x) for x in s.split(".")); print(v(sys.argv[2]) > v(sys.argv[1]))' "$ours" "${latest:-0}" 2>/dev/null || echo False)
+          [ "$newer" = True ] || exit 0
+          title="$NAME $latest released"
+          if gh issue list --state all --search "\"$title\" in:title" --json title --jq '.[].title' | grep -qxF "$title"; then
+            echo "Already filed: $title"
+            exit 0
+          fi
+          source=${URL//'$V'/$latest}
+          gh issue create --title "$title" --body "$(cat <<EOF
+          $NAME $latest is out; our native libraries (ShotDetector.Native.<rid>, the CLI) link $ours in statically (found by the weekly upstream check).
+
+          Changes: $NOTES
+
+          To move to it:
+          - [ ] In \`tools/native/build-ffmpeg.sh\`: \`${{ matrix.var }}=$latest\` and \`${{ matrix.var }}_SHA256\` (of $source).
+          - [ ] The PR rebuilds the libraries for every platform (native.yml, keyed by the script's hash) and runs the in-process, parity and real-world checks on them.
+          - [ ] Update the version in the Native README and THIRD-PARTY-NOTICES.md (and its copyright years), and the CHANGELOG (a patch release).
           EOF
           )"
