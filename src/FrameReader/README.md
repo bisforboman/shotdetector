@@ -48,6 +48,11 @@ between, still exact. CPU for Tears of Steel (12 min, 1280x534), with keyframes 
 | 1 per 10 s | from each picture's keyframe | 6.2 s / 16 s |
 | 1 per minute | from each picture's keyframe | 1.0 s / 2.5 s |
 
+With spare cores, `VideoFrameReader.ReadAt(path, times, options, parallelism, (i, frame) => ...)` reads a list of
+times with several readers at once (default: half the cores, at most 4), each a contiguous share: the same frames,
+the handler called from several threads. On a busy 16-core desktop, a picture a second of the 12-minute film: 8.2 s
+with one reader, 6.1 s with four; one per 10 s: 1.5 s, 0.6 s.
+
 ```csharp
 using var sheet = new VideoFrameReader("film.mp4", new() { Width = 320, Height = 180, Format = FrameFormat.Rgba32 });
 for (int second = 0; sheet.TryReadForwardTo(TimeSpan.FromSeconds(second), out var frame); second++)
