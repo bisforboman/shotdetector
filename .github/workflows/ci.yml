@@ -77,6 +77,19 @@ jobs:
           cp "$RUNNER_TEMP"/ffmpeg-n8.1-latest-linux64-gpl-8.1/bin/ffmpeg "$RUNNER_TEMP"/ffmpeg-n8.1-latest-linux64-gpl-8.1/bin/ffprobe native/linux-x64/
           echo "SHOTDETECTOR_FFMPEG_LIBS=$PWD/native/linux-x64" >> "$GITHUB_ENV"
 
+      # BBC's audiowaveform, the reference for FrameReader's WaveformData (its test is skipped without it). Ubuntu
+      # doesn't package it; its maintainer's PPA, as its README says, has a build for each Ubuntu release.
+      - name: Install audiowaveform
+        if: needs.changes.outputs.docs_only != 'true'
+        timeout-minutes: 5   # package mirrors sometimes hang
+        run: |
+          if sudo add-apt-repository -y ppa:chris-needham/ppa > /dev/null && sudo apt-get install -y --no-install-recommends audiowaveform > /dev/null; then
+            audiowaveform --version
+            echo "AUDIOWAVEFORM=$(command -v audiowaveform)" >> "$GITHUB_ENV"
+          else
+            echo "::warning::audiowaveform didn't install: WaveformData's comparison with it is skipped"
+          fi
+
       - name: Test
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx
