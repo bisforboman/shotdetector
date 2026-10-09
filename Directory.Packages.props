@@ -5,6 +5,9 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="FFmpeg.AutoGen" Version="8.1.0" />
+    <!-- benchmarks/FrameReader.Benchmarks only -->
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="FFMpegCore" Version="5.5.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
   </ItemGroup>
