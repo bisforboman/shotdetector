@@ -69,8 +69,9 @@ public class SeekTests
     }
 
     [Theory]
-    [InlineData("bframes.mp4", "-c:v mpeg4 -bf 2 -g 12")]
-    [InlineData("late.ts", "-c:v mpeg2video -bf 2 -g 12 -output_ts_offset 10")]
+    [InlineData("bframes.mp4", "-c:v mpeg4 -bf 2 -g 12")]        // indexed: jumps ahead over GOPs
+    [InlineData("opengop.mkv", "-c:v mpeg2video -bf 2 -g 12")]   // open GOPs, indexed: jumps start a keyframe early
+    [InlineData("late.ts", "-c:v mpeg2video -bf 2 -g 12 -output_ts_offset 10")] // no index: decodes through
     public void ReadsForwardToFfmpegsFrames(string name, string encode)
     {
         if (Libs is null)
@@ -84,8 +85,8 @@ public class SeekTests
                 { Width = 160, Height = 90, Format = FrameFormat.Gray8, Decoder = new FrameDecoderOptions { LibraryDirectory = Libs } });
             // One pass: each time the frame ffmpeg's output -ss gives (decoding from the start, dropping the frames before:
             // exact even in open GOPs, where an input -ss can give a B-frame decoded without its reference); the same
-            // time twice, the same frame; Index the frame's number.
-            foreach (var (t, index) in new[] { (0.0, 0), (0.3, 8), (1.0, 25), (1.0, 25), (1.039, 26), (1.04, 26), (1.5, 38), (2.04, 51), (2.9, 73) })
+            // time twice, the same frame; Index counts the distinct frames given.
+            foreach (var (t, index) in new[] { (0.0, 0), (0.3, 1), (1.0, 2), (1.0, 2), (1.039, 3), (1.04, 3), (1.5, 4), (2.04, 5), (2.9, 6) })
             {
                 byte[] expected = Ffmpeg("-v", "error", "-i", path, "-ss", t.ToString(CultureInfo.InvariantCulture), "-frames:v", "1",
                     "-vf", "scale=160:90:flags=bicubic,format=gray", "-f", "rawvideo", "-");

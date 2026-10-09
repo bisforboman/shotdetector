@@ -213,6 +213,24 @@ public sealed unsafe class FrameDecoder : IDisposable
     }
 
     /// <summary>
+    /// The keyframe at or before <paramref name="pts"/> from the container's index (mp4, mov, mkv cues; none for
+    /// MPEG-TS until read), in the stream's time base (the index's timestamps, dts in some containers); null when the
+    /// index doesn't say.
+    /// </summary>
+    internal long? KeyframeAtOrBefore(long pts)
+    {
+        var st = _fmt->streams[_stream];
+        int i = ffmpeg.av_index_search_timestamp(st, pts, ffmpeg.AVSEEK_FLAG_BACKWARD);
+        return i < 0 ? null : ffmpeg.avformat_index_get_entry(st, i)->timestamp;
+    }
+
+    /// <summary>Whether the current frame is a keyframe.</summary>
+    internal bool IsKeyframe => (_frame->flags & ffmpeg.AV_FRAME_FLAG_KEY) != 0;
+
+    /// <summary>Whether this decoder can still seek (not deinterlacing, or before its first frame).</summary>
+    internal bool CanSeek => !_deinterlace || !_started;
+
+    /// <summary>
     /// ffmpeg's ts_offset for <c>-ss</c> <paramref name="time"/>, in the stream's time base: a frame is at or after the
     /// time when its <see cref="Pts"/> plus this is 0 or more (ffmpeg's trim).
     /// </summary>

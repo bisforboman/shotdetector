@@ -56,7 +56,10 @@ public readonly ref struct VideoFrame
         Data = data;
     }
 
-    /// <summary>The frame's number in decoding output order, from 0.</summary>
+    /// <summary>
+    /// How many distinct frames the reader had given before this one, since it opened or last seeked: 0, 1, 2, ...
+    /// (the same frame given again keeps its number). Frames passed over aren't counted; <see cref="Time"/> says where it is.
+    /// </summary>
     public int Index { get; }
 
     /// <summary>Its best-effort timestamp in the stream's time base (<see cref="VideoFrameReader.TimeBase"/>), as decoded.</summary>
@@ -186,10 +189,12 @@ public sealed unsafe class VideoFrameReader : IDisposable
     }
 
     /// <summary>
-    /// Reads forward to the first frame at or after <paramref name="time"/> (the frame <see cref="TryReadAt"/> and
-    /// ffmpeg's <c>-ss</c> give), without seeking and without converting the frames on the way: a frame every second of a
-    /// film is one pass that decodes everything and converts only what it gives. When the frame last read is already at
-    /// or after the time, that frame again. Times behind it don't go back (use <see cref="Seek"/>).
+    /// Reads forward to the first frame at or after <paramref name="time"/> (the frame a full decode has there, as
+    /// ffmpeg's output-side <c>-ss</c> gives it), converting only that frame. When the time is past the next keyframe it
+    /// jumps there instead of decoding the frames in between (from the keyframe before, so open GOPs decode right): a
+    /// picture every second is one pass, a picture every few seconds or more decodes a fraction of the video. When the
+    /// frame last read is already at or after the time, that frame again. Times behind it don't go back (use
+    /// <see cref="Seek"/>).
     /// </summary>
     /// <param name="time">From the input's start.</param>
     /// <param name="frame">The frame, valid until the next call.</param>
@@ -201,9 +206,39 @@ public sealed unsafe class VideoFrameReader : IDisposable
         long keep = _decoder.TrimOffset(time);
         if (!(_current && _decoder.Pts + keep >= 0))
         {
-            bool got;
-            while ((got = _decoder.Next()) && (_decoder.Pts + keep < 0 || _keepFrom is { } k && _decoder.Pts + k < 0))
-                _index++; // passed by, not converted
+            // Far ahead (the target's keyframe, per the index, at least a second past where decoding is): jump there. Frames that come out
+            // before the first keyframe after the jump may be open-GOP B-frames decoded without their reference: if
+            // one of them is the frame wanted, jump again from the keyframe before.
+            long target = -keep;
+            bool jumped = false;
+            long key = 0;
+            if (_decoder.CanSeek && _decoder.KeyframeAtOrBefore(target) is { } found
+                && found > (_current ? _decoder.Pts : 0) + (long)(1 / _decoder.TimeBase))
+            {
+                key = found;
+                // To the target, not the index entry: some containers index by dts and seek by pts, where the entry's dts
+                // would land a keyframe early. The container finds the keyframe at or before the target.
+                _decoder.Seek(target);
+                (_keepFrom, jumped) = (null, true);
+            }
+            bool got, beforeKeyframe = jumped;
+            while (true)
+            {
+                got = _decoder.Next();
+                if (!got)
+                    break;
+                beforeKeyframe &= !_decoder.IsKeyframe;
+                if (_decoder.Pts + keep < 0 || _keepFrom is { } k && _decoder.Pts + k < 0)
+                    continue;
+                if (beforeKeyframe)
+                {
+                    // Possibly damaged: from the keyframe before instead (no further jumps).
+                    _decoder.Seek(Math.Max(0, key - 1));
+                    beforeKeyframe = false;
+                    continue;
+                }
+                break;
+            }
             _current = got;
             if (!got)
             {
