@@ -87,6 +87,7 @@ jobs:
 
   # zlib and dav1d, linked statically into our FFmpeg libraries: any newer release than build-ffmpeg.sh's.
   libraries:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
