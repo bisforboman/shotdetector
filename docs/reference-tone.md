@@ -1,6 +1,8 @@
 # Reference tone (1 kHz line-up tone): detect and remove
 
-Status: **In progress** (backlog section 4). Decisions in [decisions.md](decisions.md) ("Reference tone").
+Status: **Done** (2026-10-09, backlog section 4). Decisions in [decisions.md](decisions.md) ("Reference tone").
+Built as FrameReader's `ReferenceTone.Find`, ShotDetector's `FindReferenceTone` and `TrimReferenceTone`, and the
+CLI's `--find-tone`, `--trim-tone` (README).
 
 ## Problem
 
@@ -35,13 +37,13 @@ ShotDetector treats this segment as programme content today. That causes:
 
 ## Acceptance criteria
 
-- [ ] A file with leading 1 kHz tone has the tone segment detected with timestamps accurate to well under a second.
-- [ ] Interrupted line-up tones are reported as one segment, not many fragments.
-- [ ] Files without tone produce no detections.
-- [ ] Trimming the detected segment yields output that starts at the real programme content.
-- [ ] Parity with scenedetect is unchanged when the feature is off.
+- [x] A file with leading 1 kHz tone has the tone segment detected with timestamps accurate to well under a second.
+- [x] Interrupted line-up tones are reported as one segment, not many fragments.
+- [x] Files without tone produce no detections.
+- [x] Trimming the detected segment yields output that starts at the real programme content.
+- [x] Parity with scenedetect is unchanged when the feature is off.
 
-## Open questions (for the user)
+## Open questions (answered 2026-10-09, decisions.md)
 
 - Scope: detection only first, with trimming as a follow-up?
 - Input: the user wants this for "certain audio files"; ShotDetector takes video today. Audio-only input,

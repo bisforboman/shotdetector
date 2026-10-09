@@ -3,6 +3,16 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 
+## Unreleased
+
+### New
+
+- Reference tone (1 kHz line-up tone, "bars and tone"): `ShotDetection.FindReferenceTone(path)` finds its runs in a
+  video's or an audio-only file's audio, and `DetectionOptions.TrimReferenceTone` leaves a leading and a trailing run
+  out of detection (`DetectionResult.ReferenceTone` lists them); CLI `--find-tone`, `--trim-tone`,
+  `--tone-min-duration`. Interrupted line-up (EBU, GLITS) is one run; beeps and music don't count. Opt-in: nothing
+  changes with it off. In FrameReader: `ReferenceTone.Find(audioReader)`.
+
 ## 1.2.0 – 2026-10-09
 
 Waveform peaks and audio filter graphs in FrameReader (issue #81's last items), and the native libraries' filters for
