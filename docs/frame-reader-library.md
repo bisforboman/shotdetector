@@ -4,9 +4,10 @@ Status (2026-10-09): milestones 1 (FFmpegLibraries, FrameReaderException), 2 (Me
 prints, packet timestamps, Stream input) and 3 (FrameDecoder: demux, decode, seek, both deinterlacings with an
 IRowDeinterlacer hook, autorotate, Stream input; Width/Height/PixelFormat/GetPlane on the current frame) done.
 ShotDetector keeps its conversions (FrameWriter: the pipelines' exact layouts) and its ffprobe-text formatting
-(InProcessProbe), and maps FrameReaderException to its own reasons (InProcess.Map). FrameReader still has
-InternalsVisibleTo ShotDetector for the AVFrame, on-demand rows and a prefixed Stream, until its public frame API
-(target size and format through swscale) covers them. Next: that API, then benchmarks (milestone 5). Answers to "Before writing code" 1-3 and
+(InProcessProbe), and maps FrameReaderException to its own reasons (InProcess.Map). The public frame API is in:
+VideoFrameReader (a size and FrameFormat, the bytes of ffmpeg's `scale=W:H:flags=bicubic,format=F`, checked byte for
+byte) and the library's README. FrameReader still has InternalsVisibleTo ShotDetector for the AVFrame, on-demand rows
+and a prefixed Stream (its sampled-row and crop conversions go beyond the public API). Next: benchmarks (milestone 5). Answers to "Before writing code" 1-3 and
 build-vs-contribute in docs/decisions.md. For Claude Code: read this file and CLAUDE.md, then start at
 "Before writing code". Record every answer the user gives in `docs/decisions.md` as usual.
 
