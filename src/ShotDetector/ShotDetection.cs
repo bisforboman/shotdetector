@@ -428,7 +428,7 @@ public static class ShotDetection
     /// the system's usual places); once loaded they stay loaded for the process.
     /// </summary>
     /// <param name="ffmpegDirectory">As <see cref="DetectionOptions.FfmpegDirectory"/>.</param>
-    public static bool CanDecodeInProcess(string? ffmpegDirectory = null) => InProcessDecoder.CanLoad(ffmpegDirectory);
+    public static bool CanDecodeInProcess(string? ffmpegDirectory = null) => InProcess.CanLoad(ffmpegDirectory);
 
     /// <summary><see cref="Probe(string, DetectionOptions?, CancellationToken)"/> on a background thread.</summary>
     /// <param name="videoPath">A file path or URL.</param>

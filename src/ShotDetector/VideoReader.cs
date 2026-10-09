@@ -248,7 +248,7 @@ public sealed partial class VideoReader
         // A file, with FFmpeg's libraries available (as for decoding in-process): read the same with them, no ffprobe.
         // A Stream too: its first bytes, as ffprobe reads them from stdin.
         _probesInProcess = (video is not null || !Streaming) && _decoder != VideoDecoder.FfmpegProcess
-            && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory));
+            && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory));
         if (_probesInProcess && video is not null)
         {
             _prefix = prefix ?? ReadPrefix(video, o.ProbeBytes, cancellationToken);

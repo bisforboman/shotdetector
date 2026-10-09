@@ -1,23 +1,20 @@
 using System.Runtime.InteropServices;
 using FFmpeg.AutoGen;
-using FrameReader;
 
-namespace ShotDetector;
+namespace FrameReader;
 
 /// <summary>
 /// Decodes a video's first video stream with FFmpeg's libraries in this process (FFmpeg.AutoGen bindings, FFmpeg 8.1
-/// ABI) and writes each frame in exactly the layout ffmpeg's command line would send for a <see cref="FramePipeline"/>:
-/// the same decoder, the same swscale conversion (bicubic flag, the frame's colour tags), so the same bytes, without a
-/// second process or a pipe.
+/// ABI), frame by frame as ffmpeg's command line does: the same decoder and timestamps, yadif deinterlacing (FFmpeg's
+/// filter on whole frames, or an <see cref="IRowDeinterlacer"/> on the rows asked for), and the display matrix applied
+/// as its autorotate does. Not thread-safe; the current frame is valid until the next <see cref="Next"/>.
 /// </summary>
-internal sealed unsafe class InProcessDecoder : IDisposable
+public sealed unsafe class FrameDecoder : IDisposable
 {
     AVFormatContext* _fmt;
     AVCodecContext* _dec;
     AVPacket* _pkt;
-    AVFrame* _frame, _bgr;
-    SwsContext* _toBgr, _toSize, _toRows;
-    (int W, int H, int Format, AVColorSpace Space, AVColorRange Range) _rowsFor;
+    AVFrame* _frame;
     readonly int _stream;
     readonly AVRational _timeBase;
     bool _draining, _done;
@@ -28,9 +25,9 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     AVFilterGraph* _graph;
     AVFilterContext* _source, _sink;
     bool _flushed;
-    // Deinterlacing with an IYadif instead (DetectionOptions.Yadif): the previous, current and next decoded frames, and
+    // Deinterlacing with an IRowDeinterlacer instead: the previous, current and next decoded frames, and
     // _frame as the output, whose rows are computed when a writer asks for them (EnsureRows).
-    readonly IYadif? _yadif;
+    readonly IRowDeinterlacer? _yadif;
     bool? _rowMode;
     AVFrame* _rPrev, _rCur, _rNext;
     bool _rShift, _rDone;
@@ -70,45 +67,68 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// <summary>The dts of the packet the current frame came from, if set (ffprobe's frame pkt_dts).</summary>
     public long? FramePacketDts => _frame->pkt_dts == ffmpeg.AV_NOPTS_VALUE ? null : _frame->pkt_dts;
 
-    /// <param name="path">The file.</param>
-    /// <param name="libraryDirectory">Where FFmpeg's libraries are (null: next to the app, then the system).</param>
-    /// <param name="threads">Decoder threads (0: FFmpeg's choice).</param>
-    /// <param name="deinterlace">Deinterlace with yadif (its defaults, as ffmpeg's -vf yadif); needs libavfilter.</param>
-    /// <param name="yadif">Row-wise yadif for deinterlacing (FastYuv's), else FFmpeg's on whole frames.</param>
-    /// <param name="inputOptions">ffmpeg's input options, as name/value pairs (an image sequence's -framerate).</param>
+    /// <summary>Opens a file, image sequence pattern or URL and its first video stream's decoder.</summary>
+    /// <param name="path">What to open.</param>
+    /// <param name="options">How to decode; null: the defaults.</param>
+    /// <exception cref="FrameReaderException">The libraries didn't load, the input can't be opened, has no video or no
+    /// decoder for it.</exception>
+    public FrameDecoder(string path, FrameDecoderOptions? options = null) : this(path, options, null) { }
+
+    /// <summary>
+    /// Opens the bytes a stream gives, read once from where it is (not seekable, as ffmpeg reads a pipe): the headers
+    /// must come first (mkv, webm, ts, mov or a faststart mp4). Frame times are the stream's own; see
+    /// <see cref="StartOffset"/> for ffmpeg's shift to 0.
+    /// </summary>
+    /// <param name="stream">The media's bytes; not disposed.</param>
+    /// <param name="options">How to decode; null: the defaults.</param>
+    public FrameDecoder(Stream stream, FrameDecoderOptions? options = null) : this("pipe:0", options, new StreamInput([], stream)) { }
+
+    /// <param name="path">What to open (a name only when <paramref name="io"/> is given).</param>
+    /// <param name="options">How to decode.</param>
     /// <param name="io">A Stream to read instead of <paramref name="path"/>; the decoder disposes it.</param>
-    public InProcessDecoder(string path, string? libraryDirectory, int threads, bool deinterlace = false, IYadif? yadif = null,
-        string[]? inputOptions = null, StreamInput? io = null)
+    internal FrameDecoder(string path, FrameDecoderOptions? options, StreamInput? io)
     {
-        Load(libraryDirectory);
-        _deinterlace = deinterlace;
-        _yadif = deinterlace ? yadif : null;
+        var o = options ?? new FrameDecoderOptions();
+        bool deinterlace = o.Deinterlace;
+        int threads = o.Threads;
         _io = io;
-        _fmt = InProcessProbe.Open(path, inputOptions, io);
-        _stream = InProcessProbe.FirstVideoStream(_fmt);
-        if (_stream < 0)
-            throw new ShotDetectionException(ShotDetectionError.InvalidInput, "The input has no video stream.");
-        var st = _fmt->streams[_stream];
-        _timeBase = st->time_base;
-        var codec = ffmpeg.avcodec_find_decoder(st->codecpar->codec_id);
-        if (codec == null)
-            throw new ShotDetectionException(ShotDetectionError.InvalidInput, $"No decoder for {st->codecpar->codec_id} in these FFmpeg libraries.");
-        _dec = ffmpeg.avcodec_alloc_context3(codec);
-        Check(ffmpeg.avcodec_parameters_to_context(_dec, st->codecpar), "decoder parameters");
-        _dec->pkt_timebase = st->time_base; // as ffmpeg's command line sets it (best-effort timestamps use it)
-        _dec->thread_count = threads;
-        Check(ffmpeg.avcodec_open2(_dec, codec, null), "open decoder");
-        _pkt = ffmpeg.av_packet_alloc();
-        _frame = ffmpeg.av_frame_alloc();
-        if (deinterlace)
-            _decoded = ffmpeg.av_frame_alloc();
-        (_transpose, _hflip, _vflip) = Orientation(st->codecpar);
-        if (_transpose >= 0 || _hflip || _vflip)
+        // Whatever fails after this point, what was opened so far is freed (the input, the decoder).
+        try
         {
-            // ffmpeg's command line orients before the -vf chain, so before yadif; here it would come after.
+            FFmpegLibraries.Load(o.LibraryDirectory);
+            _deinterlace = deinterlace;
+            _yadif = deinterlace ? o.RowDeinterlacer : null;
+            _fmt = Demuxer.Open(path, o.InputOptions, io);
+            _stream = Demuxer.FirstVideoStream(_fmt);
+            if (_stream < 0)
+                throw new FrameReaderException(FrameReaderError.InvalidInput, "The input has no video stream.");
+            var st = _fmt->streams[_stream];
+            _timeBase = st->time_base;
+            var codec = ffmpeg.avcodec_find_decoder(st->codecpar->codec_id);
+            if (codec == null)
+                throw new FrameReaderException(FrameReaderError.InvalidInput, $"No decoder for {st->codecpar->codec_id} in these FFmpeg libraries.");
+            _dec = ffmpeg.avcodec_alloc_context3(codec);
+            Check(ffmpeg.avcodec_parameters_to_context(_dec, st->codecpar), "decoder parameters");
+            _dec->pkt_timebase = st->time_base; // as ffmpeg's command line sets it (best-effort timestamps use it)
+            _dec->thread_count = threads;
+            Check(ffmpeg.avcodec_open2(_dec, codec, null), "open decoder");
+            _pkt = ffmpeg.av_packet_alloc();
+            _frame = ffmpeg.av_frame_alloc();
             if (deinterlace)
-                throw new ShotDetectionException(ShotDetectionError.DecodeFailed, "Deinterlacing rotated or flipped video isn't supported in-process.");
-            _oriented = ffmpeg.av_frame_alloc();
+                _decoded = ffmpeg.av_frame_alloc();
+            (_transpose, _hflip, _vflip) = Orientation(st->codecpar);
+            if (_transpose >= 0 || _hflip || _vflip)
+            {
+                // ffmpeg's command line orients before the -vf chain, so before yadif; here it would come after.
+                if (deinterlace)
+                    throw new FrameReaderException(FrameReaderError.DecodeFailed, "Deinterlacing rotated or flipped video isn't supported in-process.");
+                _oriented = ffmpeg.av_frame_alloc();
+            }
+        }
+        catch
+        {
+            Dispose();
+            throw;
         }
     }
 
@@ -133,12 +153,13 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         if (Math.Abs(theta - 270) < 1)
             return (m[3] < 0 ? 3 : 2, false, false);
         if (Math.Abs(theta) > 1)
-            throw new ShotDetectionException(ShotDetectionError.DecodeFailed, $"Rotation by {theta} degrees isn't supported in-process.");
+            throw new FrameReaderException(FrameReaderError.DecodeFailed, $"Rotation by {theta} degrees isn't supported in-process.");
         return (-1, false, m[4] < 0);
     }
 
-    /// <summary>Whether these libraries have a decoder for the codec (ffprobe's codec_name); our build lacks a few.</summary>
-    internal static bool HasDecoder(string codec)
+    /// <summary>Whether the loaded libraries have a decoder for the codec (ffprobe's codec_name) that gives frames.</summary>
+    /// <param name="codec">The codec's FFmpeg name.</param>
+    public static bool HasDecoder(string codec)
     {
         var desc = ffmpeg.avcodec_descriptor_get_by_name(codec);
         if (desc != null && desc->id == AVCodecID.AV_CODEC_ID_AV1)
@@ -147,8 +168,10 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         return desc != null && ffmpeg.avcodec_find_decoder(desc->id) != null;
     }
 
-    /// <summary>Whether a rotation (ffprobe's, degrees) of this pixel format is one in-process decoding applies.</summary>
-    internal static bool CanRotate(int rotation, string? pixelFormat)
+    /// <summary>Whether a rotation (ffprobe's, degrees) of this pixel format is one this decoder applies.</summary>
+    /// <param name="rotation">The display rotation in degrees.</param>
+    /// <param name="pixelFormat">FFmpeg's pixel format name.</param>
+    public static bool CanRotate(int rotation, string? pixelFormat)
     {
         if (rotation % 90 != 0)
             return false;
@@ -159,6 +182,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     }
 
     /// <summary>Seeks to the keyframe at or before <paramref name="pts"/> (stream time base), as ffmpeg's -ss does.</summary>
+    /// <param name="pts">The timestamp, in <see cref="TimeBase"/> units.</param>
     public void Seek(long pts)
     {
         long us = ffmpeg.av_rescale_q(pts, _timeBase, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE });
@@ -206,7 +230,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         }
         if (bytes == 0 || (desc->flags & (ffmpeg.AV_PIX_FMT_FLAG_PAL | ffmpeg.AV_PIX_FMT_FLAG_BITSTREAM | ffmpeg.AV_PIX_FMT_FLAG_HWACCEL)) != 0
             || ((desc->flags & ffmpeg.AV_PIX_FMT_FLAG_PLANAR) == 0 && desc->nb_components > 1))
-            throw new ShotDetectionException(ShotDetectionError.DecodeFailed, $"Rotating {(AVPixelFormat)_frame->format} isn't supported in-process.");
+            throw new FrameReaderException(FrameReaderError.DecodeFailed, $"Rotating {(AVPixelFormat)_frame->format} isn't supported in-process.");
         bool t = _transpose >= 0;
         int w = _frame->width, h = _frame->height, ow = t ? h : w, oh = t ? w : h;
         if (_oriented->width != ow || _oriented->height != oh || _oriented->format != _frame->format)
@@ -314,7 +338,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     }
 
     /// <summary>
-    /// Row-wise deinterlacing (<see cref="IYadif"/>): yadif's frame order (output i from frames i-1, i and i+1, the
+    /// Row-wise deinterlacing (<see cref="IRowDeinterlacer"/>): yadif's frame order (output i from frames i-1, i and i+1, the
     /// first and last standing in for the missing ones), with _frame's rows computed on demand. True: a frame;
     /// false: the end; null: the format isn't one it handles (only decided on the first frame).
     /// </summary>
@@ -394,7 +418,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     {
         for (int p = 0; p < _rPlanes; p++)
             if (prev->linesize[(uint)p] != cur->linesize[(uint)p] || next->linesize[(uint)p] != cur->linesize[(uint)p])
-                throw new ShotDetectionException(ShotDetectionError.DecodeFailed, "Deinterlacing: frames with differing strides.");
+                throw new FrameReaderException(FrameReaderError.DecodeFailed, "Deinterlacing: frames with differing strides.");
         // copy_props adds to the side data and metadata already there: without this, every frame's would pile up
         // (and sws_frame_start refs them all).
         ffmpeg.av_frame_side_data_free(&_frame->side_data, &_frame->nb_side_data);
@@ -426,7 +450,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// Computes the output's rows that luma rows [<paramref name="from"/>, <paramref name="to"/>) need (with a margin,
     /// and the chroma rows under them): interpolated rows with yadif, the others copied from the current frame.
     /// </summary>
-    void EnsureRows(int from, int to)
+    internal void EnsureRows(int from, int to)
     {
         if (_rowMode != true || _swapped)
             return;
@@ -440,7 +464,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     /// Computes the rows <see cref="MarkRows"/> collected, in parallel batches: yadif's rows are independent, and FFmpeg's
     /// own yadif uses every core too.
     /// </summary>
-    void ComputeRows()
+    internal void ComputeRows()
     {
         int n = _rPending.Count;
         if (n == 0)
@@ -471,7 +495,7 @@ internal sealed unsafe class InProcessDecoder : IDisposable
     }
 
     /// <summary>Collects the rows <see cref="EnsureRows"/> needs that aren't computed yet.</summary>
-    void MarkRows(int from, int to)
+    internal void MarkRows(int from, int to)
     {
         if (_swapped)
             return; // the oriented frame: Orient computed every row first
@@ -536,179 +560,42 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         return false;
     }
 
-    /// <summary>The frame's yuv420p planes, packed (Y, then U, then V), as -pix_fmt yuv420p rawvideo sends them.</summary>
-    public void WriteYuv420(byte[] dst)
-    {
-        EnsureRows(0, _frame->height);
-        int w = _frame->width, h = _frame->height, cw = (w + 1) / 2, ch = (h + 1) / 2, o = 0;
-        fixed (byte* d = dst)
-        {
-            for (int p = 0; p < 3; p++)
-            {
-                int pw = p == 0 ? w : cw, ph = p == 0 ? h : ch;
-                byte* src = _frame->data[(uint)p];
-                int stride = _frame->linesize[(uint)p];
-                for (int y = 0; y < ph; y++, o += pw)
-                    Buffer.MemoryCopy(src + y * stride, d + o, pw, pw);
-            }
-        }
-    }
+    /// <summary>The current frame, as FFmpeg holds it (ShotDetector's conversions read it directly).</summary>
+    internal AVFrame* Frame => _frame;
 
-    /// <summary>Only the pixels the resize reads, at columns × rows of the converted frame (what the remap filter sends).</summary>
-    public void WriteSampledBgr(byte[] dst, int[] columns, int[] rows)
-    {
-        byte* bgr = ToBgr(out int stride, rows);
-        if (!ReferenceEquals(columns, _runsFor))
-            (_runs, _runsFor) = (Runs(columns), columns);
-        fixed (byte* d = dst)
-        {
-            byte* o = d;
-            foreach (int r in rows)
-            {
-                byte* row = bgr + r * stride;
-                foreach (var (start, length) in _runs!)
-                {
-                    Buffer.MemoryCopy(row + 3 * start, o, 3 * length, 3 * length);
-                    o += 3 * length;
-                }
-            }
-        }
-    }
+    /// <summary>Whether rows are deinterlaced on demand (<see cref="EnsureRows"/>).</summary>
+    internal bool RowMode => _rowMode == true;
 
-    (int Start, int Length)[]? _runs;
-    int[]? _runsFor;
+    /// <summary>The current frame's width in pixels (after rotation).</summary>
+    public int Width => _frame->width;
 
-    /// <summary>Ascending columns as runs of consecutive ones, copied a run at a time.</summary>
-    static (int Start, int Length)[] Runs(int[] columns)
-    {
-        var runs = new List<(int, int)>();
-        for (int i = 0; i < columns.Length;)
-        {
-            int j = i + 1;
-            while (j < columns.Length && columns[j] == columns[j - 1] + 1)
-                j++;
-            runs.Add((columns[i], j - i));
-            i = j;
-        }
-        return [.. runs];
-    }
+    /// <summary>The current frame's height in pixels (after rotation).</summary>
+    public int Height => _frame->height;
 
-    /// <summary>The converted frame's crop region, packed BGR (scale,format=bgr24,crop).</summary>
-    public void WriteBgr(byte[] dst, (int X, int Y, int Width, int Height) crop)
-    {
-        EnsureRows(0, _frame->height);
-        byte* bgr = ToBgr(out int stride);
-        fixed (byte* d = dst)
-            for (int y = 0; y < crop.Height; y++)
-                Buffer.MemoryCopy(bgr + (crop.Y + y) * stride + crop.X * 3, d + y * crop.Width * 3, crop.Width * 3, crop.Width * 3);
-    }
-
-    /// <summary>The converted frame's crop region scaled to width × height with swscale's bilinear (…,scale=W:H:flags=bilinear).</summary>
-    public void WriteScaledBgr(byte[] dst, (int X, int Y, int Width, int Height) crop, int width, int height)
-    {
-        EnsureRows(0, _frame->height);
-        byte* bgr = ToBgr(out int stride);
-        if (_toSize == null)
-        {
-            _toSize = ffmpeg.sws_getContext(crop.Width, crop.Height, AVPixelFormat.AV_PIX_FMT_BGR24, width, height,
-                AVPixelFormat.AV_PIX_FMT_BGR24, (int)SwsFlags.SWS_BILINEAR, null, null, null);
-            if (_toSize == null)
-                throw new ShotDetectionException(ShotDetectionError.DecodeFailed, "Can't set up the scaler.");
-        }
-        byte*[] src = [bgr + crop.Y * stride + crop.X * 3, null, null, null];
-        int[] srcStride = [stride, 0, 0, 0];
-        fixed (byte* d = dst)
-        {
-            byte*[] dstPlanes = [d, null, null, null];
-            int[] dstStride = [width * 3, 0, 0, 0];
-            ffmpeg.sws_scale(_toSize, src, srcStride, 0, crop.Height, dstPlanes, dstStride);
-        }
-    }
+    /// <summary>The current frame's FFmpeg pixel format name (yuv420p, ...).</summary>
+    public string PixelFormat => ffmpeg.av_get_pix_fmt_name((AVPixelFormat)_frame->format) ?? "unknown";
 
     /// <summary>
-    /// The frame as BGR, converted like ffmpeg's scale filter (and OpenCV): bicubic flag, colour tags. With
-    /// <paramref name="rows"/> (ascending), only the slices holding those rows are converted, the rest left stale:
-    /// the same converter on the same rows, a fraction of the work.
+    /// One plane of the current frame (0: luma or the packed pixels; 1, 2: chroma; 3: alpha), its rows
+    /// <paramref name="stride"/> bytes apart; valid until the next <see cref="Next"/>.
     /// </summary>
-    byte* ToBgr(out int stride, int[]? rows = null)
+    /// <param name="plane">The plane's index.</param>
+    /// <param name="stride">Bytes from one row to the next.</param>
+    public ReadOnlySpan<byte> GetPlane(int plane, out int stride)
     {
-        if (_toBgr == null)
-        {
-            _toBgr = ffmpeg.sws_alloc_context();
-            ffmpeg.av_opt_set_int(_toBgr, "sws_flags", (long)SwsFlags.SWS_BICUBIC, 0);
-            _bgr = ffmpeg.av_frame_alloc();
-        }
-        if (_bgr->width != _frame->width || _bgr->height != _frame->height)
-        {
-            ffmpeg.av_frame_unref(_bgr);
-            _bgr->format = (int)AVPixelFormat.AV_PIX_FMT_BGR24;
-            (_bgr->width, _bgr->height) = (_frame->width, _frame->height);
-            Check(ffmpeg.av_frame_get_buffer(_bgr, 32), "frame buffer");
-        }
-        if (rows is null)
-        {
-            EnsureRows(0, _frame->height);
-            Check(ffmpeg.sws_scale_frame(_toBgr, _bgr, _frame), "convert");
-        }
-        else
-        {
-            // Deinterlacing: only the rows that are read (a slice's other rows come out wrong, and nothing reads them).
-            if (_rowMode == true)
-            {
-                foreach (int r in rows)
-                    MarkRows(r, r + 1);
-                ComputeRows();
-            }
-            var ctx = RowsContext();
-            Check(ffmpeg.sws_frame_start(ctx, _bgr, _frame), "convert");
-            Check(ffmpeg.sws_send_slice(ctx, 0, (uint)_frame->height), "convert");
-            int align = (int)ffmpeg.sws_receive_slice_alignment(ctx), h = _frame->height;
-            for (int i = 0; i < rows.Length;)
-            {
-                // Merge the aligned slices of consecutive wanted rows into one request.
-                int start = rows[i] - rows[i] % align, end = Math.Min(start + align, h);
-                while (++i < rows.Length && rows[i] < end + align)
-                    end = Math.Min(rows[i] - rows[i] % align + align, h);
-                Check(ffmpeg.sws_receive_slice(ctx, (uint)start, (uint)(end - start)), "convert");
-            }
-            ffmpeg.sws_frame_end(ctx);
-        }
-        stride = _bgr->linesize[0];
-        return _bgr->data[0];
+        EnsureRows(0, _frame->height);
+        if (plane is < 0 or > 3 || _frame->data[(uint)plane] == null)
+            throw new ArgumentOutOfRangeException(nameof(plane));
+        var desc = ffmpeg.av_pix_fmt_desc_get((AVPixelFormat)_frame->format);
+        int shift = plane is 1 or 2 && desc != null ? desc->log2_chroma_h : 0;
+        int rows = -((-_frame->height) >> shift);
+        stride = _frame->linesize[(uint)plane];
+        return new ReadOnlySpan<byte>(_frame->data[(uint)plane], stride * rows);
     }
 
-    /// <summary>
-    /// A converter set up as sws_scale_frame sets itself up from the frame (bicubic flag, the colour matrix and
-    /// range from its tags, full-range RGB out), which the slice calls need beforehand; made again if those change.
-    /// </summary>
-    SwsContext* RowsContext()
-    {
-        (int W, int H, int Format, AVColorSpace Space, AVColorRange Range) key = (_frame->width, _frame->height, _frame->format, _frame->colorspace, _frame->color_range);
-        if (_toRows != null && _rowsFor == key)
-            return _toRows;
-        if (_toRows != null)
-            ffmpeg.sws_freeContext(_toRows);
-        _toRows = ffmpeg.sws_getContext(key.W, key.H, (AVPixelFormat)key.Format, key.W, key.H,
-            AVPixelFormat.AV_PIX_FMT_BGR24, (int)SwsFlags.SWS_BICUBIC, null, null, null);
-        if (_toRows == null)
-            throw new ShotDetectionException(ShotDetectionError.DecodeFailed, "Can't set up the converter.");
-        int* coefficients = ffmpeg.sws_getCoefficients((int)key.Space);
-        var table = new int_array4();
-        for (uint i = 0; i < 4; i++)
-            table[i] = coefficients[i];
-        var rgb = table; // the output's table is unused for RGB
-        int fullRange = key.Range == AVColorRange.AVCOL_RANGE_JPEG ? 1 : 0;
-        Check(ffmpeg.sws_setColorspaceDetails(_toRows, in table, fullRange, in rgb, 1, 0, 1 << 16, 1 << 16), "colour details");
-        _rowsFor = key;
-        return _toRows;
-    }
-
+    /// <summary>Frees the decoder, its frames and FFmpeg's contexts.</summary>
     public void Dispose()
     {
-        if (_toSize != null) { ffmpeg.sws_freeContext(_toSize); _toSize = null; }
-        if (_toRows != null) { ffmpeg.sws_freeContext(_toRows); _toRows = null; }
-        if (_toBgr != null) { var s = _toBgr; ffmpeg.sws_free_context(&s); _toBgr = null; }
-        if (_bgr != null) { var f = _bgr; ffmpeg.av_frame_free(&f); _bgr = null; }
         if (_frame != null) { var f = _frame; ffmpeg.av_frame_free(&f); _frame = null; }
         if (_oriented != null) { var f = _oriented; ffmpeg.av_frame_free(&f); _oriented = null; }
         if (_decoded != null) { var f = _decoded; ffmpeg.av_frame_free(&f); _decoded = null; }
@@ -723,38 +610,9 @@ internal sealed unsafe class InProcessDecoder : IDisposable
         _io?.Dispose();
     }
 
-    // Loading FFmpeg's libraries lives in FrameReader (docs/frame-reader-library.md); these keep ShotDetector's
-    // reasons and messages.
-
-    /// <summary>Whether the libraries load from <paramref name="directory"/> with libavfilter's yadif too.</summary>
-    internal static bool CanDeinterlace(string? directory) => FFmpegLibraries.CanDeinterlace(directory);
-
-    /// <summary>Whether FFmpeg 8's libraries load from <paramref name="directory"/>, or already have (<see cref="VideoDecoder.Auto"/>).</summary>
-    internal static bool CanLoad(string? directory) => FFmpegLibraries.CanLoad(directory);
-
-    /// <summary>Loads FFmpeg's shared libraries once per process (<see cref="FFmpegLibraries.Load"/>).</summary>
-    internal static void Load(string? directory)
-    {
-        try
-        {
-            FFmpegLibraries.Load(directory);
-        }
-        catch (FrameReaderException e) when (e.Reason == FrameReaderError.LibrariesNotFound)
-        {
-            throw new ShotDetectionException(ShotDetectionError.FfmpegLibrariesNotFound,
-                "In-process decoding needs FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, " +
-                "libavutil 60): add the ShotDetector.Native.<rid> package for your platform, or install them (Alpine: " +
-                "`apk add ffmpeg-libs`; Windows: a \"shared\" FFmpeg 8 build, with FfmpegDirectory set to its bin folder). " +
-                $"Or decode with the ffmpeg executable (VideoDecoder.FfmpegProcess). ({e.InnerException?.Message})", e);
-        }
-    }
-
-    static void Check(int ret, string what, ShotDetectionError reason = ShotDetectionError.DecodeFailed)
+    static void Check(int ret, string what)
     {
         if (ret < 0)
-            throw new ShotDetectionException(reason, $"FFmpeg ({what}): {Error(ret)}");
+            throw new FrameReaderException(FrameReaderError.DecodeFailed, $"FFmpeg ({what}): {FFmpegLibraries.ErrorMessage(ret)}");
     }
-
-    /// <summary>FFmpeg's message for an error code.</summary>
-    internal static string Error(int ret) => FFmpegLibraries.ErrorMessage(ret);
 }

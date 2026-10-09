@@ -1,9 +1,12 @@
 # Frame-reader library (idea)
 
-Status (2026-10-09): milestones 1 (FFmpegLibraries, FrameReaderException) and 2 (MediaProbe: the values ffprobe
-prints, packet timestamps, Stream input; StreamInput and the open helper moved with it) done. ShotDetector's
-InProcessProbe now only formats MediaProbe's values as ffprobe's text. FrameReader has InternalsVisibleTo ShotDetector
-for Demuxer and StreamInput until the decoder moves (milestone 3). Answers to "Before writing code" 1-3 and
+Status (2026-10-09): milestones 1 (FFmpegLibraries, FrameReaderException), 2 (MediaProbe: the values ffprobe
+prints, packet timestamps, Stream input) and 3 (FrameDecoder: demux, decode, seek, both deinterlacings with an
+IRowDeinterlacer hook, autorotate, Stream input; Width/Height/PixelFormat/GetPlane on the current frame) done.
+ShotDetector keeps its conversions (FrameWriter: the pipelines' exact layouts) and its ffprobe-text formatting
+(InProcessProbe), and maps FrameReaderException to its own reasons (InProcess.Map). FrameReader still has
+InternalsVisibleTo ShotDetector for the AVFrame, on-demand rows and a prefixed Stream, until its public frame API
+(target size and format through swscale) covers them. Next: that API, then benchmarks (milestone 5). Answers to "Before writing code" 1-3 and
 build-vs-contribute in docs/decisions.md. For Claude Code: read this file and CLAUDE.md, then start at
 "Before writing code". Record every answer the user gives in `docs/decisions.md` as usual.
 

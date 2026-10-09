@@ -67,32 +67,23 @@ internal static unsafe class InProcessProbe
     public static List<long> FrameTimestamps(string path, string? libraryDirectory, string[]? inputOptions = null)
     {
         var result = new List<long>();
-        using var decoder = new InProcessDecoder(path, libraryDirectory, threads: 0, inputOptions: inputOptions);
-        while (decoder.Next())
-            result.Add(decoder.FramePts is long p && p != 0 ? p : decoder.FramePacketDts ?? 0);
-        return result;
-    }
-
-    /// <summary>FrameReader's open (as ffprobe and ffmpeg do), its failures as ShotDetector's.</summary>
-    internal static AVFormatContext* Open(string path, string[]? inputOptions = null, StreamInput? io = null)
-    {
         try
         {
-            return Demuxer.Open(path, Options(inputOptions), io);
+            using var decoder = new FrameDecoder(path, new FrameDecoderOptions { LibraryDirectory = libraryDirectory, InputOptions = Options(inputOptions) });
+            while (decoder.Next())
+                result.Add(decoder.FramePts is long p && p != 0 ? p : decoder.FramePacketDts ?? 0);
         }
-        catch (FrameReaderException e) when (e.Reason == FrameReaderError.InvalidInput)
+        catch (FrameReaderException e)
         {
-            throw new ShotDetectionException(ShotDetectionError.InvalidInput, e.Message, e);
+            throw InProcess.Map(e, libraryDirectory);
         }
+        return result;
     }
-
-    /// <summary>The first video stream's index; -1 if none.</summary>
-    internal static int FirstVideoStream(AVFormatContext* fmt) => Demuxer.FirstVideoStream(fmt);
 
     /// <summary>A probe through FrameReader, with ShotDetector's reasons and messages for its failures.</summary>
     static MediaInfo Probe(Func<MediaInfo> probe, string? libraryDirectory)
     {
-        InProcessDecoder.Load(libraryDirectory); // ShotDetector's message when the libraries don't load
+        InProcess.Load(libraryDirectory); // ShotDetector's message when the libraries don't load
         try
         {
             return probe();
@@ -104,7 +95,7 @@ internal static unsafe class InProcessProbe
     }
 
     /// <summary>ffmpeg's input options (-name value pairs) as FrameReader's demuxer options.</summary>
-    static Dictionary<string, string>? Options(string[]? inputOptions)
+    internal static Dictionary<string, string>? Options(string[]? inputOptions)
     {
         if (inputOptions is not { Length: > 0 })
             return null;

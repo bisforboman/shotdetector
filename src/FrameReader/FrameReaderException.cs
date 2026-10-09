@@ -8,6 +8,9 @@ public enum FrameReaderError
 
     /// <summary>FFmpeg can't open or read the input.</summary>
     InvalidInput,
+
+    /// <summary>Decoding or converting a frame failed.</summary>
+    DecodeFailed,
 }
 
 /// <summary>A failure reading a video, with its <see cref="Reason"/>.</summary>

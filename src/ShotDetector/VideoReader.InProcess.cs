@@ -12,11 +12,11 @@ public sealed partial class VideoReader
     /// </summary>
     public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && (_stream is not null || !Streaming)
         && !_inProcessGaveNothing
-        && (_decoder == VideoDecoder.InProcess || InProcessDecoder.CanLoad(_ffmpegDirectory))
-        && InProcessDecoder.HasDecoder(Codec)
-        && (_rotation == 0 || (!_deinterlace && InProcessDecoder.CanRotate(_rotation, _pixelFormat)))
+        && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory))
+        && FrameReader.FrameDecoder.HasDecoder(Codec)
+        && (_rotation == 0 || (!_deinterlace && FrameReader.FrameDecoder.CanRotate(_rotation, _pixelFormat)))
         // Deinterlacing needs libavfilter's yadif too (ShotDetector.Native has it since 0.9).
-        && (!_deinterlace || InProcessDecoder.CanDeinterlace(_ffmpegDirectory));
+        && (!_deinterlace || InProcess.CanDeinterlace(_ffmpegDirectory));
 
     bool _inProcessGaveNothing; // Auto, and the libraries decoded no frame of this video: the executable instead
     bool _ptsFromFrames;        // MPEG-PS and the like: packets without pts, timestamps from a decoding pass
@@ -54,9 +54,16 @@ public sealed partial class VideoReader
         {
             try
             {
-                using var decoder = new InProcessDecoder(_path, _ffmpegDirectory, _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true),
-                    deinterlace: _deinterlace, yadif: _yadif, inputOptions: _inputOptions,
-                    io: _stream is null ? null : new FrameReader.StreamInput(_prefix, _stream));
+                var decoderOptions = new FrameReader.FrameDecoderOptions
+                {
+                    LibraryDirectory = _ffmpegDirectory,
+                    Threads = _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true),
+                    Deinterlace = _deinterlace,
+                    RowDeinterlacer = _yadif is null ? null : new RowDeinterlacer(_yadif),
+                    InputOptions = InProcessProbe.Options(_inputOptions),
+                };
+                using var decoder = new FrameReader.FrameDecoder(_path, decoderOptions, _stream is null ? null : new FrameReader.StreamInput(_prefix, _stream));
+                using var writer = new FrameWriter(decoder);
                 timeBase = decoder.TimeBase;
                 // Streamed: times from the stream's start, as ffmpeg gives them without -copyts.
                 long offset = Streaming ? decoder.StartOffset : 0;
@@ -75,10 +82,10 @@ public sealed partial class VideoReader
                     var buffer = free.Take(cancel.Token);
                     switch (pipeline)
                     {
-                        case FramePipeline.Yuv420Sampled: decoder.WriteYuv420(buffer); break;
-                        case FramePipeline.SampledBgr: decoder.WriteSampledBgr(buffer, cols!, rows!); break;
-                        case FramePipeline.FullFrameResize: decoder.WriteBgr(buffer, CropRegion); break;
-                        default: decoder.WriteScaledBgr(buffer, CropRegion, Width, Height); break;
+                        case FramePipeline.Yuv420Sampled: writer.WriteYuv420(buffer); break;
+                        case FramePipeline.SampledBgr: writer.WriteSampledBgr(buffer, cols!, rows!); break;
+                        case FramePipeline.FullFrameResize: writer.WriteBgr(buffer, CropRegion); break;
+                        default: writer.WriteScaledBgr(buffer, CropRegion, Width, Height); break;
                     }
                     full.Add((buffer, pts + offset), cancel.Token);
                     emitted++;
@@ -87,6 +94,10 @@ public sealed partial class VideoReader
                     throw new ShotDetectionException(ShotDetectionError.DecodeFailed, $"Reading the stream failed: {e.Message}", e);
             }
             catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
+            catch (FrameReader.FrameReaderException e)
+            {
+                throw InProcess.Map(e, _ffmpegDirectory);
+            }
             finally
             {
                 full.CompleteAdding();

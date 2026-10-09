@@ -62,7 +62,9 @@ then fails on any breaking change to ShotDetector or FastYuv (SDK package valida
 - `src/FrameReader`: the general frame-reader library being extracted (docs/frame-reader-library.md), MIT, internal
   (no package yet; ShotDetector's package carries FrameReader.dll, ShotDetector references it one way). So far
   `FFmpegLibraries` (loading FFmpeg 8's libraries), `MediaProbe` (headers, packet pts, Stream input; ShotDetector's
-  `InProcessProbe` formats it as ffprobe text), `FrameReaderException`; tests in `tests/FrameReader.Tests`.
+  `InProcessProbe` formats it as ffprobe text), `FrameDecoder` (decode, seek, deinterlace, autorotate; ShotDetector's
+  `FrameWriter` converts its frames to the pipelines' layouts), `FrameReaderException` (ShotDetector maps it in
+  `InProcess.Map`); tests in `tests/FrameReader.Tests`.
 - `src/ShotDetector.FastYuv`: LGPL swscale yuv420p→BGR port (`SwscaleYuv420`), its own COPYING.LGPL and README.
 - `src/ShotDetector.Cli`: `shotdetect` (list-scenes table/CSV/JSON, `--stats`, `--save-images`, `--split-video`,
   time/crop/skip options). `-p:WithFastYuv=true` builds a dev-only LGPL variant for `compare.py --fast-yuv`.
