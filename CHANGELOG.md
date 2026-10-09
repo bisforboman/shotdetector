@@ -3,6 +3,18 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 
+## Unreleased
+
+### New
+
+- FrameReader (inside the ShotDetector package; its API isn't under semantic versioning yet):
+  - `AudioWriter`: float32 samples to MP3 (LAME), AAC or WAV, the file ffmpeg writes from the same samples.
+  - `Remux.Copy`: streams copied into another container without re-encoding (`ffmpeg -map ... -c copy`), e.g. the
+    video alone into an .mp4 and the audio into an .m4a.
+- ShotDetector.Native and the CLI's FFmpeg libraries add the AAC, MP3 (LAME 3.100, LGPL, linked in) and 16-bit PCM
+  encoders and common muxers (mp4, m4a, mkv, mka, webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass),
+  about 0.5 MB per platform. Video encoding stays with the ffmpeg executable (docs/encoding-package.md).
+
 ## 1.2.0 – 2026-10-09
 
 Waveform peaks and audio filter graphs in FrameReader (issue #81's last items), and the native libraries' filters for

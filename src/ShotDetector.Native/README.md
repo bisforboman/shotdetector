@@ -14,10 +14,12 @@ save-images).
 
 ## What's inside
 
-FFmpeg 8.1.3 built for decoding only: libavcodec (decoders), libavformat (demuxers), libswscale, libswresample,
+FFmpeg 8.1.3 built for decoding, plus audio encoding and muxing: libavcodec (decoders; the AAC, MP3 via LAME and
+16-bit PCM encoders), libavformat (demuxers; the mp4, mov, ipod (.m4a), matroska, matroska_audio (.mka), webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass muxers), libswscale, libswresample,
 libavutil and libavfilter with only yadif (deinterlacing), fps (FrameReader's FrameRate), aspectralstats (its SpectralStats) and
-the audio filters its AudioFilter offers: volume, equalizer, bass, treble, highpass, lowpass, bandpass, bandreject, afade, pan, acompressor, alimiter, dynaudnorm, agate, ebur128, loudnorm, silencedetect, astats, aformat, aresample. No encoders, muxers, devices or network protocols. Two
-libraries are linked in statically: zlib 1.3.2 (PNG, compressed MOV/MKV headers) and dav1d 1.5.4 (AV1).
+the audio filters its AudioFilter offers: volume, equalizer, bass, treble, highpass, lowpass, bandpass, bandreject, afade, pan, acompressor, alimiter, dynaudnorm, agate, ebur128, loudnorm, silencedetect, astats, aformat, aresample. No video encoders, devices or network protocols. Three
+libraries are linked in statically: zlib 1.3.2 (PNG, compressed MOV/MKV headers), dav1d 1.5.4 (AV1) and LAME 3.100
+(MP3, LGPL).
 `configure.txt` in the package has the source URLs, their SHA-256 and the exact configure line; the build script
 is `tools/native/build-ffmpeg.sh` in the repository.
 

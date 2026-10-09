@@ -142,6 +142,30 @@ Our native libraries carry volume, equalizer, bass, treble, highpass, lowpass, b
 acompressor, alimiter, dynaudnorm, agate, ebur128, loudnorm, silencedetect and astats; a full FFmpeg build in
 `LibraryDirectory` brings every filter it has.
 
+Writing audio: `AudioWriter` encodes interleaved float32 samples to MP3 (LAME), AAC (.m4a, .aac, .mka) or WAV, the
+file `ffmpeg -f f32le -ar R -ac C -i - -c:a ENCODER [-b:a B] OUT` writes, byte for byte with `Bitexact = true` on
+both sides (without it, files carry FFmpeg's usual encoder tags). Read, filter, write:
+
+```csharp
+using var audio = new AudioReader("talk.mp4", new() { SampleRate = 44100, Channels = 1 });
+using var clean = new AudioFilter(audio, "highpass=f=80,dynaudnorm");
+using (var mp3 = new AudioWriter("talk.mp3", new() { SampleRate = 44100, Channels = 1, BitRate = 96_000 }))
+    while (clean.TryRead(out var chunk))
+        mp3.Write(chunk.Samples);
+```
+
+Stream copy: `Remux.Copy(input, output, options)` copies streams into another container without re-encoding, the
+file `ffmpeg -i IN -map ... -c copy OUT` writes (timestamps, codec tags, metadata and chapters as ffmpeg copies them):
+
+```csharp
+Remux.Copy("film.mkv", "picture.mp4", new() { Streams = StreamSelection.Video });
+Remux.Copy("film.mkv", "sound.m4a", new() { Streams = StreamSelection.Audio });
+Remux.Copy("film.mkv", "commentary.mka", new() { StreamIndices = [2] });
+```
+
+Our native libraries carry the AAC, MP3 and 16-bit PCM encoders and the mp4, mov, ipod (.m4a), matroska, matroska_audio (.mka), webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass muxers.
+Video encoding isn't in-process (docs/encoding-package.md): use the ffmpeg executable.
+
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio, and `Streams`: every
 stream with its type, codec, codec tag, language, title, flags, bit rate, duration and audio details; optionally
