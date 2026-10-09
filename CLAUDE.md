@@ -39,8 +39,11 @@ then fails on any breaking change to ShotDetector or FastYuv (SDK package valida
 
 ## Working on this repository
 
-- **PR pipeline**: `main` is protected; work on a branch, push, `gh pr create`, merge when the checks are green
-  (`build`, `aot (*)`, `alpine`, `parity (*)`, `mutation`, `Real world (*)`). Don't push to main directly.
+- **PR pipeline**: `main` is protected; work on a branch, push, `gh pr create`, merge when the checks are green.
+  Branch protection requires `build`, `CI passed`, `Real world passed` and `mutation`; the two "passed" jobs are gates
+  that need every other job in their workflow (passed or skipped: light PRs skip the heavy ones, and a skipped matrix
+  job never reports its per-matrix names). A new job in ci.yml or realworld.yml goes in its gate's `needs`. Don't push
+  to main directly.
 - **Worktrees**: `git worktree add .claude/worktrees/<name> -b <branch> origin/main` (ignored). Sessions working at
   the same time each use their own worktree, never one checkout, so a commit can't land on another's branch.
 - **Backlog**: `docs/backlog.md`. Take the next open item; update its status when work starts and lands. Add items
