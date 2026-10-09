@@ -60,10 +60,10 @@ public class AudioWriterTests
                     writer.Write(samples.AsSpan(at, Math.Min(size * channels, samples.Length - at) / channels * channels));
             }
             byte[] want = File.ReadAllBytes(expected), got = File.ReadAllBytes(actual);
-            if ((encoder ?? defaultEncoder) == "libmp3lame" && RuntimeInformation.ProcessArchitecture != Architecture.X64)
+            if ((encoder ?? defaultEncoder) == "libmp3lame" && !SameBuild())
             {
-                // LAME's floating point depends on how it was compiled (ARM compilers fuse multiply-adds), and CI's ffmpeg
-                // executable there carries BtbN's LAME, not ours: the same layout, not the same bits.
+                // LAME's floating point depends on how it was compiled: when the ffmpeg executable isn't the libraries'
+                // own build (CI pairs our libraries with BtbN's static ffmpeg), the same layout, not the same bits.
                 Assert.Equal(want.Length, got.Length);
                 Assert.Equal(Samples(expected), Samples(actual));
                 return;
@@ -77,6 +77,18 @@ public class AudioWriterTests
         {
             Directory.Delete(dir, true);
         }
+    }
+
+    /// <summary>Whether the ffmpeg executable is the libraries' own build (the same configure line).</summary>
+    static bool SameBuild()
+    {
+        var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"), "-hide_banner -version")
+            { RedirectStandardOutput = true };
+        using var p = Process.Start(psi)!;
+        string version = p.StandardOutput.ReadToEnd();
+        p.WaitForExit();
+        FFmpegLibraries.Load(Libs);
+        return version.Contains("configuration: " + FFmpeg.AutoGen.ffmpeg.avcodec_configuration().Trim());
     }
 
     static long Samples(string path)
