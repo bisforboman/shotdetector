@@ -56,7 +56,7 @@ public sealed partial class VideoReader
             {
                 using var decoder = new InProcessDecoder(_path, _ffmpegDirectory, _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true),
                     deinterlace: _deinterlace, yadif: _yadif, inputOptions: _inputOptions,
-                    io: _stream is null ? null : new StreamInput(_prefix, _stream));
+                    io: _stream is null ? null : new FrameReader.StreamInput(_prefix, _stream));
                 timeBase = decoder.TimeBase;
                 // Streamed: times from the stream's start, as ffmpeg gives them without -copyts.
                 long offset = Streaming ? decoder.StartOffset : 0;

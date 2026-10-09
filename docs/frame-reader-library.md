@@ -1,7 +1,10 @@
 # Frame-reader library (idea)
 
-Status: milestone 1 in progress (2026-10-08): `src/FrameReader` (FFmpegLibraries, FrameReaderException),
-`tests/FrameReader.Tests`; answers to "Before writing code" 1-3 and build-vs-contribute in docs/decisions.md. For Claude Code: read this file and CLAUDE.md, then start at
+Status (2026-10-09): milestones 1 (FFmpegLibraries, FrameReaderException) and 2 (MediaProbe: the values ffprobe
+prints, packet timestamps, Stream input; StreamInput and the open helper moved with it) done. ShotDetector's
+InProcessProbe now only formats MediaProbe's values as ffprobe's text. FrameReader has InternalsVisibleTo ShotDetector
+for Demuxer and StreamInput until the decoder moves (milestone 3). Answers to "Before writing code" 1-3 and
+build-vs-contribute in docs/decisions.md. For Claude Code: read this file and CLAUDE.md, then start at
 "Before writing code". Record every answer the user gives in `docs/decisions.md` as usual.
 
 ## The idea
