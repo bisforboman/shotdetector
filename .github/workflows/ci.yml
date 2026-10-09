@@ -238,7 +238,9 @@ jobs:
         path: [core, fast-yuv]
         scenedetect: ['0.7.1']   # the release reproduced; a previous one joins here when the default moves on
     env:
-      FFMPEG: '9.0'   # the latest stable FFmpeg; BtbN's static build
+      # The latest stable FFmpeg; BtbN's static build. No libraries here, so this is also Auto's fallback to the
+      # executable where only FFmpeg 9 is installed (its libavcodec 63 doesn't load in-process).
+      FFMPEG: '9.0'
     steps:
       - uses: actions/checkout@v7
 
