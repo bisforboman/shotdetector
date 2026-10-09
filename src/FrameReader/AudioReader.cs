@@ -96,6 +96,8 @@ public sealed unsafe class AudioReader : IDisposable
             Check(ffmpeg.avcodec_open2(_dec, codec, null), "open decoder");
             _pkt = ffmpeg.av_packet_alloc();
             _frame = ffmpeg.av_frame_alloc();
+            DecodesFloat = _dec->sample_fmt is AVSampleFormat.AV_SAMPLE_FMT_FLT or AVSampleFormat.AV_SAMPLE_FMT_FLTP
+                or AVSampleFormat.AV_SAMPLE_FMT_DBL or AVSampleFormat.AV_SAMPLE_FMT_DBLP;
             _outRate = o.SampleRate ?? _dec->sample_rate;
             _outChannels = o.Channels ?? _dec->ch_layout.nb_channels;
             AVChannelLayout outLayout;
@@ -116,6 +118,9 @@ public sealed unsafe class AudioReader : IDisposable
             throw;
         }
     }
+
+    /// <summary>Whether the decoder gives floating-point samples (lossy codecs, float PCM) rather than integers.</summary>
+    internal bool DecodesFloat { get; }
 
     /// <summary>Output samples per second.</summary>
     public int SampleRate => _outRate;
