@@ -94,6 +94,19 @@ while (audio.TryRead(out var chunk))
     Process(chunk.Samples); // ReadOnlySpan<float>, valid until the next read
 ```
 
+Spectral statistics: `SpectralStats` runs FFmpeg's own aspectralstats filter over an `AudioReader`'s samples, window
+by window (default 2048 samples, Hann, half overlap): per channel the mean, variance, centroid, spread, skewness,
+kurtosis, entropy, flatness, crest, flux, slope, decrease and rolloff, the values `-af
+aspectralstats,ametadata=print` prints for the same samples (6 significant digits, as the filter hands them out).
+
+```csharp
+using var audio = new AudioReader("video.mp4", new() { Channels = 1 });
+using var stats = new SpectralStats(audio, new() { WindowSize = 4096 });
+while (stats.TryRead(out var window))
+    if (window.Channels[0].Flatness < 0.01) // e.g. a sustained tone: energy in few frequencies
+        Console.WriteLine($"{window.Time}: tone near {window.Channels[0].Centroid:F0} Hz");
+```
+
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio, and `Streams`: every
 stream with its type, codec, codec tag, language, title, flags, bit rate, duration and audio details; optionally

@@ -3,6 +3,12 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## Spectral statistics (2026-10-09)
+
+Issue #81's spectral statistics, through FFmpeg's aspectralstats filter. Asked the API shape: **a `SpectralStats`
+class over an `AudioReader` with TryRead (its rate, channels and seeking; recommended)**, not a static
+`SpectralStats.Read(path)`; and where: **FrameReader only (recommended)**, no ShotDetector API or CLI command yet.
+
 ## ShotDetector on FrameReader's public API (2026-10-09)
 
 ShotDetector reached into FrameReader for its BGR conversion (FrameDecoder's AVFrame* and on-demand deinterlaced
