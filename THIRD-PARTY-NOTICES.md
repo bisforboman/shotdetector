@@ -102,7 +102,7 @@ https://ffmpeg.org/legal.html
 
 ## dav1d (BSD 2-Clause), ShotDetector.Native.<rid> and the shotdetect CLI
 
-dav1d 1.5.1 (https://code.videolan.org/videolan/dav1d), linked into libavcodec as FFmpeg's AV1 decoder.
+dav1d 1.5.4 (https://code.videolan.org/videolan/dav1d), linked into libavcodec as FFmpeg's AV1 decoder.
 
 ```
 Copyright © 2018-2019, VideoLAN and dav1d authors
@@ -132,5 +132,5 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## zlib (zlib licence), ShotDetector.Native.<rid> and the shotdetect CLI
 
-zlib 1.3.1 (https://zlib.net), linked into FFmpeg's libraries. Copyright (C) 1995-2024 Jean-loup Gailly and Mark
+zlib 1.3.2 (https://zlib.net), linked into FFmpeg's libraries. Copyright (C) 1995-2026 Jean-loup Gailly and Mark
 Adler. Provided 'as-is', without any express or implied warranty; see https://zlib.net/zlib_license.html.
