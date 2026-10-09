@@ -1,8 +1,9 @@
 #!/bin/sh
 # Builds FFmpeg's shared libraries for ShotDetector.Native.<rid>: decoding only (libavcodec decoders, libavformat
 # demuxers, libswscale, libavutil; libswresample too, which FFmpeg.AutoGen loads with libavcodec), plus libavfilter
-# with only yadif (deinterlacing), fps (FrameReader's FrameRate), aspectralstats (its SpectralStats) and a graph's
-# buffer/buffersink and abuffer/abuffersink ends. LGPL; linked in statically: zlib (PNG, compressed
+# with only yadif (deinterlacing), fps (FrameReader's FrameRate), aspectralstats (its SpectralStats), the audio
+# filters its AudioFilter offers (EQ and level, dynamics, loudness, detection; aformat/aresample to convert) and a
+# graph's buffer/buffersink and abuffer/abuffersink ends. LGPL; linked in statically: zlib (PNG, compressed
 # MOV/MKV headers) and dav1d (AV1, BSD-2-Clause). Run on the platform itself, except win-x64, which cross-compiles from
 # Linux with mingw-w64. Needs nasm (x86), meson, ninja and pkg-config.
 #
@@ -63,6 +64,7 @@ export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig"
 # libraries (and their licences) out: zlib and dav1d are the ones built above, linked in.
 set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
   --disable-programs --disable-doc --disable-avdevice --disable-filters --enable-filter=buffer,buffersink,abuffer,abuffersink,yadif,fps,aspectralstats \
+  --enable-filter=volume,equalizer,bass,treble,highpass,lowpass,bandpass,bandreject,afade,pan,acompressor,alimiter,dynaudnorm,agate,ebur128,loudnorm,silencedetect,astats,aformat,aresample \
   --disable-network --disable-encoders --disable-muxers --disable-autodetect \
   --enable-zlib --enable-libdav1d --pkg-config=pkg-config --pkg-config-flags=--static \
   --extra-cflags=-I"$deps/include" --extra-ldflags=-L"$deps/lib" \

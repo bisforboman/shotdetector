@@ -107,6 +107,28 @@ while (stats.TryRead(out var window))
         Console.WriteLine($"{window.Time}: tone near {window.Channels[0].Centroid:F0} Hz");
 ```
 
+Audio filter graphs: `AudioFilter` runs an ffmpeg filter graph over an `AudioReader`'s audio, the samples `ffmpeg
+-af GRAPH -f f32le` gives, byte for byte (the graph gets the decoded audio in its own sample format, as ffmpeg's does;
+the reader's rate and channels convert after it, as -ar and -ac). Time windows are ffmpeg's own `enable=` option, and
+analysis filters' results are in `Metadata`.
+
+```csharp
+using var audio = new AudioReader("show.mp4");
+using var eq = new AudioFilter(audio, "highpass=f=80,equalizer=f=3000:t=q:w=1:g=-6:enable='between(t,10,20)'");
+while (eq.TryRead(out var chunk))
+    Process(chunk.Samples);
+
+using var speech = new AudioReader("show.mp4");
+using var silence = new AudioFilter(speech, "silencedetect=n=-35dB:d=0.5");
+while (silence.TryRead(out _))
+    if (silence.Metadata.TryGetValue("lavfi.silence_start", out var start))
+        Console.WriteLine($"silence from {start} s");
+```
+
+Our native libraries carry volume, equalizer, bass, treble, highpass, lowpass, bandpass, bandreject, afade, pan,
+acompressor, alimiter, dynaudnorm, agate, ebur128, loudnorm, silencedetect and astats; a full FFmpeg build in
+`LibraryDirectory` brings every filter it has.
+
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio, and `Streams`: every
 stream with its type, codec, codec tag, language, title, flags, bit rate, duration and audio details; optionally
