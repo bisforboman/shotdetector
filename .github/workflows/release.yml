@@ -141,6 +141,43 @@ jobs:
           # Creates the tag v$VERSION on this commit, unless it was pushed by hand.
           gh release create "v$VERSION" artifacts/*.nupkg --target "$GITHUB_SHA" --title "ShotDetector $VERSION" "${notes[@]}" $prerelease
 
+  # A stable release: an issue to make it the API baseline (Directory.Build.props), once nuget.org serves it, since
+  # package validation downloads the baseline. An issue rather than a PR: a PR opened with this token gets no CI runs.
+  baseline:
+    needs: [version, release]
+    if: ${{ !contains(needs.version.outputs.version, '-') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      issues: write
+    steps:
+      - name: Wait for nuget.org to serve it
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsSL https://api.nuget.org/v3-flatcontainer/shotdetector/index.json | grep -q "\"$VERSION\"" && exit 0
+            sleep 60
+          done
+          echo "::warning::nuget.org doesn't list ShotDetector $VERSION after an hour; opening the issue anyway"
+
+      - name: Issue to move ApiBaselineVersion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          title="Set ApiBaselineVersion to $VERSION"
+          if gh issue list --state all --search "\"$title\" in:title" --json title --jq '.[].title' | grep -qxF "$title"; then
+            echo "Already filed: $title"
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$VERSION is on nuget.org. Make it the API baseline, so packing fails on any breaking change from it (SDK package validation, CP000x errors):
+
+          - [ ] In \`Directory.Build.props\`: \`<ApiBaselineVersion>$VERSION</ApiBaselineVersion>\`, in a PR (main is protected).
+
+          Opened by release.yml after publishing."
+
   # Standalone shotdetect binaries (no .NET needed; ffmpeg still is), attached to the release.
   binaries:
     needs: [version, native, release]

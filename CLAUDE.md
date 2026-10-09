@@ -35,7 +35,8 @@ weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what th
 PR that moves CHANGELOG.md's `## Unreleased` section to `## X.Y.Z – date`; merging it releases: release.yml (on every
 push to main) tags `vX.Y.Z` when that version isn't tagged yet and publishes. Prereleases (`-`) publish without
 approval, stable ones wait for the user's approval of the `release` environment. A hand-pushed `v*` tag still works.
-After a stable release is on nuget.org, set `ApiBaselineVersion` in Directory.Build.props to it (from 1.0 on): packing
+After a stable release is on nuget.org, set `ApiBaselineVersion` in Directory.Build.props to it (from 1.0 on; release.yml
+opens an issue as the reminder): packing
 then fails on any breaking change to ShotDetector or FastYuv (SDK package validation, CP000x errors).
 
 ## Working on this repository
