@@ -206,6 +206,18 @@ public sealed unsafe class FrameDecoder : IDisposable
                     break;
                 }
         SeekMicroseconds(seekTo);
+        return TrimOffset(time);
+    }
+
+    /// <summary>
+    /// ffmpeg's ts_offset for <c>-ss</c> <paramref name="time"/>, in the stream's time base: a frame is at or after the
+    /// time when its <see cref="Pts"/> plus this is 0 or more (ffmpeg's trim).
+    /// </summary>
+    internal long TrimOffset(TimeSpan time)
+    {
+        long timestamp = time.Ticks / 10;
+        if (_fmt->start_time != ffmpeg.AV_NOPTS_VALUE)
+            timestamp += _fmt->start_time;
         return ffmpeg.av_rescale_q(-timestamp, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase);
     }
 

@@ -133,6 +133,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     {
         _keepFrom = _decoder.SeekLikeFfmpeg(time);
         _index = -1;
+        _current = false;
     }
 
     /// <summary>The frame at <paramref name="time"/> (<see cref="Seek"/>, then <see cref="TryRead"/>): a thumbnail.</summary>
@@ -154,12 +155,50 @@ public sealed unsafe class VideoFrameReader : IDisposable
         while ((got = _decoder.Next()) && _keepFrom is { } keep && _decoder.Pts + keep < 0)
         {
         }
+        _current = got;
         if (!got)
         {
             frame = default;
             return false;
         }
         _index++;
+        Convert(out frame);
+        return true;
+    }
+
+    /// <summary>
+    /// Reads forward to the first frame at or after <paramref name="time"/> (the frame <see cref="TryReadAt"/> and
+    /// ffmpeg's <c>-ss</c> give), without seeking and without converting the frames on the way: a frame every second of a
+    /// film is one pass that decodes everything and converts only what it gives. When the frame last read is already at
+    /// or after the time, that frame again. Times behind it don't go back (use <see cref="Seek"/>).
+    /// </summary>
+    /// <param name="time">From the input's start.</param>
+    /// <param name="frame">The frame, valid until the next call.</param>
+    /// <returns>False when the video ends first.</returns>
+    public bool TryReadForwardTo(TimeSpan time, out VideoFrame frame)
+    {
+        long keep = _decoder.TrimOffset(time);
+        if (!(_current && _decoder.Pts + keep >= 0))
+        {
+            bool got;
+            while ((got = _decoder.Next()) && (_decoder.Pts + keep < 0 || _keepFrom is { } k && _decoder.Pts + k < 0))
+                _index++; // passed by, not converted
+            _current = got;
+            if (!got)
+            {
+                frame = default;
+                return false;
+            }
+            _index++;
+        }
+        Convert(out frame);
+        return true;
+    }
+
+    bool _current; // the decoder holds a frame read (not past the end)
+
+    void Convert(out VideoFrame frame)
+    {
         var src = _decoder.Frame;
         _decoder.EnsureRows(0, src->height);
         int width = _options.Width ?? src->width, height = _options.Height ?? src->height;
@@ -212,7 +251,6 @@ public sealed unsafe class VideoFrameReader : IDisposable
         }
         frame = new VideoFrame(_index, pts, TimeSpan.FromSeconds((pts + _decoder.StartOffset) * _decoder.TimeBase), width, height,
             _options.Format, data);
-        return true;
     }
 
     /// <summary>Frees the decoder, the scaler and the output buffer.</summary>

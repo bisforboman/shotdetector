@@ -67,4 +67,37 @@ public class SeekTests
             Directory.Delete(dir, true);
         }
     }
+
+    [Theory]
+    [InlineData("bframes.mp4", "-c:v mpeg4 -bf 2 -g 12")]
+    [InlineData("late.ts", "-c:v mpeg2video -bf 2 -g 12 -output_ts_offset 10")]
+    public void ReadsForwardToFfmpegsFrames(string name, string encode)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-fwd-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=3", .. encode.Split(' '), path]);
+            using var reader = new VideoFrameReader(path, new FrameReaderOptions
+                { Width = 160, Height = 90, Format = FrameFormat.Gray8, Decoder = new FrameDecoderOptions { LibraryDirectory = Libs } });
+            // One pass: each time the frame ffmpeg's output -ss gives (decoding from the start, dropping the frames before:
+            // exact even in open GOPs, where an input -ss can give a B-frame decoded without its reference); the same
+            // time twice, the same frame; Index the frame's number.
+            foreach (var (t, index) in new[] { (0.0, 0), (0.3, 8), (1.0, 25), (1.0, 25), (1.039, 26), (1.04, 26), (1.5, 38), (2.04, 51), (2.9, 73) })
+            {
+                byte[] expected = Ffmpeg("-v", "error", "-i", path, "-ss", t.ToString(CultureInfo.InvariantCulture), "-frames:v", "1",
+                    "-vf", "scale=160:90:flags=bicubic,format=gray", "-f", "rawvideo", "-");
+                Assert.True(reader.TryReadForwardTo(TimeSpan.FromSeconds(t), out var frame), $"{name} at {t} s");
+                Assert.True(expected.AsSpan().SequenceEqual(frame.Data), $"{name} at {t} s: not ffmpeg's frame (got {frame.Time})");
+                Assert.Equal(index, frame.Index);
+            }
+            Assert.False(reader.TryReadForwardTo(TimeSpan.FromSeconds(3.5), out _));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
