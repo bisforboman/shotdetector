@@ -11,6 +11,12 @@ an `AudioReaderOptions.Filter`; and which filters our native build carries: **al
 alimiter, dynaudnorm, agate), loudness (ebur128, loudnorm) and detection (silencedetect, astats). Time windows are
 ffmpeg's own `enable=` option.
 
+## Waveform peaks (2026-10-09)
+
+Issue #81's audiowaveform-compatible peaks. Asked the API: **`WaveformData.Read(audioReader, options)` with the points
+in memory and `Save(stream, bits)` for the .dat (recommended)**, not only a `WriteDat`; and the formats: **.dat only
+(recommended)**, not audiowaveform's JSON too.
+
 ## The ApiBaselineVersion bump after a release (2026-10-09)
 
 A PR opened with the workflow's own token gets no CI runs, so it can't merge by itself. Asked how a stable release

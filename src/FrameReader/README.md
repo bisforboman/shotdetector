@@ -107,6 +107,19 @@ while (stats.TryRead(out var window))
         Console.WriteLine($"{window.Time}: tone near {window.Channels[0].Centroid:F0} Hz");
 ```
 
+Waveform peaks: `WaveformData.Read(audioReader, options)` computes what BBC's audiowaveform does (per point of
+`SamplesPerPixel` samples, default 256, or `PixelsPerSecond`, the minimum and maximum 16-bit sample, channels
+averaged unless `SplitChannels`), and `Save(stream, bits)` writes its binary .dat (8 or 16 bits), which peaks.js and
+other waveform viewers load. Byte for byte audiowaveform's .dat for WAV, FLAC and other PCM; for lossy codecs the two
+decoders can differ slightly.
+
+```csharp
+using var audio = new AudioReader("talk.mp4");
+var waveform = WaveformData.Read(audio, new() { PixelsPerSecond = 100 });
+using var dat = File.Create("talk.dat");
+waveform.Save(dat, bits: 8); // or read waveform.Min(0, i), waveform.Max(0, i) to draw it yourself
+```
+
 Audio filter graphs: `AudioFilter` runs an ffmpeg filter graph over an `AudioReader`'s audio, the samples `ffmpeg
 -af GRAPH -f f32le` gives, byte for byte (the graph gets the decoded audio in its own sample format, as ffmpeg's does;
 the reader's rate and channels convert after it, as -ar and -ac). Time windows are ffmpeg's own `enable=` option, and
