@@ -3,7 +3,10 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 
-## Unreleased
+## 1.1.0 – 2026-10-09
+
+Every stream of a file or URL in `VideoInfo.Streams`, newer zlib and dav1d in the native libraries, and a
+file left open after a failed in-process decode closed.
 
 ### New
 
