@@ -25,6 +25,15 @@ while (reader.TryRead(out var frame))
 }
 ```
 
+Audio: `AudioReader` reads the best audio stream as interleaved float32, at a chosen sample rate and channel count
+(default: the stream's own), the samples `ffmpeg -vn -ar R -ac C -f f32le` gives; `Seek(time)` as `-ss`.
+
+```csharp
+using var audio = new AudioReader("video.mp4", new() { SampleRate = 16000, Channels = 1 }); // e.g. for speech models
+while (audio.TryRead(out var chunk))
+    Process(chunk.Samples); // ReadOnlySpan<float>, valid until the next read
+```
+
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio; optionally every
 packet's timestamp). `FrameDecoder` is the lower level: decoded frames as FFmpeg holds them (`GetPlane`), with
