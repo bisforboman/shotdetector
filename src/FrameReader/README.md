@@ -95,8 +95,9 @@ while (audio.TryRead(out var chunk))
 ```
 
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
-tags, field order, frame rates, time base, duration, frame count, rotation, container, audio; optionally every
-packet's timestamp). `FrameDecoder` is the lower level: decoded frames as FFmpeg holds them (`GetPlane`), with
+tags, field order, frame rates, time base, duration, frame count, rotation, container, audio, and `Streams`: every
+stream with its type, codec, codec tag, language, title, flags, bit rate, duration and audio details; optionally
+every packet's timestamp). `FrameDecoder` is the lower level: decoded frames as FFmpeg holds them (`GetPlane`), with
 seeking.
 
 ## Speed

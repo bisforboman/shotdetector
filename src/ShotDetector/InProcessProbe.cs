@@ -56,9 +56,33 @@ internal static unsafe class InProcessProbe
         return sb.ToString();
     }
 
-    /// <summary>Whether the file has an audio stream (<c>ffprobe -select_streams a</c> finds one).</summary>
-    public static bool HasAudio(string path, string? libraryDirectory) =>
-        Probe(() => MediaProbe.Probe(path, new ProbeOptions { LibraryDirectory = libraryDirectory }), libraryDirectory).HasAudio;
+    /// <summary>
+    /// Every stream, as <see cref="VideoReader"/> reads them from ffprobe's <c>-show_entries</c> (VideoReader.StreamEntries):
+    /// the same values, durations through ffprobe's six-decimal print.
+    /// </summary>
+    public static IReadOnlyList<StreamInfo> Streams(string path, string? libraryDirectory, string[]? inputOptions = null)
+    {
+        var info = Probe(() => MediaProbe.Probe(path, new ProbeOptions { LibraryDirectory = libraryDirectory, InputOptions = Options(inputOptions) }), libraryDirectory);
+        return info.Streams.Select(s => new StreamInfo
+        {
+            Index = s.Index,
+            Type = (StreamType)(int)s.Type,
+            Codec = s.Codec,
+            CodecTag = s.CodecTag,
+            Language = s.Language,
+            Title = s.Title,
+            IsDefault = s.IsDefault,
+            IsForced = s.IsForced,
+            BitRate = s.BitRate,
+            Duration = VideoReader.Seconds(Time(s.DurationPts, s.TimeBase)),
+            Width = s.Width,
+            Height = s.Height,
+            SampleRate = s.SampleRate,
+            Channels = s.Channels,
+            ChannelLayout = s.ChannelLayout,
+            SampleFormat = s.SampleFormat,
+        }).ToList();
+    }
 
     /// <summary>
     /// <c>ffprobe -select_streams v:0 -show_entries frame=pts,pkt_dts</c> as VideoReader uses it (MPEG-PS, packets

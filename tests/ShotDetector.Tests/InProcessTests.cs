@@ -363,4 +363,45 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             Directory.Delete(dir, true);
         }
     }
+
+    // VideoInfo.Streams: every stream with type, codec, tag, language, title, flags, bit rate, duration and audio details,
+    // the same in-process as from ffprobe (issue #81).
+    [Theory]
+    [InlineData("tracks.mkv")]
+    [InlineData("tracks.mp4")]
+    public void StreamsAreFfprobes(string name)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetector-streams-").FullName;
+        try
+        {
+            string srt = Path.Combine(dir, "subs.srt"), path = Path.Combine(dir, name);
+            File.WriteAllText(srt, "1\n00:00:00,500 --> 00:00:01,500\nHej\n");
+            string[] args = name.EndsWith(".mkv")
+                ? ["-f", "lavfi", "-i", "testsrc2=s=320x240:d=2", "-f", "lavfi", "-i", "sine=d=2", "-f", "lavfi", "-i", "sine=f=300:d=2", "-i", srt,
+                   "-map", "0", "-map", "1", "-map", "2", "-map", "3", "-c:v", "mpeg4", "-c:a:0", "aac", "-ac:a:0", "2", "-c:a:1", "ac3", "-ac:a:1", "6",
+                   "-c:s", "srt", "-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=swe", "-metadata:s:a:1", "title=Director's commentary",
+                   "-metadata:s:s:0", "language=swe", "-disposition:a:0", "default", "-disposition:a:1", "0", "-disposition:s:0", "forced"]
+                : ["-f", "lavfi", "-i", "testsrc2=s=320x240:d=2", "-f", "lavfi", "-i", "sine=d=2", "-c:v", "mpeg4", "-c:a", "aac", "-ac", "2"];
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", .. args, path], default);
+            var inProcess = ShotDetection.Probe(path, new DetectionOptions { FfmpegDirectory = Libs }).Streams!;
+            var ffprobe = ShotDetection.Probe(path, new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess }).Streams!;
+            Assert.Equal(ffprobe, inProcess);
+            if (name.EndsWith(".mkv"))
+            {
+                Assert.Equal([StreamType.Video, StreamType.Audio, StreamType.Audio, StreamType.Subtitle], inProcess.Select(s => s.Type));
+                Assert.Equal(("eng", true, 2), (inProcess[1].Language, inProcess[1].IsDefault, inProcess[1].Channels));
+                Assert.Equal(("swe", "Director's commentary", false, 6, "5.1(side)"),
+                    (inProcess[2].Language, inProcess[2].Title, inProcess[2].IsDefault, inProcess[2].Channels, inProcess[2].ChannelLayout));
+                Assert.Equal(("subrip", true), (inProcess[3].Codec, inProcess[3].IsForced));
+            }
+            else
+                Assert.Equal(("mp4v", "mp4a", 44100), (inProcess[0].CodecTag, inProcess[1].CodecTag, inProcess[1].SampleRate));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }

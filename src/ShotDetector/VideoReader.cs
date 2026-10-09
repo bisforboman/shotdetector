@@ -129,21 +129,73 @@ public sealed partial class VideoReader
     {
         Width = SourceWidth, Height = SourceHeight, FrameRate = Fps, FrameCount = OpenCvFrameCount > 0 ? OpenCvFrameCount : null,
         Duration = Duration, Codec = Codec, PixelFormat = _pixelFormat, FieldOrder = FieldOrder, Rotation = _rotation,
-        Container = Container, HasAudio = HasAudio,
+        Container = Container, HasAudio = HasAudio, Streams = Streams,
     };
 
     /// <summary>FFmpeg's name for the container (its demuxer).</summary>
     public string Container { get; }
 
+    /// <summary>Whether the file has an audio stream (<see cref="Streams"/>); null for streamed input.</summary>
+    public bool? HasAudio => Streams?.Any(s => s.Type == StreamType.Audio);
+
     /// <summary>
-    /// Whether the file has an audio stream; null for streamed input. Looked up on first use (in-process when the
-    /// libraries load, else one ffprobe call), as detection doesn't need it.
+    /// Every stream of the file; null for streamed input. Looked up on first use (in-process when the libraries load,
+    /// else one ffprobe call), as detection doesn't need it.
     /// </summary>
-    public bool? HasAudio => _hasAudio ??= _stream is not null || Streaming ? null
-        : _probesInProcess ? InProcessProbe.HasAudio(_path, _ffmpegDirectory)
-        : Run(_ffprobe, ["-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", .. _inputOptions, _path],
-            CancellationToken.None).Trim().Length > 0;
-    bool? _hasAudio;
+    public IReadOnlyList<StreamInfo>? Streams => _stream is not null || Streaming ? null
+        : _streams ??= _probesInProcess ? InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions) : FfprobeStreams();
+    IReadOnlyList<StreamInfo>? _streams;
+
+    /// <summary>The ffprobe entries <see cref="Streams"/> reads.</summary>
+    internal const string StreamEntries = "stream=index,codec_type,codec_name,codec_tag_string,width,height,sample_rate,channels,channel_layout,"
+        + "sample_fmt,bit_rate,duration:stream_disposition=default,forced:stream_tags=language,title";
+
+    IReadOnlyList<StreamInfo> FfprobeStreams()
+    {
+        string json = Run(_ffprobe, ["-v", "error", "-show_entries", StreamEntries, "-of", "json", .. _inputOptions, _path], CancellationToken.None);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var result = new List<StreamInfo>();
+        if (!doc.RootElement.TryGetProperty("streams", out var streams))
+            return result;
+        foreach (var s in streams.EnumerateArray())
+        {
+            string? Text(System.Text.Json.JsonElement e, string key) => e.TryGetProperty(key, out var v) ? v.ToString() : null;
+            long? Long(string key) => long.TryParse(Text(s, key), NumberStyles.Integer, CultureInfo.InvariantCulture, out long v) ? v : null;
+            int? Int(string key) => int.TryParse(Text(s, key), NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) ? v : null;
+            string type = Text(s, "codec_type") ?? "";
+            var tags = s.TryGetProperty("tags", out var t) ? t : default;
+            var disposition = s.TryGetProperty("disposition", out var d) ? d : default;
+            bool Flag(string key) => disposition.ValueKind == System.Text.Json.JsonValueKind.Object && Text(disposition, key) == "1";
+            result.Add(new StreamInfo
+            {
+                Index = Int("index") ?? result.Count,
+                Type = type switch
+                {
+                    "video" => StreamType.Video, "audio" => StreamType.Audio, "subtitle" => StreamType.Subtitle,
+                    "data" => StreamType.Data, "attachment" => StreamType.Attachment, _ => StreamType.Unknown,
+                },
+                Codec = Text(s, "codec_name") ?? "unknown",
+                CodecTag = Text(s, "codec_tag_string") ?? "",
+                Language = tags.ValueKind == System.Text.Json.JsonValueKind.Object ? Text(tags, "language") : null,
+                Title = tags.ValueKind == System.Text.Json.JsonValueKind.Object ? Text(tags, "title") : null,
+                IsDefault = Flag("default"),
+                IsForced = Flag("forced"),
+                BitRate = Long("bit_rate"),
+                Duration = Seconds(Text(s, "duration")),
+                Width = type == "video" ? Int("width") : null,
+                Height = type == "video" ? Int("height") : null,
+                SampleRate = type == "audio" ? Int("sample_rate") : null,
+                Channels = type == "audio" ? Int("channels") : null,
+                ChannelLayout = type == "audio" && Text(s, "channel_layout") is { } l && l != "unknown" ? l : null,
+                SampleFormat = type == "audio" ? Text(s, "sample_fmt") : null,
+            });
+        }
+        return result;
+    }
+
+    /// <summary>ffprobe's printed seconds (six decimals) as a TimeSpan; null for N/A.</summary>
+    internal static TimeSpan? Seconds(string? text) =>
+        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double s) ? TimeSpan.FromSeconds(s) : null;
     readonly string _ffprobe;
 
     /// <summary>Which PySceneDetect release's frame rate, downscaling and positions this reader reproduces.</summary>

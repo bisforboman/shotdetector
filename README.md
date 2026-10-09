@@ -111,8 +111,10 @@ reads (same results, about a third faster with few cores).
 
 `ShotDetection.Probe(path)` / `ProbeAsync` reads a video's headers in milliseconds, without ffprobe when FFmpeg's
 libraries load: size, frame rate, frame count, duration, codec, pixel format, field order (`IsInterlaced`),
-rotation, container name and whether there is an audio stream. The same properties are on `DetectionResult.Video`
-after a detection.
+rotation, container name and whether there is an audio stream, plus `Streams`: every stream (video, audio,
+subtitles, data) with its codec and codec tag, language, title, default/forced flags, bit rate, duration and audio
+details (sample rate, channels, layout, sample format), as ffprobe's `-show_streams` gives them. The same
+properties are on `DetectionResult.Video` after a detection.
 
 Which decoder a run uses is in every `DetectionProgress` report (`DecodesInProcess`, `Pipeline`), from a first report
 sent before any frame, so `DetectStreamAsync` callers see it too. `ShotDetection.CanDecodeInProcess()` tells a worker at
