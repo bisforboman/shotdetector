@@ -5,6 +5,15 @@ semantic versioning (README, "Versions"); before it, minor versions could change
 
 ## Unreleased
 
+### New
+
+- `VideoInfo.Streams` (`ShotDetection.Probe`, `DetectionResult.Video.Info`): every stream of the file (video, audio,
+  subtitle, data, attachment) with its index, type, codec, codec tag (hvc1/hev1...), language and title tags,
+  default and forced flags, bit rate, duration, and for audio the sample rate, channels, channel layout and sample
+  format: the values ffprobe's `-show_streams` gives, read in-process or from ffprobe for URLs (issue #81).
+  `HasAudio` now comes from it. `FrameRate` stays the average frame rate, as OpenCV reports it, and `Container` is
+  ffprobe's full format name.
+
 ### Fixed
 
 - In-process decoding kept the file open when it failed after opening it (no video stream, no decoder for the codec,

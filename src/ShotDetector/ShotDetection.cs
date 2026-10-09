@@ -105,9 +105,88 @@ public sealed record VideoInfo
     /// <summary>Whether the file has an audio stream; null for streamed input.</summary>
     public bool? HasAudio { get; init; }
 
+    /// <summary>Every stream of the file (video, audio, subtitles, data), in the container's order; null for streamed input.</summary>
+    public IReadOnlyList<StreamInfo>? Streams { get; init; }
+
     /// <summary>Whether the stream is flagged interlaced (what <see cref="DeinterlaceMode.Auto"/> goes by).</summary>
     public bool IsInterlaced => FieldOrder is FieldOrder.TopFirst or FieldOrder.BottomFirst
         or FieldOrder.TopCodedBottomFirst or FieldOrder.BottomCodedTopFirst;
+}
+
+/// <summary>What a stream carries.</summary>
+public enum StreamType
+{
+    /// <summary>Not known.</summary>
+    Unknown,
+
+    /// <summary>Video.</summary>
+    Video,
+
+    /// <summary>Audio.</summary>
+    Audio,
+
+    /// <summary>Subtitles.</summary>
+    Subtitle,
+
+    /// <summary>Data (timecode tracks, metadata, ...).</summary>
+    Data,
+
+    /// <summary>An attachment (fonts in mkv, ...).</summary>
+    Attachment,
+}
+
+/// <summary>One stream of a file, as ffprobe's <c>-show_streams</c> describes it (<see cref="VideoInfo.Streams"/>).</summary>
+public sealed record StreamInfo
+{
+    internal StreamInfo() { }
+
+    /// <summary>The stream's index in the container.</summary>
+    public int Index { get; init; }
+
+    /// <summary>Video, audio, subtitle, data or attachment.</summary>
+    public StreamType Type { get; init; }
+
+    /// <summary>The codec's FFmpeg name (h264, aac, subrip, ...); "unknown" when FFmpeg doesn't know it.</summary>
+    public string Codec { get; init; } = "";
+
+    /// <summary>The codec tag as text, as ffprobe's codec_tag_string (hvc1 or hev1 for HEVC in mp4; [0][0][0][0] when none).</summary>
+    public string CodecTag { get; init; } = "";
+
+    /// <summary>The language tag (eng, swe, ...); null when there's none.</summary>
+    public string? Language { get; init; }
+
+    /// <summary>The title tag; null when there's none.</summary>
+    public string? Title { get; init; }
+
+    /// <summary>Flagged as the default track of its type.</summary>
+    public bool IsDefault { get; init; }
+
+    /// <summary>Flagged as forced (subtitles shown even when subtitles are off).</summary>
+    public bool IsForced { get; init; }
+
+    /// <summary>The bit rate in bits per second, when the container says; null otherwise.</summary>
+    public long? BitRate { get; init; }
+
+    /// <summary>The stream's duration (to the microsecond, as ffprobe prints it); null if unknown.</summary>
+    public TimeSpan? Duration { get; init; }
+
+    /// <summary>Video: width in pixels (as coded, before rotation); otherwise null.</summary>
+    public int? Width { get; init; }
+
+    /// <summary>Video: height in pixels; otherwise null.</summary>
+    public int? Height { get; init; }
+
+    /// <summary>Audio: samples per second; otherwise null.</summary>
+    public int? SampleRate { get; init; }
+
+    /// <summary>Audio: channels; otherwise null.</summary>
+    public int? Channels { get; init; }
+
+    /// <summary>Audio: FFmpeg's channel layout name (mono, stereo, 5.1(side), ...); null when unspecified or not audio.</summary>
+    public string? ChannelLayout { get; init; }
+
+    /// <summary>Audio: FFmpeg's sample format name (fltp, s16, ...); otherwise null.</summary>
+    public string? SampleFormat { get; init; }
 }
 
 /// <summary>How frames are decoded.</summary>

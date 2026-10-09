@@ -38,12 +38,16 @@ public static unsafe class MediaProbe
             for (int i = 0; i < fmt->nb_streams; i++)
                 audio |= fmt->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_AUDIO;
             int index = Demuxer.FirstVideoStream(fmt);
+            var streams = new List<StreamInfo>();
+            for (int i = 0; i < fmt->nb_streams; i++)
+                streams.Add(Stream(fmt->streams[i], i));
             return new MediaInfo
             {
                 Container = Marshal.PtrToStringAnsi((IntPtr)fmt->iformat->name) ?? "",
                 DurationMicroseconds = Known(fmt->duration),
                 Video = index < 0 ? null : Video(fmt->streams[index], index),
                 HasAudio = audio,
+                Streams = streams,
                 PacketTimestamps = index >= 0 && options?.PacketTimestamps == true ? Packets(fmt, index) : null,
             };
         }
@@ -90,6 +94,55 @@ public static unsafe class MediaProbe
             DurationPts = Known(st->duration),
             FrameCount = st->nb_frames != 0 ? st->nb_frames : null,
             Rotation = rotation,
+        };
+    }
+
+    static StreamInfo Stream(AVStream* st, int index)
+    {
+        var par = st->codecpar;
+        var desc = ffmpeg.avcodec_descriptor_get(par->codec_id);
+        byte* tag = stackalloc byte[ffmpeg.AV_FOURCC_MAX_STRING_SIZE];
+        ffmpeg.av_fourcc_make_string(tag, par->codec_tag);
+        bool video = par->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO, audio = par->codec_type == AVMediaType.AVMEDIA_TYPE_AUDIO;
+        string? layout = null;
+        if (audio && par->ch_layout.order != AVChannelOrder.AV_CHANNEL_ORDER_UNSPEC)
+        {
+            byte* buf = stackalloc byte[128];
+            if (ffmpeg.av_channel_layout_describe(&par->ch_layout, buf, 128) > 0)
+                layout = Marshal.PtrToStringAnsi((IntPtr)buf);
+        }
+        string? Tag(string key)
+        {
+            var e = ffmpeg.av_dict_get(st->metadata, key, null, 0);
+            return e == null ? null : Marshal.PtrToStringUTF8((IntPtr)e->value);
+        }
+        return new StreamInfo
+        {
+            Index = index,
+            Type = par->codec_type switch
+            {
+                AVMediaType.AVMEDIA_TYPE_VIDEO => StreamType.Video,
+                AVMediaType.AVMEDIA_TYPE_AUDIO => StreamType.Audio,
+                AVMediaType.AVMEDIA_TYPE_SUBTITLE => StreamType.Subtitle,
+                AVMediaType.AVMEDIA_TYPE_DATA => StreamType.Data,
+                AVMediaType.AVMEDIA_TYPE_ATTACHMENT => StreamType.Attachment,
+                _ => StreamType.Unknown,
+            },
+            Codec = desc != null ? Marshal.PtrToStringAnsi((IntPtr)desc->name) ?? "unknown" : "unknown",
+            CodecTag = Marshal.PtrToStringAnsi((IntPtr)tag) ?? "",
+            Language = Tag("language"),
+            Title = Tag("title"),
+            IsDefault = (st->disposition & ffmpeg.AV_DISPOSITION_DEFAULT) != 0,
+            IsForced = (st->disposition & ffmpeg.AV_DISPOSITION_FORCED) != 0,
+            BitRate = par->bit_rate > 0 ? par->bit_rate : null,
+            DurationPts = Known(st->duration),
+            TimeBase = new(st->time_base.num, st->time_base.den),
+            Width = video ? par->width : null,
+            Height = video ? par->height : null,
+            SampleRate = audio ? par->sample_rate : null,
+            Channels = audio ? par->ch_layout.nb_channels : null,
+            ChannelLayout = layout,
+            SampleFormat = audio ? ffmpeg.av_get_sample_fmt_name((AVSampleFormat)par->format) : null,
         };
     }
 
