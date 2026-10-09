@@ -37,8 +37,10 @@ public static class ReferenceTone
     /// <summary>Reads the rest of <paramref name="audio"/> (at its rate and channels) and returns its tone segments.</summary>
     /// <param name="audio">The samples; read to the end, not disposed.</param>
     /// <param name="options">Frequency, minimum length, longest break; null: 1 kHz, 5 s, 1 s.</param>
+    /// <param name="cancellationToken">Stops reading.</param>
     /// <exception cref="FrameReaderException">Decoding failed.</exception>
-    public static IReadOnlyList<ToneSegment> Find(AudioReader audio, ReferenceToneOptions? options = null)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public static IReadOnlyList<ToneSegment> Find(AudioReader audio, ReferenceToneOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new ReferenceToneOptions();
         int rate = audio.SampleRate, channels = audio.Channels;
@@ -77,6 +79,7 @@ public static class ReferenceTone
 
         while (audio.TryRead(out var chunk))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             origin ??= chunk.Time;
             var samples = chunk.Samples;
             for (int i = 0; i < chunk.Length; i++)
