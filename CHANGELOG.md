@@ -5,6 +5,11 @@ semantic versioning (README, "Versions"); before it, minor versions could change
 
 ## Unreleased
 
+### Fixed
+
+- In-process decoding kept the file open when it failed after opening it (no video stream, no decoder for the codec,
+  an unsupported rotation), until the process ended: a file without video couldn't be deleted after the error.
+
 ## 1.0.0 – 2026-10-08
 
 The first stable release: identical results to scenedetect 0.7.1, the public API frozen under semantic versioning,
