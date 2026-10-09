@@ -126,13 +126,12 @@ public sealed class WaveformData
     /// <summary>
     /// A float sample as the 16-bit one audiowaveform reads through libsndfile: integer sources (exact in float for up to
     /// 24 bits) shifted down to 16 bits, rounding toward minus infinity as libsndfile's shift does; float sources scaled
-    /// by 32767 and truncated, as audiowaveform scales them.
+    /// by 32767, truncated and cast to a short as audiowaveform does, so beyond full scale they wrap around rather than
+    /// clip (static_cast&lt;short&gt; keeps the low 16 bits).
     /// </summary>
-    internal static int ToShort(float sample, bool fromFloat)
-    {
-        double scaled = fromFloat ? Math.Truncate(sample * 32767f) : Math.Floor(sample * 32768.0);
-        return (int)Math.Clamp(scaled, short.MinValue, short.MaxValue);
-    }
+    internal static int ToShort(float sample, bool fromFloat) => fromFloat
+        ? (short)(int)Math.Clamp(MathF.Truncate(sample * 32767f), int.MinValue, int.MaxValue)
+        : (int)Math.Clamp(Math.Floor(sample * 32768.0), short.MinValue, short.MaxValue);
 
     /// <summary>
     /// Writes audiowaveform's binary .dat: version 1 for one waveform, 2 (with the channel count) for several;

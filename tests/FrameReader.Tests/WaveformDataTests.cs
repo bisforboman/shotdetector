@@ -107,7 +107,7 @@ public class WaveformDataTests
         Assert.Equal(-1, WaveformData.ToShort(-1 / 32768f, fromFloat: false));
         Assert.Equal(-257, WaveformData.ToShort(-0x1_0001 / 8388608f, fromFloat: false)); // 24-bit -65537 >> 8: toward minus infinity, not -256
         Assert.Equal(0, WaveformData.ToShort(-0.00002f, fromFloat: true));              // float: scaled by 32767, truncated
-        Assert.Equal(32767, WaveformData.ToShort(1.5f, fromFloat: true));
+        Assert.Equal(-16386, WaveformData.ToShort(1.5f, fromFloat: true));           // 49150 wraps, as audiowaveform's cast does
         Assert.Equal(-32768, WaveformData.ToShort(-1.5f, fromFloat: false));
     }
 }
