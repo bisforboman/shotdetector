@@ -350,10 +350,8 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         File.Copy(clips.ThreeShotsFaststart, Path.Combine(dir, "three.mp4"));
         VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-bsf:v", "dump_extra", "-f", "hls", "-hls_time", "2", "-hls_playlist_type", "vod",
             "-hls_segment_filename", Path.Combine(dir, "seg%03d.ts"), Path.Combine(dir, "play.m3u8")], default);
-        using var server = new System.Net.HttpListener();
-        int port = Random.Shared.Next(20000, 60000);
-        server.Prefixes.Add($"http://localhost:{port}/");
-        server.Start();
+        var (server, port) = Listen();
+        using var _ = server;
         var serving = Task.Run(async () =>
         {
             while (server.IsListening)
@@ -389,6 +387,27 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         {
             server.Stop();
             Directory.Delete(dir, true);
+        }
+
+        // A random port can be taken or reserved (Windows excludes ranges for Hyper-V and the like, about 4% of
+        // 20000-60000 here), and Start then throws: try another.
+        static (System.Net.HttpListener, int) Listen()
+        {
+            for (int attempt = 1; ; attempt++)
+            {
+                int port = Random.Shared.Next(20000, 60000);
+                var server = new System.Net.HttpListener();
+                server.Prefixes.Add($"http://localhost:{port}/");
+                try
+                {
+                    server.Start();
+                    return (server, port);
+                }
+                catch (System.Net.HttpListenerException) when (attempt < 20)
+                {
+                    server.Close();
+                }
+            }
         }
     }
 

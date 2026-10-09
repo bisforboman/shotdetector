@@ -114,6 +114,8 @@ public sealed unsafe class FrameDecoder : IDisposable
             Check(ffmpeg.avcodec_parameters_to_context(_dec, st->codecpar), "decoder parameters");
             _dec->pkt_timebase = st->time_base; // as ffmpeg's command line sets it (best-effort timestamps use it)
             _dec->thread_count = threads;
+            if (o.KeyframesOnly)
+                _dec->skip_frame = AVDiscard.AVDISCARD_NONKEY;
             Check(ffmpeg.avcodec_open2(_dec, codec, null), "open decoder");
             _pkt = ffmpeg.av_packet_alloc();
             _frame = ffmpeg.av_frame_alloc();
