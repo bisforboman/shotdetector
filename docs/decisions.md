@@ -9,6 +9,12 @@ Issue #81's audiowaveform-compatible peaks. Asked the API: **`WaveformData.Read(
 in memory and `Save(stream, bits)` for the .dat (recommended)**, not only a `WriteDat`; and the formats: **.dat only
 (recommended)**, not audiowaveform's JSON too.
 
+## The ApiBaselineVersion bump after a release (2026-10-09)
+
+A PR opened with the workflow's own token gets no CI runs, so it can't merge by itself. Asked how a stable release
+should lead to the bump: **release.yml opens an issue once nuget.org serves the version (recommended)**; not chosen: a
+PR plus CI started by workflow_dispatch, a PR with an app token or PAT, or deriving the baseline from tags at pack time.
+
 ## Streams for URLs (2026-10-09)
 
 `Streams` and `HasAudio` were null for all streamed input, URLs included. Asked: **give URLs `Streams` through one
