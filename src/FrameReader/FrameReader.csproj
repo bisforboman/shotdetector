@@ -22,6 +22,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="FrameReader.Tests" />
+    <!-- For now: ShotDetector's decoder still opens inputs itself (Demuxer, StreamInput) until it moves here too
+         (milestone 3 in docs/frame-reader-library.md); remove then. -->
+    <InternalsVisibleTo Include="ShotDetector" />
   </ItemGroup>
 
 </Project>

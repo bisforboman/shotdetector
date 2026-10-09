@@ -1,6 +1,6 @@
 using FFmpeg.AutoGen;
 
-namespace ShotDetector;
+namespace FrameReader;
 
 /// <summary>
 /// A .NET Stream as FFmpeg's input (a custom AVIOContext): <c>prefix</c> first (the bytes already read to probe it),

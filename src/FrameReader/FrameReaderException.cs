@@ -5,6 +5,9 @@ public enum FrameReaderError
 {
     /// <summary>FFmpeg 8's shared libraries couldn't be loaded.</summary>
     LibrariesNotFound,
+
+    /// <summary>FFmpeg can't open or read the input.</summary>
+    InvalidInput,
 }
 
 /// <summary>A failure reading a video, with its <see cref="Reason"/>.</summary>
