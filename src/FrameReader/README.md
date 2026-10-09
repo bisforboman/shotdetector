@@ -36,6 +36,20 @@ foreach (var t in new[] { 10, 60, 120 })
         Save(frame.Data.ToArray(), frame.Width, frame.Height);
 ```
 
+A picture every second of a film: read forward instead of seeking. `TryReadForwardTo(time, out frame)` decodes on to
+the first frame at or after the time and converts only that one, so the whole film is one pass (seeking to each
+second re-decodes from a keyframe every time: on a 1080p trailer, 4x the CPU).
+
+```csharp
+using var sheet = new VideoFrameReader("film.mp4", new() { Width = 320, Height = 180, Format = FrameFormat.Rgba32 });
+for (int second = 0; sheet.TryReadForwardTo(TimeSpan.FromSeconds(second), out var frame); second++)
+    Save(frame.Data.ToArray(), frame.Width, frame.Height);
+```
+
+Seeking is ffmpeg's `-ss` exactly, including its weakness: in open GOPs (MPEG-2, some H.264), the B-frames right after
+the keyframe it lands on are decoded without their reference, so a seek to one of them gives a damaged picture, as
+ffmpeg's does. Reading forward decodes everything and gives the true frames.
+
 Audio: `AudioReader` reads the best audio stream as interleaved float32, at a chosen sample rate and channel count
 (default: the stream's own), the samples `ffmpeg -vn -ar R -ac C -f f32le` gives; `Seek(time)` as `-ss`.
 

@@ -126,7 +126,8 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// Seeks so the next <see cref="TryRead"/> gives the frame ffmpeg's <c>-ss</c> gives for <paramref name="time"/>:
     /// the first frame at or after it (from the keyframe before it, decoding forward and dropping the frames before,
     /// as ffmpeg's accurate seek does). <see cref="VideoFrame.Index"/> counts again from 0. With deinterlacing, only
-    /// before the first read.
+    /// before the first read. In open GOPs the B-frames just after the keyframe it lands on decode without their reference,
+    /// as with ffmpeg; <see cref="TryReadForwardTo"/> gives the true frames.
     /// </summary>
     /// <param name="time">From the input's start (as <see cref="VideoFrame.Time"/>).</param>
     public void Seek(TimeSpan time)
