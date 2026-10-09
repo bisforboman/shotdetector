@@ -98,3 +98,19 @@ jobs:
           python tools/realworld.py ${{ matrix.video }} --report realworld.md || status=$?
           { echo "### ${{ matrix.video }}"; cat realworld.md; } >> "$GITHUB_STEP_SUMMARY"
           exit ${status:-0}
+
+  # The one check branch protection requires from this workflow: every job above passed or was skipped (a light PR
+  # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
+  passed:
+    name: Real world passed
+    needs: [changes, realworld]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")' > /dev/null
