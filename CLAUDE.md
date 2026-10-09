@@ -15,6 +15,7 @@ differ is documented in README.md and in `docs/decisions.md`.
 
 ## Status
 
+1.2.0 released 2026-10-09 (FrameReader WaveformData and AudioFilter, issue #81; audio filters in Native).
 1.1.0 released 2026-10-09 (VideoInfo.Streams for files and URLs, zlib 1.3.2/dav1d 1.5.4, issue #81's probe).
 1.0.0 released 2026-10-08 (API frozen: semantic versioning, package validation once ApiBaselineVersion is set).
 0.10.0 released 2026-10-08 (in-process rotation/image sequences/AV1/streams, row-wise yadif in FastYuv, decoding
