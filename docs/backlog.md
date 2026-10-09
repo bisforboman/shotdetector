@@ -82,7 +82,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 | Item | Why | Status |
 |---|---|---|
-| Track scenedetect releases: a weekly CI job that opens an issue when PyPI has a newer scenedetect | Matching scenedetect is the point; a new release means a new compatibility mode (the default tracks the newest, README "Versions") | Open |
+| Track scenedetect releases: a weekly CI job that opens an issue when PyPI has a newer scenedetect | Matching scenedetect is the point; a new release means a new compatibility mode (the default tracks the newest, README "Versions") | Done (2026-10-09): upstream.yml, Mondays |
 | FFmpeg 9's libraries (libavcodec.so.63): load them in-process, or at least test what Auto does | Distros will move; today Auto falls back to the (slower) executable there, and our Native packages stay on 8.1 | Open |
 | README performance: 1.0's x64 and ARM benchmark, 2-CPU figures and memory | Issue #7 asked for 2-CPU numbers; the README table predates in-process decoding | Open |
 | DASH and RTSP input checked against the file | fMP4, TS and HLS are (tests); DASH needs ffmpeg with libxml2, RTSP a test server in CI | Maybe |

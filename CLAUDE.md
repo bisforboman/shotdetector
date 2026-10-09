@@ -80,7 +80,7 @@ then fails on any breaking change to ShotDetector or FastYuv (SDK package valida
   `tools/make-samples.ps1`: synthetic + Blender trailers + VFR/rotation/colour variants. `tools/realworld.py`:
   whole Blender films and codec clips, pinned by SHA-256. `tools/mutation/`: guard mutations.
 - `.github/workflows`: `ci.yml` (build/test, AOT matrix incl. Alpine, parity matrix), `mutation.yml`,
-  `realworld.yml` (also nightly 02:17 UTC), `benchmark.yml` (weekly + on demand; `tools/bench.py`), `release.yml` (tag → NuGet trusted publishing + GitHub release + binaries).
+  `realworld.yml` (also nightly 02:17 UTC), `benchmark.yml` (weekly + on demand; `tools/bench.py`), `upstream.yml` (Mondays: an issue when PyPI has a newer scenedetect than CI's pin), `release.yml` (tag → NuGet trusted publishing + GitHub release + binaries).
 - `Directory.Build.props` (version; release.yml overrides from the tag), `Directory.Packages.props` (central versions).
 
 ## Gotchas (each cost time once)

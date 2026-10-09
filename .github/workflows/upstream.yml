@@ -1,0 +1,48 @@
+name: Upstream releases
+
+# Weekly: an issue when something ShotDetector matches has a newer release than the one it's checked against, so a new
+# compatibility mode doesn't slip by. One issue per release (none if one exists, open or closed).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '27 5 * * 1'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  scenedetect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: A newer scenedetect on PyPI?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The version CI compares against (the real-world workflow pins it; ci.yml's parity matrix has the same).
+          ours=$(grep -oE 'scenedetect==[0-9][0-9.]*' .github/workflows/realworld.yml | head -1 | cut -d= -f3)
+          latest=$(curl -fsSL --retry 3 https://pypi.org/pypi/scenedetect/json | jq -r .info.version)
+          echo "ShotDetector matches scenedetect $ours; PyPI's newest release is $latest."
+          # Releases only (X.Y.Z): a dev or rc version doesn't count.
+          newer=$(python3 -c 'import sys; v = lambda s: tuple(int(x) for x in s.split(".")); print(v(sys.argv[2]) > v(sys.argv[1]))' "$ours" "$latest" 2>/dev/null || echo False)
+          [ "$newer" = True ] || exit 0
+          title="scenedetect $latest released"
+          if gh issue list --state all --search "\"$title\" in:title" --json title --jq '.[].title' | grep -qxF "$title"; then
+            echo "Already filed: $title"
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$(cat <<EOF
+          PyPI has scenedetect $latest; ShotDetector matches $ours (found by the weekly upstream check).
+
+          Release notes: https://github.com/Breakthrough/PySceneDetect/releases (and https://pypi.org/project/scenedetect/$latest/).
+
+          To support it (README "Versions": the default compatibility mode tracks the newest scenedetect, a minor version):
+          - [ ] Read the release notes for changes to detection, downscaling, frame rates, timecodes, CSV/stats output or the CLI.
+          - [ ] Compare: \`pip install scenedetect==$latest\`, then \`python tools/compare.py samples/*.mp4 ... --detector all --stats\` and the real-world films.
+          - [ ] For each difference: reproduce it as a new \`PySceneDetectVersion\` value (default), keeping $ours selectable; tests and mutation lines for new quirks.
+          - [ ] Move the pins (\`scenedetect==\` in ci.yml's parity matrix, realworld.yml, benchmark.yml) and the docs.
+          EOF
+          )"
