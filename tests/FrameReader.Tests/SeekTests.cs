@@ -136,4 +136,36 @@ public class SeekTests
             Directory.Delete(dir, true);
         }
     }
+
+    // ReadAt: several readers on contiguous shares of the times give the frames one reader gives, byte for byte.
+    [Theory]
+    [InlineData("bframes.mp4", "-c:v mpeg4 -bf 2 -g 12")]
+    [InlineData("opengop.mkv", "-c:v mpeg2video -bf 2 -g 12")]
+    public void ReadsInParallelAsOneReaderDoes(string name, string encode)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-par-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=6", .. encode.Split(' '), path]);
+            var options = new FrameReaderOptions { Width = 160, Height = 90, Format = FrameFormat.Gray8, Decoder = new FrameDecoderOptions { LibraryDirectory = Libs } };
+            var times = Enumerable.Range(0, 30).Select(i => TimeSpan.FromSeconds(i * 0.21)).ToList(); // the last ones past the end
+            var expected = new List<byte[]>();
+            using (var reader = new VideoFrameReader(path, options))
+                foreach (var t in times)
+                    if (reader.TryReadForwardTo(t, out var frame))
+                        expected.Add(frame.Data.ToArray());
+            var actual = new byte[times.Count][];
+            int found = VideoFrameReader.ReadAt(path, times, options, 3, (i, frame) => actual[i] = frame.Data.ToArray());
+            Assert.Equal(expected.Count, found);
+            for (int i = 0; i < expected.Count; i++)
+                Assert.True(expected[i].AsSpan().SequenceEqual(actual[i]), $"{name}: time {times[i]} differs");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }

@@ -84,6 +84,11 @@ public readonly ref struct VideoFrame
     public ReadOnlySpan<byte> Data { get; }
 }
 
+/// <summary>Receives a frame read for the time at <paramref name="index"/> in the list given (<see cref="VideoFrameReader.ReadAt"/>).</summary>
+/// <param name="index">The time's position in the list.</param>
+/// <param name="frame">The frame, valid only during the call.</param>
+public delegate void FrameHandler(int index, VideoFrame frame);
+
 /// <summary>
 /// Reads a video's frames at a chosen size and pixel format, in this process through FFmpeg's libraries. The pixels
 /// are the bytes ffmpeg's command line gives for <c>-vf scale=W:H:flags=bicubic,format=F -f rawvideo</c> (swscale with
@@ -164,6 +169,47 @@ public sealed unsafe class VideoFrameReader : IDisposable
     {
         Seek(time);
         return TryRead(out frame);
+    }
+
+    /// <summary>
+    /// The frames at <paramref name="times"/> (ascending), as <see cref="TryReadForwardTo"/> gives them, read by
+    /// <paramref name="parallelism"/> readers at once, each taking a contiguous share of the times (and of the decoder
+    /// threads): the same frames in less wall time when there are spare cores. <paramref name="handler"/> is called from
+    /// several threads at once; in time order within each share.
+    /// </summary>
+    /// <param name="path">A file (a Stream can't be read by several readers).</param>
+    /// <param name="times">From the input's start, ascending.</param>
+    /// <param name="options">Size, format and decoding; not <see cref="FrameReaderOptions.FrameRate"/>.</param>
+    /// <param name="parallelism">Readers at once; null: half the cores, at most 4.</param>
+    /// <param name="handler">Called for each frame found, with its time's index.</param>
+    /// <returns>How many times had a frame (the rest are past the end).</returns>
+    public static int ReadAt(string path, IReadOnlyList<TimeSpan> times, FrameReaderOptions? options, int? parallelism, FrameHandler handler)
+    {
+        options ??= new FrameReaderOptions();
+        if (options.FrameRate is not null)
+            throw new ArgumentException("ReadAt reads frames at times; FrameRate isn't available.", nameof(options));
+        for (int i = 1; i < times.Count; i++)
+            if (times[i] < times[i - 1])
+                throw new ArgumentException("The times are in ascending order.", nameof(times));
+        int cores = Environment.ProcessorCount;
+        int workers = Math.Clamp(parallelism ?? Math.Min(4, cores / 2), 1, Math.Max(1, times.Count));
+        var decoder = options.Decoder ?? new FrameDecoderOptions();
+        if (workers > 1 && decoder.Threads == 0)
+            options = options with { Decoder = decoder with { Threads = Math.Max(1, cores / workers) } };
+        int found = 0;
+        Parallel.For(0, workers, new ParallelOptions { MaxDegreeOfParallelism = workers }, w =>
+        {
+            int from = w * times.Count / workers, to = (w + 1) * times.Count / workers;
+            using var reader = new VideoFrameReader(path, options);
+            for (int i = from; i < to; i++)
+            {
+                if (!reader.TryReadForwardTo(times[i], out var frame))
+                    break;
+                handler(i, frame);
+                Interlocked.Increment(ref found);
+            }
+        });
+        return found;
     }
 
     /// <summary>Decodes and converts the next frame; false at the end.</summary>
