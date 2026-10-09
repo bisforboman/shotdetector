@@ -98,7 +98,9 @@ while (audio.TryRead(out var chunk))
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio, and `Streams`: every
 stream with its type, codec, codec tag, language, title, flags, bit rate, duration and audio details; optionally
 every packet's timestamp). `FrameDecoder` is the lower level: decoded frames as FFmpeg holds them (`GetPlane`), with
-seeking.
+seeking. `BgrConverter` turns its current frame into BGR at its own size, the bytes `-vf scale,format=bgr24` gives
+(OpenCV's too); `Convert(rows, out stride)` converts only the slices holding the rows you read, for when you sample a
+few rows of each frame (ShotDetector reads its resize's rows this way).
 
 ## Speed
 

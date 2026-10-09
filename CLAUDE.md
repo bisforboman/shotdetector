@@ -65,11 +65,11 @@ then fails on any breaking change to ShotDetector or FastYuv (SDK package valida
   histogram), `HashDetector`, `ContentScorer`, `EdgeDetector`, `Hsv`, `CvResize`, `FrameTime` (FrameTimecode
   arithmetic), `Shots`, `Stats`, `Export`, `IYuv420Converter`.
 - `src/FrameReader`: the general frame-reader library being extracted (docs/frame-reader-library.md), MIT, internal
-  (no package yet; ShotDetector's package carries FrameReader.dll, ShotDetector references it one way). So far
+  (no package yet; ShotDetector's package carries FrameReader.dll, ShotDetector references it one way, through its public API only). So far
   `FFmpegLibraries` (loading FFmpeg 8's libraries), `MediaProbe` (headers, packet pts, Stream input; ShotDetector's
   `InProcessProbe` formats it as ffprobe text), `VideoFrameReader` (frames at a size and format, the bytes of ffmpeg's scale+format filters),
-  `FrameDecoder` (decode, seek, deinterlace, autorotate; ShotDetector's
-  `FrameWriter` converts its frames to the pipelines' layouts), `FrameReaderException` (ShotDetector maps it in
+  `FrameDecoder` (decode, seek, deinterlace, autorotate), `BgrConverter` (a decoded frame as ffmpeg's
+  scale,format=bgr24, whole or some rows; ShotDetector's `FrameWriter` builds the pipelines' layouts on it), `FrameReaderException` (ShotDetector maps it in
   `InProcess.Map`); tests in `tests/FrameReader.Tests`.
 - `src/ShotDetector.FastYuv`: LGPL swscale yuv420p→BGR port (`SwscaleYuv420`), its own COPYING.LGPL and README.
 - `src/ShotDetector.Cli`: `shotdetect` (list-scenes table/CSV/JSON, `--stats`, `--save-images`, `--split-video`,
@@ -80,7 +80,7 @@ then fails on any breaking change to ShotDetector or FastYuv (SDK package valida
   `tools/make-samples.ps1`: synthetic + Blender trailers + VFR/rotation/colour variants. `tools/realworld.py`:
   whole Blender films and codec clips, pinned by SHA-256. `tools/mutation/`: guard mutations.
 - `.github/workflows`: `ci.yml` (build/test, AOT matrix incl. Alpine, parity matrix), `mutation.yml`,
-  `realworld.yml` (also nightly 02:17 UTC), `benchmark.yml` (weekly + on demand; `tools/bench.py`), `release.yml` (tag → NuGet trusted publishing + GitHub release + binaries).
+  `realworld.yml` (also nightly 02:17 UTC), `benchmark.yml` (weekly + on demand; `tools/bench.py`), `upstream.yml` (Mondays: an issue when PyPI has a newer scenedetect than CI's pin, or a newer FFmpeg point release than the native build's), `release.yml` (tag → NuGet trusted publishing + GitHub release + binaries).
 - `Directory.Build.props` (version; release.yml overrides from the tag), `Directory.Packages.props` (central versions).
 
 ## Gotchas (each cost time once)
