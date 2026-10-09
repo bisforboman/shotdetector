@@ -7,7 +7,7 @@ ShotDetector keeps its conversions (FrameWriter: the pipelines' exact layouts) a
 (InProcessProbe), and maps FrameReaderException to its own reasons (InProcess.Map). The public frame API is in:
 VideoFrameReader (a size and FrameFormat, the bytes of ffmpeg's `scale=W:H:flags=bicubic,format=F`, checked byte for
 byte) and the library's README. FrameReader still has InternalsVisibleTo ShotDetector for the AVFrame, on-demand rows
-and a prefixed Stream (its sampled-row and crop conversions go beyond the public API). Milestone 5 (benchmarks) done: FrameReader's README has the numbers (x64 and ARM). Next: milestone 6 (exact seeking and thumbnails, audio, hardware decoding) when wanted. Answers to "Before writing code" 1-3 and
+and a prefixed Stream (its sampled-row and crop conversions go beyond the public API). Milestone 5 (benchmarks) done: FrameReader's README has the numbers (x64 and ARM). Milestone 6: exact seeking and thumbnails done (VideoFrameReader.Seek/TryReadAt, the frame `ffmpeg -ss T` gives, byte for byte; with deinterlacing only before the first read); audio next; hardware decoding skipped for now (decisions.md). Answers to "Before writing code" 1-3 and
 build-vs-contribute in docs/decisions.md. For Claude Code: read this file and CLAUDE.md, then start at
 "Before writing code". Record every answer the user gives in `docs/decisions.md` as usual.
 
