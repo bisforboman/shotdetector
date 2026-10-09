@@ -28,8 +28,10 @@ dotnet tool install -g ShotDetector.Cli         # the shotdetect command (bundle
 When FFmpeg 8's shared libraries are available, video files are read and decoded in-process, with no ffmpeg or
 ffprobe needed: faster and lighter, with the same results (see Performance). The `ShotDetector.Native.<rid>`
 packages (`win-x64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `osx-arm64`) carry them, built by us for
-decoding only; the CLI tool and binaries bundle them. A "shared" FFmpeg build, or `ffmpeg-libs` on Alpine, works
-too.
+decoding only; the CLI tool and binaries bundle them. A "shared" FFmpeg 8 build, or `ffmpeg-libs` on Alpine, works
+too. FFmpeg 9's libraries (libavcodec 63) don't load in-process: with only those, `Auto` uses the executable, and an
+FFmpeg 9 executable gives the same results (CI's comparison with scenedetect runs on it). We move to FFmpeg 9's
+libraries when OpenCV's wheels do, since scenedetect's frames come from OpenCV's FFmpeg.
 
 The ffmpeg and ffprobe executables (on `PATH`, or in `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`) are still
 needed without those libraries, and for URLs and the image and clip exports. Files of every kind decode

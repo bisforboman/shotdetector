@@ -83,7 +83,8 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | Item | Why | Status |
 |---|---|---|
 | Track scenedetect releases: a weekly CI job that opens an issue when PyPI has a newer scenedetect | Matching scenedetect is the point; a new release means a new compatibility mode (the default tracks the newest, README "Versions") | Open |
-| FFmpeg 9's libraries (libavcodec.so.63): load them in-process, or at least test what Auto does | Distros will move; today Auto falls back to the (slower) executable there, and our Native packages stay on 8.1 | Open |
+| FFmpeg 9's libraries (libavcodec.so.63): load them in-process, or at least test what Auto does | Distros will move; today Auto falls back to the (slower) executable there, and our Native packages stay on 8.1 | Done (2026-10-09): tested and documented, not loaded (decisions.md). With only FFmpeg 9.0.2 there, Auto uses its executable and the results equal in-process 8.1's on 14 samples x 5 detectors with stats; CI's parity job runs this way (FFmpeg 9.0 executable, no libraries) |
+| Move to FFmpeg 9's libraries (FFmpeg.AutoGen 9, Native packages on 9.0.x) when opencv-python's Linux wheels bundle FFmpeg 9 | scenedetect's frames come from OpenCV's FFmpeg; moving earlier risks bytes OpenCV doesn't give, and drops system FFmpeg 8 in-process | Maybe |
 | README performance: 1.0's x64 and ARM benchmark, 2-CPU figures and memory | Issue #7 asked for 2-CPU numbers; the README table predates in-process decoding | Open |
 | DASH and RTSP input checked against the file | fMP4, TS and HLS are (tests); DASH needs ffmpeg with libxml2, RTSP a test server in CI | Maybe |
 | URLs in-process: network protocols (and TLS for https) in our FFmpeg build | URLs are the last input on the executable; TLS means another linked library (licence, updates) | Maybe |
