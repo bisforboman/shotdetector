@@ -65,11 +65,11 @@ then fails on any breaking change to ShotDetector or FastYuv (SDK package valida
   histogram), `HashDetector`, `ContentScorer`, `EdgeDetector`, `Hsv`, `CvResize`, `FrameTime` (FrameTimecode
   arithmetic), `Shots`, `Stats`, `Export`, `IYuv420Converter`.
 - `src/FrameReader`: the general frame-reader library being extracted (docs/frame-reader-library.md), MIT, internal
-  (no package yet; ShotDetector's package carries FrameReader.dll, ShotDetector references it one way). So far
+  (no package yet; ShotDetector's package carries FrameReader.dll, ShotDetector references it one way, through its public API only). So far
   `FFmpegLibraries` (loading FFmpeg 8's libraries), `MediaProbe` (headers, packet pts, Stream input; ShotDetector's
   `InProcessProbe` formats it as ffprobe text), `VideoFrameReader` (frames at a size and format, the bytes of ffmpeg's scale+format filters),
-  `FrameDecoder` (decode, seek, deinterlace, autorotate; ShotDetector's
-  `FrameWriter` converts its frames to the pipelines' layouts), `FrameReaderException` (ShotDetector maps it in
+  `FrameDecoder` (decode, seek, deinterlace, autorotate), `BgrConverter` (a decoded frame as ffmpeg's
+  scale,format=bgr24, whole or some rows; ShotDetector's `FrameWriter` builds the pipelines' layouts on it), `FrameReaderException` (ShotDetector maps it in
   `InProcess.Map`); tests in `tests/FrameReader.Tests`.
 - `src/ShotDetector.FastYuv`: LGPL swscale yuv420p→BGR port (`SwscaleYuv420`), its own COPYING.LGPL and README.
 - `src/ShotDetector.Cli`: `shotdetect` (list-scenes table/CSV/JSON, `--stats`, `--save-images`, `--split-video`,

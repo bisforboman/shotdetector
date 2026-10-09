@@ -62,7 +62,9 @@ public sealed partial class VideoReader
                     RowDeinterlacer = _yadif is null ? null : new RowDeinterlacer(_yadif),
                     InputOptions = InProcessProbe.Options(_inputOptions),
                 };
-                using var decoder = new FrameReader.FrameDecoder(_path, decoderOptions, _stream is null ? null : new FrameReader.StreamInput(_prefix, _stream));
+                using var decoder = _stream is null
+                    ? new FrameReader.FrameDecoder(_path, decoderOptions)
+                    : new FrameReader.FrameDecoder(new PrefixedStream(_prefix, _stream), decoderOptions);
                 using var writer = new FrameWriter(decoder);
                 timeBase = decoder.TimeBase;
                 // Streamed: times from the stream's start, as ffmpeg gives them without -copyts.

@@ -22,10 +22,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="FrameReader.Tests" />
-    <!-- For now: ShotDetector's conversions read FrameDecoder's AVFrame and its on-demand rows (Frame, EnsureRows),
-         and give it a Stream with a prefix already read (StreamInput). Remove once FrameReader's public frame API
-         covers them (docs/frame-reader-library.md). -->
-    <InternalsVisibleTo Include="ShotDetector" />
   </ItemGroup>
 
 </Project>

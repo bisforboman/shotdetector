@@ -75,6 +75,41 @@ public class VideoFrameReaderTests
         }
     }
 
+    [Theory]
+    [MemberData(nameof(Sources))]
+    public void BgrConverterIsFfmpegsBgr24WholeOrRows(string name, string encode)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-bgr-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            Run(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=1", .. encode.Split(' '), path]);
+            byte[] expected = Run("-v", "error", "-i", path, "-vf", "scale=iw:ih:flags=bicubic,format=bgr24", "-f", "rawvideo", "-");
+            int[] rows = [0, 1, 7, 100, 101, 102, 200, 239];
+            const int Row = 320 * 3, Frame = Row * 240;
+            int frames = 0;
+            using var decoder = new FrameDecoder(path, new FrameDecoderOptions { LibraryDirectory = Libs });
+            using var whole = new BgrConverter(decoder);
+            using var some = new BgrConverter(decoder);
+            for (; decoder.Next(); frames++)
+            {
+                var bgr = whole.Convert(out int stride);
+                for (int y = 0; y < 240; y++)
+                    Assert.True(bgr.Slice(y * stride, Row).SequenceEqual(expected.AsSpan(frames * Frame + y * Row, Row)), $"{name}: frame {frames}, row {y}");
+                var sampled = some.Convert(rows, out stride);
+                foreach (int y in rows)
+                    Assert.True(sampled.Slice(y * stride, Row).SequenceEqual(expected.AsSpan(frames * Frame + y * Row, Row)), $"{name}: frame {frames}, row {y} alone");
+            }
+            Assert.Equal(25, frames);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     static int FirstDifference(byte[] a, byte[] b)
     {
         int n = Math.Min(a.Length, b.Length);
