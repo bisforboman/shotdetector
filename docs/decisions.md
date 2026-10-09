@@ -3,6 +3,14 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## Encoding: which way (2026-10-09)
+
+After the investigation (docs/encoding-package.md: encoders live in libavcodec, so a separate package is a second
+full build replacing ShotDetector.Native). Asked: **MP3 (LAME), AAC and muxers in ShotDetector.Native, still LGPL,
++~0.5 MB zipped; H.264 stays with the ffmpeg executable (recommended)**; not chosen: platform H.264 encoders
+(Media Foundation, VideoToolbox, NVENC, VAAPI), OpenH264 built from source (AVC patents left to app vendors), or a
+separate GPL build with x264.
+
 ## Encoding as a separate package: investigate (2026-10-09)
 
 Encoding was declined on issue #81 (x264 is GPL; a different product). The user asked whether a sub-package could
