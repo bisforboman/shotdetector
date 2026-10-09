@@ -341,3 +341,19 @@ jobs:
         run: |
           python tools/compare.py samples/informational/*.mp4 samples/informational/*.mov samples/informational/*.mxf --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### 10-bit (informational), ${{ matrix.path }} path"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
+
+  # The one check branch protection requires from this workflow: every job above passed or was skipped (a light PR
+  # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
+  passed:
+    name: CI passed
+    needs: [changes, native, build, aot, native-arm, arm, alpine, parity]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")' > /dev/null
