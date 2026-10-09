@@ -68,7 +68,8 @@ set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
   --disable-debug --enable-stripping --enable-optimizations
 
 case "$rid" in
-  win-x64) set -- "$@" --arch=x86_64 --target-os=mingw32 --cross-prefix=x86_64-w64-mingw32- \
+  # D3D11VA/DXVA2 for FrameReader's HardwareDecoding: Windows' own APIs, no extra libraries.
+  win-x64) set -- "$@" --enable-d3d11va --enable-dxva2 --arch=x86_64 --target-os=mingw32 --cross-prefix=x86_64-w64-mingw32- \
              --extra-ldflags=-static-libgcc --enable-w32threads ;;
   # No RUNPATH on Linux: the loader loads each library's dependencies first, by full path.
   linux-*) set -- "$@" --enable-pthreads ;;

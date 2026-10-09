@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using FFmpeg.AutoGen;
 
 namespace FrameReader;
@@ -114,6 +115,9 @@ public sealed unsafe class FrameDecoder : IDisposable
             Check(ffmpeg.avcodec_parameters_to_context(_dec, st->codecpar), "decoder parameters");
             _dec->pkt_timebase = st->time_base; // as ffmpeg's command line sets it (best-effort timestamps use it)
             _dec->thread_count = threads;
+            if (o.HardwareDecoding)
+                SetUpHardware(codec, st->codecpar);
+
             if (o.KeyframesOnly)
                 _dec->skip_frame = AVDiscard.AVDISCARD_NONKEY;
             Check(ffmpeg.avcodec_open2(_dec, codec, null), "open decoder");
@@ -606,7 +610,11 @@ public sealed unsafe class FrameDecoder : IDisposable
         {
             int got = ffmpeg.avcodec_receive_frame(_dec, into);
             if (got == 0)
+            {
+                if (_hwDevice != null && (AVPixelFormat)into->format == _hwFormat)
+                    FromHardware(into);
                 return true;
+            }
             if (got == ffmpeg.AVERROR_EOF)
             {
                 _done = true;
@@ -660,6 +668,107 @@ public sealed unsafe class FrameDecoder : IDisposable
         return new ReadOnlySpan<byte>(_frame->data[(uint)plane], stride * rows);
     }
 
+    // Hardware decoding: the device, the GPU's pixel format for this codec, and the frame each GPU frame is copied to.
+    AVBufferRef* _hwDevice;
+    AVPixelFormat _hwFormat = AVPixelFormat.AV_PIX_FMT_NONE;
+    AVFrame* _hwCopy, _hwYuv;
+    AVCodecContext_get_format? _getFormat; // kept alive while FFmpeg holds a pointer to it
+
+    /// <summary>Whether frames are decoded on the GPU (<see cref="FrameDecoderOptions.HardwareDecoding"/>, and a GPU decoder took the stream).</summary>
+    public bool UsesHardware => _hwDevice != null;
+
+    void SetUpHardware(AVCodec* codec, AVCodecParameters* par)
+    {
+        // 8-bit 4:2:0 only: the GPU gives NV12, which turns back into yuv420p losslessly.
+        var format = (AVPixelFormat)par->format;
+        if (!OperatingSystem.IsWindows() || format is not (AVPixelFormat.AV_PIX_FMT_YUV420P or AVPixelFormat.AV_PIX_FMT_YUVJ420P))
+            return;
+        for (int i = 0; ; i++)
+        {
+            var config = ffmpeg.avcodec_get_hw_config(codec, i);
+            if (config == null)
+                return;
+            if (config->device_type == AVHWDeviceType.AV_HWDEVICE_TYPE_D3D11VA && (config->methods & 1 /* AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX */) != 0)
+            {
+                _hwFormat = config->pix_fmt;
+                break;
+            }
+        }
+        AVBufferRef* device = null;
+        if (ffmpeg.av_hwdevice_ctx_create(&device, AVHWDeviceType.AV_HWDEVICE_TYPE_D3D11VA, null, null, 0) < 0)
+        {
+            _hwFormat = AVPixelFormat.AV_PIX_FMT_NONE;
+            return;
+        }
+        _hwDevice = device;
+        _dec->hw_device_ctx = ffmpeg.av_buffer_ref(device);
+        _getFormat = (ctx, formats) =>
+        {
+            // The GPU's format when offered, else the first software one (FFmpeg's choice without a GPU).
+            AVPixelFormat first = AVPixelFormat.AV_PIX_FMT_NONE;
+            for (var f = formats; *f != AVPixelFormat.AV_PIX_FMT_NONE; f++)
+            {
+                if (*f == _hwFormat)
+                    return *f;
+                var desc = ffmpeg.av_pix_fmt_desc_get(*f);
+                if (first == AVPixelFormat.AV_PIX_FMT_NONE && desc != null && (desc->flags & ffmpeg.AV_PIX_FMT_FLAG_HWACCEL) == 0)
+                    first = *f;
+            }
+            return first;
+        };
+        _dec->get_format = _getFormat;
+        _hwCopy = ffmpeg.av_frame_alloc();
+        _hwYuv = ffmpeg.av_frame_alloc();
+    }
+
+    /// <summary>A GPU frame copied back (NV12) and laid out as the software decoder's yuv420p, its properties kept.</summary>
+    void FromHardware(AVFrame* frame)
+    {
+        ffmpeg.av_frame_unref(_hwCopy);
+        Check(ffmpeg.av_hwframe_transfer_data(_hwCopy, frame, 0), "copy from the GPU");
+        if ((AVPixelFormat)_hwCopy->format != AVPixelFormat.AV_PIX_FMT_NV12)
+            throw new FrameReaderException(FrameReaderError.DecodeFailed, $"The GPU gave {(AVPixelFormat)_hwCopy->format}, not NV12.");
+        // One output buffer, reused once nobody holds the last frame (the decoder unrefs it before the next).
+        var yuv = _hwYuv;
+        var format = _dec->sw_pix_fmt is AVPixelFormat.AV_PIX_FMT_YUVJ420P ? AVPixelFormat.AV_PIX_FMT_YUVJ420P : AVPixelFormat.AV_PIX_FMT_YUV420P;
+        if (yuv->width != frame->width || yuv->height != frame->height || yuv->format != (int)format || ffmpeg.av_frame_is_writable(yuv) == 0)
+        {
+            ffmpeg.av_frame_unref(yuv);
+            (yuv->format, yuv->width, yuv->height) = ((int)format, frame->width, frame->height);
+            Check(ffmpeg.av_frame_get_buffer(yuv, 32), "frame buffer");
+        }
+        int w = frame->width, h = frame->height, cw = (w + 1) / 2, ch = (h + 1) / 2;
+        for (int y = 0; y < h; y++)
+            Buffer.MemoryCopy(_hwCopy->data[0] + (long)y * _hwCopy->linesize[0], yuv->data[0] + (long)y * yuv->linesize[0], w, w);
+        for (int y = 0; y < ch; y++)
+            Deinterleave(_hwCopy->data[1] + (long)y * _hwCopy->linesize[1], yuv->data[1] + (long)y * yuv->linesize[1], yuv->data[2] + (long)y * yuv->linesize[2], cw);
+        ffmpeg.av_frame_side_data_free(&yuv->side_data, &yuv->nb_side_data);
+        ffmpeg.av_dict_free(&yuv->metadata);
+        Check(ffmpeg.av_frame_copy_props(yuv, frame), "frame");
+        ffmpeg.av_frame_unref(frame);
+        Check(ffmpeg.av_frame_ref(frame, yuv), "frame");
+    }
+
+    /// <summary>NV12's interleaved chroma row into U and V rows (16 pairs at a time).</summary>
+    static void Deinterleave(byte* uv, byte* u, byte* v, int pairs)
+    {
+        int x = 0;
+        if (Vector128.IsHardwareAccelerated)
+            for (; x + 16 <= pairs; x += 16)
+            {
+                var a = Vector128.Load((ushort*)(uv + 2 * x));
+                var b = Vector128.Load((ushort*)(uv + 2 * x + 16));
+                var mask = Vector128.Create((ushort)0xFF);
+                Vector128.Narrow(a & mask, b & mask).Store(u + x);
+                Vector128.Narrow(a >>> 8, b >>> 8).Store(v + x);
+            }
+        for (; x < pairs; x++)
+        {
+            u[x] = uv[2 * x];
+            v[x] = uv[2 * x + 1];
+        }
+    }
+
     /// <summary>Frees the decoder, its frames and FFmpeg's contexts.</summary>
     public void Dispose()
     {
@@ -675,6 +784,9 @@ public sealed unsafe class FrameDecoder : IDisposable
         if (_dec != null) { var d = _dec; ffmpeg.avcodec_free_context(&d); _dec = null; }
         if (_fmt != null) { var f = _fmt; ffmpeg.avformat_close_input(&f); _fmt = null; }
         _io?.Dispose();
+        if (_hwCopy != null) { var f = _hwCopy; ffmpeg.av_frame_free(&f); _hwCopy = null; }
+        if (_hwYuv != null) { var f = _hwYuv; ffmpeg.av_frame_free(&f); _hwYuv = null; }
+        if (_hwDevice != null) { var d = _hwDevice; ffmpeg.av_buffer_unref(&d); _hwDevice = null; }
     }
 
     static void Check(int ret, string what)

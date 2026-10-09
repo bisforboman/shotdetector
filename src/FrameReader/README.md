@@ -66,6 +66,12 @@ while (sheet.TryRead(out var frame))
     Save(frame.Data.ToArray(), frame.Width, frame.Height); // frame.Time: 0, 1, 2, ... s
 ```
 
+On Windows, `Decoder = new() { HardwareDecoding = true }` decodes on the GPU (D3D11VA) and copies each frame back,
+for 8-bit 4:2:0 video. On the desktop tested the pictures were identical to software decoding and it took about half
+the CPU (24 s instead of 44 s for the 12-minute film), but 3.6x the wall time (20 s instead of 5.5 s): every frame
+waits for the GPU. Use it when CPU is what's short, not for speed on a free machine. `FrameDecoder.UsesHardware` says
+whether a GPU decoder took the stream.
+
 For a preview where nearby frames will do, `Decoder = new() { KeyframesOnly = true }` decodes keyframes alone
 (ffmpeg's `-skip_frame nokey`): a picture a second of the 12-minute film took 5.3 s / 1.8 s of CPU instead of 50 s /
 46 s (keyframes every 0.75 s / 4.4 s), but each picture is the nearest keyframe, not the frame at that second.
