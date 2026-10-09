@@ -61,7 +61,8 @@ public sealed unsafe class AudioReader : IDisposable
     float[] _out = [];
     bool _draining, _decoderDone, _flushed;
     long _trimFrom = long.MinValue; // after a seek: input samples before this (in 1/sample_rate units, shifted) are dropped
-    long _start;
+    long _start;    // where shifted timestamps count from (AV_TIME_BASE): the input's start, or the seek point
+    long _next;     // the next frame's position when it has no timestamp
 
     /// <summary>Opens a file or URL FFmpeg can read and its best audio stream.</summary>
     /// <param name="path">What to open.</param>
@@ -98,6 +99,7 @@ public sealed unsafe class AudioReader : IDisposable
             _frame = ffmpeg.av_frame_alloc();
             DecodesFloat = _dec->sample_fmt is AVSampleFormat.AV_SAMPLE_FMT_FLT or AVSampleFormat.AV_SAMPLE_FMT_FLTP
                 or AVSampleFormat.AV_SAMPLE_FMT_DBL or AVSampleFormat.AV_SAMPLE_FMT_DBLP;
+            _start = _fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : _fmt->start_time;
             _outRate = o.SampleRate ?? _dec->sample_rate;
             _outChannels = o.Channels ?? _dec->ch_layout.nb_channels;
             AVChannelLayout outLayout;
@@ -146,6 +148,7 @@ public sealed unsafe class AudioReader : IDisposable
         // ffmpeg shifts the timestamps by -(start + T) and trims what's still below 0, counted in samples.
         _trimFrom = 0;
         _start = timestamp;
+        _next = 0;
     }
 
     /// <summary>Decodes and converts the next chunk; false at the end.</summary>
@@ -157,21 +160,9 @@ public sealed unsafe class AudioReader : IDisposable
         {
             int got;
             TimeSpan time;
-            if (Decode())
+            if (TryDecode(out int skip, out _))
             {
-                int skip = 0;
                 long pts = _frame->best_effort_timestamp;
-                if (_trimFrom != long.MinValue && pts != ffmpeg.AV_NOPTS_VALUE)
-                {
-                    // The frame's position in samples, shifted as ffmpeg shifts it: whole frames before the seek point
-                    // dropped, the first one cut.
-                    long shifted = ffmpeg.av_rescale_q(pts, _timeBase, new AVRational { num = 1, den = _frame->sample_rate })
-                        - ffmpeg.av_rescale_q(_start, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, new AVRational { num = 1, den = _frame->sample_rate });
-                    if (shifted + _frame->nb_samples <= 0)
-                        continue;
-                    skip = (int)Math.Max(0, -shifted);
-                    _trimFrom = long.MinValue;
-                }
                 got = Convert(_frame->extended_data, _frame->nb_samples, skip, _frame->format, _frame->ch_layout.nb_channels);
                 time = pts == ffmpeg.AV_NOPTS_VALUE ? TimeSpan.Zero
                     : TimeSpan.FromSeconds((pts - (_fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : ffmpeg.av_rescale_q(_fmt->start_time, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase))) * (_timeBase.num / (double)_timeBase.den));
@@ -194,6 +185,43 @@ public sealed unsafe class AudioReader : IDisposable
             }
         }
     }
+
+    /// <summary>
+    /// The next decoded frame, as the decoder gives it (<see cref="Decoded"/>: its own sample format, rate and layout),
+    /// trimmed as ffmpeg trims after a seek: whole frames before the seek point dropped, the first <paramref name="skip"/>
+    /// samples of the one across it to be dropped. <paramref name="position"/>: the first kept sample's place, in samples
+    /// from the input's start (or the seek point), as ffmpeg's shifted timestamps put it.
+    /// </summary>
+    internal bool TryDecode(out int skip, out long position)
+    {
+        while (Decode())
+        {
+            skip = 0;
+            long pts = _frame->best_effort_timestamp;
+            var rate = new AVRational { num = 1, den = _frame->sample_rate };
+            long shifted = pts == ffmpeg.AV_NOPTS_VALUE ? _next
+                : ffmpeg.av_rescale_q(pts, _timeBase, rate) - ffmpeg.av_rescale_q(_start, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, rate);
+            if (_trimFrom != long.MinValue && pts != ffmpeg.AV_NOPTS_VALUE)
+            {
+                if (shifted + _frame->nb_samples <= 0)
+                    continue;
+                skip = (int)Math.Max(0, -shifted);
+                _trimFrom = long.MinValue;
+            }
+            position = shifted + skip;
+            _next = shifted + _frame->nb_samples;
+            return true;
+        }
+        skip = 0;
+        position = 0;
+        return false;
+    }
+
+    /// <summary>The frame <see cref="TryDecode"/> gave.</summary>
+    internal AVFrame* Decoded => _frame;
+
+    /// <summary>Where <see cref="TryDecode"/>'s positions count from, on <see cref="AudioChunk.Time"/>'s timeline.</summary>
+    internal TimeSpan Origin => TimeSpan.FromTicks((_start - (_fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : _fmt->start_time)) * 10);
 
     int Convert(byte** data, int samples, int skip, int format, int channels)
     {
