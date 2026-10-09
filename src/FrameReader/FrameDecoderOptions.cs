@@ -17,6 +17,16 @@ public sealed record FrameDecoderOptions
 
     /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash (an image sequence's <c>framerate</c>).</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
+
+    /// <summary>
+    /// Decode on the GPU when possible (Windows: D3D11VA), copying each frame back: about half the CPU, but usually
+    /// slower in wall time (each frame waits for the GPU and its copy: 20 s instead of 5.5 s for a 12-minute 1280x534
+    /// film on the desktop tested). Worth it when CPU is the limit (many videos at once, a weak CPU). Only 8-bit 4:2:0
+    /// video; the frames come back in the software decoder's own layout, so everything after is the same. Whether they
+    /// equal software decoding depends on the GPU's decoder (identical on the hardware tested); off by default.
+    /// Falls back to software decoding when there's no GPU decoder for the stream (<see cref="FrameDecoder.UsesHardware"/>).
+    /// </summary>
+    public bool HardwareDecoding { get; init; }
 }
 
 /// <summary>

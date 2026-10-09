@@ -66,6 +66,12 @@ while (sheet.TryRead(out var frame))
     Save(frame.Data.ToArray(), frame.Width, frame.Height); // frame.Time: 0, 1, 2, ... s
 ```
 
+On Windows, `Decoder = new() { HardwareDecoding = true }` decodes on the GPU (D3D11VA) and copies each frame back,
+for 8-bit 4:2:0 video. On the desktop tested the pictures were identical to software decoding and it took about half
+the CPU (24 s instead of 44 s for the 12-minute film), but 3.6x the wall time (20 s instead of 5.5 s): every frame
+waits for the GPU. Use it when CPU is what's short, not for speed on a free machine. `FrameDecoder.UsesHardware` says
+whether a GPU decoder took the stream.
+
 Seeking is ffmpeg's `-ss` exactly, including its weakness: in open GOPs (MPEG-2, some H.264), the B-frames right after
 the keyframe it lands on are decoded without their reference, so a seek to one of them gives a damaged picture, as
 ffmpeg's does. Reading forward decodes everything and gives the true frames.

@@ -136,4 +136,44 @@ public class SeekTests
             Directory.Delete(dir, true);
         }
     }
+
+    // HardwareDecoding: where a GPU decoder takes the stream (not on CI's runners), the frames equal software decoding's.
+    [Theory]
+    [InlineData("h264.mp4", "-c:v libx264 -preset veryfast -pix_fmt yuv420p")]
+    [InlineData("h264-fullrange.mp4", "-c:v libx264 -preset veryfast -pix_fmt yuvj420p")]
+    public void HardwareDecodingGivesSoftwaresFrames(string name, string encode)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-hw-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            try { Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=25:d=4", .. encode.Split(' '), path]); }
+            catch (Xunit.Sdk.TrueException) { return; } // this ffmpeg can't encode H.264
+            List<(long Pts, byte[] Data)> Read(bool hardware, out bool used)
+            {
+                var frames = new List<(long, byte[])>();
+                using var decoder = new FrameDecoder(path, new FrameDecoderOptions { LibraryDirectory = Libs, HardwareDecoding = hardware });
+                using var reader = new VideoFrameReader(path, new FrameReaderOptions
+                    { Format = FrameFormat.Yuv420p, Decoder = new FrameDecoderOptions { LibraryDirectory = Libs, HardwareDecoding = hardware } });
+                while (reader.TryRead(out var frame))
+                    frames.Add((frame.Pts, frame.Data.ToArray()));
+                decoder.Next();
+                used = decoder.UsesHardware;
+                return frames;
+            }
+            var software = Read(false, out _);
+            var hardware = Read(true, out bool used);
+            if (!used)
+                return; // no GPU decoder here
+            Assert.Equal(software.Select(f => f.Pts), hardware.Select(f => f.Pts));
+            for (int i = 0; i < software.Count; i++)
+                Assert.True(software[i].Data.AsSpan().SequenceEqual(hardware[i].Data), $"{name}: frame {i} differs on the GPU");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
