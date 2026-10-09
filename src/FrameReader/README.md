@@ -38,7 +38,15 @@ foreach (var t in new[] { 10, 60, 120 })
 
 A picture every second of a film: read forward instead of seeking. `TryReadForwardTo(time, out frame)` decodes on to
 the first frame at or after the time and converts only that one, so the whole film is one pass (seeking to each
-second re-decodes from a keyframe every time: on a 1080p trailer, 4x the CPU).
+second re-decodes from a keyframe every time: on a 1080p trailer, 4x the CPU). When the next picture is further away
+than a keyframe (at least a second ahead, per the container's index), it jumps instead of decoding the frames in
+between, still exact. CPU for Tears of Steel (12 min, 1280x534), with keyframes every 0.75 s / every 4.4 s (x264):
+
+| Pictures | Decodes | CPU |
+|---|---|---|
+| 1 per second | everything, one pass | 49 s / 43 s |
+| 1 per 10 s | from each picture's keyframe | 6.2 s / 16 s |
+| 1 per minute | from each picture's keyframe | 1.0 s / 2.5 s |
 
 ```csharp
 using var sheet = new VideoFrameReader("film.mp4", new() { Width = 320, Height = 180, Format = FrameFormat.Rgba32 });
