@@ -93,7 +93,7 @@ https://ffmpeg.org, license: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.
 
 ## FFmpeg libraries (GNU LGPL 2.1 or later), ShotDetector.Native.<rid> and the shotdetect CLI
 
-libavcodec, libavformat, libavutil, libswscale, libswresample and libavfilter (yadif only) from FFmpeg 8.1.3
+libavcodec, libavformat, libavutil, libswscale, libswresample and libavfilter (yadif and fps only) from FFmpeg 8.1.3
 (https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz), built with `tools/native/build-ffmpeg.sh` for decoding only:
 no encoders, muxers, devices, network protocols or GPL parts; zlib and dav1d (below) linked in. Each package and
 release archive has the exact configure line (`configure.txt`) and the licence (`COPYING.LGPL`). The libraries

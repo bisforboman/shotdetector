@@ -15,7 +15,7 @@ save-images).
 ## What's inside
 
 FFmpeg 8.1.3 built for decoding only: libavcodec (decoders), libavformat (demuxers), libswscale, libswresample,
-libavutil and libavfilter with only yadif (deinterlacing). No encoders, muxers, devices or network protocols. Two
+libavutil and libavfilter with only yadif (deinterlacing) and fps (FrameReader's FrameRate). No encoders, muxers, devices or network protocols. Two
 libraries are linked in statically: zlib 1.3.1 (PNG, compressed MOV/MKV headers) and dav1d 1.5.1 (AV1).
 `configure.txt` in the package has the source URLs, their SHA-256 and the exact configure line; the build script
 is `tools/native/build-ffmpeg.sh` in the repository.

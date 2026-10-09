@@ -54,6 +54,9 @@ public sealed unsafe class FrameDecoder : IDisposable
     public long StartOffset => _fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0
         : ffmpeg.av_rescale_q(-_fmt->start_time, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase);
 
+    /// <summary>The stream's time base as FFmpeg keeps it.</summary>
+    internal AVRational StreamTimeBase => _timeBase;
+
     /// <summary>The stream's time base in seconds per pts unit.</summary>
     public double TimeBase => _timeBase.num / (double)_timeBase.den;
 

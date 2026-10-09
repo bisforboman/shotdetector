@@ -46,6 +46,18 @@ for (int second = 0; sheet.TryReadForwardTo(TimeSpan.FromSeconds(second), out va
     Save(frame.Data.ToArray(), frame.Width, frame.Height);
 ```
 
+Or, as ffmpeg's `fps` filter does it (`-vf fps=1`): `FrameRate = new Rational(1, 1)` runs the decoded frames through
+FFmpeg's own fps filter (nearest-frame rounding, duplicating or dropping), so you get the frames `-vf
+fps=R,scale=W:H:flags=bicubic,format=F` gives, byte for byte; only those are converted. `1/10` for one every ten
+seconds. The two rules can differ by a frame at the edges: reading forward takes the frame at or after each second,
+fps rounds each frame onto its timeline (and decides whether a last frame fits).
+
+```csharp
+using var sheet = new VideoFrameReader("film.mp4", new() { Width = 320, Height = 180, Format = FrameFormat.Rgba32, FrameRate = new(1, 1) });
+while (sheet.TryRead(out var frame))
+    Save(frame.Data.ToArray(), frame.Width, frame.Height); // frame.Time: 0, 1, 2, ... s
+```
+
 Seeking is ffmpeg's `-ss` exactly, including its weakness: in open GOPs (MPEG-2, some H.264), the B-frames right after
 the keyframe it lands on are decoded without their reference, so a seek to one of them gives a damaged picture, as
 ffmpeg's does. Reading forward decodes everything and gives the true frames.
