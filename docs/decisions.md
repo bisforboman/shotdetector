@@ -10,6 +10,14 @@ user's GPU, about half the CPU, but 3.6x the wall time on the 12-minute film (ev
 copy, as with ffmpeg's -hwaccel). Asked: **merge as opt-in (recommended)**, off by default and documented with these
 numbers, over shelving it.
 
+## Where worktrees go (2026-10-09)
+
+Asked when sibling folders (`C:\dev\ShotDetector-*`) piled up and two sessions collided on one checkout:
+
+- **`.claude/worktrees/<name>` inside the repository, ignored (recommended)**: where Claude Code puts its own,
+  so they're all in one place; over `.worktrees/`, and over leaving them as siblings.
+- Existing ones: **move only the idle one (recommended)**; a worktree another session is working in stays until done.
+
 ## FrameReader's audio; no hardware decoding for now (2026-10-09)
 
 Asked before milestone 6's audio:
