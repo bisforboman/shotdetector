@@ -33,7 +33,7 @@ jobs:
               {"rid": "win-x64", "os": "ubuntu-22.04"},          # cross-compiled with mingw-w64
               {"rid": "linux-x64", "os": "ubuntu-22.04"},        # an older glibc, so the libraries load on more systems
               {"rid": "linux-arm64", "os": "ubuntu-22.04-arm"},
-              {"rid": "linux-musl-x64", "os": "ubuntu-latest", "container": "alpine:3.20"},
+              {"rid": "linux-musl-x64", "os": "ubuntu-latest", "container": "public.ecr.aws/docker/library/alpine:3.20"},  # Docker Hub rate-limits
               {"rid": "osx-arm64", "os": "macos-14"},
           ]
           wanted = json.loads(os.environ["RIDS"])
