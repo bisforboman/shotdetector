@@ -12,7 +12,8 @@ semantic versioning (README, "Versions"); before it, minor versions could change
   default and forced flags, bit rate, duration, and for audio the sample rate, channels, channel layout and sample
   format: the values ffprobe's `-show_streams` gives, read in-process or from ffprobe for URLs (issue #81).
   `HasAudio` now comes from it. `FrameRate` stays the average frame rate, as OpenCV reports it, and `Container` is
-  ffprobe's full format name.
+  ffprobe's full format name. For a URL both are looked up when first read (one more request); for a `Stream` input
+  they stay null.
 
 ### Fixed
 

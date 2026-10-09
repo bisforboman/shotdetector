@@ -135,14 +135,15 @@ public sealed partial class VideoReader
     /// <summary>FFmpeg's name for the container (its demuxer).</summary>
     public string Container { get; }
 
-    /// <summary>Whether the file has an audio stream (<see cref="Streams"/>); null for streamed input.</summary>
+    /// <summary>Whether the file has an audio stream (<see cref="Streams"/>); null for a <see cref="Stream"/>.</summary>
     public bool? HasAudio => Streams?.Any(s => s.Type == StreamType.Audio);
 
     /// <summary>
-    /// Every stream of the file; null for streamed input. Looked up on first use (in-process when the libraries load,
-    /// else one ffprobe call), as detection doesn't need it.
+    /// Every stream of the file or URL; null for a <see cref="Stream"/> (it can't be read again). Looked up on first use
+    /// (in-process when the libraries load, else one ffprobe call: for a URL, another request), as detection doesn't
+    /// need it.
     /// </summary>
-    public IReadOnlyList<StreamInfo>? Streams => _stream is not null || Streaming ? null
+    public IReadOnlyList<StreamInfo>? Streams => _stream is not null ? null
         : _streams ??= _probesInProcess ? InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions) : FfprobeStreams();
     IReadOnlyList<StreamInfo>? _streams;
 
