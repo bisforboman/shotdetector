@@ -82,7 +82,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 | Item | Why | Status |
 |---|---|---|
-| Track scenedetect releases: a weekly CI job that opens an issue when PyPI has a newer scenedetect | Matching scenedetect is the point; a new release means a new compatibility mode (the default tracks the newest, README "Versions") | Open |
+| Track scenedetect releases: a weekly CI job that opens an issue when PyPI has a newer scenedetect | Matching scenedetect is the point; a new release means a new compatibility mode (the default tracks the newest, README "Versions") | Done (2026-10-09) |
 | FFmpeg 9's libraries (libavcodec.so.63): load them in-process, or at least test what Auto does | Distros will move; today Auto falls back to the (slower) executable there, and our Native packages stay on 8.1 | Done (2026-10-09): tested and documented, not loaded (decisions.md). With only FFmpeg 9.0.2 there, Auto uses its executable and the results equal in-process 8.1's on 14 samples x 5 detectors with stats; CI's parity job runs this way (FFmpeg 9.0 executable, no libraries) |
 | Move to FFmpeg 9's libraries (FFmpeg.AutoGen 9, Native packages on 9.0.x) when opencv-python's Linux wheels bundle FFmpeg 9 | scenedetect's frames come from OpenCV's FFmpeg; moving earlier risks bytes OpenCV doesn't give, and drops system FFmpeg 8 in-process | Maybe |
 | README performance: 1.0's x64 and ARM benchmark, 2-CPU figures and memory | Issue #7 asked for 2-CPU numbers; the README table predates in-process decoding | Done (2026-10-09): x64 and ARM, 2 and 4 CPUs, wall/CPU/memory from a benchmark.yml run on main |
@@ -103,7 +103,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | The CLI's 1.0.0 symbol package (never pushed: the 500 during the release) | Goes up with the next release (release.yml now pushes symbols on their own) | Open |
 | Track dav1d and zlib releases in upstream.yml, as FFmpeg's point releases are | Both are linked into the Native packages and the CLI; their security fixes reach users only when build-ffmpeg.sh's versions move | Done (2026-10-09): upstream.yml's libraries job; zlib 1.3.2 and dav1d 1.5.4 are already out (ours 1.3.1, 1.5.1), so its first run files both |
 | Run upstream.yml by hand once after it merges and check it files nothing at the current versions | Its curl/grep against PyPI and ffmpeg.org was only dry-run locally; a page format change would silently find nothing | Done (2026-10-09): run twice by hand; the first filed #91 (zlib 1.3.2) and #92 (dav1d 1.5.4), the second found both already filed; scenedetect and FFmpeg current |
-| Streams over a URL: a test that `Probe` of a file served over local HTTP (the ffprobe JSON path) gives the file's `Streams` | Files are compared in-process vs ffprobe (`StreamsAreFfprobes`); URLs always take the ffprobe path and aren't checked | Open |
+| Streams over a URL: a test that `Probe` of a file served over local HTTP (the ffprobe JSON path) gives the file's `Streams` | Files are compared in-process vs ffprobe (`StreamsAreFfprobes`); URLs always take the ffprobe path and aren't checked | Done (2026-10-09): URLs had no Streams at all (null for streamed input); now one ffprobe call on first use, tested equal to the file's (decisions.md) |
 | CLI `shotdetect probe`: VideoInfo and `Streams` as a table or JSON | The fuller probe (issue #81) is library-only; the CLI can't show it | Maybe |
 
 ## Done

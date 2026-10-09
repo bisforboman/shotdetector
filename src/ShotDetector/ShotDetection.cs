@@ -102,10 +102,10 @@ public sealed record VideoInfo
     /// <summary>FFmpeg's name for the container (its demuxer): mxf, matroska,webm, mov,mp4,m4a,3gp,3g2,mj2, ...</summary>
     public string Container { get; init; } = "";
 
-    /// <summary>Whether the file has an audio stream; null for streamed input.</summary>
+    /// <summary>Whether the file has an audio stream; null for a <see cref="System.IO.Stream"/>.</summary>
     public bool? HasAudio { get; init; }
 
-    /// <summary>Every stream of the file (video, audio, subtitles, data), in the container's order; null for streamed input.</summary>
+    /// <summary>Every stream of the file or URL (video, audio, subtitles, data), in the container's order; null for a <see cref="System.IO.Stream"/>.</summary>
     public IReadOnlyList<StreamInfo>? Streams { get; init; }
 
     /// <summary>Whether the stream is flagged interlaced (what <see cref="DeinterlaceMode.Auto"/> goes by).</summary>

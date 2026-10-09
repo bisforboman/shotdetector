@@ -382,6 +382,13 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             Assert.True(r.Video.Streaming);
             Assert.Equal([0L, 50L, 100L], r.Shots.Select(s => s.Start.FrameNum));
             Assert.Equal(expected.Stats!.Csv(expected.Video.Position), r.Stats!.Csv(r.Video.Position));
+            // Streams over the URL: ffprobe's, as for the file (HLS: its segments' streams).
+            var streams = r.Video.Info.Streams!;
+            if (name.EndsWith(".mp4"))
+                Assert.Equal(ShotDetection.Probe(Path.Combine(dir, name), new() { Decoder = VideoDecoder.FfmpegProcess }).Streams, streams);
+            else
+                Assert.Equal(StreamType.Video, Assert.Single(streams).Type);
+            Assert.False(r.Video.Info.HasAudio);
         }
         finally
         {
