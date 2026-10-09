@@ -3,6 +3,22 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 
+## 1.2.0 – 2026-10-09
+
+Waveform peaks and audio filter graphs in FrameReader (issue #81's last items), and the native libraries' filters for
+them. ShotDetector's own API is unchanged.
+
+### New
+
+- FrameReader (inside the ShotDetector package; its API isn't under semantic versioning yet):
+  - `WaveformData`: BBC audiowaveform's min/max peaks from an `AudioReader` (samples per point or points per second,
+    channels mixed or split) and its binary .dat (`Save`, 8 or 16 bits), byte for byte audiowaveform's for PCM input.
+  - `AudioFilter`: an ffmpeg audio filter graph over an `AudioReader`, the samples `ffmpeg -af GRAPH -f f32le` gives,
+    with ffmpeg's `enable=` time windows and analysis filters' results in `Metadata`.
+- ShotDetector.Native and the CLI's FFmpeg libraries carry the audio filters for it: volume, equalizer, bass, treble,
+  highpass, lowpass, bandpass, bandreject, afade, pan, acompressor, alimiter, dynaudnorm, agate, ebur128, loudnorm,
+  silencedetect, astats (and aformat, aresample).
+
 ## 1.1.0 – 2026-10-09
 
 Every stream of a file or URL in `VideoInfo.Streams`, newer zlib and dav1d in the native libraries, and a
