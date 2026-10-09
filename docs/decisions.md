@@ -13,6 +13,14 @@ one per second; 4 parallel segments the same CPU in 2-2.5x less wall time). Aske
 in TryReadForwardTo, recommended; parallel segments; a KeyframesOnly mode, documented as approximate; opt-in hardware
 decoding on Windows). Hardware decoding thereby replaces the earlier "skip for now" (below).
 
+## Where worktrees go (2026-10-09)
+
+Asked when sibling folders (`C:\dev\ShotDetector-*`) piled up and two sessions collided on one checkout:
+
+- **`.claude/worktrees/<name>` inside the repository, ignored (recommended)**: where Claude Code puts its own,
+  so they're all in one place; over `.worktrees/`, and over leaving them as siblings.
+- Existing ones: **move only the idle one (recommended)**; a worktree another session is working in stays until done.
+
 ## FrameReader's audio; no hardware decoding for now (2026-10-09)
 
 Asked before milestone 6's audio:

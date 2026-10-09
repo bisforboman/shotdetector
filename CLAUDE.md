@@ -41,6 +41,8 @@ then fails on any breaking change to ShotDetector or FastYuv (SDK package valida
 
 - **PR pipeline**: `main` is protected; work on a branch, push, `gh pr create`, merge when the checks are green
   (`build`, `aot (*)`, `alpine`, `parity (*)`, `mutation`, `Real world (*)`). Don't push to main directly.
+- **Worktrees**: `git worktree add .claude/worktrees/<name> -b <branch> origin/main` (ignored). Sessions working at
+  the same time each use their own worktree, never one checkout, so a commit can't land on another's branch.
 - **Backlog**: `docs/backlog.md`. Take the next open item; update its status when work starts and lands. Add items
   when something turns up (a divergence, a gap), with why.
 - **Decisions**: when a design question needs the user, ask with the multiple-choice prompt and record the
