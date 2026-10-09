@@ -218,32 +218,43 @@ ignores colour tags (see below). With `--ffmpeg-resize`, cuts on real footage di
 
 ## Performance
 
-Measured by `benchmark.yml` (weekly, `tools/bench.py`) on a GitHub-hosted Linux runner, content detector, best of 3.
-ShotDetector runs as installed: in-process decoding with its bundled FFmpeg libraries (the default), and, for
-comparison, with the ffmpeg executable (`--decoder process`, FFmpeg 9.0). CPU time counts every process
-(ffmpeg included); memory is the peak of the whole process tree. All give identical results.
+Measured by `benchmark.yml` (weekly, `tools/bench.py`) on GitHub-hosted Linux runners, x64 and ARM (4 CPUs each),
+content detector, best of 3, on 1.0.0's code (2026-10-09). ShotDetector runs as installed: in-process decoding
+with its bundled FFmpeg libraries (the default), and, for comparison, with the ffmpeg executable (`--decoder
+process`, FFmpeg 9.0).
+Each cell is wall time, CPU time and peak memory; CPU time counts every process (ffmpeg included), memory is the
+peak of the whole process tree. All give identical results.
 
-**Pinned to 2 CPUs** (a small container):
+**Pinned to 2 CPUs** (a small container, issue #7):
 
-| Video | scenedetect 0.7.1 | ShotDetector (in-process) | ShotDetector (ffmpeg executable) |
-|---|---|---|---|
-| Sintel trailer, 1920x1080, 1253 frames | 6.6 s, 11.7 s CPU, 140 MB | **6.0 s**, 10.5 s CPU, 107 MB | 8.2 s, 12.8 s CPU, 172 MB |
-| Tears of Steel, 1280x534, 17620 frames | 44.8 s, 74.1 s CPU, 103 MB | **42.3 s**, 70.4 s CPU, 85 MB | 56.4 s, 93.3 s CPU, 164 MB |
-| Big Buck Bunny, 640x360, 14315 frames | 13.3 s, 22.3 s CPU, 93 MB | **13.0 s**, 21.2 s CPU, 76 MB | 15.6 s, 29.0 s CPU, 135 MB |
-| Elephants Dream, 426x240, 15691 frames | 10.2 s, 16.3 s CPU, 90 MB | **8.4 s**, 12.5 s CPU, 74 MB | 10.4 s, 19.2 s CPU, 125 MB |
+| Video | Runner | scenedetect 0.7.1 | ShotDetector (in-process) | ShotDetector (ffmpeg executable) |
+|---|---|---|---|---|
+| Sintel trailer, 1920x1080, 1253 frames | x64 | 6.4 s, 11.3 s, 140 MB | **5.9 s**, 10.4 s, 113 MB | 7.5 s, 11.8 s, 177 MB |
+| | ARM | 5.2 s, 8.6 s, 132 MB | **4.3 s**, 7.5 s, 114 MB | 5.9 s, 9.0 s, 167 MB |
+| Tears of Steel, 1280x534, 17620 frames | x64 | 43.7 s, 72.3 s, 103 MB | **42.5 s**, 72.6 s, 90 MB | 55.5 s, 91.6 s, 161 MB |
+| | ARM | 39.6 s, 59.9 s, 94 MB | **32.3 s**, 54.4 s, 86 MB | 42.1 s, 68.0 s, 150 MB |
+| Big Buck Bunny, 640x360, 14315 frames | x64 | 13.4 s, 22.4 s, 93 MB | **12.8 s**, 23.1 s, 81 MB | 15.2 s, 28.4 s, 135 MB |
+| | ARM | 10.6 s, 19.4 s, 85 MB | **9.2 s**, 16.2 s, 80 MB | 11.7 s, 21.5 s, 129 MB |
+| Elephants Dream, 426x240, 15691 frames | x64 | 10.1 s, 16.3 s, 90 MB | **7.9 s**, 14.1 s, 79 MB | 10.4 s, 19.0 s, 126 MB |
+| | ARM | 8.5 s, 15.3 s, 83 MB | **6.5 s**, 11.4 s, 78 MB | 8.8 s, 15.9 s, 118 MB |
 
-**All the runner's CPUs:**
+**All 4 CPUs:**
 
-| Video | scenedetect 0.7.1 | ShotDetector (in-process) | ShotDetector (ffmpeg executable) |
-|---|---|---|---|
-| Sintel trailer 1080p | 3.9 s, 155 MB | **3.4 s**, 120 MB | 4.5 s, 204 MB |
-| Tears of Steel | 25.9 s, 110 MB | **24.3 s**, 91 MB | 31.7 s, 171 MB |
-| Big Buck Bunny | **8.4 s**, 95 MB | 9.3 s, 79 MB | 8.8 s, 143 MB |
-| Elephants Dream | **6.8 s**, 92 MB | 6.9 s, 76 MB | 7.2 s, 129 MB |
+| Video | Runner | scenedetect 0.7.1 | ShotDetector (in-process) | ShotDetector (ffmpeg executable) |
+|---|---|---|---|---|
+| Sintel trailer 1080p | x64 | 3.7 s, 11.2 s, 155 MB | **3.3 s**, 10.2 s, 126 MB | 4.2 s, 13.1 s, 205 MB |
+| | ARM | 2.9 s, 8.6 s, 149 MB | **2.5 s**, 7.4 s, 126 MB | 3.1 s, 9.5 s, 196 MB |
+| Tears of Steel | x64 | 25.3 s, 70.3 s, 110 MB | **23.7 s**, 70.8 s, 95 MB | 31.1 s, 94.8 s, 170 MB |
+| | ARM | 22.7 s, 59.3 s, 100 MB | **18.6 s**, 53.9 s, 92 MB | 24.4 s, 71.4 s, 161 MB |
+| Big Buck Bunny | x64 | 8.3 s, 22.1 s, 95 MB | **7.2 s**, 21.1 s, 84 MB | 8.6 s, 28.5 s, 143 MB |
+| | ARM | 8.0 s, 25.6 s, 88 MB | **5.6 s**, 16.4 s, 83 MB | 6.8 s, 22.2 s, 135 MB |
+| Elephants Dream | x64 | 6.7 s, 16.1 s, 92 MB | **6.2 s**, 12.9 s, 83 MB | 7.2 s, 19.8 s, 130 MB |
+| | ARM | 7.0 s, 22.7 s, 85 MB | **5.6 s**, 12.3 s, 83 MB | 5.7 s, 17.0 s, 124 MB |
 
-Runners differ in absolute speed; compare within a table. In-process decoding is faster than scenedetect on 2 CPUs
-and on HD video, within 10% on small video with more CPUs, and always uses less CPU and memory. The ffmpeg
-executable costs ~35% more CPU than decoding in-process (issue #12) and twice the memory (its own frame queues).
+Runners differ in absolute speed; compare within a row. In-process decoding is faster than scenedetect on every
+film, runner and CPU count: 3-22% on x64, 13-30% on ARM (NEON). Its CPU time is from 3% more to 20% less than
+scenedetect's on x64 and 9-46% less on ARM, and it uses less memory everywhere (2-29 MB). The ffmpeg executable
+costs 13-53% more CPU than decoding in-process (issue #12) and 1.5-1.8x the memory (its own frame queues).
 
 In-process decoding uses FFmpeg's shared libraries inside our process, as OpenCV does: the `ShotDetector.Native`
 packages or the CLI's bundled ones, or a system install. It is the default whenever they load
