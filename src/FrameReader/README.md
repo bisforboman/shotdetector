@@ -72,6 +72,10 @@ the CPU (24 s instead of 44 s for the 12-minute film), but 3.6x the wall time (2
 waits for the GPU. Use it when CPU is what's short, not for speed on a free machine. `FrameDecoder.UsesHardware` says
 whether a GPU decoder took the stream.
 
+For a preview where nearby frames will do, `Decoder = new() { KeyframesOnly = true }` decodes keyframes alone
+(ffmpeg's `-skip_frame nokey`): a picture a second of the 12-minute film took 5.3 s / 1.8 s of CPU instead of 50 s /
+46 s (keyframes every 0.75 s / 4.4 s), but each picture is the nearest keyframe, not the frame at that second.
+
 Seeking is ffmpeg's `-ss` exactly, including its weakness: in open GOPs (MPEG-2, some H.264), the B-frames right after
 the keyframe it lands on are decoded without their reference, so a seek to one of them gives a damaged picture, as
 ffmpeg's does. Reading forward decodes everything and gives the true frames.

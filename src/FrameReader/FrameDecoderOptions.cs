@@ -27,6 +27,13 @@ public sealed record FrameDecoderOptions
     /// Falls back to software decoding when there's no GPU decoder for the stream (<see cref="FrameDecoder.UsesHardware"/>).
     /// </summary>
     public bool HardwareDecoding { get; init; }
+
+    /// <summary>
+    /// Decode only keyframes (ffmpeg's <c>-skip_frame nokey</c>): many times faster, but approximate. The frames are
+    /// the keyframes alone, so a frame "at" a time is the nearest keyframe after it, seconds off in a typical film.
+    /// For contact sheets and previews, not for exact frames.
+    /// </summary>
+    public bool KeyframesOnly { get; init; }
 }
 
 /// <summary>
