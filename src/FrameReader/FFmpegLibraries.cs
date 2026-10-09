@@ -1,0 +1,104 @@
+using System.Runtime.InteropServices;
+using FFmpeg.AutoGen;
+
+namespace FrameReader;
+
+/// <summary>
+/// FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, libavutil 60; libavfilter 11 for
+/// deinterlacing), loaded once per process through FFmpeg.AutoGen: from a given folder, or next to the app
+/// (runtimes/&lt;rid&gt;/native/ in a build's output, the app's folder once published), then the system's usual places.
+/// </summary>
+public static unsafe class FFmpegLibraries
+{
+    static readonly object InitLock = new();
+    static bool _loaded;
+    static bool? _canDeinterlace;
+    static readonly Dictionary<string, bool> Loadable = [];
+
+    /// <summary>
+    /// Loads the libraries, once per process: the first copy loaded is the one used, whatever folder is asked for
+    /// later. Logging is turned off (failures surface as exceptions).
+    /// </summary>
+    /// <param name="directory">The only folder to load from; null: next to the app, then the system's places.</param>
+    /// <exception cref="FrameReaderException">The libraries aren't there or aren't FFmpeg 8's
+    /// (<see cref="FrameReaderError.LibrariesNotFound"/>).</exception>
+    public static void Load(string? directory = null)
+    {
+        lock (InitLock)
+        {
+            if (_loaded)
+                return;
+            Exception? error = null;
+            string[] places = directory is not null ? [directory]
+                : [Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native"), AppContext.BaseDirectory, ""];
+            foreach (string dir in places)
+            {
+                if (dir.Length > 0 && !Directory.Exists(dir))
+                    continue;
+                try
+                {
+                    ffmpeg.RootPath = dir;
+                    DynamicallyLoadedBindings.Initialize();
+                    _ = ffmpeg.avcodec_version(); // fails here if the libraries aren't there or aren't FFmpeg 8's
+                    ffmpeg.av_log_set_level(ffmpeg.AV_LOG_QUIET);
+                    _loaded = true;
+                    return;
+                }
+                catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException or BadImageFormatException)
+                {
+                    error = e;
+                }
+            }
+            throw new FrameReaderException(FrameReaderError.LibrariesNotFound,
+                "In-process decoding needs FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, " +
+                "libavutil 60): add the ShotDetector.Native.<rid> package for your platform, or install them (Alpine: " +
+                "`apk add ffmpeg-libs`; Windows: a \"shared\" FFmpeg 8 build, with the folder set to its bin folder). " +
+                $"({error?.Message})", error);
+        }
+    }
+
+    /// <summary>Whether the libraries load (<see cref="Load"/>), or already have; tried once per folder.</summary>
+    /// <param name="directory">As for <see cref="Load"/>.</param>
+    public static bool CanLoad(string? directory = null)
+    {
+        lock (InitLock)
+        {
+            if (_loaded)
+                return true;
+            string dir = directory ?? "";
+            if (!Loadable.TryGetValue(dir, out bool ok))
+            {
+                try { Load(directory); ok = true; }
+                catch (FrameReaderException) { ok = false; }
+                Loadable[dir] = ok;
+            }
+            return ok;
+        }
+    }
+
+    /// <summary>Whether the libraries load and include libavfilter with yadif, for deinterlacing.</summary>
+    /// <param name="directory">As for <see cref="Load"/>.</param>
+    public static bool CanDeinterlace(string? directory = null)
+    {
+        if (!CanLoad(directory))
+            return false;
+        lock (InitLock)
+        {
+            if (_canDeinterlace is null)
+            {
+                try { _canDeinterlace = ffmpeg.avfilter_get_by_name("yadif") != null && ffmpeg.avfilter_get_by_name("buffer") != null; }
+                catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException) { _canDeinterlace = false; }
+            }
+            return _canDeinterlace.Value;
+        }
+    }
+
+    /// <summary>FFmpeg's message for an error code (av_strerror).</summary>
+    /// <param name="error">A negative AVERROR code.</param>
+    public static string ErrorMessage(int error)
+    {
+        byte* buf = stackalloc byte[256];
+        ffmpeg.av_strerror(error, buf, 256);
+        return Marshal.PtrToStringAnsi((IntPtr)buf) ?? error.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+}

@@ -1,6 +1,7 @@
 # Frame-reader library (idea)
 
-Status: idea, not started (2026-10-08). For Claude Code: read this file and CLAUDE.md, then start at
+Status: milestone 1 in progress (2026-10-08): `src/FrameReader` (FFmpegLibraries, FrameReaderException),
+`tests/FrameReader.Tests`; answers to "Before writing code" 1-3 and build-vs-contribute in docs/decisions.md. For Claude Code: read this file and CLAUDE.md, then start at
 "Before writing code". Record every answer the user gives in `docs/decisions.md` as usual.
 
 ## The idea

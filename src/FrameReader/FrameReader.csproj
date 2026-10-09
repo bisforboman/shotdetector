@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    FrameReader: fast in-process video frame reading through FFmpeg's libraries, extracted from ShotDetector
+    (docs/frame-reader-library.md). Internal to this repository until its API settles: not a package of its own yet;
+    ShotDetector's package carries FrameReader.dll. MIT; FFmpeg's libraries (LGPL) are loaded dynamically, and nothing
+    from the LGPL ShotDetector.FastYuv may come in here. Self-contained, so it can move to its own repository.
+  -->
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>FrameReader</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MIT bindings to FFmpeg 8.1's libraries. -->
+    <PackageReference Include="FFmpeg.AutoGen" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FrameReader.Tests" />
+  </ItemGroup>
+
+</Project>
