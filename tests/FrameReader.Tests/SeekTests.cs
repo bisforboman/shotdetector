@@ -136,4 +136,39 @@ public class SeekTests
             Directory.Delete(dir, true);
         }
     }
+
+    // KeyframesOnly: the frames of ffmpeg's -skip_frame nokey (passed through, not repeated to a constant rate), on
+    // their own and through fps=1.
+    [Theory]
+    [InlineData("bframes.mp4", "-c:v mpeg4 -bf 2 -g 12")]
+    [InlineData("opengop.mkv", "-c:v mpeg2video -bf 2 -g 12")]
+    public void KeyframesOnlyIsFfmpegsSkipFrameNokey(string name, string encode)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-key-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=4", .. encode.Split(' '), path]);
+            foreach (var (rate, vf) in new[] { ((Rational?)null, "scale=160:90:flags=bicubic,format=gray"), (new Rational(1, 1), "fps=1,scale=160:90:flags=bicubic,format=gray") })
+            {
+                byte[] expected = Ffmpeg("-v", "error", "-skip_frame", "nokey", "-i", path, "-vf", vf, "-fps_mode", "passthrough", "-f", "rawvideo", "-");
+                using var reader = new VideoFrameReader(path, new FrameReaderOptions
+                {
+                    Width = 160, Height = 90, Format = FrameFormat.Gray8, FrameRate = rate,
+                    Decoder = new FrameDecoderOptions { LibraryDirectory = Libs, KeyframesOnly = true },
+                });
+                var actual = new MemoryStream();
+                while (reader.TryRead(out var frame))
+                    actual.Write(frame.Data);
+                Assert.True(expected.Length > 0 && expected.AsSpan().SequenceEqual(actual.ToArray()),
+                    $"{name} {vf}: {expected.Length / (160 * 90)} frames from ffmpeg, {actual.Length / (160 * 90)} read");
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
