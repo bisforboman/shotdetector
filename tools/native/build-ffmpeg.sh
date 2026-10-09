@@ -1,10 +1,11 @@
 #!/bin/sh
-# Builds FFmpeg's shared libraries for ShotDetector.Native.<rid>: decoding only (libavcodec decoders, libavformat
-# demuxers, libswscale, libavutil; libswresample too, which FFmpeg.AutoGen loads with libavcodec), plus libavfilter
+# Builds FFmpeg's shared libraries for ShotDetector.Native.<rid>: decoding (libavcodec decoders, libavformat
+# demuxers), plus the AAC, MP3 (LAME) and 16-bit PCM encoders and the muxers FrameReader's AudioWriter and Remux
+# write with, libswscale, libavutil; libswresample too, which FFmpeg.AutoGen loads with libavcodec), plus libavfilter
 # with only yadif (deinterlacing), fps (FrameReader's FrameRate), aspectralstats (its SpectralStats), the audio
 # filters its AudioFilter offers (EQ and level, dynamics, loudness, detection; aformat/aresample to convert) and a
 # graph's buffer/buffersink and abuffer/abuffersink ends. LGPL; linked in statically: zlib (PNG, compressed
-# MOV/MKV headers) and dav1d (AV1, BSD-2-Clause). Run on the platform itself, except win-x64, which cross-compiles from
+# MOV/MKV headers), dav1d (AV1, BSD-2-Clause) and LAME (MP3, LGPL). Run on the platform itself, except win-x64, which cross-compiles from
 # Linux with mingw-w64. Needs nasm (x86), meson, ninja and pkg-config.
 #
 #   tools/native/build-ffmpeg.sh <rid> <output dir>
