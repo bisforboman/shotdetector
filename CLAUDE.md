@@ -114,3 +114,8 @@ then fails on any breaking change to ShotDetector or FastYuv (SDK package valida
 - Windows named pipe path is `\\.\pipe\…`; stdout's 4 KB pipe is far slower. Kill ffmpeg race-free (`Kill` helper).
 - NuGet trusted publishing: the policy's workflow must be `release.yml`, package glob `ShotDetector*`.
 - GitHub Actions queues can stall; re-run rather than diagnose when every job was cancelled at ~15 min.
+- CI load: a PR whose files are all docs, `.claude/`, `benchmarks/`, `tests/FrameReader.Tests/` or the FrameReader
+  classes ShotDetector doesn't use (VideoFrameReader, AudioReader) is "light": AOT, ARM, Alpine, parity, real-world
+  and mutation don't start (skipped jobs pass the required checks). Add a FrameReader file to that list in the three
+  `changes` jobs only if ShotDetector really doesn't use it. The FrameReader benchmark runs on demand and weekly only.
+  Every push reruns everything: docs go in before `gh pr create`, not as follow-up pushes.

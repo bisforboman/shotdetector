@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
+      light: ${{ steps.diff.outputs.light }}
     steps:
       - uses: actions/checkout@v7
         if: github.event_name == 'pull_request'
@@ -30,6 +31,9 @@ jobs:
         run: |
           files=$(git diff --name-only HEAD^1 HEAD)
           if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$'; then echo docs_only=true >> "$GITHUB_OUTPUT"; fi
+          # Light: only docs, the benchmarks, FrameReader's tests or FrameReader code ShotDetector doesn't use (its
+          # results can't change): the heavy jobs don't start at all.
+          if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$|^\.claude/|^benchmarks/|^tests/FrameReader\.Tests/|^src/FrameReader/(VideoFrameReader|AudioReader)\.cs$'; then echo light=true >> "$GITHUB_OUTPUT"; fi
 
   # Our FFmpeg build for linux-x64 (native.yml, cached by the build script's hash): the in-process tests and the
   # AOT binary use it.
@@ -94,7 +98,7 @@ jobs:
   # it must build, start, and (on Linux, where ffmpeg is easy to install) detect the cuts in a clip.
   aot:
     needs: [changes, native]
-    if: github.event_name == 'pull_request'   # main: build and tests only
+    if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'   # main: build and tests only
     strategy:
       fail-fast: false
       matrix:
@@ -160,14 +164,14 @@ jobs:
   # their tests, the HSV one on all 2^24 colours, and the in-process tests use our linux-arm64 FFmpeg build.
   native-arm:
     needs: changes
-    if: github.event_name == 'pull_request'
+    if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
     uses: ./.github/workflows/native.yml
     with:
       rids: '["linux-arm64"]'
 
   arm:
     needs: [changes, native-arm]
-    if: github.event_name == 'pull_request'
+    if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
@@ -203,7 +207,7 @@ jobs:
   # exactly like the FastYuv converter (which the parity job ties to scenedetect).
   alpine:
     needs: changes
-    if: github.event_name == 'pull_request'
+    if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container: mcr.microsoft.com/dotnet/sdk:10.0-alpine
@@ -225,7 +229,7 @@ jobs:
   # bundles FFmpeg 8 and so follows colour tags (the Windows wheel's FFmpeg 7.1 doesn't).
   parity:
     needs: changes
-    if: github.event_name == 'pull_request'
+    if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:

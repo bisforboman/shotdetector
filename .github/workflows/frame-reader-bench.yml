@@ -1,12 +1,12 @@
 name: FrameReader benchmark
 
 # FrameReader vs FFMpegCore's raw-video pipe vs the ffmpeg executable, reading the first 500 frames of three films as
-# whole Bgr24 frames and as 160x90 Gray8 (benchmarks/FrameReader.Benchmarks, BenchmarkDotNet). On demand, and on PRs
-# that change the benchmark or FrameReader; results in the run's summary.
+# whole Bgr24 frames and as 160x90 Gray8 (benchmarks/FrameReader.Benchmarks, BenchmarkDotNet). On demand and weekly
+# (not on PRs: two runners for half an hour each); results in the run's summary.
 on:
   workflow_dispatch:
-  pull_request:
-    paths: ['benchmarks/FrameReader.Benchmarks/**', 'src/FrameReader/**', '.github/workflows/frame-reader-bench.yml']
+  schedule:
+    - cron: '13 4 * * 0'
 
 jobs:
   native:
