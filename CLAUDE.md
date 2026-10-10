@@ -16,6 +16,7 @@ differ is documented in README.md and in `docs/decisions.md`.
 
 ## Status
 
+1.4.1 released 2026-10-10 (Native: VideoWriter's format/null/scale filters, issue #127; CI writes with the GPL libraries).
 1.4.0 released 2026-10-10 (FrameReader package 1.4.0-preview, its API review, AudioReader seek on Matroska).
 1.3.0 released 2026-10-10 (AudioWriter, Remux, VideoWriter + ShotDetector.Native.Gpl, reference tone).
 1.2.0 released 2026-10-09 (FrameReader WaveformData and AudioFilter, issue #81; audio filters in Native).
