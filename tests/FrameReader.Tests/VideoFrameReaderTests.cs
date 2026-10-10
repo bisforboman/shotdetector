@@ -55,8 +55,8 @@ public class VideoFrameReaderTests
                     byte[] expected = Run("-v", "error", "-i", path, "-vf", $"{scale},format={ffmpegName}", "-f", "rawvideo", "-");
                     var actual = new MemoryStream();
                     int frames = 0;
-                    using (var reader = new VideoFrameReader(path, new FrameReaderOptions
-                           { Width = size?.W, Height = size?.H, Format = format, Decoder = new FrameDecoderOptions() }))
+                    using (var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
+                           { Width = size?.W, Height = size?.H, FrameFormat = format, Decoder = new FrameDecoderOptions() }))
                         while (reader.TryRead(out var frame))
                         {
                             Assert.Equal(frames++, frame.Index);
@@ -122,7 +122,7 @@ public class VideoFrameReaderTests
     [Fact]
     public void FrameTimesStartAtZeroAndSizesMustComeInPairs()
     {
-        Assert.Throws<ArgumentException>(() => new VideoFrameReader("x.mp4", new FrameReaderOptions { Width = 100 }));
+        Assert.Throws<ArgumentException>(() => new VideoFrameReader("x.mp4", new VideoFrameReaderOptions { Width = 100 }));
         if (Libs is null)
             return;
         string dir = Directory.CreateTempSubdirectory("framereader-px-").FullName;
@@ -131,7 +131,7 @@ public class VideoFrameReaderTests
             // An MPEG-TS that starts at 10 s: times count from its start, as ffmpeg's do.
             string path = Path.Combine(dir, "late.ts");
             Run("-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=160x120:r=25:d=1", "-c:v", "mpeg2video", "-output_ts_offset", "10", path);
-            using var reader = new VideoFrameReader(path, new FrameReaderOptions { Format = FrameFormat.Gray8, Decoder = new FrameDecoderOptions() });
+            using var reader = new VideoFrameReader(path, new VideoFrameReaderOptions { FrameFormat = FrameFormat.Gray8, Decoder = new FrameDecoderOptions() });
             Assert.True(reader.TryRead(out var first));
             Assert.InRange(first.Time.TotalSeconds, 0, 0.1);
             Assert.Equal(160 * 120, first.Data.Length);

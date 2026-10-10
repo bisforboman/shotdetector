@@ -29,7 +29,7 @@ public sealed record RemuxOptions
     public IReadOnlyList<int>? StreamIndices { get; init; }
 
     /// <summary>FFmpeg's muxer name (<c>mp4</c>, <c>ipod</c>, <c>matroska</c>, <c>mp3</c>, ...); null: from the output's name.</summary>
-    public string? Format { get; init; }
+    public string? Container { get; init; }
 
     /// <summary>Leave out what makes a file differ between FFmpeg versions, as ffmpeg's <c>-fflags +bitexact</c>.</summary>
     public bool Bitexact { get; init; }
@@ -46,7 +46,7 @@ public static unsafe class Remux
 {
     /// <summary>Copies the selected streams of <paramref name="input"/> into <paramref name="output"/> (created or overwritten).</summary>
     /// <param name="input">A file or URL FFmpeg can read.</param>
-    /// <param name="output">The file to write; its name picks the container unless <see cref="RemuxOptions.Format"/> does.</param>
+    /// <param name="output">The file to write; its name picks the container unless <see cref="RemuxOptions.Container"/> does.</param>
     /// <param name="options">Streams and format; null: every stream, the container from the name.</param>
     /// <exception cref="FrameReaderException">The input can't be read, nothing is selected, or the container can't hold a
     /// selected stream (<see cref="FrameReaderError.InvalidInput"/>), or writing failed.</exception>
@@ -62,10 +62,10 @@ public static unsafe class Remux
             var map = Select(ic, o); // output stream i comes from input stream map[i]
             if (map.Count == 0)
                 throw new FrameReaderException(FrameReaderError.InvalidInput, $"\"{input}\" has no stream of the kinds asked for.");
-            int ret = ffmpeg.avformat_alloc_output_context2(&oc, null, o.Format, output);
+            int ret = ffmpeg.avformat_alloc_output_context2(&oc, null, o.Container, output);
             if (ret < 0 || oc == null)
                 throw new FrameReaderException(FrameReaderError.InvalidInput,
-                    $"No muxer for \"{output}\"{(o.Format is null ? "" : $" ({o.Format})")} in these FFmpeg libraries: {FFmpegLibraries.ErrorMessage(ret)}");
+                    $"No muxer for \"{output}\"{(o.Container is null ? "" : $" ({o.Container})")} in these FFmpeg libraries: {FFmpegLibraries.ErrorMessage(ret)}");
             if (o.Bitexact)
                 oc->flags |= ffmpeg.AVFMT_FLAG_BITEXACT;
             oc->max_delay = 700000; // ffmpeg's -muxdelay default, 0.7 s
