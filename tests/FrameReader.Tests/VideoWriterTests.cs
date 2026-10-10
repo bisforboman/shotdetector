@@ -183,7 +183,7 @@ public class VideoWriterTests
             Assert.Throws<ArgumentException>(() => new VideoWriter(path, new VideoWriterOptions { Width = 0, Height = 10, FrameRate = new(25, 1) }));
             if (CanCompare())
             {
-                var e = Assert.Throws<FrameReaderException>(() => new VideoWriter(path, new VideoWriterOptions
+                var e = Assert.Throws<ArgumentException>(() => new VideoWriter(path, new VideoWriterOptions
                     { Width = 16, Height = 16, FrameRate = new(25, 1), EncoderOptions = new Dictionary<string, string> { ["nosuchoption"] = "1" } }));
                 Assert.Contains("nosuchoption", e.Message);
                 using var w = new VideoWriter(path, new VideoWriterOptions { Width = 16, Height = 16, FrameRate = new(25, 1) });

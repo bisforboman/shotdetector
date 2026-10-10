@@ -28,8 +28,8 @@ public readonly ref struct AudioChunk
     /// <summary>The samples, float32 interleaved (channel 0, 1, ... for each instant), as ffmpeg's <c>-f f32le</c> writes them.</summary>
     public ReadOnlySpan<float> Samples { get; }
 
-    /// <summary>Samples per channel in this chunk.</summary>
-    public int Length => Samples.Length / Channels;
+    /// <summary>Samples per channel in this chunk (instants; <see cref="Samples"/> holds this times <see cref="Channels"/>).</summary>
+    public int SampleCount => Samples.Length / Channels;
 
     /// <summary>Channels.</summary>
     public int Channels { get; }

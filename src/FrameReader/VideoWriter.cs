@@ -19,7 +19,11 @@ public sealed record AudioTrackOptions
     public string? Encoder { get; init; }
 }
 
-/// <summary>What a <see cref="VideoWriter"/> writes. The options mirror ffmpeg's for <c>-c:v libx264</c>.</summary>
+/// <summary>
+/// What a <see cref="VideoWriter"/> writes. The options mirror ffmpeg's for <c>-c:v libx264</c>: <see cref="Crf"/>,
+/// <see cref="Preset"/>, <see cref="X264Params"/> and <see cref="ForcedIdr"/> are libx264's options; another encoder takes its own
+/// through <see cref="EncoderOptions"/>.
+/// </summary>
 public sealed record VideoWriterOptions
 {
     /// <summary>Width of the frames you write, in pixels.</summary>

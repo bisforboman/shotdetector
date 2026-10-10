@@ -96,7 +96,7 @@ public class AudioWriterTests
         using var reader = new AudioReader(path, new AudioReaderOptions());
         long n = 0;
         while (reader.TryRead(out var chunk))
-            n += chunk.Length;
+            n += chunk.SampleCount;
         return n;
     }
 

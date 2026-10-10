@@ -97,7 +97,7 @@ public static unsafe class FFmpegLibraries
 
     /// <summary>FFmpeg's message for an error code (av_strerror).</summary>
     /// <param name="error">A negative AVERROR code.</param>
-    public static string ErrorMessage(int error)
+    internal static string ErrorMessage(int error)
     {
         byte* buf = stackalloc byte[256];
         ffmpeg.av_strerror(error, buf, 256);

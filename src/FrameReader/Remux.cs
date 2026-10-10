@@ -48,9 +48,10 @@ public static unsafe class Remux
     /// <param name="input">A file or URL FFmpeg can read.</param>
     /// <param name="output">The file to write; its name picks the container unless <see cref="RemuxOptions.Container"/> does.</param>
     /// <param name="options">Streams and format; null: every stream, the container from the name.</param>
+    /// <param name="cancellationToken">Stops between packets (<see cref="OperationCanceledException"/>; the output is left unfinished).</param>
     /// <exception cref="FrameReaderException">The input can't be read, nothing is selected, or the container can't hold a
     /// selected stream (<see cref="FrameReaderError.InvalidInput"/>), or writing failed.</exception>
-    public static void Copy(string input, string output, RemuxOptions? options = null)
+    public static void Copy(string input, string output, RemuxOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new RemuxOptions();
         FFmpegLibraries.Load();
@@ -96,6 +97,11 @@ public static unsafe class Remux
             pkt = ffmpeg.av_packet_alloc();
             while ((ret = ffmpeg.av_read_frame(ic, pkt)) >= 0)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    ffmpeg.av_packet_unref(pkt);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
                 int to = pkt->stream_index < outOf.Length ? outOf[pkt->stream_index] : -1;
                 if (to < 0 || (!started[to] && (pkt->flags & ffmpeg.AV_PKT_FLAG_KEY) == 0))
                 {
@@ -106,7 +112,7 @@ public static unsafe class Remux
                 Write(ic, oc, pkt, to, tsOffset, ref lastDts[to], ref rescaleLast[to]);
             }
             if (ret != ffmpeg.AVERROR_EOF)
-                Check(ret, "read");
+                Check(ret, "read", FrameReaderError.InvalidInput);
             Check(ffmpeg.av_write_trailer(oc), "write the trailer");
         }
         finally
@@ -276,9 +282,9 @@ public static unsafe class Remux
         Check(ffmpeg.av_interleaved_write_frame(oc, pkt), "write");
     }
 
-    static void Check(int ret, string what)
+    static void Check(int ret, string what, FrameReaderError reason = FrameReaderError.WriteFailed)
     {
         if (ret < 0)
-            throw new FrameReaderException(FrameReaderError.DecodeFailed, $"FFmpeg ({what}): {FFmpegLibraries.ErrorMessage(ret)}");
+            throw new FrameReaderException(reason, $"FFmpeg ({what}): {FFmpegLibraries.ErrorMessage(ret)}");
     }
 }

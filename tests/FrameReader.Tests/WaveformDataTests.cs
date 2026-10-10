@@ -55,7 +55,7 @@ public class WaveformDataTests
             using var audio = new AudioReader(path, new AudioReaderOptions());
             var waveform = WaveformData.Read(audio, options);
             var actual = new MemoryStream();
-            waveform.Save(actual, bits);
+            waveform.Save(actual, (WaveformBits)bits);
             Assert.Equal(File.ReadAllBytes(expected), actual.ToArray());
         }
         finally
@@ -90,7 +90,7 @@ public class WaveformDataTests
             Assert.Equal([(-3, 150), (-32768, 32767), (0, 0)], Enumerable.Range(0, 3).Select(i => ((int)mixed.Min(0, i), (int)mixed.Max(0, i))));
 
             var dat = new MemoryStream();
-            mixed.Save(dat, 8);
+            mixed.Save(dat, WaveformBits.Eight);
             byte[] b = dat.ToArray();
             Assert.Equal([1, 0, 0, 0, 1, 0, 0, 0, 0x40, 0x1F, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0], b[..20]); // version 1, 8-bit, 8000 Hz, 2, 3 points
             Assert.Equal([0, 0, unchecked((byte)-128), 127, 0, 0], b[20..]); // -3/256 = 0 and 150/256 = 0, toward zero

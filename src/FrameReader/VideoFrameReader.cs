@@ -182,8 +182,10 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <param name="options">Size, format and decoding; not <see cref="VideoFrameReaderOptions.FrameRate"/>.</param>
     /// <param name="parallelism">Readers at once; null: half the cores, at most 4.</param>
     /// <param name="handler">Called for each frame found, with its time's index.</param>
+    /// <param name="cancellationToken">Stops the readers between frames (<see cref="OperationCanceledException"/>).</param>
     /// <returns>How many times had a frame (the rest are past the end).</returns>
-    public static int ReadAt(string path, IReadOnlyList<TimeSpan> times, VideoFrameReaderOptions? options, int? parallelism, FrameHandler handler)
+    public static int ReadAt(string path, IReadOnlyList<TimeSpan> times, VideoFrameReaderOptions? options, int? parallelism, FrameHandler handler,
+        CancellationToken cancellationToken = default)
     {
         options ??= new VideoFrameReaderOptions();
         if (options.FrameRate is not null)
@@ -197,12 +199,13 @@ public sealed unsafe class VideoFrameReader : IDisposable
         if (workers > 1 && decoder.Threads == 0)
             options = options with { Decoder = decoder with { Threads = Math.Max(1, cores / workers) } };
         int found = 0;
-        Parallel.For(0, workers, new ParallelOptions { MaxDegreeOfParallelism = workers }, w =>
+        Parallel.For(0, workers, new ParallelOptions { MaxDegreeOfParallelism = workers, CancellationToken = cancellationToken }, w =>
         {
             int from = w * times.Count / workers, to = (w + 1) * times.Count / workers;
             using var reader = new VideoFrameReader(path, options);
             for (int i = from; i < to; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!reader.TryReadForwardTo(times[i], out var frame))
                     break;
                 handler(i, frame);

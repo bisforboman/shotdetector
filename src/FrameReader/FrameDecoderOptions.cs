@@ -37,6 +37,8 @@ public sealed record FrameDecoderOptions
 /// <summary>
 /// Deinterlaces single rows with yadif's arithmetic (FFmpeg's yadif filter, mode 0), so a <see cref="FrameDecoder"/>
 /// computes only the rows that are read. Called concurrently for different rows.
+/// Advanced: part of the low-level layer ShotDetector's exact pipelines use; the main API is VideoFrameReader, the audio
+/// readers, the writers, Remux and MediaProbe.
 /// </summary>
 public interface IRowDeinterlacer
 {

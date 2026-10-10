@@ -9,6 +9,8 @@ namespace FrameReader;
 /// ABI), frame by frame as ffmpeg's command line does: the same decoder and timestamps, yadif deinterlacing (FFmpeg's
 /// filter on whole frames, or an <see cref="IRowDeinterlacer"/> on the rows asked for), and the display matrix applied
 /// as its autorotate does. Not thread-safe; the current frame is valid until the next <see cref="Next"/>.
+/// Advanced: part of the low-level layer ShotDetector's exact pipelines use; the main API is VideoFrameReader, the audio
+/// readers, the writers, Remux and MediaProbe.
 /// </summary>
 public sealed unsafe class FrameDecoder : IDisposable
 {

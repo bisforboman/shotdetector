@@ -9,11 +9,18 @@ public enum FrameReaderError
     /// <summary>FFmpeg can't open or read the input.</summary>
     InvalidInput,
 
-    /// <summary>Decoding or converting a frame failed.</summary>
+    /// <summary>Decoding, converting or filtering failed.</summary>
     DecodeFailed,
+
+    /// <summary>Encoding, muxing or writing the file failed (the writers, <see cref="Remux"/>).</summary>
+    WriteFailed,
 }
 
-/// <summary>A failure reading a video, with its <see cref="Reason"/>.</summary>
+/// <summary>
+/// A failure reading, processing or writing media, with its <see cref="Reason"/>. The rule: what the caller passed
+/// (sizes, rates, unknown option names) is an <see cref="ArgumentException"/>; what the media or the libraries do
+/// (an input FFmpeg can't open, a codec or filter these libraries leave out, a failing encoder) is this.
+/// </summary>
 /// <param name="reason">Why it failed.</param>
 /// <param name="message">What happened.</param>
 /// <param name="innerException">The underlying exception, if any.</param>
