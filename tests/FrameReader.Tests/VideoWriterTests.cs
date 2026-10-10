@@ -26,8 +26,19 @@ public class VideoWriterTests
         Assert.True(p.ExitCode == 0, stderr.Result);
     }
 
-    /// <summary>Whether libx264 is there and the ffmpeg executable is the libraries' own build.</summary>
+    /// <summary>
+    /// Whether libx264 is there and the ffmpeg executable is the libraries' own build. With SHOTDETECTOR_REQUIRE_X264=1
+    /// (CI's x264 step) not being able to is a failure, not a skip.
+    /// </summary>
     static bool CanCompare()
+    {
+        bool can = Compares();
+        if (!can && Environment.GetEnvironmentVariable("SHOTDETECTOR_REQUIRE_X264") == "1")
+            Assert.Fail($"SHOTDETECTOR_REQUIRE_X264 is set, but {Libs} has no libx264 or its ffmpeg isn't the libraries' own build.");
+        return can;
+    }
+
+    static bool Compares()
     {
         if (Libs is null || !File.Exists(Exe))
             return false;

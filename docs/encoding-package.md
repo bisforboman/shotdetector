@@ -84,7 +84,9 @@ beside ShotDetector.Native, writing frames into an mp4 with the muxers Native al
 6. **x264 directly, under GPL**: the best encoder without a second FFmpeg build; GPL and the AVC patents as in 4.
 
 Decided 2026-10-09: neither now; on the backlog as a Maybe, to revisit when the US patents expire (~late 2027) or a
-user asks.
+user asks. **Revisited 2026-10-10** to help #81's user: option 4 after all, as `ShotDetector.Native.Gpl.<rid>` (our
+build plus x264, `tools/native/build-ffmpeg.sh <rid> <dir> gpl`) with FrameReader's `VideoWriter`; byte for byte
+`ffmpeg -c:v libx264` with the same build (CI checks it against BtbN's shared GPL build).
 
 Whichever is chosen, the API would mirror the readers: a `VideoFrameWriter` (frames in, an encoder and muxer out)
 and an `AudioWriter`, in FrameReader, tested byte for byte against ffmpeg's command line where the encoder is

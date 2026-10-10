@@ -131,6 +131,13 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
+## x264 (GNU GPL 2 or later), ShotDetector.Native.Gpl.<rid> only
+
+x264 (https://code.videolan.org/videolan/x264, its stable branch at the commit in `configure.txt`), linked into
+libavcodec as FFmpeg's libx264 encoder, which makes those libraries GPL-2.0-or-later (`COPYING.GPL` in the
+package). Not in ShotDetector.Native, the CLI or the core packages.
+License: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+
 ## LAME (GNU LGPL 2 or later), ShotDetector.Native.<rid> and the shotdetect CLI
 
 LAME 3.100 (https://lame.sourceforge.io), linked into libavcodec as FFmpeg's MP3 encoder (libmp3lame). Built from

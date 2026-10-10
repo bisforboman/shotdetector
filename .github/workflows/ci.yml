@@ -94,6 +94,24 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx
 
+      # FrameReader's VideoWriter (H.264) against ffmpeg -c:v libx264, byte for byte: x264's output depends on how it
+      # was compiled, so libraries and executable from one build, BtbN's shared GPL one (ours has no executables).
+      - name: FFmpeg 8.1 with x264, shared
+        id: gpl
+        if: needs.changes.outputs.docs_only != 'true'
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          build: gpl-shared
+          add-to-path: 'false'
+
+      - name: Test VideoWriter with x264
+        if: needs.changes.outputs.docs_only != 'true'
+        env:
+          SHOTDETECTOR_FFMPEG_LIBS: ${{ steps.gpl.outputs.bin }}
+          SHOTDETECTOR_REQUIRE_X264: '1'
+        run: dotnet test tests/FrameReader.Tests --filter "FullyQualifiedName~VideoWriter"
+
       - name: Pack
         if: needs.changes.outputs.docs_only != 'true'
         run: |

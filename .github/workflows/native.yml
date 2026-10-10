@@ -2,7 +2,8 @@ name: Native libraries
 
 # FFmpeg's shared libraries for ShotDetector.Native.<rid> (tools/native/build-ffmpeg.sh), one job per platform,
 # cached by the script's hash: they are rebuilt only when the FFmpeg version or the configure line changes.
-# release.yml and the tests take them from here (workflow_call).
+# release.yml and the tests take them from here (workflow_call). Two variants: lgpl (ShotDetector.Native, artifact
+# native-<rid>) and gpl (with x264, ShotDetector.Native.Gpl, artifact native-gpl-<rid>).
 on:
   workflow_call:
     inputs:
@@ -10,6 +11,10 @@ on:
         description: JSON array of the platforms to build (default all)
         type: string
         default: '["win-x64","linux-x64","linux-arm64","linux-musl-x64","osx-arm64"]'
+      variants:
+        description: JSON array of the variants to build (lgpl, gpl)
+        type: string
+        default: '["lgpl"]'
   workflow_dispatch:
   pull_request:
     paths: ['tools/native/**', '.github/workflows/native.yml']
@@ -26,6 +31,8 @@ jobs:
       - id: plan
         env:
           RIDS: ${{ inputs.rids || '["win-x64","linux-x64","linux-arm64","linux-musl-x64","osx-arm64"]' }}
+          # A pull request changing the build script (or a manual run) builds both variants.
+          VARIANTS: ${{ inputs.variants || '["lgpl","gpl"]' }}
         run: |
           python3 - <<'EOF' >> "$GITHUB_OUTPUT"
           import json, os
@@ -37,7 +44,9 @@ jobs:
               {"rid": "osx-arm64", "os": "macos-14"},
           ]
           wanted = json.loads(os.environ["RIDS"])
-          print("include=" + json.dumps([p for p in all if p["rid"] in wanted]))
+          variants = json.loads(os.environ["VARIANTS"])
+          print("include=" + json.dumps([{**p, "variant": v, "artifact": f"native-{'gpl-' if v == 'gpl' else ''}{p['rid']}"}
+                                          for p in all if p["rid"] in wanted for v in variants]))
           EOF
 
   build:
@@ -61,7 +70,7 @@ jobs:
         id: cache
         with:
           path: native
-          key: ffmpeg-${{ matrix.rid }}-${{ hashFiles('tools/native/build-ffmpeg.sh') }}
+          key: ffmpeg-${{ matrix.variant == 'gpl' && 'gpl-' || '' }}${{ matrix.rid }}-${{ hashFiles('tools/native/build-ffmpeg.sh') }}
 
       - name: Tools (Linux)
         if: steps.cache.outputs.cache-hit != 'true' && !matrix.container && runner.os == 'Linux'
@@ -75,7 +84,7 @@ jobs:
 
       - name: Build FFmpeg
         if: steps.cache.outputs.cache-hit != 'true'
-        run: sh tools/native/build-ffmpeg.sh ${{ matrix.rid }} native
+        run: sh tools/native/build-ffmpeg.sh ${{ matrix.rid }} native ${{ matrix.variant }}
 
       - name: What the libraries link against
         shell: sh
@@ -87,7 +96,12 @@ jobs:
             *) for f in native/*.so.*; do echo "$f:"; readelf -d "$f" | grep -E "NEEDED|RUNPATH|SONAME"; done ;;
           esac
 
+      - name: The gpl variant has libx264
+        if: matrix.variant == 'gpl'
+        shell: sh
+        run: grep -q -- "--enable-libx264" native/configure.txt
+
       - uses: actions/upload-artifact@v7
         with:
-          name: native-${{ matrix.rid }}
+          name: ${{ matrix.artifact }}
           path: native/
