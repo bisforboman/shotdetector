@@ -3,10 +3,10 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 
-## 1.3.0-preview.1 – 2026-10-10
+## 1.3.0 – 2026-10-10
 
-A preview of 1.3.0, to try before the stable release: audio and H.264 writing and stream copy in FrameReader, the
-reference tone, and the GPL native packages with x264.
+Audio and H.264 writing and stream copy in FrameReader, the reference tone, and the GPL native packages with x264
+(the same as 1.3.0-preview.1).
 
 ### New
 
