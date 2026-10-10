@@ -67,7 +67,11 @@ public sealed record VideoWriterOptions
     /// <summary>x264's own options (<c>-x264-params</c>), e.g. <c>scenecut=0:bframes=2</c>.</summary>
     public string? X264Params { get; init; }
 
-    /// <summary>Other encoder options by name, as ffmpeg's <c>-OPTION value</c> for the encoder (e.g. <c>tune</c>, <c>profile</c>).</summary>
+    /// <summary>
+    /// Other encoder options by name, as ffmpeg's <c>-OPTION value</c> for the encoder (e.g. <c>tune</c>, <c>profile</c>,
+    /// <c>threads</c>: "auto" by default as in ffmpeg; x264 with several threads can differ slightly run to run, so
+    /// set 1 on both sides to compare files byte for byte).
+    /// </summary>
     public IReadOnlyDictionary<string, string>? EncoderOptions { get; init; }
 
     /// <summary>An audio track, written with <see cref="VideoWriter.WriteAudio"/>; null: video only.</summary>
