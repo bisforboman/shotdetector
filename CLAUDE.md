@@ -16,6 +16,7 @@ differ is documented in README.md and in `docs/decisions.md`.
 
 ## Status
 
+1.3.0 released 2026-10-10 (AudioWriter, Remux, VideoWriter + ShotDetector.Native.Gpl, reference tone).
 1.2.0 released 2026-10-09 (FrameReader WaveformData and AudioFilter, issue #81; audio filters in Native).
 1.1.0 released 2026-10-09 (VideoInfo.Streams for files and URLs, zlib 1.3.2/dav1d 1.5.4, issue #81's probe).
 1.0.0 released 2026-10-08 (API frozen: semantic versioning, package validation once ApiBaselineVersion is set).
@@ -36,7 +37,8 @@ weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what th
 **Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Open a release
 PR that moves CHANGELOG.md's `## Unreleased` section to `## X.Y.Z – date`; merging it releases: release.yml (on every
 push to main) tags `vX.Y.Z` when that version isn't tagged yet and publishes. Prereleases (`-`) publish without
-approval, stable ones wait for the user's approval of the `release` environment. A hand-pushed `v*` tag still works.
+approval (the `prerelease` environment allows `v*-*` tags, and `main` once the user adds it; with tags only, push
+`vX.Y.Z-pre` on the release commit), stable ones wait for the user's approval of the `release` environment. A hand-pushed `v*` tag still works.
 After a stable release is on nuget.org, set `ApiBaselineVersion` in Directory.Build.props to it (from 1.0 on; release.yml
 opens an issue as the reminder): packing
 then fails on any breaking change to ShotDetector or FastYuv (SDK package validation, CP000x errors).
