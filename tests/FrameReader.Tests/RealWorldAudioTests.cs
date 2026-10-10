@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using FrameReader;
 
 /// <summary>
-/// AudioReader and SpectralStats on a real film's own audio (AAC, MP3; realworld.yml runs it per film) against ffmpeg's
+/// AudioReader and SpectralStats on a real film's own audio (AAC, MP3, Opus; realworld.yml runs it per file) against ffmpeg's
 /// command line, like <see cref="AudioReaderTests"/> and <see cref="SpectralStatsTests"/> do on synthetic clips: real
 /// encoders' streams (priming, padding, long durations, seeking in the middle). Needs SHOTDETECTOR_REALWORLD_AUDIO (the
 /// film) and SHOTDETECTOR_FFMPEG_LIBS (an FFmpeg 8.1 shared build's folder with ffmpeg); without them these do nothing.
@@ -26,7 +26,7 @@ public class RealWorldAudioTests
     [Theory]
     [InlineData(null, null, null)]
     [InlineData(16000, 1, null)]
-    [InlineData(48000, 2, 187.3)]   // into the film, past a few hundred seconds of packets
+    [InlineData(48000, 2, 100.3)]   // into the file, past a few thousand packets
     public async Task SamplesAreFfmpegs(int? rate, int? channels, double? seek)
     {
         if (Libs is null || Film is null)

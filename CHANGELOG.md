@@ -25,6 +25,13 @@ FrameReader's API before its own package (docs/frame-reader-api-review.md):
   ShotDetector's with `-preview` until its API is declared stable. ShotDetector's package keeps its own copy of
   FrameReader.dll until then (no prerelease dependency for ShotDetector's users).
 
+### Fixed
+
+- FrameReader's `AudioReader.Seek` on Matroska/WebM with video (Opus there): its millisecond timestamps put frames up to
+  a millisecond off a sample, so after a seek the samples started up to 1 ms away from ffmpeg's `-ss` (24 samples on
+  Elephants Dream's webm). Timestamps now follow ffmpeg's decoder (`audio_ts_process`), and the seek takes ffmpeg's
+  margin for files with B-frames. Found by the new real-world audio check (realworld.yml), which covers AAC, MP3 and Opus.
+
 ## 1.3.0 – 2026-10-10
 
 Audio and H.264 writing and stream copy in FrameReader, the reference tone, and the GPL native packages with x264
