@@ -60,7 +60,6 @@ public class ReadFrames
         {
             Width = Small ? 160 : null, Height = Small ? 90 : null,
             Format = Small ? FrameFormat.Gray8 : FrameFormat.Bgr24,
-            Decoder = new FrameDecoderOptions { LibraryDirectory = Libs },
         });
         long sum = 0;
         for (int n = 0; n < Frames && reader.TryRead(out var frame); n++)

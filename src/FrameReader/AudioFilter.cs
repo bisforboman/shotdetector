@@ -14,7 +14,7 @@ namespace FrameReader;
 /// <remarks>
 /// Filters in the ShotDetector.Native libraries: volume, equalizer, bass, treble, highpass, lowpass, bandpass,
 /// bandreject, afade, pan, acompressor, alimiter, dynaudnorm, agate, ebur128, loudnorm, silencedetect, astats (and
-/// aformat, aresample). Any FFmpeg build in <see cref="AudioReaderOptions.LibraryDirectory"/> brings its own set.
+/// aformat, aresample). Any FFmpeg build loaded with <see cref="FFmpegLibraries.Load"/> brings its own set.
 /// Analysis filters' results (ebur128 with metadata=1, silencedetect, astats with metadata=1) are in
 /// <see cref="Metadata"/>.
 /// </remarks>

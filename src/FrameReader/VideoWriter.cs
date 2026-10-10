@@ -82,9 +82,6 @@ public sealed record VideoWriterOptions
 
     /// <summary>Leave out what differs between FFmpeg versions (ffmpeg's <c>-fflags +bitexact -flags +bitexact</c>).</summary>
     public bool Bitexact { get; init; }
-
-    /// <summary>The folder with FFmpeg's libraries; null: next to the app, then the system's.</summary>
-    public string? LibraryDirectory { get; init; }
 }
 
 /// <summary>
@@ -137,7 +134,7 @@ public sealed unsafe class VideoWriter : IDisposable
         };
         try
         {
-            FFmpegLibraries.Load(options.LibraryDirectory);
+            FFmpegLibraries.Load();
             _frameBytes = ffmpeg.av_image_get_buffer_size(_input, options.Width, options.Height, 1);
             _fmt = Output.Create(path, options.Format, options.Bitexact);
             string encoder = options.Encoder ?? "libx264";

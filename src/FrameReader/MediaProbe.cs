@@ -30,7 +30,7 @@ public static unsafe class MediaProbe
 
     static MediaInfo Probe(string path, StreamInput? io, ProbeOptions? options)
     {
-        FFmpegLibraries.Load(options?.LibraryDirectory);
+        FFmpegLibraries.Load();
         var fmt = Demuxer.Open(path, options?.InputOptions, io);
         try
         {

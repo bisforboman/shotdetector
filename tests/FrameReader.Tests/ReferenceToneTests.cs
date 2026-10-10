@@ -8,7 +8,7 @@ using FrameReader;
 /// </summary>
 public class ReferenceToneTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
 
     const string Tone = "0.1259*sin(2*PI*1000*t)"; // -18 dBFS, EBU line-up
     // Programme stand-in: a chord with harmonics, swelling, over noise.
@@ -30,7 +30,7 @@ public class ReferenceToneTests
                 p.WaitForExit();
                 Assert.True(p.ExitCode == 0, stderr);
             }
-            using var audio = new AudioReader(path, new AudioReaderOptions { LibraryDirectory = Libs });
+            using var audio = new AudioReader(path, new AudioReaderOptions());
             return [.. ReferenceTone.Find(audio)];
         }
         finally

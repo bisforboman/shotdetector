@@ -9,7 +9,7 @@ using FrameReader;
 /// </summary>
 public class AudioWriterTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
 
     static void Ffmpeg(params string[] args)
     {
@@ -53,7 +53,7 @@ public class AudioWriterTests
                 .. bitRate is { } b ? new[] { "-b:a", $"{b}" } : [], "-fflags", "+bitexact", "-flags:a", "+bitexact", expected]);
 
             using (var writer = new AudioWriter(actual, new AudioWriterOptions
-                   { SampleRate = rate, Channels = channels, BitRate = bitRate, Encoder = encoder, Bitexact = true, LibraryDirectory = Libs }))
+                   { SampleRate = rate, Channels = channels, BitRate = bitRate, Encoder = encoder, Bitexact = true }))
             {
                 // Uneven chunks, as a reader gives them.
                 for (int at = 0, size = 1000; at < samples.Length; at += size * channels, size = size == 1000 ? 4096 : 1000)
@@ -93,7 +93,7 @@ public class AudioWriterTests
 
     static long Samples(string path)
     {
-        using var reader = new AudioReader(path, new AudioReaderOptions { LibraryDirectory = Libs });
+        using var reader = new AudioReader(path, new AudioReaderOptions());
         long n = 0;
         while (reader.TryRead(out var chunk))
             n += chunk.Length;
@@ -109,12 +109,12 @@ public class AudioWriterTests
         try
         {
             string path = Path.Combine(dir, "tagged.mp3");
-            using (var writer = new AudioWriter(path, new AudioWriterOptions { SampleRate = 44100, Channels = 1, LibraryDirectory = Libs }))
+            using (var writer = new AudioWriter(path, new AudioWriterOptions { SampleRate = 44100, Channels = 1 }))
                 writer.Write(new float[44100]);
-            var info = MediaProbe.Probe(path, new ProbeOptions { LibraryDirectory = Libs });
+            var info = MediaProbe.Probe(path, new ProbeOptions());
             Assert.Equal("mp3", info.Streams[0].Codec);
             Assert.Contains("Lavf", File.ReadAllText(path).Substring(0, 200)); // the ID3v2 TSSE frame, as ffmpeg writes it
-            Assert.Throws<FrameReaderException>(() => new AudioWriter(Path.Combine(dir, "x.nosuchformat"), new AudioWriterOptions { SampleRate = 8000, Channels = 1, LibraryDirectory = Libs }));
+            Assert.Throws<FrameReaderException>(() => new AudioWriter(Path.Combine(dir, "x.nosuchformat"), new AudioWriterOptions { SampleRate = 8000, Channels = 1 }));
             Assert.Throws<ArgumentException>(() => new AudioWriter(path, new AudioWriterOptions { SampleRate = 0, Channels = 1 }));
         }
         finally

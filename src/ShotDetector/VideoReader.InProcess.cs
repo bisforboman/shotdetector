@@ -54,9 +54,9 @@ public sealed partial class VideoReader
         {
             try
             {
+                InProcess.Load(_ffmpegDirectory);
                 var decoderOptions = new FrameReader.FrameDecoderOptions
                 {
-                    LibraryDirectory = _ffmpegDirectory,
                     Threads = _decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount, inProcess: true),
                     Deinterlace = _deinterlace,
                     RowDeinterlacer = _yadif is null ? null : new RowDeinterlacer(_yadif),

@@ -3,8 +3,6 @@ namespace FrameReader;
 /// <summary>How a <see cref="FrameDecoder"/> opens and decodes its input.</summary>
 public sealed record FrameDecoderOptions
 {
-    /// <summary>The folder with FFmpeg's libraries (<see cref="FFmpegLibraries.Load"/>); null: next to the app, then the system's.</summary>
-    public string? LibraryDirectory { get; init; }
 
     /// <summary>Decoder threads; 0: FFmpeg's choice.</summary>
     public int Threads { get; init; }

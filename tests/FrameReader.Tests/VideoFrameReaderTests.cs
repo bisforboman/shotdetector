@@ -8,7 +8,7 @@ using FrameReader;
 /// </summary>
 public class VideoFrameReaderTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
 
     static string Ffmpeg => Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
 
@@ -56,7 +56,7 @@ public class VideoFrameReaderTests
                     var actual = new MemoryStream();
                     int frames = 0;
                     using (var reader = new VideoFrameReader(path, new FrameReaderOptions
-                           { Width = size?.W, Height = size?.H, Format = format, Decoder = new FrameDecoderOptions { LibraryDirectory = Libs } }))
+                           { Width = size?.W, Height = size?.H, Format = format, Decoder = new FrameDecoderOptions() }))
                         while (reader.TryRead(out var frame))
                         {
                             Assert.Equal(frames++, frame.Index);
@@ -90,7 +90,7 @@ public class VideoFrameReaderTests
             int[] rows = [0, 1, 7, 100, 101, 102, 200, 239];
             const int Row = 320 * 3, Frame = Row * 240;
             int frames = 0;
-            using var decoder = new FrameDecoder(path, new FrameDecoderOptions { LibraryDirectory = Libs });
+            using var decoder = new FrameDecoder(path, new FrameDecoderOptions());
             using var whole = new BgrConverter(decoder);
             using var some = new BgrConverter(decoder);
             for (; decoder.Next(); frames++)
@@ -131,7 +131,7 @@ public class VideoFrameReaderTests
             // An MPEG-TS that starts at 10 s: times count from its start, as ffmpeg's do.
             string path = Path.Combine(dir, "late.ts");
             Run("-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=160x120:r=25:d=1", "-c:v", "mpeg2video", "-output_ts_offset", "10", path);
-            using var reader = new VideoFrameReader(path, new FrameReaderOptions { Format = FrameFormat.Gray8, Decoder = new FrameDecoderOptions { LibraryDirectory = Libs } });
+            using var reader = new VideoFrameReader(path, new FrameReaderOptions { Format = FrameFormat.Gray8, Decoder = new FrameDecoderOptions() });
             Assert.True(reader.TryRead(out var first));
             Assert.InRange(first.Time.TotalSeconds, 0, 0.1);
             Assert.Equal(160 * 120, first.Data.Length);

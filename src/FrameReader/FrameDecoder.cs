@@ -99,7 +99,7 @@ public sealed unsafe class FrameDecoder : IDisposable
         // Whatever fails after this point, what was opened so far is freed (the input, the decoder).
         try
         {
-            FFmpegLibraries.Load(o.LibraryDirectory);
+            FFmpegLibraries.Load();
             _deinterlace = deinterlace;
             _yadif = deinterlace ? o.RowDeinterlacer : null;
             _fmt = Demuxer.Open(path, o.InputOptions, io);

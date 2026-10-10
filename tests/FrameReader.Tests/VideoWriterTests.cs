@@ -10,7 +10,7 @@ using FrameReader;
 /// </summary>
 public class VideoWriterTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
 
     static string Exe => Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
 
@@ -45,7 +45,7 @@ public class VideoWriterTests
         string probe = Path.Combine(Path.GetTempPath(), $"framereader-x264-{Guid.NewGuid():N}.mp4");
         try
         {
-            new VideoWriter(probe, new VideoWriterOptions { Width = 16, Height = 16, FrameRate = new(25, 1), LibraryDirectory = Libs }).Dispose();
+            new VideoWriter(probe, new VideoWriterOptions { Width = 16, Height = 16, FrameRate = new(25, 1) }).Dispose();
         }
         catch (FrameReaderException)
         {
@@ -121,7 +121,7 @@ public class VideoWriterTests
                 Audio = withAudio ? new AudioTrackOptions { SampleRate = 44100, Channels = 2 } : null,
                 // One thread on both sides: with several, x264's frame threading can vary run to run at fast presets.
                 EncoderOptions = new Dictionary<string, string> { ["threads"] = "1" },
-                Bitexact = true, LibraryDirectory = Libs,
+                Bitexact = true,
             };
             using (var writer = new VideoWriter(actual, options))
             {
@@ -146,7 +146,7 @@ public class VideoWriterTests
             if (extra == "keys")
             {
                 // A keyframe every second exactly: frames 0, 25, 50.
-                using var reader = new FrameDecoder(actual, new FrameDecoderOptions { LibraryDirectory = Libs });
+                using var reader = new FrameDecoder(actual, new FrameDecoderOptions());
                 var keys = new List<int>();
                 for (int i = 0; reader.Next(); i++)
                     if (reader.IsKeyframe)
@@ -184,9 +184,9 @@ public class VideoWriterTests
             if (CanCompare())
             {
                 var e = Assert.Throws<FrameReaderException>(() => new VideoWriter(path, new VideoWriterOptions
-                    { Width = 16, Height = 16, FrameRate = new(25, 1), EncoderOptions = new Dictionary<string, string> { ["nosuchoption"] = "1" }, LibraryDirectory = Libs }));
+                    { Width = 16, Height = 16, FrameRate = new(25, 1), EncoderOptions = new Dictionary<string, string> { ["nosuchoption"] = "1" } }));
                 Assert.Contains("nosuchoption", e.Message);
-                using var w = new VideoWriter(path, new VideoWriterOptions { Width = 16, Height = 16, FrameRate = new(25, 1), LibraryDirectory = Libs });
+                using var w = new VideoWriter(path, new VideoWriterOptions { Width = 16, Height = 16, FrameRate = new(25, 1) });
                 Assert.Throws<ArgumentException>(() => w.Write(new byte[10]));
                 Assert.Throws<InvalidOperationException>(() => w.WriteAudio(new float[2]));
             }

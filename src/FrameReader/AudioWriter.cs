@@ -28,9 +28,6 @@ public sealed record AudioWriterOptions
     /// <c>-fflags +bitexact -flags:a +bitexact</c>. Off by default, so files carry the tags ffmpeg's own output does.
     /// </summary>
     public bool Bitexact { get; init; }
-
-    /// <summary>The folder with FFmpeg's libraries (<see cref="FFmpegLibraries.Load"/>); null: next to the app, then the system's.</summary>
-    public string? LibraryDirectory { get; init; }
 }
 
 /// <summary>
@@ -64,7 +61,7 @@ public sealed unsafe class AudioWriter : IDisposable
         (_rate, _channels) = (options.SampleRate, options.Channels);
         try
         {
-            FFmpegLibraries.Load(options.LibraryDirectory);
+            FFmpegLibraries.Load();
             _fmt = Output.Create(path, options.Format, options.Bitexact);
             var codec = Encoder.Find(_fmt, path, options.Encoder, AVMediaType.AVMEDIA_TYPE_AUDIO, "audio");
             _encoder = Encoder.Audio(_fmt, codec, _rate, _channels, options.BitRate, options.Bitexact);

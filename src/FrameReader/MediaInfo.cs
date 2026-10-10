@@ -208,7 +208,4 @@ public sealed record ProbeOptions
     /// <c>frames/%04d.png</c>: <c>framerate</c> = <c>25/1</c>).
     /// </summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
-
-    /// <summary>The folder with FFmpeg's libraries (<see cref="FFmpegLibraries.Load"/>); null: next to the app, then the system's.</summary>
-    public string? LibraryDirectory { get; init; }
 }

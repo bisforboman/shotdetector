@@ -8,7 +8,7 @@ using FrameReader;
 /// </summary>
 public class WaveformDataTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
     static readonly string? Audiowaveform = Environment.GetEnvironmentVariable("AUDIOWAVEFORM");
 
     static void Run(string exe, params string[] args)
@@ -52,7 +52,7 @@ public class WaveformDataTests
                 PixelsPerSecond = extra.Contains("--pixels-per-second") ? int.Parse(extra[Array.IndexOf(extra, "--pixels-per-second") + 1]) : null,
             };
             int bits = extra.Contains("-b") ? int.Parse(extra[Array.IndexOf(extra, "-b") + 1]) : 16;
-            using var audio = new AudioReader(path, new AudioReaderOptions { LibraryDirectory = Libs });
+            using var audio = new AudioReader(path, new AudioReaderOptions());
             var waveform = WaveformData.Read(audio, options);
             var actual = new MemoryStream();
             waveform.Save(actual, bits);
@@ -83,7 +83,7 @@ public class WaveformDataTests
                 foreach (short s in frames)
                     w.Write(s);
             }
-            using var audio = new AudioReader(path, new AudioReaderOptions { LibraryDirectory = Libs });
+            using var audio = new AudioReader(path, new AudioReaderOptions());
             var mixed = WaveformData.Read(audio, new WaveformOptions { SamplesPerPixel = 2 });
             // Means, truncated toward zero: 150, -3, 32767, -32768, 0; points of 2 frames, the last one alone.
             Assert.Equal((1, 3, 8000, 2), (mixed.Channels, mixed.Length, mixed.SampleRate, mixed.SamplesPerPixel));

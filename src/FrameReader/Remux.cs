@@ -36,9 +36,6 @@ public sealed record RemuxOptions
 
     /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
-
-    /// <summary>The folder with FFmpeg's libraries (<see cref="FFmpegLibraries.Load"/>); null: next to the app, then the system's.</summary>
-    public string? LibraryDirectory { get; init; }
 }
 
 /// <summary>
@@ -56,7 +53,7 @@ public static unsafe class Remux
     public static void Copy(string input, string output, RemuxOptions? options = null)
     {
         var o = options ?? new RemuxOptions();
-        FFmpegLibraries.Load(o.LibraryDirectory);
+        FFmpegLibraries.Load();
         AVFormatContext* ic = Demuxer.Open(input, o.InputOptions);
         AVFormatContext* oc = null;
         AVPacket* pkt = null;
