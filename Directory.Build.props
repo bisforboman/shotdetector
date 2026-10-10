@@ -19,6 +19,6 @@
     <Version>0.1.0-alpha.1</Version>
     <!-- The libraries' API guard (SDK package validation): packing fails on a breaking change against this release,
          the last stable version on nuget.org (docs/decisions.md, 2026-10-08). -->
-    <ApiBaselineVersion>1.2.0</ApiBaselineVersion>
+    <ApiBaselineVersion>1.3.0</ApiBaselineVersion>
   </PropertyGroup>
 </Project>
