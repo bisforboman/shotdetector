@@ -107,7 +107,7 @@ public class VideoWriterTests
             string[] a = args.Length == 0 ? [] : args.Split(' ');
             Ffmpeg(["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", $"{W}x{H}", "-r", "25", "-i", raw,
                 .. withAudio ? new[] { "-f", "f32le", "-ar", "44100", "-ac", "2", "-i", wav } : [],
-                "-c:v", "libx264", .. a, .. withAudio ? new[] { "-c:a", "aac" } : [],
+                "-c:v", "libx264", "-threads:v", "1", .. a, .. withAudio ? new[] { "-c:a", "aac" } : [],
                 "-fflags", "+bitexact", "-flags:v", "+bitexact", "-flags:a", "+bitexact", expected]);
 
             string? Arg(string key) => Array.IndexOf(a, key) is >= 0 and var i ? a[i + 1] : null;
@@ -119,6 +119,8 @@ public class VideoWriterTests
                 Gop = Arg("-g") is { } g ? int.Parse(g) : null, KeyintMin = Arg("-keyint_min") is { } k ? int.Parse(k) : null,
                 KeyframeEvery = extra == "keys" ? TimeSpan.FromSeconds(1) : null, X264Params = Arg("-x264-params"),
                 Audio = withAudio ? new AudioTrackOptions { SampleRate = 44100, Channels = 2 } : null,
+                // One thread on both sides: with several, x264's frame threading can vary run to run at fast presets.
+                EncoderOptions = new Dictionary<string, string> { ["threads"] = "1" },
                 Bitexact = true, LibraryDirectory = Libs,
             };
             using (var writer = new VideoWriter(actual, options))

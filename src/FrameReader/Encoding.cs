@@ -54,7 +54,7 @@ internal sealed unsafe class Encoder : IDisposable
     // Video: the encoder opens on the first filtered frame, from its properties, as ffmpeg's does.
     AVCodec* _codec;
     IReadOnlyDictionary<string, string>? _options;
-    bool _bitexact;
+    bool _bitexact, _threadsSet;
 
     Encoder(AVFormatContext* fmt) => _fmt = fmt;
 
@@ -160,6 +160,7 @@ internal sealed unsafe class Encoder : IDisposable
                 Check(ffmpeg.av_opt_set(e._enc, key, value, ffmpeg.AV_OPT_SEARCH_CHILDREN) is var r && r == ffmpeg.AVERROR_OPTION_NOT_FOUND
                     ? throw new FrameReaderException(FrameReaderError.InvalidInput, $"The {Marshal.PtrToStringAnsi((nint)codec->name)} encoder has no option \"{key}\".")
                     : r, $"set {key}");
+            e._threadsSet = options.ContainsKey("threads");
             e._codec = codec;
             e._options = null; // set on the context above
             e._bitexact = bitexact;
@@ -261,7 +262,8 @@ internal sealed unsafe class Encoder : IDisposable
         if ((_fmt->oformat->flags & ffmpeg.AVFMT_GLOBALHEADER) != 0)
             _enc->flags |= ffmpeg.AV_CODEC_FLAG_GLOBAL_HEADER;
         AVDictionary* dict = null;
-        ffmpeg.av_dict_set(&dict, "threads", "auto", 0); // as ffmpeg sets it
+        if (!_threadsSet)
+            ffmpeg.av_dict_set(&dict, "threads", "auto", 0); // as ffmpeg sets it, unless the caller did
         foreach (var (key, value) in options ?? new Dictionary<string, string>())
             ffmpeg.av_dict_set(&dict, key, value, 0);
         try
