@@ -294,7 +294,8 @@ jobs:
   # ShotDetector and scenedetect run on the same clips; cuts, scene list CSVs and per-frame stats must
   # be identical, for the core path and the FastYuv path, for each supported scenedetect release (in
   # the matching compatibility mode). The reference is scenedetect on Linux, whose OpenCV wheel
-  # bundles FFmpeg 8 and so follows colour tags (the Windows wheel's FFmpeg 7.1 doesn't).
+  # bundles FFmpeg 8 and so follows colour tags (the Windows wheel's FFmpeg 7.1 doesn't). Each path in two jobs
+  # (part): the main comparison, and the rest; one job ran them all in 8 minutes.
   parity:
     needs: changes
     if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
@@ -305,6 +306,7 @@ jobs:
       matrix:
         path: [core, fast-yuv]
         scenedetect: ['0.7.1']   # the release reproduced; a previous one joins here when the default moves on
+        part: [compare, more]
     env:
       # The latest stable FFmpeg; BtbN's static build. No libraries here, so this is also Auto's fallback to the
       # executable where only FFmpeg 9 is installed (its libavcodec 63 doesn't load in-process).
@@ -337,13 +339,30 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: pip install scenedetect==${{ matrix.scenedetect }} opencv-python-headless==5.0.0.93
 
-      - name: Make sample clips
+      # The clips take a minute to make: cached by the script and the FFmpeg series (both sides read the same clips,
+      # so a newer daily build making slightly different ones doesn't matter). Saved right after making them, before
+      # the steps below add files to samples/.
+      - id: samples
         if: needs.changes.outputs.docs_only != 'true'
+        uses: actions/cache/restore@v5
+        with:
+          path: samples
+          key: samples-${{ hashFiles('tools/make-samples.ps1') }}-ffmpeg${{ env.FFMPEG }}
+
+      - name: Make sample clips
+        if: needs.changes.outputs.docs_only != 'true' && steps.samples.outputs.cache-hit != 'true'
         shell: pwsh
         run: ./tools/make-samples.ps1
 
+      - uses: actions/cache/save@v5
+        if: needs.changes.outputs.docs_only != 'true' && steps.samples.outputs.cache-hit != 'true'
+        continue-on-error: true   # the other jobs of this run save the same key at the same time
+        with:
+          path: samples
+          key: ${{ steps.samples.outputs.cache-primary-key }}
+
       - name: Compare with scenedetect
-        if: needs.changes.outputs.docs_only != 'true'
+        if: needs.changes.outputs.docs_only != 'true' && matrix.part == 'compare'
         run: |
           status=0
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
@@ -354,7 +373,7 @@ jobs:
 
       # Time range, frame skip and crop must give scenedetect's results too (constant frame rate clips).
       - name: Compare with scenedetect's time, --frame-skip and --crop options
-        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1')
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.part == 'compare')
         run: |
           status=0
           python tools/compare.py samples/sintel_trailer-480p.mp4 samples/bbb_trailer_400p.ogg samples/sintel_rotated.mp4             --detector both --stats --report options.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }}             --scenedetect-args "--crop 100 50 700 400 time -s 2s -e 00:00:20.000" --ours-args "--crop 100 50 700 400 -s 2s -e 00:00:20.000" || status=$?
@@ -362,27 +381,32 @@ jobs:
           { echo "### time/crop and frame-skip options, ${{ matrix.path }} path"; cat options.md skip.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
-      # save-edl, save-fcp (fcpx and fcp7), save-otio and save-qp must be byte-identical (the CLI was built
-      # by the compare steps above). Once: the exports don't depend on the frame pipeline.
+      # The CLI the next three steps run (compare.py builds it, but this part doesn't run compare.py first).
+      - name: Build the CLI
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.path == 'core' && matrix.part == 'more')
+        run: dotnet build -c Release -v q src/ShotDetector.Cli
+
+      # save-edl, save-fcp (fcpx and fcp7), save-otio and save-qp must be byte-identical. Once: the exports don't
+      # depend on the frame pipeline.
       - name: Compare timeline exports with scenedetect's
-        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.path == 'core')
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.path == 'core' && matrix.part == 'more')
         run: python tools/compare-timeline.py
 
       # Several detectors, per-detector options, drop/merge, suppress, -d downscale: CSVs and stats identical.
       - name: Compare detection options with scenedetect
-        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.path == 'core')
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.path == 'core' && matrix.part == 'more')
         run: python tools/compare-options.py
 
       # load-scenes: shots read back from a scene list, then re-exported; byte-identical.
       - name: Compare load-scenes with scenedetect
-        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.path == 'core')
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.path == 'core' && matrix.part == 'more')
         run: python tools/compare-load-scenes.py
 
       # detect-hash is informational: on flat frames (fades to black) the perceptual hash is DCT
       # rounding noise, in scenedetect itself as much as here, so a few frames and the odd cut inside
       # a fade differ. Everything else should match; eyeball the table if it changes.
       - name: Compare detect-hash with scenedetect (informational)
-        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1')
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.part == 'more')
         run: |
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg             --detector hash --stats --report hash.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### detect-hash (informational), ${{ matrix.path }} path"; cat hash.md; } >> "$GITHUB_STEP_SUMMARY"
@@ -395,7 +419,7 @@ jobs:
       # opencv-python 5.0.0.93 (FFmpeg 8) can't convert interlaced frames ("Cannot convert interlaced to progressive")
       # and hands scenedetect the same nearly black image for every frame; ShotDetector reads the real ones (README).
       - name: Compare interlaced broadcast video with scenedetect
-        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1')
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.part == 'more')
         run: |
           status=0
           fast="${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }}"
@@ -408,7 +432,7 @@ jobs:
           exit $status
 
       - name: Compare 10-bit video with scenedetect (informational)
-        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1')
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.part == 'more')
         run: |
           python tools/compare.py samples/informational/*.mp4 samples/informational/*.mov samples/informational/*.mxf --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### 10-bit (informational), ${{ matrix.path }} path"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"

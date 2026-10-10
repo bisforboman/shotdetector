@@ -3,10 +3,11 @@
 # mutation breaks one guard, and the listed tests must then fail. Fails when a mutation survives (no test covers that
 # guard) or no longer applies (the code changed: update its Find text).
 #
-#   ./tools/mutation/Invoke-Mutations.ps1 [-Root <checkout>]
+#   ./tools/mutation/Invoke-Mutations.ps1 [-Root <checkout>] [-Shard <i> -Shards <n>]
+# -Shard/-Shards: only every n-th mutation from the i-th (0-based), for CI's parallel jobs.
 # The checkout must have no uncommitted changes to the mutated files: each mutation is undone with 'git checkout'.
 # Locally, run it in a separate worktree (git worktree add ../ShotDetector-mut HEAD) so builds don't touch your copy.
-param([string]$Root = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent))
+param([string]$Root = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent), [int]$Shard = 0, [int]$Shards = 1)
 $ErrorActionPreference = 'Stop'
 $config = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'mutations.psd1')
 $tests = Join-Path $Root 'tests/ShotDetector.Tests'
@@ -14,7 +15,8 @@ $tests = Join-Path $Root 'tests/ShotDetector.Tests'
 dotnet build $tests -nologo -v q | Out-Host
 if ($LASTEXITCODE -ne 0) { throw 'The unmutated build fails.' }
 
-$results = foreach ($m in $config.Mutations) {
+$mine = @(for ($i = $Shard; $i -lt $config.Mutations.Count; $i += $Shards) { $config.Mutations[$i] })
+$results = foreach ($m in $mine) {
     $file = Join-Path $Root $m.File
     $text = [IO.File]::ReadAllText($file)
     $count = ([regex]::Matches($text, [regex]::Escape($m.Find))).Count
