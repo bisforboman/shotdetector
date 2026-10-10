@@ -1,0 +1,64 @@
+name: BtbN's FFmpeg
+description: >-
+  BtbN's static FFmpeg build (GitHub releases), downloaded to a file with retries and checked before it's unpacked,
+  cached per day; when the download fails, the last cached copy is used with a warning. CI's network failures
+  (connection resets, truncated archives) otherwise failed whole runs.
+inputs:
+  version:
+    description: FFmpeg series, e.g. 8.1 or 9.0
+    default: '8.1'
+  platform:
+    description: BtbN's platform name (linux64, linuxarm64)
+    default: linux64
+  build:
+    description: gpl (static executables) or gpl-shared (the executables and their shared libraries, in bin)
+    default: gpl
+  add-to-path:
+    description: Put its bin folder on PATH
+    default: 'true'
+outputs:
+  bin:
+    description: The folder with ffmpeg and ffprobe (and, for gpl-shared, the libraries they use)
+    value: ${{ steps.get.outputs.bin }}
+runs:
+  using: composite
+  steps:
+    - id: day
+      shell: bash
+      run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+    - id: cache
+      uses: actions/cache@v5
+      with:
+        path: ${{ runner.temp }}/btbn-${{ inputs.version }}-${{ inputs.platform }}-${{ inputs.build }}
+        key: btbn-${{ inputs.version }}-${{ inputs.platform }}-${{ inputs.build }}-${{ steps.day.outputs.day }}
+        restore-keys: btbn-${{ inputs.version }}-${{ inputs.platform }}-${{ inputs.build }}-
+
+    - id: get
+      shell: bash
+      env:
+        V: ${{ inputs.version }}
+        P: ${{ inputs.platform }}
+        B: ${{ inputs.build }}
+        HIT: ${{ steps.cache.outputs.cache-hit }}
+        ADD: ${{ inputs.add-to-path }}
+      run: |
+        dir="$RUNNER_TEMP/btbn-$V-$P-$B"
+        name="ffmpeg-n$V-latest-$P-$B-$V"
+        if [ "$HIT" != true ]; then
+          archive="$RUNNER_TEMP/$name.tar.xz"
+          if curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30 -o "$archive" \
+               "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$name.tar.xz" && xz -t "$archive"; then
+            rm -rf "$dir" && mkdir -p "$dir" && tar -xJf "$archive" -C "$dir" && rm -f "$archive"
+            # Shared: the libraries beside the executables, one folder to load both from.
+            if [ -d "$dir/$name/lib" ]; then cp -a "$dir/$name"/lib/*.so* "$dir/$name/bin/" 2>/dev/null || true; fi
+          elif [ -x "$dir/$name/bin/ffmpeg" ]; then
+            echo "::warning::BtbN's FFmpeg $V ($P) didn't download; using the copy cached on an earlier day"
+          else
+            echo "::error::BtbN's FFmpeg $V ($P) didn't download, and no earlier copy is cached"
+            exit 1
+          fi
+        fi
+        "$dir/$name/bin/ffmpeg" -hide_banner -version | head -1
+        echo "bin=$dir/$name/bin" >> "$GITHUB_OUTPUT"
+        if [ "$ADD" = true ]; then echo "$dir/$name/bin" >> "$GITHUB_PATH"; fi

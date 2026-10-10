@@ -12,6 +12,20 @@ semantic versioning (README, "Versions"); before it, minor versions could change
   out of detection (`DetectionResult.ReferenceTone` lists them); CLI `--find-tone`, `--trim-tone`,
   `--tone-min-duration`. Interrupted line-up (EBU, GLITS) is one run; beeps and music don't count. Opt-in: nothing
   changes with it off. In FrameReader: `ReferenceTone.Find(audioReader)`.
+- FrameReader (inside the ShotDetector package; its API isn't under semantic versioning yet):
+  - `AudioWriter`: float32 samples to MP3 (LAME), AAC or WAV, the file ffmpeg writes from the same samples.
+  - `Remux.Copy`: streams copied into another container without re-encoding (`ffmpeg -map ... -c copy`), e.g. the
+    video alone into an .mp4 and the audio into an .m4a.
+- ShotDetector.Native and the CLI's FFmpeg libraries add the AAC, MP3 (LAME 3.100, LGPL, linked in) and 16-bit PCM
+  encoders and common muxers (mp4, m4a, mkv, mka, webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass),
+  about 0.5 MB per platform.
+- H.264 encoding, opt-in (issue #81):
+  - FrameReader `VideoWriter`: frames (BGR, RGB, gray or yuv420p) in, H.264 in .mp4/.mkv/.mov out, with an optional
+    AAC track; pixel format, CRF or bit rate, preset, GOP, keyframes forced every N seconds (IDR), x264 params. The
+    file `ffmpeg -c:v libx264` writes from the same frames with the same FFmpeg build.
+  - `ShotDetector.Native.Gpl.<rid>`: ShotDetector.Native's libraries with x264, used instead of ShotDetector.Native.
+    **GPL-2.0-or-later**: an app that ships with it falls under the GPL. H.264 is covered by Via LA's AVC patents
+    either way (docs/encoding-package.md).
 
 ## 1.2.0 – 2026-10-09
 

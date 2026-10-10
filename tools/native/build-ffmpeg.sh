@@ -1,13 +1,17 @@
 #!/bin/sh
-# Builds FFmpeg's shared libraries for ShotDetector.Native.<rid>: decoding only (libavcodec decoders, libavformat
-# demuxers, libswscale, libavutil; libswresample too, which FFmpeg.AutoGen loads with libavcodec), plus libavfilter
+# Builds FFmpeg's shared libraries for ShotDetector.Native.<rid>: decoding (libavcodec decoders, libavformat
+# demuxers), plus the AAC, MP3 (LAME) and 16-bit PCM encoders and the muxers FrameReader's AudioWriter and Remux
+# write with, libswscale, libavutil; libswresample too, which FFmpeg.AutoGen loads with libavcodec), plus libavfilter
 # with only yadif (deinterlacing), fps (FrameReader's FrameRate), aspectralstats (its SpectralStats), the audio
 # filters its AudioFilter offers (EQ and level, dynamics, loudness, detection; aformat/aresample to convert) and a
 # graph's buffer/buffersink and abuffer/abuffersink ends. LGPL; linked in statically: zlib (PNG, compressed
-# MOV/MKV headers) and dav1d (AV1, BSD-2-Clause). Run on the platform itself, except win-x64, which cross-compiles from
+# MOV/MKV headers), dav1d (AV1, BSD-2-Clause) and LAME (MP3, LGPL). Run on the platform itself, except win-x64, which cross-compiles from
 # Linux with mingw-w64. Needs nasm (x86), meson, ninja and pkg-config.
 #
-#   tools/native/build-ffmpeg.sh <rid> <output dir>
+#   tools/native/build-ffmpeg.sh <rid> <output dir> [gpl]
+#
+# With gpl: x264 linked in too and --enable-gpl, for ShotDetector.Native.Gpl.<rid> (FrameReader's VideoWriter encodes
+# H.264 with it); the libraries are then GPL-2.0-or-later.
 #
 # The output dir gets the four libraries under the names FFmpeg.AutoGen loads (avcodec-62.dll, libavcodec.so.62,
 # libavcodec.62.dylib, ...), plus the configure line used (configure.txt) for the LGPL notice.
@@ -19,7 +23,11 @@ ZLIB=1.3.2
 ZLIB_SHA256=bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16
 DAV1D=1.5.4
 DAV1D_SHA256=686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5
+LAME=3.100
+LAME_SHA256=ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
 rid=$1
+variant=${3:-lgpl}
+X264_COMMIT=b35605ace3ddf7c1a5d67a2eb553f034aef41d55  # x264's stable branch, 2026-10-10
 out=$(mkdir -p "$2" && cd "$2" && pwd)
 work=${TMPDIR:-/tmp}/ffmpeg-build-$rid
 deps=$work/deps
@@ -27,13 +35,14 @@ rm -rf "$work" && mkdir -p "$work" "$deps/lib" "$deps/include" && cd "$work"
 jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)
 
 fetch() { # url file sha256
-  curl -fsSL -o "$2" "$1"
+  curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30 -o "$2" "$1"
   echo "$3  $2" | sha256sum -c - 2>/dev/null || echo "$3  $2" | shasum -a 256 -c -
 }
 fetch "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz" ffmpeg.tar.xz "$SHA256"
 fetch "https://zlib.net/fossils/zlib-$ZLIB.tar.gz" zlib.tar.gz "$ZLIB_SHA256"
 fetch "https://downloads.videolan.org/pub/videolan/dav1d/$DAV1D/dav1d-$DAV1D.tar.xz" dav1d.tar.xz "$DAV1D_SHA256"
-tar -xJf ffmpeg.tar.xz && tar -xzf zlib.tar.gz && tar -xJf dav1d.tar.xz
+fetch "https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz" lame.tar.gz "$LAME_SHA256"
+tar -xJf ffmpeg.tar.xz && tar -xzf zlib.tar.gz && tar -xJf dav1d.tar.xz && tar -xzf lame.tar.gz
 
 # zlib, static and position-independent (it ends up inside libavcodec/libavformat).
 (
@@ -55,6 +64,27 @@ tar -xJf ffmpeg.tar.xz && tar -xzf zlib.tar.gz && tar -xJf dav1d.tar.xz
   ninja -C build install > ninja.log || { tail -40 ninja.log; exit 1; }
 )
 
+# LAME, static: FrameReader's AudioWriter encodes MP3 with it (LGPL, like FFmpeg; the MP3 patents have expired).
+(
+  cd "lame-$LAME"
+  set -- --prefix="$deps" --enable-static --disable-shared --disable-frontend --disable-decoder --disable-gtktest
+  [ "$rid" = win-x64 ] && set -- "$@" --host=x86_64-w64-mingw32
+  CFLAGS="-O2 -fPIC" ./configure "$@" > configure.log || { tail -40 configure.log; exit 1; }
+  make -j"$jobs" install > make.log 2>&1 || { tail -40 make.log; exit 1; }
+)
+
+# x264, static, for the gpl variant: a pinned commit of its stable branch (no release tarballs).
+if [ "$variant" = gpl ]; then
+  git clone -q https://code.videolan.org/videolan/x264.git x264
+  ( cd x264
+    git -c advice.detachedHead=false checkout -q "$X264_COMMIT"
+    set -- --prefix="$deps" --enable-static --enable-pic --disable-cli --disable-opencl
+    [ "$rid" = win-x64 ] && set -- "$@" --host=x86_64-w64-mingw32 --cross-prefix=x86_64-w64-mingw32-
+    ./configure "$@" > configure.log || { tail -40 configure.log; exit 1; }
+    make -j"$jobs" install > make.log 2>&1 || { tail -40 make.log; exit 1; }
+  )
+fi
+
 cd "ffmpeg-$VERSION"
 # Only our static zlib and dav1d, never the system's.
 export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig"
@@ -66,6 +96,8 @@ set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
   --disable-programs --disable-doc --disable-avdevice --disable-filters --enable-filter=buffer,buffersink,abuffer,abuffersink,yadif,fps,aspectralstats \
   --enable-filter=volume,equalizer,bass,treble,highpass,lowpass,bandpass,bandreject,afade,pan,acompressor,alimiter,dynaudnorm,agate,ebur128,loudnorm,silencedetect,astats,aformat,aresample \
   --disable-network --disable-encoders --disable-muxers --disable-autodetect \
+  --enable-libmp3lame --enable-encoder=aac,libmp3lame,pcm_s16le \
+  --enable-muxer=mp4,mov,ipod,matroska,matroska_audio,webm,adts,mp3,wav,flac,ogg,opus,mpegts,srt,webvtt,ass \
   --enable-zlib --enable-libdav1d --pkg-config=pkg-config --pkg-config-flags=--static \
   --extra-cflags=-I"$deps/include" --extra-ldflags=-L"$deps/lib" \
   --disable-debug --enable-stripping --enable-optimizations
@@ -80,6 +112,7 @@ case "$rid" in
   *) echo "unknown rid $rid" >&2; exit 1 ;;
 esac
 
+[ "$variant" = gpl ] && set -- "$@" --enable-gpl --enable-libx264 --enable-encoder=libx264
 ./configure "$@" > configure.log || { tail -40 configure.log; tail -40 ffbuild/config.log; exit 1; }
 make -j"$jobs" > make.log 2>&1 || { tail -60 make.log; exit 1; }
 make install > /dev/null
@@ -95,6 +128,8 @@ done
   echo "FFmpeg $VERSION (https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz, sha256 $SHA256)"
   echo "zlib $ZLIB (https://zlib.net/fossils/zlib-$ZLIB.tar.gz, sha256 $ZLIB_SHA256), static"
   echo "dav1d $DAV1D (https://downloads.videolan.org/pub/videolan/dav1d/$DAV1D/dav1d-$DAV1D.tar.xz, sha256 $DAV1D_SHA256), static"
+  [ "$variant" = gpl ] && echo "x264 $X264_COMMIT (https://code.videolan.org/videolan/x264.git, stable branch), static; GPL-2.0-or-later"
+  echo "LAME $LAME (https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz, sha256 $LAME_SHA256), static"
   echo "./configure $*"
 } > "$out/configure.txt"
 ls -l "$out"

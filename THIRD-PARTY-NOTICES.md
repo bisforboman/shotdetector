@@ -94,8 +94,9 @@ https://ffmpeg.org, license: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.
 ## FFmpeg libraries (GNU LGPL 2.1 or later), ShotDetector.Native.<rid> and the shotdetect CLI
 
 libavcodec, libavformat, libavutil, libswscale, libswresample and libavfilter (yadif, fps, aspectralstats and the audio filters listed in the Native README only) from FFmpeg 8.1.3
-(https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz), built with `tools/native/build-ffmpeg.sh` for decoding only:
-no encoders, muxers, devices, network protocols or GPL parts; zlib and dav1d (below) linked in. Each package and
+(https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz), built with `tools/native/build-ffmpeg.sh` for decoding plus
+the AAC, MP3 and PCM encoders and common muxers: no video encoders, devices, network protocols or GPL parts; zlib,
+dav1d and LAME (below) linked in. Each package and
 release archive has the exact configure line (`configure.txt`) and the licence (`COPYING.LGPL`). The libraries
 are loaded dynamically, so they can be replaced with another build of the same FFmpeg version.
 https://ffmpeg.org/legal.html
@@ -129,6 +130,20 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+## x264 (GNU GPL 2 or later), ShotDetector.Native.Gpl.<rid> only
+
+x264 (https://code.videolan.org/videolan/x264, its stable branch at the commit in `configure.txt`), linked into
+libavcodec as FFmpeg's libx264 encoder, which makes those libraries GPL-2.0-or-later (`COPYING.GPL` in the
+package). Not in ShotDetector.Native, the CLI or the core packages.
+License: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+
+## LAME (GNU LGPL 2 or later), ShotDetector.Native.<rid> and the shotdetect CLI
+
+LAME 3.100 (https://lame.sourceforge.io), linked into libavcodec as FFmpeg's MP3 encoder (libmp3lame). Built from
+https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz (SHA-256 in `configure.txt`); the
+libraries can be replaced with another build, as for FFmpeg's. The MP3 patents have expired.
+License: https://www.gnu.org/licenses/old-licenses/lgpl-2.0.html
 
 ## zlib (zlib licence), ShotDetector.Native.<rid> and the shotdetect CLI
 

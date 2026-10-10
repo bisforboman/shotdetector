@@ -36,10 +36,14 @@ jobs:
           python-version: '3.12'
 
       - name: Install ffmpeg 8.1 (the executable FFMpegCore and the baseline run)
-        timeout-minutes: 10
-        run: |
-          curl -fsSL --retry 3 "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-${{ matrix.btbn }}-gpl-8.1.tar.xz" | tar -xJ
-          echo "BENCH_FFMPEG=$PWD/ffmpeg-n8.1-latest-${{ matrix.btbn }}-gpl-8.1/bin" >> "$GITHUB_ENV"
+        id: ffmpeg
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          platform: ${{ matrix.btbn }}
+          add-to-path: 'false'
+
+      - run: echo "BENCH_FFMPEG=${{ steps.ffmpeg.outputs.bin }}" >> "$GITHUB_ENV"
 
       - uses: actions/download-artifact@v7
         with:

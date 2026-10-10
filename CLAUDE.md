@@ -3,7 +3,8 @@
 A C# port of PySceneDetect's shot/cut detection that gives **identical results** to `scenedetect` (cuts, scene
 list CSVs, per-frame stats, timecodes digit for digit), decoding through an ffmpeg subprocess with no native
 bindings. Repo: `github.com/bisforboman/shotdetector`. NuGet: `ShotDetector` (MIT), `ShotDetector.FastYuv`
-(LGPL-2.1, a swscale port), `ShotDetector.Cli` (dotnet tool `shotdetect`, plus Native AOT binaries on releases).
+(LGPL-2.1, a swscale port), `ShotDetector.Native.<rid>` and `ShotDetector.Native.Gpl.<rid>` (our FFmpeg build, the
+latter with x264 and GPL), `ShotDetector.Cli` (dotnet tool `shotdetect`, plus Native AOT binaries on releases).
 
 ## Core idea
 
@@ -120,6 +121,9 @@ then fails on any breaking change to ShotDetector or FastYuv (SDK package valida
 - Windows named pipe path is `\\.\pipe\…`; stdout's 4 KB pipe is far slower. Kill ffmpeg race-free (`Kill` helper).
 - NuGet trusted publishing: the policy's workflow must be `release.yml`, package glob `ShotDetector*`.
 - GitHub Actions queues can stall; re-run rather than diagnose when every job was cancelled at ~15 min.
+- CI downloads: BtbN's FFmpeg only through `.github/actions/btbn-ffmpeg` (retries, checked archive, daily cache with
+  fallback), never `curl | tar` (a reset mid-stream left tar a truncated archive); Docker images from
+  `public.ecr.aws/docker/library/` (Docker Hub's anonymous rate limit stopped a release).
 - CI load: a PR whose files are all docs, `.claude/`, `benchmarks/`, `tests/FrameReader.Tests/` or the FrameReader
   classes ShotDetector doesn't use (VideoFrameReader, AudioReader) is "light": AOT, ARM, Alpine, parity, real-world
   and mutation don't start (skipped jobs pass the required checks). Add a FrameReader file to that list in the three

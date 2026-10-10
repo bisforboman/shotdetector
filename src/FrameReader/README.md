@@ -142,6 +142,46 @@ Our native libraries carry volume, equalizer, bass, treble, highpass, lowpass, b
 acompressor, alimiter, dynaudnorm, agate, ebur128, loudnorm, silencedetect and astats; a full FFmpeg build in
 `LibraryDirectory` brings every filter it has.
 
+Writing audio: `AudioWriter` encodes interleaved float32 samples to MP3 (LAME), AAC (.m4a, .aac, .mka) or WAV, the
+file `ffmpeg -f f32le -ar R -ac C -i - -c:a ENCODER [-b:a B] OUT` writes, byte for byte with `Bitexact = true` on
+both sides (without it, files carry FFmpeg's usual encoder tags). Read, filter, write:
+
+```csharp
+using var audio = new AudioReader("talk.mp4", new() { SampleRate = 44100, Channels = 1 });
+using var clean = new AudioFilter(audio, "highpass=f=80,dynaudnorm");
+using (var mp3 = new AudioWriter("talk.mp3", new() { SampleRate = 44100, Channels = 1, BitRate = 96_000 }))
+    while (clean.TryRead(out var chunk))
+        mp3.Write(chunk.Samples);
+```
+
+Stream copy: `Remux.Copy(input, output, options)` copies streams into another container without re-encoding, the
+file `ffmpeg -i IN -map ... -c copy OUT` writes (timestamps, codec tags, metadata and chapters as ffmpeg copies them):
+
+```csharp
+Remux.Copy("film.mkv", "picture.mp4", new() { Streams = StreamSelection.Video });
+Remux.Copy("film.mkv", "sound.m4a", new() { Streams = StreamSelection.Audio });
+Remux.Copy("film.mkv", "commentary.mka", new() { StreamIndices = [2] });
+```
+
+Our native libraries carry the AAC, MP3 and 16-bit PCM encoders and the mp4, mov, ipod (.m4a), matroska, matroska_audio (.mka), webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass muxers.
+Writing video: `VideoWriter` encodes frames to H.264 (x264) in .mp4/.mkv/.mov, optionally with an AAC track, the
+file `ffmpeg -c:v libx264` writes from the same frames with the same FFmpeg build (byte for byte with `Bitexact` on
+both sides). It needs FFmpeg with x264: the `ShotDetector.Native.Gpl.<rid>` packages, used **instead of**
+ShotDetector.Native, or your own build. Those are GPL: an app that ships with them falls under the GPL, and H.264 is
+covered by Via LA's AVC patent pool either way (docs/encoding-package.md).
+
+```csharp
+using var reader = new VideoFrameReader("in.mkv", new() { Format = FrameFormat.Bgr24 });
+using var writer = new VideoWriter("out.mp4", new()
+{
+    Width = 1280, Height = 720, FrameRate = new(25, 1),
+    PixelFormat = "yuv420p", Crf = 23, Preset = "medium",
+    KeyframeEvery = TimeSpan.FromSeconds(2), X264Params = "scenecut=0", // IDR every 2 s exactly
+});
+while (reader.TryRead(out var frame))
+    writer.Write(frame.Data);
+```
+
 Reference tone: `ReferenceTone.Find(audioReader, options)` returns the runs of line-up tone (a steady 1 kHz sine, as in
 "bars and tone") with their start, end and level. In 20 ms windows a channel counts when 90% of its energy is at the
 frequency (about ±15 Hz) above -40 dBFS, at a steady level (±1 dB); breaks up to `MaxGap` (1 s; EBU and GLITS line-up
