@@ -14,6 +14,12 @@ public sealed record ReferenceToneOptions
     /// fraction of a second every few seconds, and a break in all channels up to this long is bridged too.
     /// </summary>
     public TimeSpan MaxGap { get; init; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// How much audio to search from where the reader is, then stop decoding (line-up tone is at the start: 180 s keeps
+    /// a feature film's search cheap); null: to the end. A segment still running there ends there.
+    /// </summary>
+    public TimeSpan? SearchDuration { get; init; }
 }
 
 /// <summary>A run of reference tone.</summary>
@@ -34,8 +40,11 @@ public static class ReferenceTone
 {
     const double WindowSeconds = 0.02, MinPurity = 0.9, MinLevel = -40, LevelTolerance = 1;
 
-    /// <summary>Reads the rest of <paramref name="audio"/> (at its rate and channels) and returns its tone segments.</summary>
-    /// <param name="audio">The samples; read to the end, not disposed.</param>
+    /// <summary>
+    /// Reads the rest of <paramref name="audio"/> (at its rate and channels), or <see cref="ReferenceToneOptions.SearchDuration"/>
+    /// of it, and returns its tone segments.
+    /// </summary>
+    /// <param name="audio">The samples; read to the end (or the search duration), not disposed.</param>
     /// <param name="options">Frequency, minimum length, longest break; null: 1 kHz, 5 s, 1 s.</param>
     /// <param name="cancellationToken">Stops reading.</param>
     /// <exception cref="FrameReaderException">Decoding failed.</exception>
@@ -43,6 +52,8 @@ public static class ReferenceTone
     public static IReadOnlyList<ToneSegment> Find(AudioReader audio, ReferenceToneOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new ReferenceToneOptions();
+        if (o.SearchDuration <= TimeSpan.Zero)
+            throw new ArgumentException("SearchDuration is positive when set.", nameof(options));
         int rate = audio.SampleRate, channels = audio.Channels;
         int n = Math.Max(1, (int)Math.Round(rate * WindowSeconds));
         var w = new double[n];
@@ -57,6 +68,7 @@ public static class ReferenceTone
         double coeff = 2 * Math.Cos(2 * Math.PI * o.Frequency / rate);
         long gapWindows = (long)(o.MaxGap.TotalSeconds / WindowSeconds), minWindows = (long)Math.Ceiling(o.MinDuration.TotalSeconds / WindowSeconds);
         double windowLength = (double)n / rate;
+        long maxWindows = o.SearchDuration is { } d ? (long)Math.Ceiling(d.TotalSeconds / windowLength) : long.MaxValue;
 
         var s1 = new double[channels];
         var s2 = new double[channels];
@@ -77,12 +89,12 @@ public static class ReferenceTone
             start = -1;
         }
 
-        while (audio.TryRead(out var chunk))
+        while (window < maxWindows && audio.TryRead(out var chunk))
         {
             cancellationToken.ThrowIfCancellationRequested();
             origin ??= chunk.Time;
             var samples = chunk.Samples;
-            for (int i = 0; i < chunk.SampleCount; i++)
+            for (int i = 0; i < chunk.SampleCount && window < maxWindows; i++)
             {
                 for (int c = 0; c < channels; c++)
                 {
