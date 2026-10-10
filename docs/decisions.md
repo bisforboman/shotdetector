@@ -3,6 +3,13 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## FrameReader's package (2026-10-10)
+
+Asked: the package ID **`FrameReader` (recommended)**, not ShotDetector.FrameReader; the version **ShotDetector's with
+`-preview`, released by the same workflow, until FrameReader is declared stable (recommended)**, not its own 0.x
+line; and ShotDetector's package **keeps its own FrameReader.dll while FrameReader is a preview (recommended)**,
+rather than a prerelease dependency for every ShotDetector user.
+
 ## H.264 for #81's user (2026-10-10)
 
 The user wanted to help #81's user with H.264 after all. Asked: **a GPL FFmpeg build package,

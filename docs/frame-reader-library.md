@@ -1,6 +1,7 @@
 # Frame-reader library (idea)
 
-Status (2026-10-09): milestones 1 (FFmpegLibraries, FrameReaderException), 2 (MediaProbe: the values ffprobe
+Status (2026-10-10): published as the `FrameReader` package (a preview, released with ShotDetector), after the API
+review (frame-reader-api-review.md). Before that (2026-10-09): milestones 1 (FFmpegLibraries, FrameReaderException), 2 (MediaProbe: the values ffprobe
 prints, packet timestamps, Stream input) and 3 (FrameDecoder: demux, decode, seek, both deinterlacings with an
 IRowDeinterlacer hook, autorotate, Stream input; Width/Height/PixelFormat/GetPlane on the current frame) done.
 ShotDetector keeps its conversions (FrameWriter: the pipelines' exact layouts) and its ffprobe-text formatting

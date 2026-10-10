@@ -3,6 +3,14 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 
+## Unreleased
+
+### New
+
+- **FrameReader as its own NuGet package** (`FrameReader`, MIT), a preview: released with ShotDetector, its version is
+  ShotDetector's with `-preview` until its API is declared stable. ShotDetector's package keeps its own copy of
+  FrameReader.dll until then (no prerelease dependency for ShotDetector's users).
+
 ## 1.3.0 – 2026-10-10
 
 Audio and H.264 writing and stream copy in FrameReader, the reference tone, and the GPL native packages with x264

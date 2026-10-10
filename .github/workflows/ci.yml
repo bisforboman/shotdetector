@@ -124,6 +124,7 @@ jobs:
         run: |
           dotnet pack src/ShotDetector --output artifacts
           dotnet pack src/ShotDetector.FastYuv --output artifacts
+          dotnet pack src/FrameReader --output artifacts
           dotnet pack src/ShotDetector.Cli --output artifacts
 
       - uses: actions/upload-artifact@v7
