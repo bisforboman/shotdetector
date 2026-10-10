@@ -110,7 +110,14 @@ jobs:
         env:
           SHOTDETECTOR_FFMPEG_LIBS: ${{ steps.gpl.outputs.bin }}
           SHOTDETECTOR_REQUIRE_X264: '1'
-        run: dotnet test tests/FrameReader.Tests --filter "FullyQualifiedName~VideoWriter"
+          SHOTDETECTOR_KEEP_DIFFERING: ${{ runner.temp }}/differing
+        run: mkdir -p "$RUNNER_TEMP/differing" && dotnet test tests/FrameReader.Tests --filter "FullyQualifiedName~VideoWriter"
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: videowriter-differing
+          path: ${{ runner.temp }}/differing/
 
       - name: Pack
         if: needs.changes.outputs.docs_only != 'true'

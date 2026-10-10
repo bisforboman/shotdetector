@@ -107,7 +107,7 @@ public class VideoWriterTests
             string[] a = args.Length == 0 ? [] : args.Split(' ');
             Ffmpeg(["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", $"{W}x{H}", "-r", "25", "-i", raw,
                 .. withAudio ? new[] { "-f", "f32le", "-ar", "44100", "-ac", "2", "-i", wav } : [],
-                "-c:v", "libx264", .. a, .. withAudio ? new[] { "-c:a", "aac" } : [],
+                "-c:v", "libx264", "-threads:v", "1", .. a, .. withAudio ? new[] { "-c:a", "aac" } : [],
                 "-fflags", "+bitexact", "-flags:v", "+bitexact", "-flags:a", "+bitexact", expected]);
 
             string? Arg(string key) => Array.IndexOf(a, key) is >= 0 and var i ? a[i + 1] : null;
@@ -119,6 +119,8 @@ public class VideoWriterTests
                 Gop = Arg("-g") is { } g ? int.Parse(g) : null, KeyintMin = Arg("-keyint_min") is { } k ? int.Parse(k) : null,
                 KeyframeEvery = extra == "keys" ? TimeSpan.FromSeconds(1) : null, X264Params = Arg("-x264-params"),
                 Audio = withAudio ? new AudioTrackOptions { SampleRate = 44100, Channels = 2 } : null,
+                // One thread on both sides: with several, x264's frame threading can vary run to run at fast presets.
+                EncoderOptions = new Dictionary<string, string> { ["threads"] = "1" },
                 Bitexact = true, LibraryDirectory = Libs,
             };
             using (var writer = new VideoWriter(actual, options))
@@ -134,7 +136,13 @@ public class VideoWriterTests
             int first = 0;
             while (first < Math.Min(want.Length, got.Length) && want[first] == got[first])
                 first++;
-            Assert.True(want.AsSpan().SequenceEqual(got), $"{name}: ffmpeg {want.Length} bytes, ours {got.Length}, first difference at {first}");
+            if (!want.AsSpan().SequenceEqual(got) && Environment.GetEnvironmentVariable("SHOTDETECTOR_KEEP_DIFFERING") is { Length: > 0 } keep)
+            {
+                File.Copy(expected, Path.Combine(keep, "ffmpeg-" + name), true);
+                File.Copy(actual, Path.Combine(keep, "ours-" + name), true);
+            }
+            Assert.True(want.AsSpan().SequenceEqual(got), $"{name}: ffmpeg {want.Length} bytes, ours {got.Length}, first difference at {first}; " +
+                $"x264's settings, ffmpeg's: {X264Settings(want)} | ours: {X264Settings(got)}");
             if (extra == "keys")
             {
                 // A keyframe every second exactly: frames 0, 25, 50.
@@ -150,6 +158,17 @@ public class VideoWriterTests
         {
             Directory.Delete(dir, true);
         }
+    }
+
+    /// <summary>The option string x264 writes into its SEI ("x264 - core ... - options: ..."), for a failure message.</summary>
+    static string X264Settings(byte[] file)
+    {
+        string text = System.Text.Encoding.ASCII.GetString(file);
+        int at = text.IndexOf("options: ", StringComparison.Ordinal);
+        if (at < 0)
+            return "(none)";
+        int end = text.IndexOf('\0', at);
+        return text[(at + 9)..(end < 0 ? Math.Min(text.Length, at + 600) : end)];
     }
 
     [Fact]
