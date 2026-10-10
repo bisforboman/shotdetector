@@ -291,13 +291,46 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx
 
+  # The sample clips parity compares on (tools/make-samples.ps1, two minutes on a runner), made once and cached by
+  # the script and the FFmpeg series; both sides read the same clips, so a newer daily build making slightly
+  # different ones doesn't matter. On main too: a pull request reads only its own caches and main's, so this is
+  # what every PR's first run finds.
+  samples:
+    needs: changes
+    if: needs.changes.outputs.light != 'true' && needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FFMPEG: '9.0'   # parity's
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: cache
+        uses: actions/cache@v5   # saves after the job when it missed
+        with:
+          path: samples
+          key: samples-${{ hashFiles('tools/make-samples.ps1') }}-ffmpeg${{ env.FFMPEG }}
+          lookup-only: true
+
+      - name: Install ffmpeg ${{ env.FFMPEG }}
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          version: ${{ env.FFMPEG }}
+
+      - name: Make sample clips
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./tools/make-samples.ps1
+
   # ShotDetector and scenedetect run on the same clips; cuts, scene list CSVs and per-frame stats must
   # be identical, for the core path and the FastYuv path, for each supported scenedetect release (in
   # the matching compatibility mode). The reference is scenedetect on Linux, whose OpenCV wheel
   # bundles FFmpeg 8 and so follows colour tags (the Windows wheel's FFmpeg 7.1 doesn't). Each path in two jobs
   # (part): the main comparison, and the rest; one job ran them all in 8 minutes.
   parity:
-    needs: changes
+    needs: [changes, samples]
     if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -339,9 +372,7 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: pip install scenedetect==${{ matrix.scenedetect }} opencv-python-headless==5.0.0.93
 
-      # The clips take a minute to make: cached by the script and the FFmpeg series (both sides read the same clips,
-      # so a newer daily build making slightly different ones doesn't matter). Saved right after making them, before
-      # the steps below add files to samples/.
+      # The clips, from the samples job's cache; made here only if that somehow missed.
       - id: samples
         if: needs.changes.outputs.docs_only != 'true'
         uses: actions/cache/restore@v5
@@ -353,13 +384,6 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true' && steps.samples.outputs.cache-hit != 'true'
         shell: pwsh
         run: ./tools/make-samples.ps1
-
-      - uses: actions/cache/save@v5
-        if: needs.changes.outputs.docs_only != 'true' && steps.samples.outputs.cache-hit != 'true'
-        continue-on-error: true   # the other jobs of this run save the same key at the same time
-        with:
-          path: samples
-          key: ${{ steps.samples.outputs.cache-primary-key }}
 
       - name: Compare with scenedetect
         if: needs.changes.outputs.docs_only != 'true' && matrix.part == 'compare'
@@ -441,7 +465,7 @@ jobs:
   # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
   passed:
     name: CI passed
-    needs: [changes, native, build, aot, native-arm, arm, alpine, parity]
+    needs: [changes, native, build, aot, native-arm, arm, alpine, samples, parity]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
