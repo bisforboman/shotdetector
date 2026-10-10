@@ -14,7 +14,7 @@ public class ReferenceToneTests
     // Programme stand-in: a chord with harmonics, swelling, over noise.
     const string Content = "(0.2*sin(2*PI*220*t)+0.1*sin(2*PI*440*t)+0.1*sin(2*PI*660*t)+0.08*sin(2*PI*1000*t))*(0.6+0.4*sin(2*PI*0.3*t))+0.05*(random(0)-0.5)";
 
-    static List<ToneSegment> Find(string channels, double seconds, string name = "clip.m4a")
+    static List<ToneSegment> Find(string channels, double seconds, string name = "clip.m4a", ReferenceToneOptions? options = null)
     {
         string dir = Directory.CreateTempSubdirectory("framereader-tone-").FullName;
         try
@@ -31,7 +31,7 @@ public class ReferenceToneTests
                 Assert.True(p.ExitCode == 0, stderr);
             }
             using var audio = new AudioReader(path, new AudioReaderOptions());
-            return [.. ReferenceTone.Find(audio)];
+            return [.. ReferenceTone.Find(audio, options)];
         }
         finally
         {
@@ -55,6 +55,19 @@ public class ReferenceToneTests
             return;
         string ch = $"'if(lt(t,10),{Tone},{Content})'";
         Segment(Assert.Single(Find($"{ch}|{ch}", 20, name)), 0, 10);
+    }
+
+    [Fact]
+    public void SearchDurationStopsEarly()
+    {
+        if (Libs is null)
+            return;
+        // Tone at 0-10 s and again at 20-30 s: a 15 s search finds the first only; a 6 s one cuts it at 6 s.
+        string ch = $"'if(lt(t,10),{Tone},if(lt(t,20),{Content},{Tone}))'";
+        Assert.Equal(2, Find(ch, 30).Count);
+        Segment(Assert.Single(Find(ch, 30, options: new ReferenceToneOptions { SearchDuration = TimeSpan.FromSeconds(15) })), 0, 10);
+        Segment(Assert.Single(Find(ch, 30, options: new ReferenceToneOptions { SearchDuration = TimeSpan.FromSeconds(6) })), 0, 6);
+        Assert.Throws<ArgumentException>(() => Find(ch, 1, options: new ReferenceToneOptions { SearchDuration = TimeSpan.Zero }));
     }
 
     [Fact]

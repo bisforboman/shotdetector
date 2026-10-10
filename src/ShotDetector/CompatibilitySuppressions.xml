@@ -3,226 +3,303 @@
 <Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
-    <Target>T:FrameReader.FrameReaderOptions</Target>
+    <Target>T:FrameReader.AudioChunk</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.AudioChunk.get_Length</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.AudioFilter</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.AudioReaderOptions.get_LibraryDirectory</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.AudioReader</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.AudioReaderOptions.set_LibraryDirectory(System.String)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.AudioReaderOptions</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.AudioWriterOptions.get_Format</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.AudioTrackOptions</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.AudioWriterOptions.get_LibraryDirectory</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.AudioWriter</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.AudioWriterOptions.set_Format(System.String)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.AudioWriterOptions</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.AudioWriterOptions.set_LibraryDirectory(System.String)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.BgrConverter</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.FFmpegLibraries.ErrorMessage(System.Int32)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.FFmpegLibraries</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.FrameDecoder.get_TimeBase</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.FieldOrder</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.FrameDecoderOptions.get_LibraryDirectory</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.FrameDecoder</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.FrameDecoderOptions.set_LibraryDirectory(System.String)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.FrameDecoderOptions</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.MediaInfo.get_DurationMicroseconds</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.FrameFormat</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.MediaInfo.set_DurationMicroseconds(System.Nullable{System.Int64})</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.FrameHandler</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.ProbeOptions.get_LibraryDirectory</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.FrameReaderError</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.ProbeOptions.set_LibraryDirectory(System.String)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.FrameReaderException</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.Remux.Copy(System.String,System.String,FrameReader.RemuxOptions)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.IRowDeinterlacer</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.RemuxOptions.get_Format</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.MediaInfo</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.RemuxOptions.get_LibraryDirectory</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.MediaProbe</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.RemuxOptions.set_Format(System.String)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.ProbeOptions</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.RemuxOptions.set_LibraryDirectory(System.String)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.Rational</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.VideoFrame.get_Format</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.ReferenceTone</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.VideoFrameReader.#ctor(System.IO.Stream,FrameReader.FrameReaderOptions)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.ReferenceToneOptions</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.VideoFrameReader.#ctor(System.String,FrameReader.FrameReaderOptions)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.Remux</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.VideoFrameReader.get_TimeBase</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.RemuxOptions</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.VideoFrameReader.ReadAt(System.String,System.Collections.Generic.IReadOnlyList{System.TimeSpan},FrameReader.FrameReaderOptions,System.Nullable{System.Int32},FrameReader.FrameHandler)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.SpectralMeasures</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.VideoWriterOptions.get_Format</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.SpectralStats</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.VideoWriterOptions.get_LibraryDirectory</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.SpectralStatsOptions</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.VideoWriterOptions.set_Format(System.String)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.SpectralWindow</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.VideoWriterOptions.set_LibraryDirectory(System.String)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.StreamInfo</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.WaveformData.Read(FrameReader.AudioReader,FrameReader.WaveformOptions)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.StreamSelection</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:FrameReader.WaveformData.Save(System.IO.Stream,System.Int32)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.StreamType</Target>
     <Left>lib/net10.0/FrameReader.dll</Left>
-    <Right>lib/net10.0/FrameReader.dll</Right>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.ToneSegment</Target>
+    <Left>lib/net10.0/FrameReader.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.VideoFrame</Target>
+    <Left>lib/net10.0/FrameReader.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.VideoFrameReader</Target>
+    <Left>lib/net10.0/FrameReader.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.VideoFrameReaderOptions</Target>
+    <Left>lib/net10.0/FrameReader.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.VideoStreamInfo</Target>
+    <Left>lib/net10.0/FrameReader.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.VideoWriter</Target>
+    <Left>lib/net10.0/FrameReader.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.VideoWriterOptions</Target>
+    <Left>lib/net10.0/FrameReader.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.WaveformBits</Target>
+    <Left>lib/net10.0/FrameReader.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.WaveformData</Target>
+    <Left>lib/net10.0/FrameReader.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:FrameReader.WaveformOptions</Target>
+    <Left>lib/net10.0/FrameReader.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0004</DiagnosticId>
+    <Target>FrameReader, Version=1.4.1.0, Culture=neutral, PublicKeyToken=null</Target>
+    <Left>lib/net10.0/FrameReader.dll</Left>
+    <Right>right</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
 </Suppressions>

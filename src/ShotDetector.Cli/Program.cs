@@ -83,6 +83,7 @@ const string Usage = """
           --trim-tone                    Leave reference tone at the start and end out of detection
                                          (not with -s/-e/--duration); the tone found goes to stderr
           --tone-min-duration <seconds>  Shortest tone that counts (default 5)
+          --tone-search <seconds>        Search only the first seconds of audio (default: all of it)
     """;
 
 bool skipCuts = false, quiet = false, htmlNoImages = false, findTone = false;
@@ -243,6 +244,7 @@ try
             case "--find-tone": findTone = true; break;
             case "--trim-tone": options = options with { TrimReferenceTone = true }; break;
             case "--tone-min-duration": options = options with { ReferenceToneMinDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
+            case "--tone-search": options = options with { ReferenceToneSearchDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
             case "--config": i++; break; // read above
             case "-h" or "--help": Console.WriteLine(Usage); return 0;
             default: throw new ArgumentException($"Unknown option {args[i]}");

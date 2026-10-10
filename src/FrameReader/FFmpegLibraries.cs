@@ -95,6 +95,32 @@ public static unsafe class FFmpegLibraries
         }
     }
 
+    /// <summary>
+    /// Whether the libraries load and have this encoder (e.g. <c>libmp3lame</c>, <c>aac</c>, <c>libx264</c>): to check a
+    /// system FFmpeg at startup rather than fail on the first write. What each class needs is in the README.
+    /// </summary>
+    /// <param name="name">The encoder's name, as <c>ffmpeg -encoders</c> lists it.</param>
+    /// <param name="directory">As for <see cref="Load"/>.</param>
+    public static bool HasEncoder(string name, string? directory = null) => Has(directory, () => ffmpeg.avcodec_find_encoder_by_name(name) != null);
+
+    /// <summary>Whether the libraries load and have this filter (e.g. <c>equalizer</c>, <c>format</c>), libavfilter included.</summary>
+    /// <param name="name">The filter's name, as <c>ffmpeg -filters</c> lists it.</param>
+    /// <param name="directory">As for <see cref="Load"/>.</param>
+    public static bool HasFilter(string name, string? directory = null) => Has(directory, () => ffmpeg.avfilter_get_by_name(name) != null);
+
+    /// <summary>Whether the libraries load and have this muxer (e.g. <c>mp3</c>, <c>mp4</c>, <c>matroska</c>).</summary>
+    /// <param name="name">The muxer's name, as <c>ffmpeg -muxers</c> lists it.</param>
+    /// <param name="directory">As for <see cref="Load"/>.</param>
+    public static bool HasMuxer(string name, string? directory = null) => Has(directory, () => ffmpeg.av_guess_format(name, null, null) != null);
+
+    static bool Has(string? directory, Func<bool> lookup)
+    {
+        if (!CanLoad(directory))
+            return false;
+        try { return lookup(); }
+        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException) { return false; } // no libavfilter
+    }
+
     /// <summary>FFmpeg's message for an error code (av_strerror).</summary>
     /// <param name="error">A negative AVERROR code.</param>
     internal static string ErrorMessage(int error)

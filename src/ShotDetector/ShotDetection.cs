@@ -442,6 +442,13 @@ public sealed record DetectionOptions
 
     /// <summary>The shortest run of tone that counts as reference tone (<see cref="ShotDetection.FindReferenceTone"/>).</summary>
     public TimeSpan ReferenceToneMinDuration { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How much audio from the start <see cref="ShotDetection.FindReferenceTone"/> searches, then stops decoding (e.g.
+    /// 180 s: line-up tone is at the start, and a feature film's whole soundtrack takes a while); null: all of it. With
+    /// <see cref="TrimReferenceTone"/>, tone at the end is then not found.
+    /// </summary>
+    public TimeSpan? ReferenceToneSearchDuration { get; init; }
 }
 
 /// <summary>A run of reference tone (<see cref="ShotDetection.FindReferenceTone"/>).</summary>
@@ -549,7 +556,7 @@ public static class ShotDetection
     /// is set. Reads the audio in-process with FFmpeg's libraries.
     /// </summary>
     /// <param name="path">A video or audio file.</param>
-    /// <param name="options">Uses <see cref="DetectionOptions.ReferenceToneMinDuration"/> and <see cref="DetectionOptions.FfmpegDirectory"/>.</param>
+    /// <param name="options">Uses <see cref="DetectionOptions.ReferenceToneMinDuration"/>, <see cref="DetectionOptions.ReferenceToneSearchDuration"/> and <see cref="DetectionOptions.FfmpegDirectory"/>.</param>
     /// <param name="cancellationToken">Stops reading.</param>
     /// <returns>The segments, in order; empty when there's none.</returns>
     /// <exception cref="ShotDetectionException">FFmpeg's libraries didn't load, or the file can't be read or has no audio.</exception>
@@ -560,7 +567,7 @@ public static class ShotDetection
         {
             InProcess.Load(o.FfmpegDirectory);
             using var audio = new FrameReader.AudioReader(path);
-            return [.. FrameReader.ReferenceTone.Find(audio, new FrameReader.ReferenceToneOptions { MinDuration = o.ReferenceToneMinDuration }, cancellationToken)
+            return [.. FrameReader.ReferenceTone.Find(audio, new FrameReader.ReferenceToneOptions { MinDuration = o.ReferenceToneMinDuration, SearchDuration = o.ReferenceToneSearchDuration }, cancellationToken)
                 .Select(s => new ReferenceToneSegment(s.Start, s.End, s.Level))];
         }
         catch (FrameReader.FrameReaderException e)

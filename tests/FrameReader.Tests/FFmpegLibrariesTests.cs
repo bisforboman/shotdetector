@@ -33,4 +33,22 @@ public class FFmpegLibrariesTests
         Assert.True(FFmpegLibraries.CanLoad(null)); // loaded: any folder asked for later gets the same copy
         Assert.Equal("End of file", FFmpegLibraries.ErrorMessage(FFmpeg.AutoGen.ffmpeg.AVERROR_EOF));
     }
+
+    [Fact]
+    public void SaysWhatTheLibrariesHave()
+    {
+        if (Libs is null)
+            return;
+        FFmpegLibraries.Load(Libs);
+        // What every build these tests run on has (ours and full builds alike).
+        Assert.True(FFmpegLibraries.HasEncoder("pcm_s16le"));
+        Assert.True(FFmpegLibraries.HasEncoder("aac"));
+        Assert.True(FFmpegLibraries.HasFilter("equalizer"));
+        Assert.True(FFmpegLibraries.HasFilter("format"));
+        Assert.True(FFmpegLibraries.HasMuxer("mp3"));
+        Assert.True(FFmpegLibraries.HasMuxer("matroska"));
+        Assert.False(FFmpegLibraries.HasEncoder("nosuchencoder"));
+        Assert.False(FFmpegLibraries.HasFilter("nosuchfilter"));
+        Assert.False(FFmpegLibraries.HasMuxer("nosuchmuxer"));
+    }
 }
