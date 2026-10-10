@@ -1,7 +1,8 @@
 name: Real world
 
 # ShotDetector and scenedetect on real public videos (tools/realworld.py: whole Blender open movies and short
-# clips in every common codec): cuts, scene lists and per-frame stats must be identical for every detector.
+# clips in every common codec): cuts, scene lists and per-frame stats must be identical for every detector. And
+# FrameReader's audio on the films' soundtracks, identical to ffmpeg's.
 # Nightly, so a new ffmpeg/scenedetect/OpenCV release that changes a result is noticed the next morning.
 on:
   pull_request:
@@ -100,11 +101,54 @@ jobs:
           { echo "### ${{ matrix.video }}"; cat realworld.md; } >> "$GITHUB_STEP_SUMMARY"
           exit ${status:-0}
 
+  # FrameReader's AudioReader and SpectralStats on the films' own audio (AAC at 44.1 and 48 kHz, MP3) against ffmpeg's
+  # command line (tests/FrameReader.Tests/RealWorldAudioTests.cs). Libraries and executable from one FFmpeg 8.1 build.
+  audio:
+    if: needs.changes.outputs.docs_only != 'true'
+    needs: changes
+    name: Real world audio (${{ matrix.video }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        video:
+          - bbb_640x360_h264.mp4               # AAC, 44.1 kHz
+          - elephants_dream_426x240_h264.mp4   # AAC, 48 kHz
+          - tears_of_steel_1280x534_h264.mov   # MP3, 44.1 kHz
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: FFmpeg 8.1, shared
+        id: ffmpeg
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          build: gpl-shared
+          add-to-path: 'false'
+
+      - name: Cache the video
+        uses: actions/cache@v5
+        with:
+          path: samples/realworld
+          key: realworld-${{ matrix.video }}-${{ hashFiles('tools/realworld.py') }}
+
+      - name: Compare with ffmpeg
+        env:
+          SHOTDETECTOR_FFMPEG_LIBS: ${{ steps.ffmpeg.outputs.bin }}
+        run: |
+          export SHOTDETECTOR_REALWORLD_AUDIO=$(python3 tools/realworld.py ${{ matrix.video }} --download | tail -1)
+          dotnet test tests/FrameReader.Tests --filter "FullyQualifiedName~RealWorldAudio"
+
   # The one check branch protection requires from this workflow: every job above passed or was skipped (a light PR
   # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
   passed:
     name: Real world passed
-    needs: [changes, realworld]
+    needs: [changes, realworld, audio]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
