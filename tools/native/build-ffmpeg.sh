@@ -90,10 +90,11 @@ cd "ffmpeg-$VERSION"
 export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig"
 
 # Decoding only: what OpenCV's FFmpeg does for scenedetect, minus everything that writes, plus yadif for
-# DeinterlaceMode (LGPL, like the rest). No --enable-gpl/--enable-nonfree, and --disable-autodetect keeps system
+# DeinterlaceMode (LGPL, like the rest); format, null and scale for VideoWriter's graph to the encoder's pixel format
+# (scale is the converter FFmpeg inserts; without them every VideoWriter failed, issue #127). No --enable-gpl/--enable-nonfree, and --disable-autodetect keeps system
 # libraries (and their licences) out: zlib and dav1d are the ones built above, linked in.
 set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
-  --disable-programs --disable-doc --disable-avdevice --disable-filters --enable-filter=buffer,buffersink,abuffer,abuffersink,yadif,fps,aspectralstats \
+  --disable-programs --disable-doc --disable-avdevice --disable-filters --enable-filter=buffer,buffersink,abuffer,abuffersink,yadif,fps,aspectralstats,format,null,scale \
   --enable-filter=volume,equalizer,bass,treble,highpass,lowpass,bandpass,bandreject,afade,pan,acompressor,alimiter,dynaudnorm,agate,ebur128,loudnorm,silencedetect,astats,aformat,aresample \
   --disable-network --disable-encoders --disable-muxers --disable-autodetect \
   --enable-libmp3lame --enable-encoder=aac,libmp3lame,pcm_s16le \

@@ -36,12 +36,13 @@ jobs:
           if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$|^\.claude/|^benchmarks/|^tests/FrameReader\.Tests/|^src/FrameReader/(VideoFrameReader|AudioReader)\.cs$'; then echo light=true >> "$GITHUB_OUTPUT"; fi
 
   # Our FFmpeg build for linux-x64 (native.yml, cached by the build script's hash): the in-process tests and the
-  # AOT binary use it.
+  # AOT binary use it; the GPL variant's VideoWriter is tested too (a filter missing from it failed every write, #127).
   native:
     needs: changes
     uses: ./.github/workflows/native.yml
     with:
       rids: '["linux-x64"]'
+      variants: '["lgpl","gpl"]'
 
   build:
     needs: [changes, native]
@@ -116,6 +117,21 @@ jobs:
           mkdir -p "$RUNNER_TEMP/differing"
           dotnet build tests/FrameReader.Tests -v q > /dev/null
           for i in 1 2 3 4 5; do dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~VideoWriter"; done
+
+      # VideoWriter with ShotDetector.Native.Gpl's own libraries (no ffmpeg of their build to compare bytes with):
+      # it writes and the frames read back.
+      - uses: actions/download-artifact@v7
+        if: needs.changes.outputs.docs_only != 'true'
+        with:
+          name: native-gpl-linux-x64
+          path: native-gpl/linux-x64
+
+      - name: Test VideoWriter with our GPL libraries
+        if: needs.changes.outputs.docs_only != 'true'
+        env:
+          SHOTDETECTOR_FFMPEG_LIBS: ${{ github.workspace }}/native-gpl/linux-x64
+          SHOTDETECTOR_REQUIRE_X264: '1'
+        run: dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~VideoWriterTests.WritesWithTheseLibraries"
 
       - uses: actions/upload-artifact@v7
         if: failure()
