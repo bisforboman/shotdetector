@@ -10,6 +10,11 @@ public readonly record struct Rational(int Num, int Den)
 
     /// <inheritdoc/>
     public override string ToString() => $"{Num}/{Den}";
+
+    /// <summary><paramref name="pts"/> in <paramref name="timeBase"/> units as a TimeSpan, to the nearest tick; null if unknown.</summary>
+    internal static TimeSpan? Ticks(long? pts, Rational timeBase) => pts is long p && timeBase.Den != 0
+        ? TimeSpan.FromTicks((long)Math.Round((decimal)p * timeBase.Num * TimeSpan.TicksPerSecond / timeBase.Den))
+        : null;
 }
 
 /// <summary>How a video stream's fields are ordered (FFmpeg's AVFieldOrder).</summary>
@@ -81,6 +86,9 @@ public sealed record VideoStreamInfo
     /// <summary>The stream's duration in <see cref="TimeBase"/> units; null if unknown.</summary>
     public long? DurationPts { get; init; }
 
+    /// <summary>The duration as a <see cref="TimeSpan"/> (<see cref="DurationPts"/> in <see cref="TimeBase"/> units); null if unknown.</summary>
+    public TimeSpan? Duration => Rational.Ticks(DurationPts, TimeBase);
+
     /// <summary>The frame count the container states; null if it doesn't.</summary>
     public long? FrameCount { get; init; }
 
@@ -148,6 +156,9 @@ public sealed record StreamInfo
     /// <summary>The stream's duration in <see cref="TimeBase"/> units; null if unknown.</summary>
     public long? DurationPts { get; init; }
 
+    /// <summary>The duration as a <see cref="TimeSpan"/> (<see cref="DurationPts"/> in <see cref="TimeBase"/> units); null if unknown.</summary>
+    public TimeSpan? Duration => Rational.Ticks(DurationPts, TimeBase);
+
     /// <summary>The unit of the stream's timestamps, in seconds.</summary>
     public Rational TimeBase { get; init; }
 
@@ -178,8 +189,8 @@ public sealed record MediaInfo
     /// <summary>FFmpeg's name for the container (its demuxer): mov,mp4,m4a,3gp,3g2,mj2, matroska,webm, mxf, ...</summary>
     public string Container { get; init; } = "";
 
-    /// <summary>The container's duration in microseconds; null if unknown.</summary>
-    public long? DurationMicroseconds { get; init; }
+    /// <summary>The container's duration; null if unknown.</summary>
+    public TimeSpan? Duration { get; init; }
 
     /// <summary>The first video stream; null if there is none.</summary>
     public VideoStreamInfo? Video { get; init; }

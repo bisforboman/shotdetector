@@ -77,7 +77,7 @@ public class MediaProbeTests
             Assert.Equal(rotation, v.Rotation is { } r ? (int)r : null);
             var format = json.RootElement.GetProperty("format");
             Assert.Equal(format.GetProperty("format_name").GetString(), info.Container);
-            Assert.Equal(format.GetProperty("duration").GetString(), (info.DurationMicroseconds!.Value / 1e6).ToString("F6", CultureInfo.InvariantCulture));
+            Assert.Equal(format.GetProperty("duration").GetString(), (info.Duration!.Value.Ticks / 10 / 1e6).ToString("F6", CultureInfo.InvariantCulture));
             Assert.Equal(streams.Any(s => s.GetProperty("codec_type").GetString() == "audio"), info.HasAudio);
             var packets = Run("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts", "-of", "csv=p=0", path)
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

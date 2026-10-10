@@ -142,7 +142,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     }
 
     /// <summary>The stream's time base in seconds per <see cref="VideoFrame.Pts"/> unit.</summary>
-    public double TimeBase => _decoder.TimeBase;
+    public Rational TimeBase => _decoder.TimeBase;
 
     /// <summary>
     /// Seeks so the next <see cref="TryRead"/> gives the frame ffmpeg's <c>-ss</c> gives for <paramref name="time"/>:
@@ -259,7 +259,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
             bool jumped = false;
             long key = 0;
             if (_decoder.CanSeek && _decoder.KeyframeAtOrBefore(target) is { } found
-                && found > (_current ? _decoder.Pts : 0) + (long)(1 / _decoder.TimeBase))
+                && found > (_current ? _decoder.Pts : 0) + (long)(1 / _decoder.TimeBase.Value))
             {
                 key = found;
                 // To the target, not the index entry: some containers index by dts and seek by pts, where the entry's dts
@@ -376,7 +376,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     {
         _decoder.EnsureRows(0, _decoder.Frame->height);
         long pts = _decoder.Pts;
-        Convert(_decoder.Frame, pts, TimeSpan.FromSeconds((pts + _decoder.StartOffset) * _decoder.TimeBase), out frame);
+        Convert(_decoder.Frame, pts, TimeSpan.FromSeconds((pts + _decoder.StartOffset) * _decoder.TimeBase.Value), out frame);
     }
 
     void Convert(AVFrame* src, long pts, TimeSpan time, out VideoFrame frame)

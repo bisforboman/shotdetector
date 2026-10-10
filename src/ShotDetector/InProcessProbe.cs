@@ -50,7 +50,7 @@ internal static unsafe class InProcessProbe
         if (v.Rotation is { } r)
             Line("rotation", ((long)r).ToString(CultureInfo.InvariantCulture)); // ffprobe's print_int: the double, truncated
         Line("format_name", info.Container);
-        Line("duration", Time(info.DurationMicroseconds, new Rational(1, 1_000_000)));
+        Line("duration", Time(info.Duration?.Ticks / 10, new Rational(1, 1_000_000)));
         foreach (var pts in info.PacketTimestamps ?? [])
             Line("pts", Timestamp(pts));
         return sb.ToString();

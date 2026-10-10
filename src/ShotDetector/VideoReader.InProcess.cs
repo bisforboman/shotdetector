@@ -66,7 +66,7 @@ public sealed partial class VideoReader
                     ? new FrameReader.FrameDecoder(_path, decoderOptions)
                     : new FrameReader.FrameDecoder(new PrefixedStream(_prefix, _stream), decoderOptions);
                 using var writer = new FrameWriter(decoder);
-                timeBase = decoder.TimeBase;
+                timeBase = decoder.TimeBase.Value;
                 // Streamed: times from the stream's start, as ffmpeg gives them without -copyts.
                 long offset = Streaming ? decoder.StartOffset : 0;
                 // Seek as the command line does: two frames early, then drop every frame before the wanted one's pts.

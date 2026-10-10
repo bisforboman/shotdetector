@@ -44,7 +44,7 @@ public static unsafe class MediaProbe
             return new MediaInfo
             {
                 Container = Marshal.PtrToStringAnsi((IntPtr)fmt->iformat->name) ?? "",
-                DurationMicroseconds = Known(fmt->duration),
+                Duration = Known(fmt->duration) is long us ? TimeSpan.FromTicks(us * 10) : null,
                 Video = index < 0 ? null : Video(fmt->streams[index], index),
                 HasAudio = audio,
                 Streams = streams,

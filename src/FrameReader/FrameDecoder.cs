@@ -59,7 +59,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     internal AVRational StreamTimeBase => _timeBase;
 
     /// <summary>The stream's time base in seconds per pts unit.</summary>
-    public double TimeBase => _timeBase.num / (double)_timeBase.den;
+    public Rational TimeBase => new(_timeBase.num, _timeBase.den);
 
     /// <summary>The current frame's best-effort timestamp (what ffmpeg's command line gives each frame).</summary>
     public long Pts => _rowMode == true ? _rPts : _sink == null ? _frame->best_effort_timestamp
