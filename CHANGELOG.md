@@ -3,6 +3,14 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 
+## Unreleased
+
+### Fixed
+
+- `VideoWriter` with ShotDetector.Native.Gpl's libraries: every writer failed with "Filter not found" (issue #127). The
+  build lacked the `format`, `null` and `scale` filters its graph to the encoder's pixel format uses; CI now writes
+  with that package's own libraries, and the tests' x264 check no longer took that failure for a missing libx264.
+
 ## 1.4.0 – 2026-10-10
 
 FrameReader's first package (`FrameReader` 1.4.0-preview), its API reviewed before it, and AudioReader's seek matching

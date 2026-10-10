@@ -38,23 +38,16 @@ public class VideoWriterTests
         return can;
     }
 
+    /// <summary>
+    /// Whether these libraries have libx264, looked up by name: any other failure of a VideoWriter (a filter missing
+    /// from the build, issue #127) is a test failure, not a skip.
+    /// </summary>
+    static unsafe bool HasX264() => Libs is not null && FFmpeg.AutoGen.ffmpeg.avcodec_find_encoder_by_name("libx264") != null;
+
     static bool Compares()
     {
-        if (Libs is null || !File.Exists(Exe))
+        if (!HasX264() || !File.Exists(Exe))
             return false;
-        string probe = Path.Combine(Path.GetTempPath(), $"framereader-x264-{Guid.NewGuid():N}.mp4");
-        try
-        {
-            new VideoWriter(probe, new VideoWriterOptions { Width = 16, Height = 16, FrameRate = new(25, 1) }).Dispose();
-        }
-        catch (FrameReaderException)
-        {
-            return false; // no libx264 in these libraries
-        }
-        finally
-        {
-            File.Delete(probe);
-        }
         var psi = new ProcessStartInfo(Exe, "-hide_banner -version") { RedirectStandardOutput = true };
         using var p = Process.Start(psi)!;
         string version = p.StandardOutput.ReadToEnd();
@@ -169,6 +162,43 @@ public class VideoWriterTests
             return "(none)";
         int end = text.IndexOf('\0', at);
         return text[(at + 9)..(end < 0 ? Math.Min(text.Length, at + 600) : end)];
+    }
+
+    /// <summary>
+    /// Writes with whatever libraries these are (CI: the GPL native package's, with no ffmpeg executable of their own
+    /// build to compare with) and reads the frames back: every input layout through the graph to the encoder's format.
+    /// With SHOTDETECTOR_REQUIRE_X264=1 libraries without libx264 fail.
+    /// </summary>
+    [Theory]
+    [InlineData(FrameFormat.Bgr24, null)]
+    [InlineData(FrameFormat.Bgr24, "yuv420p")]
+    [InlineData(FrameFormat.Yuv420p, "yuv420p")]
+    [InlineData(FrameFormat.Yuv420p, null)]
+    public void WritesWithTheseLibraries(FrameFormat format, string? pixelFormat)
+    {
+        if (!HasX264())
+        {
+            Assert.False(Environment.GetEnvironmentVariable("SHOTDETECTOR_REQUIRE_X264") == "1", $"SHOTDETECTOR_REQUIRE_X264 is set, but {Libs} has no libx264.");
+            return;
+        }
+        string dir = Directory.CreateTempSubdirectory("framereader-vwrite-").FullName;
+        try
+        {
+            const int W = 64, H = 48, N = 30;
+            string path = Path.Combine(dir, "x.mp4");
+            using (var w = new VideoWriter(path, new VideoWriterOptions { Width = W, Height = H, FrameRate = new(24, 1), FrameFormat = format, PixelFormat = pixelFormat }))
+                for (int i = 0; i < N; i++)
+                    w.Write(new byte[w.FrameSize]);
+            using var reader = new VideoFrameReader(path);
+            int n = 0;
+            while (reader.TryRead(out _))
+                n++;
+            Assert.Equal(N, n);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 
     [Fact]
