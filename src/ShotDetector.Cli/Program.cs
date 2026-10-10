@@ -78,6 +78,8 @@ const string Usage = """
           --split-high-quality           CRF 17, preset slow (instead of 22, veryfast)
           --split-crf <n>, --split-preset <name>, --split-args "<ffmpeg args>"
           --split-expand                 Stretch the first/last clip to the video's start/end (with -s/-e)
+          --probe                        Only describe the input (container, video, every stream), then stop
+          --probe-json                   The same as JSON on standard output
           --find-tone                    Only list reference tone (1 kHz line-up tone) in the audio, then stop;
                                          video or audio-only input. Not in scenedetect
           --trim-tone                    Leave reference tone at the start and end out of detection
@@ -86,7 +88,7 @@ const string Usage = """
           --tone-search <seconds>        Search only the first seconds of audio (default: all of it)
     """;
 
-bool skipCuts = false, quiet = false, htmlNoImages = false, findTone = false;
+bool skipCuts = false, quiet = false, htmlNoImages = false, findTone = false, probe = false, probeJson = false;
 int? htmlWidth = null, htmlHeight = null;
 string? htmlPath = null;
 string? edlPath = null, edlTitle = null, edlReel = "AX", edlStart = null, fcpPath = null, fcpFormat = "fcpx";
@@ -242,6 +244,8 @@ try
             case "--split-args": split = split with { Args = Next() }; break;
             case "--split-expand": split = split with { Expand = true }; break;
             case "--find-tone": findTone = true; break;
+            case "--probe": probe = true; break;
+            case "--probe-json": probeJson = true; break;
             case "--trim-tone": options = options with { TrimReferenceTone = true }; break;
             case "--tone-min-duration": options = options with { ReferenceToneMinDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
             case "--tone-search": options = options with { ReferenceToneSearchDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
@@ -276,6 +280,14 @@ catch (Exception e) when (e is ArgumentException or FormatException)
 
 try
 {
+    if (probe || probeJson)
+    {
+        if (input == "-")
+            throw new ArgumentException("--probe needs a file or URL");
+        var info = ShotDetection.Probe(input, options);
+        Console.WriteLine(probeJson ? ProbeJson(info) : string.Join(Environment.NewLine, ProbeLines(info)));
+        return 0;
+    }
     if (findTone)
     {
         if (input == "-")
@@ -367,6 +379,98 @@ catch (InvalidOperationException e)
 static IEnumerable<string> ToneLines(IReadOnlyList<ReferenceToneSegment> tone) => tone.Count == 0 ? ["No reference tone"]
     : tone.Select(t => string.Create(CultureInfo.InvariantCulture,
         $"Reference tone: {t.Start:hh\\:mm\\:ss\\.fff} - {t.End:hh\\:mm\\:ss\\.fff} ({(t.End - t.Start).TotalSeconds:0.00} s) at {t.Level:0.0} dBFS"));
+
+static IEnumerable<string> ProbeLines(VideoInfo v)
+{
+    var c = CultureInfo.InvariantCulture;
+    yield return $"Container  {v.Container}";
+    if (v.Duration is { } d)
+        yield return string.Create(c, $"Duration   {d:hh\\:mm\\:ss\\.fff}");
+    string frames = v.FrameCount is { } n ? $", {n} frames" : "", rotated = v.Rotation != 0 ? $", rotated {v.Rotation}" : "";
+    yield return string.Create(c, $"Video      {v.Codec} {v.Width}x{v.Height}, {v.FrameRate.Value:0.###} fps ({v.FrameRate.Num}/{v.FrameRate.Den}), {v.PixelFormat}, {v.FieldOrder.ToString().ToLowerInvariant()}{frames}{rotated}");
+    if (v.Streams is not { } streams)
+        yield break;
+    yield return "Streams";
+    foreach (var s in streams)
+    {
+        var parts = new List<string> { $"#{s.Index}", s.Type.ToString().ToLowerInvariant(), s.Codec };
+        if (s.Width is { } w && s.Height is { } h)
+            parts.Add($"{w}x{h}");
+        if (s.SampleRate is { } r)
+            parts.Add(string.Create(c, $"{r} Hz"));
+        if ((s.ChannelLayout ?? (s.Channels is { } ch ? $"{ch} channels" : null)) is { } layout)
+            parts.Add(layout);
+        if (s.Language is { } lang)
+            parts.Add(lang);
+        if (s.Title is { } title)
+            parts.Add($"\"{title}\"");
+        if (s.BitRate is { } b)
+            parts.Add(string.Create(c, $"{b / 1000.0:0} kb/s"));
+        if (s.Duration is { } sd)
+            parts.Add(string.Create(c, $"{sd:hh\\:mm\\:ss\\.fff}"));
+        if (s.IsDefault)
+            parts.Add("default");
+        if (s.IsForced)
+            parts.Add("forced");
+        yield return "  " + string.Join(" ", parts);
+    }
+}
+
+// By hand with Utf8JsonWriter: no reflection, so the Native AOT binaries need nothing generated.
+static string ProbeJson(VideoInfo v)
+{
+    var buffer = new System.IO.MemoryStream();
+    using (var j = new System.Text.Json.Utf8JsonWriter(buffer, new() { Indented = true }))
+    {
+        static void Time(System.Text.Json.Utf8JsonWriter j, string name, TimeSpan? t)
+        {
+            if (t is { } x) j.WriteNumber(name, Math.Round(x.TotalSeconds, 6)); else j.WriteNull(name);
+        }
+        static void Int(System.Text.Json.Utf8JsonWriter j, string name, long? n)
+        {
+            if (n is { } x) j.WriteNumber(name, x); else j.WriteNull(name);
+        }
+        j.WriteStartObject();
+        j.WriteString("container", v.Container);
+        Time(j, "duration", v.Duration);
+        j.WriteStartObject("video");
+        j.WriteString("codec", v.Codec);
+        j.WriteNumber("width", v.Width);
+        j.WriteNumber("height", v.Height);
+        j.WriteString("frameRate", $"{v.FrameRate.Num}/{v.FrameRate.Den}");
+        Int(j, "frameCount", v.FrameCount);
+        j.WriteString("pixelFormat", v.PixelFormat);
+        j.WriteString("fieldOrder", char.ToLowerInvariant(v.FieldOrder.ToString()[0]) + v.FieldOrder.ToString()[1..]); // progressive, topFirst, ...
+        j.WriteNumber("rotation", v.Rotation);
+        j.WriteEndObject();
+        if (v.HasAudio is { } a) j.WriteBoolean("hasAudio", a); else j.WriteNull("hasAudio");
+        j.WriteStartArray("streams");
+        foreach (var s in v.Streams ?? [])
+        {
+            j.WriteStartObject();
+            j.WriteNumber("index", s.Index);
+            j.WriteString("type", s.Type.ToString().ToLowerInvariant());
+            j.WriteString("codec", s.Codec);
+            j.WriteString("codecTag", s.CodecTag);
+            j.WriteString("language", s.Language);
+            j.WriteString("title", s.Title);
+            j.WriteBoolean("default", s.IsDefault);
+            j.WriteBoolean("forced", s.IsForced);
+            Int(j, "bitRate", s.BitRate);
+            Time(j, "duration", s.Duration);
+            Int(j, "width", s.Width);
+            Int(j, "height", s.Height);
+            Int(j, "sampleRate", s.SampleRate);
+            Int(j, "channels", s.Channels);
+            j.WriteString("channelLayout", s.ChannelLayout);
+            j.WriteString("sampleFormat", s.SampleFormat);
+            j.WriteEndObject();
+        }
+        j.WriteEndArray();
+        j.WriteEndObject();
+    }
+    return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+}
 
 static DetectorKind KindOf(string name) => name switch
 {
