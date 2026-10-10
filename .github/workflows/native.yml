@@ -62,7 +62,7 @@ jobs:
       - name: Tools (Alpine)
         if: matrix.container
         timeout-minutes: 10   # package mirrors sometimes hang
-        run: apk add --no-cache build-base nasm curl tar xz git perl coreutils meson samurai pkgconf
+        run: apk add --no-cache build-base nasm curl tar xz git perl coreutils meson samurai pkgconf bash   # bash: x264's configure
 
       - uses: actions/checkout@v7
 
