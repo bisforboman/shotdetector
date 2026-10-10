@@ -430,7 +430,25 @@ public sealed record DetectionOptions
 
     /// <summary>Record per-frame metrics in <see cref="DetectionResult.Stats"/> (like scenedetect -s).</summary>
     public bool CollectStats { get; init; }
+
+    /// <summary>
+    /// Leave out reference tone (1 kHz line-up tone, <see cref="ShotDetection.FindReferenceTone"/>) at the start and
+    /// end: detection starts after a segment that begins in the first 5 s, and stops before one that ends in the last
+    /// 5 s; the segments found are in <see cref="DetectionResult.ReferenceTone"/>. Not in scenedetect. Needs a file
+    /// path and FFmpeg's libraries (the audio is read in-process), and sets the time range itself: not with
+    /// <see cref="StartTime"/>, <see cref="EndTime"/> or <see cref="Duration"/>.
+    /// </summary>
+    public bool TrimReferenceTone { get; init; }
+
+    /// <summary>The shortest run of tone that counts as reference tone (<see cref="ShotDetection.FindReferenceTone"/>).</summary>
+    public TimeSpan ReferenceToneMinDuration { get; init; } = TimeSpan.FromSeconds(5);
 }
+
+/// <summary>A run of reference tone (<see cref="ShotDetection.FindReferenceTone"/>).</summary>
+/// <param name="Start">Its start, to 20 ms.</param>
+/// <param name="End">Its end, to 20 ms.</param>
+/// <param name="Level">Its level in dBFS, a full-scale sine being 0 (EBU line-up is -18, SMPTE -20).</param>
+public readonly record struct ReferenceToneSegment(TimeSpan Start, TimeSpan End, double Level);
 
 /// <summary>How far <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/> has got.</summary>
 public readonly record struct DetectionProgress
@@ -476,6 +494,9 @@ public sealed record DetectionResult
 
     /// <summary>Every cut, sorted: the shot starts after the first, unless shots were dropped or merged (scenedetect's cut list, which its CSV's first row, the HTML page and the QP file use).</summary>
     public IReadOnlyList<FrameTime> Cuts { get; init; } = [];
+
+    /// <summary>The reference tone found with <see cref="DetectionOptions.TrimReferenceTone"/>, else null.</summary>
+    public IReadOnlyList<ReferenceToneSegment>? ReferenceTone { get; init; }
 }
 
 /// <summary>Runs shot detection on a video file.</summary>
@@ -518,6 +539,34 @@ public static class ShotDetection
 
     static readonly System.Diagnostics.ActivitySource Tracing =
         new(ActivitySourceName, typeof(ShotDetection).Assembly.GetName().Version?.ToString());
+
+    /// <summary>
+    /// Finds reference tone (line-up or alignment tone: a steady 1 kHz sine, often with colour bars, before or after
+    /// the programme) in a file's audio, a video's or an audio-only file's. A run counts when it is mostly 1 kHz
+    /// (about ±15 Hz) at a steady level for at least <see cref="DetectionOptions.ReferenceToneMinDuration"/>; breaks up
+    /// to 1 s (line-up conventions that cut one channel now and then) don't split it. Music, beeps and held notes don't
+    /// count. Not in scenedetect: nothing here changes detection unless <see cref="DetectionOptions.TrimReferenceTone"/>
+    /// is set. Reads the audio in-process with FFmpeg's libraries.
+    /// </summary>
+    /// <param name="path">A video or audio file.</param>
+    /// <param name="options">Uses <see cref="DetectionOptions.ReferenceToneMinDuration"/> and <see cref="DetectionOptions.FfmpegDirectory"/>.</param>
+    /// <param name="cancellationToken">Stops reading.</param>
+    /// <returns>The segments, in order; empty when there's none.</returns>
+    /// <exception cref="ShotDetectionException">FFmpeg's libraries didn't load, or the file can't be read or has no audio.</exception>
+    public static IReadOnlyList<ReferenceToneSegment> FindReferenceTone(string path, DetectionOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        var o = options ?? new DetectionOptions();
+        try
+        {
+            using var audio = new FrameReader.AudioReader(path, new FrameReader.AudioReaderOptions { LibraryDirectory = o.FfmpegDirectory });
+            return [.. FrameReader.ReferenceTone.Find(audio, new FrameReader.ReferenceToneOptions { MinDuration = o.ReferenceToneMinDuration }, cancellationToken)
+                .Select(s => new ReferenceToneSegment(s.Start, s.End, s.Level))];
+        }
+        catch (FrameReader.FrameReaderException e)
+        {
+            throw InProcess.Map(e, o.FfmpegDirectory);
+        }
+    }
 
     /// <summary>
     /// Decodes <paramref name="videoPath"/> with ffmpeg and returns its shots, as
@@ -717,6 +766,10 @@ public static class ShotDetection
     {
         cancellationToken.ThrowIfCancellationRequested();
         var o = options ?? new DetectionOptions();
+        if (o.TrimReferenceTone && videoPath is null)
+            throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately).");
+        if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.Duration is not null))
+            throw new ArgumentException("TrimReferenceTone sets the time range itself; leave StartTime, EndTime and Duration unset.");
         if (o.FrameSkip < 0)
             throw new ArgumentException("FrameSkip must be at least 0.");
         if (o.FrameSkip > 0 && o.CollectStats)
@@ -733,6 +786,14 @@ public static class ShotDetection
         var video = spilled is not null ? new VideoReader(spilled.Path, o, cancellationToken)
             : videoStream is not null ? new VideoReader(videoStream, prefix!, o, cancellationToken)
             : new VideoReader(videoPath!, o, cancellationToken);
+        IReadOnlyList<ReferenceToneSegment>? tone = null;
+        if (o.TrimReferenceTone)
+        {
+            if (video.Streaming)
+                throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately).");
+            tone = FindReferenceTone(videoPath!, o, cancellationToken);
+            o = TrimmedToTone(o, tone, video.Duration);
+        }
         if (o.StartTime is not null && video.Streaming)
             throw new ArgumentException("StartTime isn't available for a streamed input (a Stream, a URL, or Streaming = true).");
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
@@ -831,8 +892,27 @@ public static class ShotDetection
         return new()
         {
             VideoPath = videoPath, Video = video, Shots = shots, FrameCount = frameCount, MinSceneLengthFrames = minSceneLen,
-            Stats = stats, Cuts = Unique(cuts),
+            Stats = stats, Cuts = Unique(cuts), ReferenceTone = tone,
         };
+    }
+
+    /// <summary>
+    /// The time range without a leading tone segment (starting in the first 5 s, nearer the start than the end) and a
+    /// trailing one (ending in the last 5 s).
+    /// </summary>
+    internal static DetectionOptions TrimmedToTone(DetectionOptions o, IReadOnlyList<ReferenceToneSegment> tone, TimeSpan? duration)
+    {
+        var ends = TimeSpan.FromSeconds(5);
+        static string Seconds(TimeSpan t) => t.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture) + "s";
+        int first = 0;
+        if (tone.Count > 0 && tone[0].Start <= ends && (duration is not { } length || tone[0].Start <= length - tone[0].End))
+        {
+            o = o with { StartTime = Seconds(tone[0].End) };
+            first = 1;
+        }
+        if (tone.Count > first && duration is { } d && tone[^1].End >= d - ends)
+            o = o with { EndTime = Seconds(tone[^1].Start) };
+        return o;
     }
 
     static IDetector Build(DetectorSettings st, DetectionOptions o, VideoReader video, int minSceneLen, Stats? stats)

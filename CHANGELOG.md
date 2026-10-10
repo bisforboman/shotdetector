@@ -7,6 +7,11 @@ semantic versioning (README, "Versions"); before it, minor versions could change
 
 ### New
 
+- Reference tone (1 kHz line-up tone, "bars and tone"): `ShotDetection.FindReferenceTone(path)` finds its runs in a
+  video's or an audio-only file's audio, and `DetectionOptions.TrimReferenceTone` leaves a leading and a trailing run
+  out of detection (`DetectionResult.ReferenceTone` lists them); CLI `--find-tone`, `--trim-tone`,
+  `--tone-min-duration`. Interrupted line-up (EBU, GLITS) is one run; beeps and music don't count. Opt-in: nothing
+  changes with it off. In FrameReader: `ReferenceTone.Find(audioReader)`.
 - FrameReader (inside the ShotDetector package; its API isn't under semantic versioning yet):
   - `AudioWriter`: float32 samples to MP3 (LAME), AAC or WAV, the file ffmpeg writes from the same samples.
   - `Remux.Copy`: streams copied into another container without re-encoding (`ffmpeg -map ... -c copy`), e.g. the

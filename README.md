@@ -118,6 +118,14 @@ subtitles, data) with its codec and codec tag, language, title, default/forced f
 details (sample rate, channels, layout, sample format), as ffprobe's `-show_streams` gives them. The same
 properties are on `DetectionResult.Video` after a detection.
 
+Reference tone (line-up tone, a steady 1 kHz sine, often with colour bars, before or after the programme):
+`ShotDetection.FindReferenceTone(path)` lists its runs (start, end, level in dBFS) in a video's or an audio-only file's
+audio, and `TrimReferenceTone = true` leaves it out of detection: detection starts after a run that begins in the first
+5 s and stops before one that ends in the last 5 s; the runs found are in `DetectionResult.ReferenceTone`. Line-up
+that cuts one channel now and then (EBU, GLITS) is one run; beeps, music and runs shorter than
+`ReferenceToneMinDuration` (5 s) don't count. Not in scenedetect, and off by default. It reads the audio in-process,
+so FFmpeg's libraries are needed, and a file path (not a Stream or URL).
+
 Which decoder a run uses is in every `DetectionProgress` report (`DecodesInProcess`, `Pipeline`), from a first report
 sent before any frame, so `DetectStreamAsync` callers see it too. `ShotDetection.CanDecodeInProcess()` tells a worker at
 startup whether FFmpeg's libraries load; `VideoDecoder.InProcess` without them throws `ShotDetectionException` with
@@ -153,6 +161,9 @@ standard input; `--frame-rate` overrides the frame rate (scenedetect `-f`), also
 sequences such as `frames/%04d.png`. Defaults match the scenedetect CLI:
 content threshold 27, adaptive threshold 3, min-content-val 15, frame window 2, fade threshold 12,
 min scene length 0.6s. `--help` lists all options.
+
+`--find-tone` only lists reference tone (1 kHz line-up tone) in the audio, also of audio-only files; `--trim-tone`
+detects shots without it at the start and end (`--tone-min-duration` sets the shortest run, 5 s by default).
 
 ## Using the shot list
 
@@ -275,6 +286,9 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
 4:2:2/4:4:4, full-range MJPEG) or with an odd height convert whole frames, still with identical results.
 
 ## Where this differs from PySceneDetect
+
+- **Reference tone:** scenedetect has nothing like `TrimReferenceTone` / `--trim-tone`; with it, results equal
+  scenedetect's with `-s`/`-e` at the tone's end and start. Off by default.
 
 - **Downscaling:** by default ffmpeg sends full-size frames and `CvResize.cs` replicates
   `cv2.resize(INTER_LINEAR)` bit for bit, at the size PySceneDetect picks (`max(w,h)/256`). That's

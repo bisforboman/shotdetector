@@ -182,6 +182,18 @@ while (reader.TryRead(out var frame))
     writer.Write(frame.Data);
 ```
 
+Reference tone: `ReferenceTone.Find(audioReader, options)` returns the runs of line-up tone (a steady 1 kHz sine, as in
+"bars and tone") with their start, end and level. In 20 ms windows a channel counts when 90% of its energy is at the
+frequency (about ±15 Hz) above -40 dBFS, at a steady level (±1 dB); breaks up to `MaxGap` (1 s; EBU and GLITS line-up
+cut one channel now and then) don't split a run, and runs shorter than `MinDuration` (5 s) are left out, so beeps and
+held notes in music don't count.
+
+```csharp
+using var audio = new AudioReader("tape.mxf");
+foreach (var tone in ReferenceTone.Find(audio))
+    Console.WriteLine($"tone {tone.Start}-{tone.End} at {tone.Level:0.0} dBFS");
+```
+
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio, and `Streams`: every
 stream with its type, codec, codec tag, language, title, flags, bit rate, duration and audio details; optionally

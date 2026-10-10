@@ -78,9 +78,14 @@ const string Usage = """
           --split-high-quality           CRF 17, preset slow (instead of 22, veryfast)
           --split-crf <n>, --split-preset <name>, --split-args "<ffmpeg args>"
           --split-expand                 Stretch the first/last clip to the video's start/end (with -s/-e)
+          --find-tone                    Only list reference tone (1 kHz line-up tone) in the audio, then stop;
+                                         video or audio-only input. Not in scenedetect
+          --trim-tone                    Leave reference tone at the start and end out of detection
+                                         (not with -s/-e/--duration); the tone found goes to stderr
+          --tone-min-duration <seconds>  Shortest tone that counts (default 5)
     """;
 
-bool skipCuts = false, quiet = false, htmlNoImages = false;
+bool skipCuts = false, quiet = false, htmlNoImages = false, findTone = false;
 int? htmlWidth = null, htmlHeight = null;
 string? htmlPath = null;
 string? edlPath = null, edlTitle = null, edlReel = "AX", edlStart = null, fcpPath = null, fcpFormat = "fcpx";
@@ -235,6 +240,9 @@ try
             case "--split-preset": split = split with { Preset = Next() }; break;
             case "--split-args": split = split with { Args = Next() }; break;
             case "--split-expand": split = split with { Expand = true }; break;
+            case "--find-tone": findTone = true; break;
+            case "--trim-tone": options = options with { TrimReferenceTone = true }; break;
+            case "--tone-min-duration": options = options with { ReferenceToneMinDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
             case "--config": i++; break; // read above
             case "-h" or "--help": Console.WriteLine(Usage); return 0;
             default: throw new ArgumentException($"Unknown option {args[i]}");
@@ -266,6 +274,14 @@ catch (Exception e) when (e is ArgumentException or FormatException)
 
 try
 {
+    if (findTone)
+    {
+        if (input == "-")
+            throw new ArgumentException("--find-tone needs a file");
+        foreach (var line in ToneLines(ShotDetection.FindReferenceTone(input, options)))
+            Console.WriteLine(line);
+        return 0;
+    }
     // A live percentage on stderr, only when it's a terminal (not when output is redirected).
     if (!Console.IsErrorRedirected)
         options = options with { Progress = new SyncProgress<DetectionProgress>(p => Console.Error.Write(
@@ -290,6 +306,10 @@ try
         $"{result.FrameCount} frames, processed at {video.Width}x{video.Height}, " +
         $"detector={string.Join('+', (options.Detectors?.Select(d => d.Kind) ?? [options.Detector]).Select(k => k.ToString().ToLowerInvariant()))}, " +
         $"min-scene-len={result.MinSceneLengthFrames} frames, decoded {(video.DecodesInProcess ? "in-process" : "by ffmpeg")}"));
+
+    if (result.ReferenceTone is { } tone)
+        foreach (var line in ToneLines(tone))
+            Console.Error.WriteLine(line);
 
     if (!quiet)
         Console.WriteLine(Shots.Table(result.Shots));
@@ -341,6 +361,10 @@ catch (InvalidOperationException e)
     return 1;
 }
 
+
+static IEnumerable<string> ToneLines(IReadOnlyList<ReferenceToneSegment> tone) => tone.Count == 0 ? ["No reference tone"]
+    : tone.Select(t => string.Create(CultureInfo.InvariantCulture,
+        $"Reference tone: {t.Start:hh\\:mm\\:ss\\.fff} - {t.End:hh\\:mm\\:ss\\.fff} ({(t.End - t.Start).TotalSeconds:0.00} s) at {t.Level:0.0} dBFS"));
 
 static DetectorKind KindOf(string name) => name switch
 {
