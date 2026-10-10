@@ -22,7 +22,7 @@ internal static unsafe class InProcessProbe
     public static string Properties(string path, string? libraryDirectory, bool packets = true, string[]? inputOptions = null,
         byte[]? streamPrefix = null)
     {
-        var options = new ProbeOptions { PacketTimestamps = packets && streamPrefix is null, InputOptions = Options(inputOptions), LibraryDirectory = libraryDirectory };
+        var options = new ProbeOptions { PacketTimestamps = packets && streamPrefix is null, InputOptions = Options(inputOptions) };
         var info = Probe(() => streamPrefix is null ? MediaProbe.Probe(path, options) : MediaProbe.Probe(new MemoryStream(streamPrefix), options), libraryDirectory);
         if (info.Video is not { } v)
             return ""; // no stream entries, as ffprobe prints none
@@ -50,7 +50,7 @@ internal static unsafe class InProcessProbe
         if (v.Rotation is { } r)
             Line("rotation", ((long)r).ToString(CultureInfo.InvariantCulture)); // ffprobe's print_int: the double, truncated
         Line("format_name", info.Container);
-        Line("duration", Time(info.DurationMicroseconds, new Rational(1, 1_000_000)));
+        Line("duration", Time(info.Duration?.Ticks / 10, new Rational(1, 1_000_000)));
         foreach (var pts in info.PacketTimestamps ?? [])
             Line("pts", Timestamp(pts));
         return sb.ToString();
@@ -62,7 +62,7 @@ internal static unsafe class InProcessProbe
     /// </summary>
     public static IReadOnlyList<StreamInfo> Streams(string path, string? libraryDirectory, string[]? inputOptions = null)
     {
-        var info = Probe(() => MediaProbe.Probe(path, new ProbeOptions { LibraryDirectory = libraryDirectory, InputOptions = Options(inputOptions) }), libraryDirectory);
+        var info = Probe(() => MediaProbe.Probe(path, new ProbeOptions { InputOptions = Options(inputOptions) }), libraryDirectory);
         return info.Streams.Select(s => new StreamInfo
         {
             Index = s.Index,
@@ -93,7 +93,8 @@ internal static unsafe class InProcessProbe
         var result = new List<long>();
         try
         {
-            using var decoder = new FrameDecoder(path, new FrameDecoderOptions { LibraryDirectory = libraryDirectory, InputOptions = Options(inputOptions) });
+            InProcess.Load(libraryDirectory);
+            using var decoder = new FrameDecoder(path, new FrameDecoderOptions { InputOptions = Options(inputOptions) });
             while (decoder.Next())
                 result.Add(decoder.FramePts is long p && p != 0 ? p : decoder.FramePacketDts ?? 0);
         }

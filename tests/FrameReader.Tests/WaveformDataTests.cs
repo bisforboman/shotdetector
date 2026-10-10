@@ -8,7 +8,7 @@ using FrameReader;
 /// </summary>
 public class WaveformDataTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
     static readonly string? Audiowaveform = Environment.GetEnvironmentVariable("AUDIOWAVEFORM");
 
     static void Run(string exe, params string[] args)
@@ -52,10 +52,10 @@ public class WaveformDataTests
                 PixelsPerSecond = extra.Contains("--pixels-per-second") ? int.Parse(extra[Array.IndexOf(extra, "--pixels-per-second") + 1]) : null,
             };
             int bits = extra.Contains("-b") ? int.Parse(extra[Array.IndexOf(extra, "-b") + 1]) : 16;
-            using var audio = new AudioReader(path, new AudioReaderOptions { LibraryDirectory = Libs });
+            using var audio = new AudioReader(path, new AudioReaderOptions());
             var waveform = WaveformData.Read(audio, options);
             var actual = new MemoryStream();
-            waveform.Save(actual, bits);
+            waveform.Save(actual, (WaveformBits)bits);
             Assert.Equal(File.ReadAllBytes(expected), actual.ToArray());
         }
         finally
@@ -83,14 +83,14 @@ public class WaveformDataTests
                 foreach (short s in frames)
                     w.Write(s);
             }
-            using var audio = new AudioReader(path, new AudioReaderOptions { LibraryDirectory = Libs });
+            using var audio = new AudioReader(path, new AudioReaderOptions());
             var mixed = WaveformData.Read(audio, new WaveformOptions { SamplesPerPixel = 2 });
             // Means, truncated toward zero: 150, -3, 32767, -32768, 0; points of 2 frames, the last one alone.
             Assert.Equal((1, 3, 8000, 2), (mixed.Channels, mixed.Length, mixed.SampleRate, mixed.SamplesPerPixel));
             Assert.Equal([(-3, 150), (-32768, 32767), (0, 0)], Enumerable.Range(0, 3).Select(i => ((int)mixed.Min(0, i), (int)mixed.Max(0, i))));
 
             var dat = new MemoryStream();
-            mixed.Save(dat, 8);
+            mixed.Save(dat, WaveformBits.Eight);
             byte[] b = dat.ToArray();
             Assert.Equal([1, 0, 0, 0, 1, 0, 0, 0, 0x40, 0x1F, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0], b[..20]); // version 1, 8-bit, 8000 Hz, 2, 3 points
             Assert.Equal([0, 0, unchecked((byte)-128), 127, 0, 0], b[20..]); // -3/256 = 0 and 150/256 = 0, toward zero

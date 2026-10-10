@@ -21,16 +21,13 @@ public sealed record AudioWriterOptions
     public string? Encoder { get; init; }
 
     /// <summary>FFmpeg's muxer name (<c>mp3</c>, <c>ipod</c>, <c>adts</c>, <c>wav</c>, <c>matroska</c>, ...); null: from the file name.</summary>
-    public string? Format { get; init; }
+    public string? Container { get; init; }
 
     /// <summary>
     /// Leave out what makes a file differ between FFmpeg versions (the Lavf/Lavc encoder tags, random IDs): ffmpeg's
     /// <c>-fflags +bitexact -flags:a +bitexact</c>. Off by default, so files carry the tags ffmpeg's own output does.
     /// </summary>
     public bool Bitexact { get; init; }
-
-    /// <summary>The folder with FFmpeg's libraries (<see cref="FFmpegLibraries.Load"/>); null: next to the app, then the system's.</summary>
-    public string? LibraryDirectory { get; init; }
 }
 
 /// <summary>
@@ -64,8 +61,8 @@ public sealed unsafe class AudioWriter : IDisposable
         (_rate, _channels) = (options.SampleRate, options.Channels);
         try
         {
-            FFmpegLibraries.Load(options.LibraryDirectory);
-            _fmt = Output.Create(path, options.Format, options.Bitexact);
+            FFmpegLibraries.Load();
+            _fmt = Output.Create(path, options.Container, options.Bitexact);
             var codec = Encoder.Find(_fmt, path, options.Encoder, AVMediaType.AVMEDIA_TYPE_AUDIO, "audio");
             _encoder = Encoder.Audio(_fmt, codec, _rate, _channels, options.BitRate, options.Bitexact);
             Output.Start(_fmt, path);

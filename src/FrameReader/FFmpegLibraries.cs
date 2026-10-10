@@ -7,6 +7,8 @@ namespace FrameReader;
 /// FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, libavutil 60; libavfilter 11 for
 /// deinterlacing), loaded once per process through FFmpeg.AutoGen: from a given folder, or next to the app
 /// (runtimes/&lt;rid&gt;/native/ in a build's output, the app's folder once published), then the system's usual places.
+/// The one place to choose the folder: call <see cref="Load"/> with it before anything else; every reader and writer
+/// loads them with the default search otherwise.
 /// </summary>
 public static unsafe class FFmpegLibraries
 {
@@ -95,7 +97,7 @@ public static unsafe class FFmpegLibraries
 
     /// <summary>FFmpeg's message for an error code (av_strerror).</summary>
     /// <param name="error">A negative AVERROR code.</param>
-    public static string ErrorMessage(int error)
+    internal static string ErrorMessage(int error)
     {
         byte* buf = stackalloc byte[256];
         ffmpeg.av_strerror(error, buf, 256);

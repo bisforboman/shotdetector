@@ -19,7 +19,11 @@ public sealed record AudioTrackOptions
     public string? Encoder { get; init; }
 }
 
-/// <summary>What a <see cref="VideoWriter"/> writes. The options mirror ffmpeg's for <c>-c:v libx264</c>.</summary>
+/// <summary>
+/// What a <see cref="VideoWriter"/> writes. The options mirror ffmpeg's for <c>-c:v libx264</c>: <see cref="Crf"/>,
+/// <see cref="Preset"/>, <see cref="X264Params"/> and <see cref="ForcedIdr"/> are libx264's options; another encoder takes its own
+/// through <see cref="EncoderOptions"/>.
+/// </summary>
 public sealed record VideoWriterOptions
 {
     /// <summary>Width of the frames you write, in pixels.</summary>
@@ -78,13 +82,10 @@ public sealed record VideoWriterOptions
     public AudioTrackOptions? Audio { get; init; }
 
     /// <summary>FFmpeg's muxer name; null: from the file name (.mp4, .mkv, .mov).</summary>
-    public string? Format { get; init; }
+    public string? Container { get; init; }
 
     /// <summary>Leave out what differs between FFmpeg versions (ffmpeg's <c>-fflags +bitexact -flags +bitexact</c>).</summary>
     public bool Bitexact { get; init; }
-
-    /// <summary>The folder with FFmpeg's libraries; null: next to the app, then the system's.</summary>
-    public string? LibraryDirectory { get; init; }
 }
 
 /// <summary>
@@ -137,9 +138,9 @@ public sealed unsafe class VideoWriter : IDisposable
         };
         try
         {
-            FFmpegLibraries.Load(options.LibraryDirectory);
+            FFmpegLibraries.Load();
             _frameBytes = ffmpeg.av_image_get_buffer_size(_input, options.Width, options.Height, 1);
-            _fmt = Output.Create(path, options.Format, options.Bitexact);
+            _fmt = Output.Create(path, options.Container, options.Bitexact);
             string encoder = options.Encoder ?? "libx264";
             if (ffmpeg.avcodec_find_encoder_by_name(encoder) == null && options.Encoder is null)
                 throw new FrameReaderException(FrameReaderError.InvalidInput,

@@ -11,8 +11,6 @@ public sealed record AudioReaderOptions
     /// <summary>Output channel count (FFmpeg's default layout for it: 1 mono, 2 stereo, ...); null: the stream's own.</summary>
     public int? Channels { get; init; }
 
-    /// <summary>The folder with FFmpeg's libraries (<see cref="FFmpegLibraries.Load"/>); null: next to the app, then the system's.</summary>
-    public string? LibraryDirectory { get; init; }
 
     /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
@@ -30,8 +28,8 @@ public readonly ref struct AudioChunk
     /// <summary>The samples, float32 interleaved (channel 0, 1, ... for each instant), as ffmpeg's <c>-f f32le</c> writes them.</summary>
     public ReadOnlySpan<float> Samples { get; }
 
-    /// <summary>Samples per channel in this chunk.</summary>
-    public int Length => Samples.Length / Channels;
+    /// <summary>Samples per channel in this chunk (instants; <see cref="Samples"/> holds this times <see cref="Channels"/>).</summary>
+    public int SampleCount => Samples.Length / Channels;
 
     /// <summary>Channels.</summary>
     public int Channels { get; }
@@ -83,7 +81,7 @@ public sealed unsafe class AudioReader : IDisposable
         _io = io;
         try
         {
-            FFmpegLibraries.Load(o.LibraryDirectory);
+            FFmpegLibraries.Load();
             _fmt = Demuxer.Open(path, o.InputOptions, io);
             AVCodec* codec = null;
             _stream = ffmpeg.av_find_best_stream(_fmt, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);

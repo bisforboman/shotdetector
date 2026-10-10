@@ -558,7 +558,8 @@ public static class ShotDetection
         var o = options ?? new DetectionOptions();
         try
         {
-            using var audio = new FrameReader.AudioReader(path, new FrameReader.AudioReaderOptions { LibraryDirectory = o.FfmpegDirectory });
+            InProcess.Load(o.FfmpegDirectory);
+            using var audio = new FrameReader.AudioReader(path);
             return [.. FrameReader.ReferenceTone.Find(audio, new FrameReader.ReferenceToneOptions { MinDuration = o.ReferenceToneMinDuration }, cancellationToken)
                 .Select(s => new ReferenceToneSegment(s.Start, s.End, s.Level))];
         }

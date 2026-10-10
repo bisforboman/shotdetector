@@ -139,7 +139,7 @@ public sealed unsafe class SpectralStats : IDisposable
         {
             frame->format = (int)AVSampleFormat.AV_SAMPLE_FMT_FLTP;
             frame->sample_rate = _rate;
-            frame->nb_samples = chunk.Length;
+            frame->nb_samples = chunk.SampleCount;
             ffmpeg.av_channel_layout_default(&frame->ch_layout, _channels);
             frame->pts = _fed;
             Check(ffmpeg.av_frame_get_buffer(frame, 0), "frame buffer");
@@ -147,10 +147,10 @@ public sealed unsafe class SpectralStats : IDisposable
             for (int c = 0; c < _channels; c++)
             {
                 float* plane = (float*)frame->extended_data[c];
-                for (int i = 0; i < chunk.Length; i++)
+                for (int i = 0; i < chunk.SampleCount; i++)
                     plane[i] = samples[i * _channels + c];
             }
-            _fed += chunk.Length;
+            _fed += chunk.SampleCount;
             Check(ffmpeg.av_buffersrc_add_frame_flags(_in, frame, 0), "aspectralstats");
         }
         finally

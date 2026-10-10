@@ -5,8 +5,22 @@ semantic versioning (README, "Versions"); before it, minor versions could change
 
 ## Unreleased
 
+### Breaking changes (FrameReader only; it isn't under semantic versioning yet, ShotDetector's API is unchanged)
+
+FrameReader's API before its own package (docs/frame-reader-api-review.md):
+- The libraries load in one place: `FFmpegLibraries.Load(folder)`. `LibraryDirectory` is gone from every options
+  record (the libraries load once per process, so only the first folder ever counted).
+- Names: `FrameReaderOptions` is `VideoFrameReaderOptions`; the pixel layout is `FrameFormat` (`VideoFrameReaderOptions`,
+  `VideoFrame`), the muxer `Container` (`AudioWriterOptions`, `VideoWriterOptions`, `RemuxOptions`).
+- Time: `FrameDecoder.TimeBase` and `VideoFrameReader.TimeBase` are `Rational`; `MediaInfo.Duration` is a `TimeSpan?`
+  (was `DurationMicroseconds`); `StreamInfo` and `VideoStreamInfo` add `Duration`.
+- Errors: `FrameReaderError.WriteFailed` for the writers and `Remux`; unknown encoder options are an
+  `ArgumentException`; `FFmpegLibraries.ErrorMessage` is internal.
+- `AudioChunk.Length` is `SampleCount`; `WaveformData.Save` takes `WaveformBits`.
+
 ### New
 
+- A `CancellationToken` on `Remux.Copy`, `WaveformData.Read` and `VideoFrameReader.ReadAt`.
 - **FrameReader as its own NuGet package** (`FrameReader`, MIT), a preview: released with ShotDetector, its version is
   ShotDetector's with `-preview` until its API is declared stable. ShotDetector's package keeps its own copy of
   FrameReader.dll until then (no prerelease dependency for ShotDetector's users).

@@ -41,7 +41,9 @@ approval (the `prerelease` environment allows `v*-*` tags, and `main` once the u
 `vX.Y.Z-pre` on the release commit), stable ones wait for the user's approval of the `release` environment. A hand-pushed `v*` tag still works.
 After a stable release is on nuget.org, set `ApiBaselineVersion` in Directory.Build.props to it (from 1.0 on; release.yml
 opens an issue as the reminder): packing
-then fails on any breaking change to ShotDetector or FastYuv (SDK package validation, CP000x errors).
+then fails on any breaking change to ShotDetector or FastYuv (SDK package validation, CP000x errors). FrameReader.dll, inside
+ShotDetector's package, isn't under semver: its changes go in src/ShotDetector/CompatibilitySuppressions.xml (regenerate
+with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 
 ## Working on this repository
 

@@ -3,8 +3,6 @@ namespace FrameReader;
 /// <summary>How a <see cref="FrameDecoder"/> opens and decodes its input.</summary>
 public sealed record FrameDecoderOptions
 {
-    /// <summary>The folder with FFmpeg's libraries (<see cref="FFmpegLibraries.Load"/>); null: next to the app, then the system's.</summary>
-    public string? LibraryDirectory { get; init; }
 
     /// <summary>Decoder threads; 0: FFmpeg's choice.</summary>
     public int Threads { get; init; }
@@ -39,6 +37,8 @@ public sealed record FrameDecoderOptions
 /// <summary>
 /// Deinterlaces single rows with yadif's arithmetic (FFmpeg's yadif filter, mode 0), so a <see cref="FrameDecoder"/>
 /// computes only the rows that are read. Called concurrently for different rows.
+/// Advanced: part of the low-level layer ShotDetector's exact pipelines use; the main API is VideoFrameReader, the audio
+/// readers, the writers, Remux and MediaProbe.
 /// </summary>
 public interface IRowDeinterlacer
 {

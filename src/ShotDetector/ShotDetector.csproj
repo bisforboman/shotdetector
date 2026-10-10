@@ -14,6 +14,11 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
     <EnablePackageValidation>true</EnablePackageValidation>
+    <!-- The package carries FrameReader.dll, which isn't under semantic versioning (docs/frame-reader-api-review.md):
+         its changes are accepted in CompatibilitySuppressions.xml (FrameReader.dll entries only; regenerate with
+         dotnet pack src/ShotDetector -c Release -p:ApiCompatGenerateSuppressionFile=true). Entries a newer baseline
+         makes unneeded don't fail the build. -->
+    <ApiCompatPermitUnnecessarySuppressions>true</ApiCompatPermitUnnecessarySuppressions>
     <!-- Local and CI builds carry the placeholder version; releases the tag's, so the assembly-version check is theirs. -->
     <NoWarn Condition="'$(Version)' == '0.1.0-alpha.1'">$(NoWarn);CP0003</NoWarn>
     <PackageValidationBaselineVersion Condition="'$(ApiBaselineVersion)' != ''">$(ApiBaselineVersion)</PackageValidationBaselineVersion>
