@@ -3,6 +3,25 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 
+## Unreleased
+
+### Breaking changes (FrameReader only; it isn't under semantic versioning yet, ShotDetector's API is unchanged)
+
+FrameReader's API before its own package (docs/frame-reader-api-review.md):
+- The libraries load in one place: `FFmpegLibraries.Load(folder)`. `LibraryDirectory` is gone from every options
+  record (the libraries load once per process, so only the first folder ever counted).
+- Names: `FrameReaderOptions` is `VideoFrameReaderOptions`; the pixel layout is `FrameFormat` (`VideoFrameReaderOptions`,
+  `VideoFrame`), the muxer `Container` (`AudioWriterOptions`, `VideoWriterOptions`, `RemuxOptions`).
+- Time: `FrameDecoder.TimeBase` and `VideoFrameReader.TimeBase` are `Rational`; `MediaInfo.Duration` is a `TimeSpan?`
+  (was `DurationMicroseconds`); `StreamInfo` and `VideoStreamInfo` add `Duration`.
+- Errors: `FrameReaderError.WriteFailed` for the writers and `Remux`; unknown encoder options are an
+  `ArgumentException`; `FFmpegLibraries.ErrorMessage` is internal.
+- `AudioChunk.Length` is `SampleCount`; `WaveformData.Save` takes `WaveformBits`.
+
+### New
+
+- A `CancellationToken` on `Remux.Copy`, `WaveformData.Read` and `VideoFrameReader.ReadAt`.
+
 ## 1.3.0 – 2026-10-10
 
 Audio and H.264 writing and stream copy in FrameReader, the reference tone, and the GPL native packages with x264

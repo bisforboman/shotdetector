@@ -93,6 +93,13 @@ they're the part most likely to change.
 - **A different package name:** FrameReader now writes too, but the name is known and the reading is still the core.
   To decide with the package itself.
 
+## Decided (2026-10-10)
+
+The user picked changes 1 to 7, all made; the package itself comes later. In this order, each with its tests:
+the libraries load in one place; `FrameFormat`/`Container`/`VideoFrameReaderOptions`; `Rational` time bases and
+`TimeSpan` durations; `WriteFailed` and the argument rule, `ErrorMessage` internal; cancellation on `Remux.Copy`,
+`WaveformData.Read`, `ReadAt`; the advanced layer marked; `SampleCount`, `WaveformBits`, the x264 options documented.
+
 ## Then
 
 With the changes the user picks: ShotDetector updated to them, the FrameReader README and docs, and a prerelease
