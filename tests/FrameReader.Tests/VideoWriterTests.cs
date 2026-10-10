@@ -136,7 +136,13 @@ public class VideoWriterTests
             int first = 0;
             while (first < Math.Min(want.Length, got.Length) && want[first] == got[first])
                 first++;
-            Assert.True(want.AsSpan().SequenceEqual(got), $"{name}: ffmpeg {want.Length} bytes, ours {got.Length}, first difference at {first}");
+            if (!want.AsSpan().SequenceEqual(got) && Environment.GetEnvironmentVariable("SHOTDETECTOR_KEEP_DIFFERING") is { Length: > 0 } keep)
+            {
+                File.Copy(expected, Path.Combine(keep, "ffmpeg-" + name), true);
+                File.Copy(actual, Path.Combine(keep, "ours-" + name), true);
+            }
+            Assert.True(want.AsSpan().SequenceEqual(got), $"{name}: ffmpeg {want.Length} bytes, ours {got.Length}, first difference at {first}; " +
+                $"x264's settings, ffmpeg's: {X264Settings(want)} | ours: {X264Settings(got)}");
             if (extra == "keys")
             {
                 // A keyframe every second exactly: frames 0, 25, 50.
@@ -152,6 +158,17 @@ public class VideoWriterTests
         {
             Directory.Delete(dir, true);
         }
+    }
+
+    /// <summary>The option string x264 writes into its SEI ("x264 - core ... - options: ..."), for a failure message.</summary>
+    static string X264Settings(byte[] file)
+    {
+        string text = System.Text.Encoding.ASCII.GetString(file);
+        int at = text.IndexOf("options: ", StringComparison.Ordinal);
+        if (at < 0)
+            return "(none)";
+        int end = text.IndexOf('\0', at);
+        return text[(at + 9)..(end < 0 ? Math.Min(text.Length, at + 600) : end)];
     }
 
     [Fact]

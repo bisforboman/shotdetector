@@ -188,6 +188,9 @@ internal sealed unsafe class Encoder : IDisposable
     void Graph(string source, string args, string filter, string sink)
     {
         _graph = ffmpeg.avfilter_graph_alloc();
+        // One thread: the scale filter's slice threading varied the converted frames run to run (CI, 1 run in 8; the
+        // conversion is cheap next to encoding).
+        _graph->nb_threads = 1;
         AVFilterContext* src, snk;
         Check(ffmpeg.avfilter_graph_create_filter(&src, ffmpeg.avfilter_get_by_name(source), "in", args, null, _graph), source);
         Check(ffmpeg.avfilter_graph_create_filter(&snk, ffmpeg.avfilter_get_by_name(sink), "out", null, null, _graph), sink);

@@ -210,7 +210,11 @@ public sealed unsafe class VideoWriter : IDisposable
         _frame->format = (int)_input;
         _frame->width = _o.Width;
         _frame->height = _o.Height;
-        Encoder.Check(ffmpeg.av_frame_get_buffer(_frame, 0), "frame buffer");
+        // As ffmpeg's rawvideo input gives frames: rows packed (stride = width), and nothing uninitialised after them, which
+        // the conversion's SIMD may read past the last pixel (CI saw files vary run to run with padded rows).
+        Encoder.Check(ffmpeg.av_frame_get_buffer(_frame, 1), "frame buffer");
+        for (uint i = 0; i < 8 && _frame->buf[i] != null; i++)
+            new Span<byte>(_frame->buf[i]->data, (int)_frame->buf[i]->size).Clear();
         var src = new byte_ptrArray4();
         var srcLines = new int_array4();
         fixed (byte* data = frame)
