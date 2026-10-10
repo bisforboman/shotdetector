@@ -34,11 +34,17 @@ jobs:
           # results can't change): the heavy jobs don't start at all.
           if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$|^\.claude/|^benchmarks/|^tests/FrameReader\.Tests/|^src/FrameReader/(VideoFrameReader|AudioReader)\.cs$'; then echo light=true >> "$GITHUB_OUTPUT"; fi
 
-  mutation:
+  # Three jobs of every third mutation each: one job ran them all in about 8 minutes (a build and test each).
+  mutate:
     if: needs.changes.outputs.light != 'true'
     needs: changes
+    name: mutate (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@v7
 
@@ -55,4 +61,18 @@ jobs:
       - name: Mutate the guards
         if: needs.changes.outputs.docs_only != 'true'
         shell: pwsh
-        run: ./tools/mutation/Invoke-Mutations.ps1
+        run: ./tools/mutation/Invoke-Mutations.ps1 -Shard ${{ matrix.shard }} -Shards 3
+
+  # The check branch protection requires ("mutation"): every shard passed or was skipped (a light PR skips them).
+  mutation:
+    needs: [changes, mutate]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")' > /dev/null
