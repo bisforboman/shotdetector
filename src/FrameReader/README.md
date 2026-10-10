@@ -251,7 +251,26 @@ libraries do is a `FrameReaderException` with a `Reason` (`LibrariesNotFound`, `
 ## FFmpeg's libraries
 
 FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, libavutil 60; libavfilter 11 to
-deinterlace). The ShotDetector.Native.&lt;rid&gt; packages carry a decode-only build for win-x64, linux-x64,
-linux-arm64, linux-musl-x64 and osx-arm64; a "shared" FFmpeg 8 build or the system's (`apk add ffmpeg-libs`) works
-too. They load once per process, the first time anything needs them: next to the app, else the system's places;
+deinterlace and filter, libswresample for audio). The ShotDetector.Native.&lt;rid&gt; packages carry a build for
+win-x64, linux-x64, linux-arm64, linux-musl-x64 and osx-arm64 with everything below but x264
+(ShotDetector.Native.Gpl.&lt;rid&gt; adds it); a "shared" FFmpeg 8 build or the system's (`apk add ffmpeg-libs`)
+works too. They load once per process, the first time anything needs them: next to the app, else the system's places;
 to use a folder of your own, call `FFmpegLibraries.Load(folder)` first (the one place that takes one). FrameReader is MIT; FFmpeg's libraries are LGPL and loaded dynamically.
+
+What each part needs from a build of your own, beyond the decoders and demuxers of your input. Check at startup with
+`FFmpegLibraries.HasEncoder`, `HasFilter` and `HasMuxer`:
+
+| Part | Encoders | Filters | Muxers |
+| --- | --- | --- | --- |
+| `VideoFrameReader`, `FrameDecoder` | | `buffer`, `buffersink`, `fps` (`FrameRate`), `yadif` (deinterlacing) | |
+| `AudioReader`, `WaveformData`, `ReferenceTone` | | | |
+| `AudioFilter` | | `abuffer`, `abuffersink`, `aformat`, and the graph's own (`equalizer`, ...) | |
+| `SpectralStats` | | `abuffer`, `abuffersink`, `aspectralstats` | |
+| `AudioWriter` | the codec's (`libmp3lame`, `aac`, `pcm_s16le`, ...) | `abuffer`, `abuffersink`, `aformat`, `aresample` | the container's (`mp3`, `ipod` for .m4a, `wav`, ...) |
+| `VideoWriter` | `libx264` (and `aac` for an audio track) | `buffer`, `buffersink`, `format`, `null`, `scale` (and the audio ones) | `mp4`, `matroska` or `mov` |
+| `Remux.Copy` | | | the output's |
+
+```csharp
+if (!FFmpegLibraries.HasEncoder("libmp3lame") || !FFmpegLibraries.HasFilter("equalizer"))
+    throw new InvalidOperationException("This FFmpeg can't do the tone job.");
+```
