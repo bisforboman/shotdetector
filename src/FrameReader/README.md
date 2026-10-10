@@ -164,7 +164,23 @@ Remux.Copy("film.mkv", "commentary.mka", new() { StreamIndices = [2] });
 ```
 
 Our native libraries carry the AAC, MP3 and 16-bit PCM encoders and the mp4, mov, ipod (.m4a), matroska, matroska_audio (.mka), webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass muxers.
-Video encoding isn't in-process (docs/encoding-package.md): use the ffmpeg executable.
+Writing video: `VideoWriter` encodes frames to H.264 (x264) in .mp4/.mkv/.mov, optionally with an AAC track, the
+file `ffmpeg -c:v libx264` writes from the same frames with the same FFmpeg build (byte for byte with `Bitexact` on
+both sides). It needs FFmpeg with x264: the `ShotDetector.Native.Gpl.<rid>` packages, used **instead of**
+ShotDetector.Native, or your own build. Those are GPL: an app that ships with them falls under the GPL, and H.264 is
+covered by Via LA's AVC patent pool either way (docs/encoding-package.md).
+
+```csharp
+using var reader = new VideoFrameReader("in.mkv", new() { Format = FrameFormat.Bgr24 });
+using var writer = new VideoWriter("out.mp4", new()
+{
+    Width = 1280, Height = 720, FrameRate = new(25, 1),
+    PixelFormat = "yuv420p", Crf = 23, Preset = "medium",
+    KeyframeEvery = TimeSpan.FromSeconds(2), X264Params = "scenecut=0", // IDR every 2 s exactly
+});
+while (reader.TryRead(out var frame))
+    writer.Write(frame.Data);
+```
 
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio, and `Streams`: every

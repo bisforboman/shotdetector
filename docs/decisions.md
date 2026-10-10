@@ -3,6 +3,15 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## H.264 for #81's user (2026-10-10)
+
+The user wanted to help #81's user with H.264 after all. Asked: **a GPL FFmpeg build package,
+`ShotDetector.Native.Gpl.<rid>` (our build plus x264, used instead of ShotDetector.Native), so encoding goes through
+FFmpeg's libx264 and equals ffmpeg's output (recommended)**, not x264 driven directly; the API: **a `VideoWriter` in
+FrameReader (frames in; pixel format, CRF/bit rate, preset, GOP, forced keyframes, x264 params, an optional AAC
+track) (recommended)**, not (yet) a whole-file transcode helper or SplitVideo in-process; and **build now and tell
+#81's user, asking what they need most (recommended)**.
+
 ## AudioWriter and Remux (2026-10-10)
 
 For the MP3/AAC/muxers work. Asked: **an `AudioWriter` class (Write(samples), Dispose finishes; codec from the

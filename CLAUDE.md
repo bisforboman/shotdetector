@@ -3,7 +3,8 @@
 A C# port of PySceneDetect's shot/cut detection that gives **identical results** to `scenedetect` (cuts, scene
 list CSVs, per-frame stats, timecodes digit for digit), decoding through an ffmpeg subprocess with no native
 bindings. Repo: `github.com/bisforboman/shotdetector`. NuGet: `ShotDetector` (MIT), `ShotDetector.FastYuv`
-(LGPL-2.1, a swscale port), `ShotDetector.Cli` (dotnet tool `shotdetect`, plus Native AOT binaries on releases).
+(LGPL-2.1, a swscale port), `ShotDetector.Native.<rid>` and `ShotDetector.Native.Gpl.<rid>` (our FFmpeg build, the
+latter with x264 and GPL), `ShotDetector.Cli` (dotnet tool `shotdetect`, plus Native AOT binaries on releases).
 
 ## Core idea
 

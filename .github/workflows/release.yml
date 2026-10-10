@@ -48,6 +48,8 @@ jobs:
     needs: version
     if: needs.version.outputs.release == 'true'
     uses: ./.github/workflows/native.yml
+    with:
+      variants: '["lgpl","gpl"]'   # ShotDetector.Native and ShotDetector.Native.Gpl
 
   release:
     needs: [version, native]
@@ -85,6 +87,7 @@ jobs:
           for d in native/native-*; do mv "$d" "native/${d#native/native-}"; done
           for rid in win-x64 linux-x64 linux-arm64 linux-musl-x64 osx-arm64; do
             dotnet pack src/ShotDetector.Native -p:Rid=$rid -p:Version=$VERSION --output artifacts
+            dotnet pack src/ShotDetector.Native.Gpl -p:Rid=$rid -p:Version=$VERSION --output artifacts
           done
           dotnet pack src/ShotDetector --configuration Release -p:Version=$VERSION --output artifacts
           dotnet pack src/ShotDetector.FastYuv --configuration Release -p:Version=$VERSION --output artifacts
