@@ -55,13 +55,13 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Install ffmpeg   # the video tests make clips with it, and the library runs it
+      # BtbN's static FFmpeg 8.1 (the apt mirrors hung twice, 2026-10-07): the video tests make clips with it, and the
+      # library runs it.
+      - name: Install ffmpeg
+        id: ffmpeg
         if: needs.changes.outputs.docs_only != 'true'
-        timeout-minutes: 10   # package mirrors sometimes hang
-        run: |
-          # BtbN's static FFmpeg 8.1, from GitHub's servers: the apt mirrors hung twice (2026-10-07).
-          curl -fsSL --retry 3 https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz | tar -xJ -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/ffmpeg-n8.1-latest-linux64-gpl-8.1/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
 
       # In-process decoding with our FFmpeg build (ShotDetector.Native's): InProcessTests compare it with FFmpeg
       # 8.1's executables, put beside it (BtbN's static build, so they don't load these libraries).
@@ -74,7 +74,7 @@ jobs:
       - name: FFmpeg 8.1 executables beside our libraries
         if: needs.changes.outputs.docs_only != 'true'
         run: |
-          cp "$RUNNER_TEMP"/ffmpeg-n8.1-latest-linux64-gpl-8.1/bin/ffmpeg "$RUNNER_TEMP"/ffmpeg-n8.1-latest-linux64-gpl-8.1/bin/ffprobe native/linux-x64/
+          cp "${{ steps.ffmpeg.outputs.bin }}/ffmpeg" "${{ steps.ffmpeg.outputs.bin }}/ffprobe" native/linux-x64/
           echo "SHOTDETECTOR_FFMPEG_LIBS=$PWD/native/linux-x64" >> "$GITHUB_ENV"
 
       # BBC's audiowaveform, the reference for FrameReader's WaveformData (its test is skipped without it). Ubuntu
@@ -83,7 +83,7 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         timeout-minutes: 5   # package mirrors sometimes hang
         run: |
-          if sudo add-apt-repository -y ppa:chris-needham/ppa > /dev/null && sudo apt-get install -y --no-install-recommends audiowaveform > /dev/null; then
+          if sudo add-apt-repository -y ppa:chris-needham/ppa > /dev/null && sudo apt-get install -y -o Acquire::Retries=3 --no-install-recommends audiowaveform > /dev/null; then
             audiowaveform --version
             echo "AUDIOWAVEFORM=$(command -v audiowaveform)" >> "$GITHUB_ENV"
           else
@@ -155,10 +155,15 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: ./out/shotdetect --help | head -3
 
+      - name: Install ffmpeg (linux-x64)
+        if: needs.changes.outputs.docs_only != 'true' && matrix.rid == 'linux-x64'
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+
       - name: Detects cuts
         if: needs.changes.outputs.docs_only != 'true' && (startsWith(matrix.rid, 'linux'))
         run: |
-          if [ -f /etc/alpine-release ]; then apk add --no-cache ffmpeg; else curl -fsSL --retry 3 https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz | tar -xJ -C "$RUNNER_TEMP" && export PATH="$RUNNER_TEMP/ffmpeg-n8.1-latest-linux64-gpl-8.1/bin:$PATH"; fi
+          if [ -f /etc/alpine-release ]; then apk add --no-cache ffmpeg; fi
           ffmpeg -v error -f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 \
             -filter_complex "[0][1]concat=n=2:v=1:a=0,format=yuv420p" -r 25 -c:v mpeg4 clip.mp4
           ./out/shotdetect -i clip.mp4 -d content --csv shots.csv 2> summary.txt
@@ -201,14 +206,18 @@ jobs:
           name: native-linux-arm64
           path: native/linux-arm64
 
-      - name: FFmpeg 8.1 (BtbN's static arm64 build), also beside our libraries
+      - name: FFmpeg 8.1 (BtbN's static arm64 build)
+        id: ffmpeg
         if: needs.changes.outputs.docs_only != 'true'
-        timeout-minutes: 10
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          platform: linuxarm64
+
+      - name: Its executables beside our libraries
+        if: needs.changes.outputs.docs_only != 'true'
         run: |
-          curl -fsSL --retry 3 https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linuxarm64-gpl-8.1.tar.xz | tar -xJ -C "$RUNNER_TEMP"
-          bin="$RUNNER_TEMP/ffmpeg-n8.1-latest-linuxarm64-gpl-8.1/bin"
-          echo "$bin" >> "$GITHUB_PATH"
-          cp "$bin/ffmpeg" "$bin/ffprobe" native/linux-arm64/
+          cp "${{ steps.ffmpeg.outputs.bin }}/ffmpeg" "${{ steps.ffmpeg.outputs.bin }}/ffprobe" native/linux-arm64/
           echo "SHOTDETECTOR_FFMPEG_LIBS=$PWD/native/linux-arm64" >> "$GITHUB_ENV"
 
       - name: Test
@@ -269,9 +278,10 @@ jobs:
 
       - name: Install ffmpeg ${{ env.FFMPEG }}
         if: needs.changes.outputs.docs_only != 'true'
-        run: |
-          curl -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG.tar.xz" | tar -xJ
-          echo "$PWD/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          version: ${{ env.FFMPEG }}
 
       - name: ffmpeg version
         if: needs.changes.outputs.docs_only != 'true'

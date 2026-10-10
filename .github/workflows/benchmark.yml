@@ -40,9 +40,11 @@ jobs:
           python-version: '3.12'
 
       - name: Install ffmpeg ${{ env.FFMPEG }}
-        run: |
-          curl -fsSL --retry 3 "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n$FFMPEG-latest-${{ matrix.btbn }}-gpl-$FFMPEG.tar.xz" | tar -xJ
-          echo "$PWD/ffmpeg-n$FFMPEG-latest-${{ matrix.btbn }}-gpl-$FFMPEG/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          version: ${{ env.FFMPEG }}
+          platform: ${{ matrix.btbn }}
 
       - name: Install scenedetect
         run: pip install scenedetect==0.7.1 opencv-python-headless==5.0.0.93 psutil

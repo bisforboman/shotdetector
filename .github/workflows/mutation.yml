@@ -49,11 +49,8 @@ jobs:
 
       - name: Install ffmpeg
         if: needs.changes.outputs.docs_only != 'true'
-        timeout-minutes: 10   # package mirrors sometimes hang
-        run: |
-          # BtbN's static FFmpeg 8.1, from GitHub's servers: the apt mirrors hung twice (2026-10-07).
-          curl -fsSL --retry 3 https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz | tar -xJ -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/ffmpeg-n8.1-latest-linux64-gpl-8.1/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
 
       - name: Mutate the guards
         if: needs.changes.outputs.docs_only != 'true'
