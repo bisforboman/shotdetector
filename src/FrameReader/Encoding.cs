@@ -49,7 +49,7 @@ internal sealed unsafe class Encoder : IDisposable
     AVFilterContext* _in, _out;
     AVCodecContext* _enc;
     AVStream* _st;
-    AVFrame* _filtered;
+    AVFrame* _filtered, _clean;
     AVPacket* _pkt;
     // Video: the encoder opens on the first filtered frame, from its properties, as ffmpeg's does.
     AVCodec* _codec;
@@ -320,11 +320,34 @@ internal sealed unsafe class Encoder : IDisposable
             Check(got, "filter");
             if (_codec != null)
                 OpenVideo(_filtered);
+            var send = _enc->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO ? Zeroed(_filtered) : _filtered;
             if (forced != AVPictureType.AV_PICTURE_TYPE_NONE)
-                _filtered->pict_type = forced;
-            Check(ffmpeg.avcodec_send_frame(_enc, _filtered), "encode");
+                send->pict_type = forced;
+            Check(ffmpeg.avcodec_send_frame(_enc, send), "encode");
             WritePackets();
         }
+    }
+
+    /// <summary>
+    /// The frame copied into a buffer with nothing uninitialised past its pixels. Encoders read a little past each row
+    /// (x264's SIMD copy of chroma rows narrower than its vector width): the filter graph's own buffers are recycled
+    /// memory, so that padding varied run to run, and so did the output (CI, the same settings, diverging at a B-frame);
+    /// ffmpeg's are fresh, zeroed pages. One copy a frame, small next to encoding.
+    /// </summary>
+    AVFrame* Zeroed(AVFrame* frame)
+    {
+        if (_clean == null)
+            _clean = ffmpeg.av_frame_alloc();
+        ffmpeg.av_frame_unref(_clean);
+        _clean->format = frame->format;
+        _clean->width = frame->width;
+        _clean->height = frame->height;
+        Check(ffmpeg.av_frame_get_buffer(_clean, 0), "frame buffer");
+        for (uint i = 0; i < 8 && _clean->buf[i] != null; i++)
+            new Span<byte>(_clean->buf[i]->data, (int)_clean->buf[i]->size).Clear();
+        Check(ffmpeg.av_frame_copy(_clean, frame), "frame copy");
+        Check(ffmpeg.av_frame_copy_props(_clean, frame), "frame copy");
+        return _clean;
     }
 
     void WritePackets()
@@ -346,6 +369,7 @@ internal sealed unsafe class Encoder : IDisposable
         if (_enc != null) { var e = _enc; ffmpeg.avcodec_free_context(&e); _enc = null; }
         if (_graph != null) { var g = _graph; ffmpeg.avfilter_graph_free(&g); _graph = null; _in = _out = null; }
         if (_filtered != null) { var f = _filtered; ffmpeg.av_frame_free(&f); _filtered = null; }
+        if (_clean != null) { var f = _clean; ffmpeg.av_frame_free(&f); _clean = null; }
         if (_pkt != null) { var p = _pkt; ffmpeg.av_packet_free(&p); _pkt = null; }
     }
 

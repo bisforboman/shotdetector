@@ -111,7 +111,11 @@ jobs:
           SHOTDETECTOR_FFMPEG_LIBS: ${{ steps.gpl.outputs.bin }}
           SHOTDETECTOR_REQUIRE_X264: '1'
           SHOTDETECTOR_KEEP_DIFFERING: ${{ runner.temp }}/differing
-        run: mkdir -p "$RUNNER_TEMP/differing" && dotnet test tests/FrameReader.Tests --filter "FullyQualifiedName~VideoWriter"
+        # Five times: run-to-run differences (uninitialised padding once) showed up in 1 run in 8.
+        run: |
+          mkdir -p "$RUNNER_TEMP/differing"
+          dotnet build tests/FrameReader.Tests -v q > /dev/null
+          for i in 1 2 3 4 5; do dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~VideoWriter"; done
 
       - uses: actions/upload-artifact@v7
         if: failure()
