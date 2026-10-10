@@ -67,7 +67,11 @@ public sealed record VideoWriterOptions
     /// <summary>x264's own options (<c>-x264-params</c>), e.g. <c>scenecut=0:bframes=2</c>.</summary>
     public string? X264Params { get; init; }
 
-    /// <summary>Other encoder options by name, as ffmpeg's <c>-OPTION value</c> for the encoder (e.g. <c>tune</c>, <c>profile</c>).</summary>
+    /// <summary>
+    /// Other encoder options by name, as ffmpeg's <c>-OPTION value</c> for the encoder (e.g. <c>tune</c>, <c>profile</c>,
+    /// <c>threads</c>: "auto" by default as in ffmpeg; x264 with several threads can differ slightly run to run, so
+    /// set 1 on both sides to compare files byte for byte).
+    /// </summary>
     public IReadOnlyDictionary<string, string>? EncoderOptions { get; init; }
 
     /// <summary>An audio track, written with <see cref="VideoWriter.WriteAudio"/>; null: video only.</summary>
@@ -206,7 +210,11 @@ public sealed unsafe class VideoWriter : IDisposable
         _frame->format = (int)_input;
         _frame->width = _o.Width;
         _frame->height = _o.Height;
-        Encoder.Check(ffmpeg.av_frame_get_buffer(_frame, 0), "frame buffer");
+        // As ffmpeg's rawvideo input gives frames: rows packed (stride = width), and nothing uninitialised after them, which
+        // the conversion's SIMD may read past the last pixel (CI saw files vary run to run with padded rows).
+        Encoder.Check(ffmpeg.av_frame_get_buffer(_frame, 1), "frame buffer");
+        for (uint i = 0; i < 8 && _frame->buf[i] != null; i++)
+            new Span<byte>(_frame->buf[i]->data, (int)_frame->buf[i]->size).Clear();
         var src = new byte_ptrArray4();
         var srcLines = new int_array4();
         fixed (byte* data = frame)
