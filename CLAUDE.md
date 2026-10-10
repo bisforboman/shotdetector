@@ -73,7 +73,8 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
   histogram), `HashDetector`, `ContentScorer`, `EdgeDetector`, `Hsv`, `CvResize`, `FrameTime` (FrameTimecode
   arithmetic), `Shots`, `Stats`, `Export`, `IYuv420Converter`.
 - `src/FrameReader`: the general frame-reader library being extracted (docs/frame-reader-library.md), MIT, internal
-  (no package yet; ShotDetector's package carries FrameReader.dll, ShotDetector references it one way, through its public API only). So far
+  (its own package `FrameReader`, a preview: ShotDetector's version plus `-preview`; ShotDetector's package also carries
+FrameReader.dll until it's stable; ShotDetector references it one way, through its public API only). So far
   `FFmpegLibraries` (loading FFmpeg 8's libraries), `MediaProbe` (headers, packet pts, Stream input; ShotDetector's
   `InProcessProbe` formats it as ffprobe text), `VideoFrameReader` (frames at a size and format, the bytes of ffmpeg's scale+format filters),
   `FrameDecoder` (decode, seek, deinterlace, autorotate), `BgrConverter` (a decoded frame as ffmpeg's

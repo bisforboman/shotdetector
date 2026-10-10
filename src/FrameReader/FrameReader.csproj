@@ -1,19 +1,34 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    FrameReader: fast in-process video frame reading through FFmpeg's libraries, extracted from ShotDetector
-    (docs/frame-reader-library.md). Internal to this repository until its API settles: not a package of its own yet;
-    ShotDetector's package carries FrameReader.dll. MIT; FFmpeg's libraries (LGPL) are loaded dynamically, and nothing
-    from the LGPL ShotDetector.FastYuv may come in here. Self-contained, so it can move to its own repository.
+    FrameReader: fast in-process video and audio reading and writing through FFmpeg's libraries, extracted from
+    ShotDetector (docs/frame-reader-library.md). Its own package, a prerelease until its API is declared stable: the
+    version is ShotDetector's with "-preview" (1.4.0 ships FrameReader 1.4.0-preview); ShotDetector's package keeps
+    its own copy of FrameReader.dll until then (decisions.md, 2026-10-10). MIT; FFmpeg's libraries (LGPL) are loaded
+    dynamically, and nothing from the LGPL ShotDetector.FastYuv may come in here. Self-contained, so it can move to its
+    own repository.
   -->
   <PropertyGroup>
     <IsAotCompatible>true</IsAotCompatible>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <IsPackable>false</IsPackable>
     <RootNamespace>FrameReader</RootNamespace>
+
+    <PackageId>FrameReader</PackageId>
+    <!-- A prerelease until FrameReader is declared stable: a stable release's number gets "-preview". -->
+    <PackageVersion Condition="!$(Version.Contains('-'))">$(Version)-preview</PackageVersion>
+    <Description>Fast in-process video and audio for .NET through FFmpeg's libraries: frames at a size and pixel format, the bytes ffmpeg's scale+format filters give, with exact seeking, thumbnails, fps and parallel reads; audio samples, filter graphs, spectral statistics, waveform peaks; writing MP3/AAC/WAV and (with x264) H.264, byte for byte ffmpeg's output; stream copy; probing. No ffmpeg process, no pipes, no allocation per frame. Needs FFmpeg 8's shared libraries: the ShotDetector.Native.&lt;rid&gt; packages (or ShotDetector.Native.Gpl.&lt;rid&gt; for H.264). A preview: the API may still change.</Description>
+    <PackageTags>ffmpeg;video;audio;frames;decoding;encoding;thumbnails;waveform</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- MIT bindings to FFmpeg 8.1's libraries. -->

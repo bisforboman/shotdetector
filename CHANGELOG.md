@@ -21,6 +21,9 @@ FrameReader's API before its own package (docs/frame-reader-api-review.md):
 ### New
 
 - A `CancellationToken` on `Remux.Copy`, `WaveformData.Read` and `VideoFrameReader.ReadAt`.
+- **FrameReader as its own NuGet package** (`FrameReader`, MIT), a preview: released with ShotDetector, its version is
+  ShotDetector's with `-preview` until its API is declared stable. ShotDetector's package keeps its own copy of
+  FrameReader.dll until then (no prerelease dependency for ShotDetector's users).
 
 ## 1.3.0 – 2026-10-10
 
