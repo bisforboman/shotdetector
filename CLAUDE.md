@@ -31,7 +31,7 @@ once every PR going into it has merged (never stacked on an open branch); mergin
 push to main) tags `vX.Y.Z` when that version isn't tagged yet and publishes. Prereleases (`-`) publish without
 approval (the `prerelease` environment allows `v*-*` tags, and `main` once the user adds it; with tags only, push
 `vX.Y.Z-pre` on the release commit), stable ones wait for the user's approval of the `release` environment. A hand-pushed `v*` tag still works.
-After a stable release is on nuget.org, set `ApiBaselineVersion` in Directory.Build.props to it (from 1.0 on; release.yml
+After a stable release is on nuget.org, set `ApiBaselineVersion` in Directory.Build.props to it (FrameReader's too, from 1.5.0) (from 1.0 on; release.yml
 opens an issue as the reminder): packing
 then fails on any breaking change to ShotDetector or FastYuv (SDK package validation, CP000x errors). FrameReader.dll, inside
 ShotDetector's package, isn't under semver: its changes go in src/ShotDetector/CompatibilitySuppressions.xml (regenerate
@@ -66,9 +66,9 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
   + `select=gte(pts,P)`; streaming mode parses `showinfo` for timestamps), `Detectors` (adaptive/content/threshold/
   histogram), `HashDetector`, `ContentScorer`, `EdgeDetector`, `Hsv`, `CvResize`, `FrameTime` (FrameTimecode
   arithmetic), `Shots`, `Stats`, `Export`, `IYuv420Converter`.
-- `src/FrameReader`: the general frame-reader library being extracted (docs/frame-reader-library.md), MIT, internal
-  (its own package `FrameReader`, a preview: ShotDetector's version plus `-preview`; ShotDetector's package also carries
-FrameReader.dll until it's stable; ShotDetector references it one way, through its public API only). So far
+- `src/FrameReader`: the general frame-reader library (docs/frame-reader-library.md), MIT, its own package `FrameReader`
+  at ShotDetector's version, stable from 1.5.0 (semver and package validation like ShotDetector's); ShotDetector
+  depends on it, one way, through its public API only. So far
   `FFmpegLibraries` (loading FFmpeg 8's libraries), `MediaProbe` (headers, packet pts, Stream input; ShotDetector's
   `InProcessProbe` formats it as ffprobe text), `VideoFrameReader` (frames at a size and format, the bytes of ffmpeg's scale+format filters),
   `FrameDecoder` (decode, seek, deinterlace, autorotate), `BgrConverter` (a decoded frame as ffmpeg's

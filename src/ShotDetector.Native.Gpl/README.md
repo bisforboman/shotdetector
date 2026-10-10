@@ -1,7 +1,7 @@
 # ShotDetector.Native.Gpl.&lt;rid&gt;
 
 [ShotDetector.Native](https://www.nuget.org/packages/ShotDetector.Native.linux-x64)'s FFmpeg libraries with
-**x264** added, so FrameReader's `VideoWriter` (inside the ShotDetector package) encodes H.264 in-process. One package
+**x264** added, so FrameReader's `VideoWriter` (the FrameReader package, a ShotDetector dependency) encodes H.264 in-process. One package
 per platform: `win-x64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `osx-arm64`. Use it **instead of**
 ShotDetector.Native.&lt;rid&gt; (the same file names), not next to it.
 

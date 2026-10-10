@@ -4,13 +4,12 @@ Fast video frame reading for .NET, in-process through FFmpeg's libraries: no ffm
 allocation per frame. Frames come at the size and pixel format you ask for, and the pixels are exactly the bytes
 ffmpeg's command line gives (`-vf scale=W:H:flags=bicubic,format=F -f rawvideo`), so you can check them against it.
 
-Extracted from [ShotDetector](https://github.com/bisforboman/shotdetector)'s in-process decoding. A **preview**
-package: its API may still change until it's declared stable (versions end in `-preview`, released with
-ShotDetector's). Plan and status:
+Extracted from [ShotDetector](https://github.com/bisforboman/shotdetector)'s in-process decoding, released with it
+(the same version) and under semantic versioning from 1.5.0. Plan and status:
 [docs/frame-reader-library.md](https://github.com/bisforboman/shotdetector/blob/main/docs/frame-reader-library.md).
 
 ```
-dotnet add package FrameReader --prerelease
+dotnet add package FrameReader
 dotnet add package ShotDetector.Native.linux-x64   # FFmpeg's libraries for your platform (or .Gpl. for H.264)
 ```
 

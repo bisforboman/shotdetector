@@ -14,10 +14,10 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
     <EnablePackageValidation>true</EnablePackageValidation>
-    <!-- The package carries FrameReader.dll, which isn't under semantic versioning (docs/frame-reader-api-review.md):
-         its changes are accepted in CompatibilitySuppressions.xml (FrameReader.dll entries only; regenerate with
-         dotnet pack src/ShotDetector -c Release -p:ApiCompatGenerateSuppressionFile=true). Entries a newer baseline
-         makes unneeded don't fail the build. -->
+    <!-- Up to 1.4.x the package carried FrameReader.dll, outside semantic versioning; its changes until then are
+         accepted in CompatibilitySuppressions.xml (FrameReader.dll entries only; regenerate with
+         dotnet pack src/ShotDetector -c Release -p:ApiCompatGenerateSuppressionFile=true). From 1.5.0 FrameReader is
+         its own stable package and a dependency. Entries a newer baseline makes unneeded don't fail the build. -->
     <ApiCompatPermitUnnecessarySuppressions>true</ApiCompatPermitUnnecessarySuppressions>
     <!-- Local and CI builds carry the placeholder version; releases the tag's, so the assembly-version check is theirs. -->
     <NoWarn Condition="'$(Version)' == '0.1.0-alpha.1'">$(NoWarn);CP0003</NoWarn>
@@ -35,20 +35,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- FrameReader isn't a package of its own yet (internal until its API settles): its assembly ships inside this
-         package instead of becoming a dependency. -->
-    <ProjectReference Include="..\FrameReader\FrameReader.csproj" PrivateAssets="all" />
+    <!-- FrameReader, stable from 1.5.0: a package dependency at the same version (decisions.md, 2026-10-10). -->
+    <ProjectReference Include="..\FrameReader\FrameReader.csproj" />
   </ItemGroup>
-
-  <PropertyGroup>
-    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeFrameReader</TargetsForTfmSpecificBuildOutput>
-  </PropertyGroup>
-
-  <Target Name="IncludeFrameReader" DependsOnTargets="ResolveReferences">
-    <ItemGroup>
-      <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'))" />
-    </ItemGroup>
-  </Target>
 
   <ItemGroup>
     <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
