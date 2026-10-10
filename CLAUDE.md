@@ -16,18 +16,7 @@ differ is documented in README.md and in `docs/decisions.md`.
 
 ## Status
 
-1.4.1 released 2026-10-10 (Native: VideoWriter's format/null/scale filters, issue #127; CI writes with the GPL libraries).
-1.4.0 released 2026-10-10 (FrameReader package 1.4.0-preview, its API review, AudioReader seek on Matroska).
-1.3.0 released 2026-10-10 (AudioWriter, Remux, VideoWriter + ShotDetector.Native.Gpl, reference tone).
-1.2.0 released 2026-10-09 (FrameReader WaveformData and AudioFilter, issue #81; audio filters in Native).
-1.1.0 released 2026-10-09 (VideoInfo.Streams for files and URLs, zlib 1.3.2/dav1d 1.5.4, issue #81's probe).
-1.0.0 released 2026-10-08 (API frozen: semantic versioning, package validation once ApiBaselineVersion is set).
-0.10.0 released 2026-10-08 (in-process rotation/image sequences/AV1/streams, row-wise yadif in FastYuv, decoding
-on its own thread; zlib and dav1d in our build). 0.9.0 released 2026-10-08 (0.6.4 dropped, ARM NEON, in-process deinterlacing, decoder visibility, probe
-container/audio; issue #42). 0.8.0 released 2026-10-07 (DeinterlaceMode Auto/On/Off, ShotDetection.Probe; issue #35). 0.7.0 released 2026-10-07 (in-process by default, ShotDetector.Native.<rid> packages, CLI bundles FFmpeg's
-libraries, in-process probing: no ffmpeg needed for files). 0.6.1 released 2026-10-07 (speed: in-process faster than scenedetect on most films, whole frames for small video
-on the executable path). 0.6.0 released 2026-10-07 (opt-in in-process decoding with FFmpeg 8.1's libraries, deinterlacing,
-`ShotDetectionException` reasons, ActivitySource tracing, SourceLink/attestations; issues #12, #16-#19); see CHANGELOG.md.
+Releases, newest first, and what each brought: CHANGELOG.md.
 InProcessTests need `SHOTDETECTOR_FFMPEG_LIBS` (an FFmpeg 8.1 shared build's folder) or they pass without checking. The release notes are the version's
 CHANGELOG section (release.yml extracts it), so keep sections grouped: breaking changes, new, faster, fixed.
 All five detectors, scenedetect 0.7.1 (`PySceneDetectVersion.V0_7_1`; the 0.6.4 mode was dropped in 0.9.0), exports
@@ -37,7 +26,8 @@ paths; detect-hash and 10-bit video are informational. `realworld.yml` runs whol
 weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what the user decided and why.
 
 **Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Open a release
-PR that moves CHANGELOG.md's `## Unreleased` section to `## X.Y.Z – date`; merging it releases: release.yml (on every
+PR that folds the changelog fragments into CHANGELOG.md (`python tools/changelog.py X.Y.Z "summary"`), opened
+once every PR going into it has merged (never stacked on an open branch); merging it releases: release.yml (on every
 push to main) tags `vX.Y.Z` when that version isn't tagged yet and publishes. Prereleases (`-`) publish without
 approval (the `prerelease` environment allows `v*-*` tags, and `main` once the user adds it; with tags only, push
 `vX.Y.Z-pre` on the release commit), stable ones wait for the user's approval of the `release` environment. A hand-pushed `v*` tag still works.
@@ -56,6 +46,8 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
   to main directly.
 - **Worktrees**: `git worktree add .claude/worktrees/<name> -b <branch> origin/main` (ignored). Sessions working at
   the same time each use their own worktree, never one checkout, so a commit can't land on another's branch.
+- **Changelog**: a PR with a change users of the packages notice adds `changes/<branch>.md` (changes/README.md:
+`### Fixed` / `### New` / ... and bullets), never CHANGELOG.md itself, so parallel PRs don't conflict there.
 - **Backlog**: `docs/backlog.md`. Take the next open item; update its status when work starts and lands. Add items
   when something turns up (a divergence, a gap), with why.
 - **Decisions**: when a design question needs the user, ask with the multiple-choice prompt and record the

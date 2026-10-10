@@ -2,6 +2,7 @@
 
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
+What's merged but not released yet is in changes/ (one file per pull request).
 
 ## 1.4.1 – 2026-10-10
 

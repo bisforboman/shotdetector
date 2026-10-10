@@ -3,6 +3,14 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## Changelog conflicts (2026-10-10)
+
+CHANGELOG.md's Unreleased section conflicted three times in a day (parallel PRs adding bullets, a release PR
+renaming the heading while a fix was open). Asked how to stop it: **changelog fragments**, one file per PR in
+changes/, folded into CHANGELOG.md by the release PR (tools/changelog.py), chosen over `merge=union` in
+.gitattributes (silent, and GitHub ignores custom merge drivers) and a process-only rule. CLAUDE.md's version
+history went too (CHANGELOG.md has it), and release PRs are opened once everything going into them has merged.
+
 ## VideoWriter's rare CI mismatch (2026-10-10)
 
 About 1 CI test run in 10-20 a VideoWriter file differs slightly from ffmpeg's (same x264 settings, same input
