@@ -73,9 +73,10 @@ jobs:
 
       - name: Install ffmpeg ${{ env.FFMPEG }}
         if: needs.changes.outputs.docs_only != 'true'
-        run: |
-          curl -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG.tar.xz" | tar -xJ
-          echo "$PWD/ffmpeg-n$FFMPEG-latest-linux64-gpl-$FFMPEG/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          version: ${{ env.FFMPEG }}
 
       - name: Install scenedetect
         if: needs.changes.outputs.docs_only != 'true'

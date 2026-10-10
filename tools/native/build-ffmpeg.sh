@@ -30,7 +30,7 @@ rm -rf "$work" && mkdir -p "$work" "$deps/lib" "$deps/include" && cd "$work"
 jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)
 
 fetch() { # url file sha256
-  curl -fsSL -o "$2" "$1"
+  curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30 -o "$2" "$1"
   echo "$3  $2" | sha256sum -c - 2>/dev/null || echo "$3  $2" | shasum -a 256 -c -
 }
 fetch "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz" ffmpeg.tar.xz "$SHA256"
