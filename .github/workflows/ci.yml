@@ -95,6 +95,16 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx
 
+      # The CLI's --waveform with audiowaveform's options gives audiowaveform's .dat, byte for byte (PCM input).
+      - name: CLI --waveform is audiowaveform's
+        if: needs.changes.outputs.docs_only != 'true' && env.AUDIOWAVEFORM != ''
+        run: |
+          ffmpeg -v error -f lavfi -i "aevalsrc=0.5*sin(440*2*PI*t)|0.3*sin(990*2*PI*t):s=44100:d=5" -c:a pcm_s16le tone.wav
+          dotnet run --project src/ShotDetector.Cli -- -i tone.wav --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" \
+            --waveform ours.dat --waveform-zoom 512 --waveform-bits 8 --waveform-split-channels
+          "$AUDIOWAVEFORM" -q -i tone.wav -o theirs.dat -z 512 -b 8 --split-channels
+          cmp ours.dat theirs.dat
+
       # FrameReader's VideoWriter (H.264) against ffmpeg -c:v libx264, byte for byte: x264's output depends on how it
       # was compiled, so libraries and executable from one build, BtbN's shared GPL one (ours has no executables).
       - name: FFmpeg 8.1 with x264, shared
