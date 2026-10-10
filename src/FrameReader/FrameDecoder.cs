@@ -208,15 +208,7 @@ public sealed unsafe class FrameDecoder : IDisposable
         long timestamp = time.Ticks / 10; // ffmpeg's -ss in microseconds
         if (_fmt->start_time != ffmpeg.AV_NOPTS_VALUE)
             timestamp += _fmt->start_time;
-        long seekTo = timestamp;
-        if ((_fmt->iformat->flags & ffmpeg.AVFMT_SEEK_TO_PTS) == 0)
-            for (int i = 0; i < _fmt->nb_streams; i++)
-                if (_fmt->streams[i]->codecpar->video_delay > 0)
-                {
-                    seekTo -= 3 * ffmpeg.AV_TIME_BASE / 23;
-                    break;
-                }
-        SeekMicroseconds(seekTo);
+        SeekMicroseconds(Demuxer.SeekPoint(_fmt, timestamp));
         return TrimOffset(time);
     }
 

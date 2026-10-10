@@ -30,6 +30,9 @@ public class AudioReaderTests
     [InlineData("aac.m4a", "-f lavfi -i sine=f=440:d=3:r=44100 -ac 2 -c:a aac")]
     [InlineData("mp3.mp3", "-f lavfi -i sine=f=330:d=3:r=44100 -c:a libmp3lame")]
     [InlineData("opus.webm", "-f lavfi -i sine=f=550:d=3:r=48000 -ac 2 -c:a libopus")]
+    // Matroska's millisecond timestamps (a 20 ms Opus frame after the 6.5 ms pre-skip starts at 13.5 ms, read as 13), and
+    // video's cues, so a seek lands seconds before the trim point: ffmpeg keeps the frames back to back from there.
+    [InlineData("opus_video.mkv", "-f lavfi -i testsrc2=s=160x120:r=25:d=3 -f lavfi -i sine=f=550:d=3:r=48000 -ac 2 -c:v mpeg4 -g 75 -c:a libopus")]
     [InlineData("flac51.flac", "-f lavfi -i sine=f=220:d=3:r=48000 -af pan=5.1|c0=c0|c1=c0|c2=c0|c3=c0|c4=c0|c5=c0 -c:a flac")]
     [InlineData("pcm.wav", "-f lavfi -i sine=f=660:d=3:r=22050 -c:a pcm_s16le")]
     public void SamplesAreFfmpegs(string name, string make)

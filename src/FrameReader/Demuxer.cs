@@ -44,4 +44,17 @@ internal static unsafe class Demuxer
                 return i;
         return -1;
     }
+
+    /// <summary>
+    /// Where ffmpeg's <c>-ss</c> seeks for <paramref name="timestamp"/> (AV_TIME_BASE, start time included): 3/23 s
+    /// earlier for formats that seek by dts when any stream (video, even when reading audio) has B-frames.
+    /// </summary>
+    internal static long SeekPoint(AVFormatContext* fmt, long timestamp)
+    {
+        if ((fmt->iformat->flags & ffmpeg.AVFMT_SEEK_TO_PTS) == 0)
+            for (int i = 0; i < fmt->nb_streams; i++)
+                if (fmt->streams[i]->codecpar->video_delay > 0)
+                    return timestamp - 3 * ffmpeg.AV_TIME_BASE / 23;
+        return timestamp;
+    }
 }

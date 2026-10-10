@@ -60,7 +60,11 @@ public sealed unsafe class AudioReader : IDisposable
     bool _draining, _decoderDone, _flushed;
     long _trimFrom = long.MinValue; // after a seek: input samples before this (in 1/sample_rate units, shifted) are dropped
     long _start;    // where shifted timestamps count from (AV_TIME_BASE): the input's start, or the seek point
-    long _next;     // the next frame's position when it has no timestamp
+    // fftools' audio timestamps (ffmpeg_dec.c's audio_ts_process): its internal time base, the last frame's pts and
+    // duration in it, and av_rescale_delta's state.
+    AVRational _tsBase = new() { num = 1, den = 1 };
+    int _tsRate;
+    long _lastPts = ffmpeg.AV_NOPTS_VALUE, _lastDuration, _rescaleDelta = ffmpeg.AV_NOPTS_VALUE;
 
     /// <summary>Opens a file or URL FFmpeg can read and its best audio stream.</summary>
     /// <param name="path">What to open.</param>
@@ -138,7 +142,8 @@ public sealed unsafe class AudioReader : IDisposable
         long timestamp = time.Ticks / 10;
         if (_fmt->start_time != ffmpeg.AV_NOPTS_VALUE)
             timestamp += _fmt->start_time;
-        Check(ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, timestamp, timestamp, 0), "seek");
+        long seekTo = Demuxer.SeekPoint(_fmt, timestamp);
+        Check(ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, seekTo, seekTo, 0), "seek");
         ffmpeg.avcodec_flush_buffers(_dec);
         ffmpeg.swr_close(_swr);
         Check(ffmpeg.swr_init(_swr), "resampler");
@@ -146,7 +151,10 @@ public sealed unsafe class AudioReader : IDisposable
         // ffmpeg shifts the timestamps by -(start + T) and trims what's still below 0, counted in samples.
         _trimFrom = 0;
         _start = timestamp;
-        _next = 0;
+        _tsBase = new AVRational { num = 1, den = 1 };
+        _tsRate = 0;
+        _lastPts = _rescaleDelta = ffmpeg.AV_NOPTS_VALUE;
+        _lastDuration = 0;
     }
 
     /// <summary>Decodes and converts the next chunk; false at the end.</summary>
@@ -196,9 +204,7 @@ public sealed unsafe class AudioReader : IDisposable
         {
             skip = 0;
             long pts = _frame->best_effort_timestamp;
-            var rate = new AVRational { num = 1, den = _frame->sample_rate };
-            long shifted = pts == ffmpeg.AV_NOPTS_VALUE ? _next
-                : ffmpeg.av_rescale_q(pts, _timeBase, rate) - ffmpeg.av_rescale_q(_start, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, rate);
+            long shifted = Shifted(pts);
             if (_trimFrom != long.MinValue && pts != ffmpeg.AV_NOPTS_VALUE)
             {
                 if (shifted + _frame->nb_samples <= 0)
@@ -207,12 +213,57 @@ public sealed unsafe class AudioReader : IDisposable
                 _trimFrom = long.MinValue;
             }
             position = shifted + skip;
-            _next = shifted + _frame->nb_samples;
             return true;
         }
         skip = 0;
         position = 0;
         return false;
+    }
+
+    /// <summary>
+    /// The frame's place in samples from <see cref="_start"/>, as ffmpeg gives it to its filters: the packets shifted by
+    /// -start (ffmpeg_demux.c's ts_fixup), then audio_ts_process (ffmpeg_dec.c): av_rescale_delta keeps consecutive
+    /// frames back to back where the container's timestamps are coarser than a sample (Matroska's milliseconds; a frame
+    /// at 13.5 ms reads 13), and a frame without one follows the last.
+    /// </summary>
+    long Shifted(long pts)
+    {
+        int rate = _frame->sample_rate;
+        if (rate != _tsRate)
+        {
+            // audio_samplerate_update: a time base for every rate seen so far.
+            long gcd = ffmpeg.av_gcd(_tsBase.den, rate);
+            var next = _tsBase.den / gcd >= int.MaxValue / rate ? new AVRational { num = 1, den = 28224000 }
+                : new AVRational { num = 1, den = (int)(_tsBase.den / gcd * rate) };
+            if (_timeBase.num == 1 && _timeBase.den > next.den && _timeBase.den % next.den == 0)
+                next = _timeBase;
+            if (_lastPts != ffmpeg.AV_NOPTS_VALUE)
+                _lastPts = ffmpeg.av_rescale_q(_lastPts, _tsBase, next);
+            _lastDuration = ffmpeg.av_rescale_q(_lastDuration, _tsBase, next);
+            _tsBase = next;
+            _tsRate = rate;
+        }
+        var tb = _tsBase;
+        long predicted = _lastPts == ffmpeg.AV_NOPTS_VALUE ? 0 : _lastPts + _lastDuration;
+        var inBase = _timeBase;
+        if (pts == ffmpeg.AV_NOPTS_VALUE)
+        {
+            pts = predicted;
+            inBase = tb;
+        }
+        else
+        {
+            pts += ffmpeg.av_rescale_q(-_start, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase);
+            if (_lastPts != ffmpeg.AV_NOPTS_VALUE && pts > ffmpeg.av_rescale_q_rnd(predicted, tb, _timeBase, AVRounding.AV_ROUND_UP))
+                _rescaleDelta = ffmpeg.AV_NOPTS_VALUE; // a gap: start over
+        }
+        long delta = _rescaleDelta;
+        pts = ffmpeg.av_rescale_delta(inBase, pts, tb, _frame->nb_samples, &delta, tb);
+        _rescaleDelta = delta;
+        var perSample = new AVRational { num = 1, den = rate };
+        _lastPts = pts;
+        _lastDuration = ffmpeg.av_rescale_q(_frame->nb_samples, perSample, tb);
+        return ffmpeg.av_rescale_q(pts, tb, perSample);
     }
 
     /// <summary>The frame <see cref="TryDecode"/> gave.</summary>
