@@ -3,7 +3,9 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 
-## Unreleased
+## 1.4.1 – 2026-10-10
+
+VideoWriter with ShotDetector.Native.Gpl's libraries (issue #127). APIs unchanged.
 
 ### Fixed
 
