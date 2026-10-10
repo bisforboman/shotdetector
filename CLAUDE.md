@@ -31,7 +31,7 @@ CHANGELOG section (release.yml extracts it), so keep sections grouped: breaking 
 All five detectors, scenedetect 0.7.1 (`PySceneDetectVersion.V0_7_1`; the 0.6.4 mode was dropped in 0.9.0), exports
 (save-images, save-html, split-video), stats, streaming out (`DetectStreamAsync`) and in (`Detect(Stream)`, URLs,
 CLI `-i -`). CI compares every sample clip against scenedetect 0.7.1 on Linux for the core and FastYuv
-paths; detect-hash and 10-bit video are informational. `realworld.yml` runs whole films nightly; `benchmark.yml`
+paths; detect-hash and 10-bit video are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
 weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what the user decided and why.
 
 **Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Open a release
