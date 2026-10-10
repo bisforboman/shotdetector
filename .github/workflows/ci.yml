@@ -215,6 +215,10 @@ jobs:
           ./out/shotdetect -i clip.mp4 -d content --csv shots.csv 2> summary.txt
           cat summary.txt
           test "$(tail -n +3 shots.csv | wc -l)" -eq 2   # after the "Timecode List:" row and the header
+          # --probe-json (System.Text.Json's writer, under Native AOT too).
+          ./out/shotdetect -i clip.mp4 --probe-json > probe.json
+          cat probe.json
+          grep -q '"width": 320' probe.json && grep -q '"frameRate": "25/1"' probe.json
           # With the bundled libraries, the AOT binary decodes in-process (FFmpeg.AutoGen under Native AOT).
           if [ "${{ matrix.rid }}" = linux-x64 ]; then grep -q "decoded in-process" summary.txt; fi
           # Standard input, in-process with the libraries: FFmpeg calls back into .NET to read it (a custom AVIOContext).

@@ -3,6 +3,12 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## CLI probe as flags (2026-10-10)
+
+Not asked (the user was away and asked for the backlog's Maybes to be done): `--probe` and `--probe-json`
+rather than a `shotdetect probe` subcommand, since the CLI has none and `--find-tone` set the pattern. Easy
+to change before anyone depends on it.
+
 ## FrameReader stable, tone search, capability checks (2026-10-10)
 
 Issue #81's user asked for three things before moving their tone job in-process. Asked: FrameReader **stable in
