@@ -1,8 +1,8 @@
 name: Upstream releases
 
 # Weekly: an issue when something ShotDetector matches or builds on has a newer release than the one it uses: scenedetect
-# (a new compatibility mode), FFmpeg's point releases in our native build's series, and zlib and dav1d, which that build
-# links in (security and decoder fixes reach ShotDetector.Native and the CLI only when the build moves). One issue per
+# (a new compatibility mode), FFmpeg's point releases in our native build's series, zlib and dav1d, which that build
+# links in, and the FFmpeg opencv-python's Linux wheel bundles (scenedetect's frames come from it) (security and decoder fixes reach ShotDetector.Native and the CLI only when the build moves). One issue per
 # release (none if one exists, open or closed).
 on:
   workflow_dispatch:
@@ -128,5 +128,48 @@ jobs:
           - [ ] In \`tools/native/build-ffmpeg.sh\`: \`${{ matrix.var }}=$latest\` and \`${{ matrix.var }}_SHA256\` (of $source).
           - [ ] The PR rebuilds the libraries for every platform (native.yml, keyed by the script's hash) and runs the in-process, parity and real-world checks on them.
           - [ ] Update the version in the Native README and THIRD-PARTY-NOTICES.md (and its copyright years), and the CHANGELOG (a patch release).
+          EOF
+          )"
+
+  # opencv-python's Linux wheel bundles its own FFmpeg, and scenedetect's frames come from it: a new FFmpeg there is
+  # when to move our libraries (FFmpeg 9) or re-check colour and 10-bit parity. Compares the pinned wheel's libavcodec
+  # with the newest wheel's.
+  opencv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: A newer FFmpeg in opencv-python?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ours=$(grep -ohE 'opencv-python-headless==[0-9][0-9.]*' .github/workflows/realworld.yml | head -1 | cut -d= -f3)
+          latest=$(curl -fsSL --retry 5 --retry-all-errors https://pypi.org/pypi/opencv-python-headless/json | jq -r .info.version)
+          ffmpeg_of() {  # the libavcodec version the wheel bundles, from cv2.getBuildInformation()
+            python -m venv "$RUNNER_TEMP/cv-$1" > /dev/null
+            "$RUNNER_TEMP/cv-$1/bin/pip" install -q --retries 5 "opencv-python-headless==$1" > /dev/null
+            "$RUNNER_TEMP/cv-$1/bin/python" -c "import cv2, re; print(re.search(r'avcodec:\s+YES \(([\d.]+)\)', cv2.getBuildInformation()).group(1))"
+          }
+          a=$(ffmpeg_of "$ours")
+          b=$([ "$latest" = "$ours" ] && echo "$a" || ffmpeg_of "$latest")
+          echo "CI's opencv-python-headless $ours bundles libavcodec $a; the newest, $latest, bundles libavcodec $b."
+          # libavcodec major.minor: 62.x is FFmpeg 8, 63.x FFmpeg 9; a minor bump is a new FFmpeg minor release.
+          [ "${a%.*}" != "${b%.*}" ] || exit 0
+          title="opencv-python $latest bundles libavcodec $b"
+          if gh issue list --state all --search "\"$title\" in:title" --json title --jq '.[].title' | grep -qxF "$title"; then
+            echo "Already filed: $title"
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$(cat <<EOF
+          opencv-python-headless $latest's Linux wheel bundles libavcodec $b; CI pins $ours, which bundles libavcodec $a (found by the weekly upstream check). scenedetect's frames come from OpenCV's FFmpeg, so this is when our results could start to differ, and when to consider moving our own libraries.
+
+          - [ ] Run the parity and real-world comparisons with \`opencv-python-headless==$latest\` (and the scenedetect release that's current).
+          - [ ] If the FFmpeg major changed (libavcodec 63 = FFmpeg 9): the backlog's "Move to FFmpeg 9's libraries" (FFmpeg.AutoGen 9, the Native packages on 9.0.x), and re-check the colour (BT.709) and 10-bit notes in the README.
+          - [ ] Move the \`opencv-python-headless==\` pins (ci.yml, realworld.yml, benchmark.yml) once results match.
           EOF
           )"
