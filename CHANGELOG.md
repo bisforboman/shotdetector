@@ -3,7 +3,10 @@
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 
-## Unreleased
+## 1.4.0 – 2026-10-10
+
+FrameReader's first package (`FrameReader` 1.4.0-preview), its API reviewed before it, and AudioReader's seek matching
+ffmpeg on Matroska/WebM. ShotDetector's own API is unchanged.
 
 ### Breaking changes (FrameReader only; it isn't under semantic versioning yet, ShotDetector's API is unchanged)
 
