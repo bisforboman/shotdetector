@@ -56,11 +56,10 @@ public class ReadFrames
     [Benchmark(Baseline = true)]
     public long FrameReader()
     {
-        using var reader = new VideoFrameReader(Video, new FrameReaderOptions
+        using var reader = new VideoFrameReader(Video, new VideoFrameReaderOptions
         {
             Width = Small ? 160 : null, Height = Small ? 90 : null,
-            Format = Small ? FrameFormat.Gray8 : FrameFormat.Bgr24,
-            Decoder = new FrameDecoderOptions { LibraryDirectory = Libs },
+            FrameFormat = Small ? FrameFormat.Gray8 : FrameFormat.Bgr24,
         });
         long sum = 0;
         for (int n = 0; n < Frames && reader.TryRead(out var frame); n++)

@@ -25,7 +25,7 @@ public enum FrameFormat
 }
 
 /// <summary>What a <see cref="VideoFrameReader"/> gives and how it decodes.</summary>
-public sealed record FrameReaderOptions
+public sealed record VideoFrameReaderOptions
 {
     /// <summary>Output width in pixels; null (with <see cref="Height"/> null): the frame's own (after any rotation).</summary>
     public int? Width { get; init; }
@@ -34,7 +34,7 @@ public sealed record FrameReaderOptions
     public int? Height { get; init; }
 
     /// <summary>The output's pixel format.</summary>
-    public FrameFormat Format { get; init; } = FrameFormat.Bgr24;
+    public FrameFormat FrameFormat { get; init; } = FrameFormat.Bgr24;
 
     /// <summary>
     /// Frames per second out, through FFmpeg's <c>fps</c> filter (its defaults: nearest-frame rounding, duplicating or
@@ -52,7 +52,7 @@ public readonly ref struct VideoFrame
 {
     internal VideoFrame(int index, long pts, TimeSpan time, int width, int height, FrameFormat format, ReadOnlySpan<byte> data)
     {
-        (Index, Pts, Time, Width, Height, Format) = (index, pts, time, width, height, format);
+        (Index, Pts, Time, Width, Height, FrameFormat) = (index, pts, time, width, height, format);
         Data = data;
     }
 
@@ -75,7 +75,7 @@ public readonly ref struct VideoFrame
     public int Height { get; }
 
     /// <summary>The pixel format of <see cref="Data"/>.</summary>
-    public FrameFormat Format { get; }
+    public FrameFormat FrameFormat { get; }
 
     /// <summary>
     /// The pixels, packed without padding as ffmpeg's rawvideo output holds them (rows of Width × bytes per pixel; for
@@ -97,7 +97,7 @@ public delegate void FrameHandler(int index, VideoFrame frame);
 public sealed unsafe class VideoFrameReader : IDisposable
 {
     readonly FrameDecoder _decoder;
-    readonly FrameReaderOptions _options;
+    readonly VideoFrameReaderOptions _options;
     readonly AVPixelFormat _format;
     SwsContext* _sws;
     AVFrame* _in, _out;
@@ -114,19 +114,19 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <param name="path">What to open.</param>
     /// <param name="options">Size, format and decoding; null: the frames as they are, in Bgr24.</param>
     /// <exception cref="FrameReaderException">The libraries didn't load, or the input can't be opened or has no video.</exception>
-    public VideoFrameReader(string path, FrameReaderOptions? options = null) : this(options, o => new FrameDecoder(path, o)) { }
+    public VideoFrameReader(string path, VideoFrameReaderOptions? options = null) : this(options, o => new FrameDecoder(path, o)) { }
 
     /// <summary>Opens a stream's bytes, read once (headers first: mkv, webm, ts, mov or a faststart mp4).</summary>
     /// <param name="stream">The media's bytes; not disposed.</param>
     /// <param name="options">Size, format and decoding; null: the frames as they are, in Bgr24.</param>
-    public VideoFrameReader(Stream stream, FrameReaderOptions? options = null) : this(options, o => new FrameDecoder(stream, o)) { }
+    public VideoFrameReader(Stream stream, VideoFrameReaderOptions? options = null) : this(options, o => new FrameDecoder(stream, o)) { }
 
-    VideoFrameReader(FrameReaderOptions? options, Func<FrameDecoderOptions?, FrameDecoder> open)
+    VideoFrameReader(VideoFrameReaderOptions? options, Func<FrameDecoderOptions?, FrameDecoder> open)
     {
-        _options = options ?? new FrameReaderOptions();
+        _options = options ?? new VideoFrameReaderOptions();
         if (_options.Width is null != _options.Height is null || _options.Width <= 0 || _options.Height <= 0)
             throw new ArgumentException("Width and Height are both set (positive) or both left out.", nameof(options));
-        _format = _options.Format switch
+        _format = _options.FrameFormat switch
         {
             FrameFormat.Bgr24 => AVPixelFormat.AV_PIX_FMT_BGR24,
             FrameFormat.Rgb24 => AVPixelFormat.AV_PIX_FMT_RGB24,
@@ -134,7 +134,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
             FrameFormat.Rgba32 => AVPixelFormat.AV_PIX_FMT_RGBA,
             FrameFormat.Gray8 => AVPixelFormat.AV_PIX_FMT_GRAY8,
             FrameFormat.Yuv420p => AVPixelFormat.AV_PIX_FMT_YUV420P,
-            _ => throw new ArgumentException($"Unknown format {_options.Format}.", nameof(options)),
+            _ => throw new ArgumentException($"Unknown format {_options.FrameFormat}.", nameof(options)),
         };
         if (_options.FrameRate is { } r && (r.Num <= 0 || r.Den <= 0))
             throw new ArgumentException("FrameRate is positive.", nameof(options));
@@ -142,7 +142,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     }
 
     /// <summary>The stream's time base in seconds per <see cref="VideoFrame.Pts"/> unit.</summary>
-    public double TimeBase => _decoder.TimeBase;
+    public Rational TimeBase => _decoder.TimeBase;
 
     /// <summary>
     /// Seeks so the next <see cref="TryRead"/> gives the frame ffmpeg's <c>-ss</c> gives for <paramref name="time"/>:
@@ -179,13 +179,15 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// </summary>
     /// <param name="path">A file (a Stream can't be read by several readers).</param>
     /// <param name="times">From the input's start, ascending.</param>
-    /// <param name="options">Size, format and decoding; not <see cref="FrameReaderOptions.FrameRate"/>.</param>
+    /// <param name="options">Size, format and decoding; not <see cref="VideoFrameReaderOptions.FrameRate"/>.</param>
     /// <param name="parallelism">Readers at once; null: half the cores, at most 4.</param>
     /// <param name="handler">Called for each frame found, with its time's index.</param>
+    /// <param name="cancellationToken">Stops the readers between frames (<see cref="OperationCanceledException"/>).</param>
     /// <returns>How many times had a frame (the rest are past the end).</returns>
-    public static int ReadAt(string path, IReadOnlyList<TimeSpan> times, FrameReaderOptions? options, int? parallelism, FrameHandler handler)
+    public static int ReadAt(string path, IReadOnlyList<TimeSpan> times, VideoFrameReaderOptions? options, int? parallelism, FrameHandler handler,
+        CancellationToken cancellationToken = default)
     {
-        options ??= new FrameReaderOptions();
+        options ??= new VideoFrameReaderOptions();
         if (options.FrameRate is not null)
             throw new ArgumentException("ReadAt reads frames at times; FrameRate isn't available.", nameof(options));
         for (int i = 1; i < times.Count; i++)
@@ -197,12 +199,13 @@ public sealed unsafe class VideoFrameReader : IDisposable
         if (workers > 1 && decoder.Threads == 0)
             options = options with { Decoder = decoder with { Threads = Math.Max(1, cores / workers) } };
         int found = 0;
-        Parallel.For(0, workers, new ParallelOptions { MaxDegreeOfParallelism = workers }, w =>
+        Parallel.For(0, workers, new ParallelOptions { MaxDegreeOfParallelism = workers, CancellationToken = cancellationToken }, w =>
         {
             int from = w * times.Count / workers, to = (w + 1) * times.Count / workers;
             using var reader = new VideoFrameReader(path, options);
             for (int i = from; i < to; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!reader.TryReadForwardTo(times[i], out var frame))
                     break;
                 handler(i, frame);
@@ -259,7 +262,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
             bool jumped = false;
             long key = 0;
             if (_decoder.CanSeek && _decoder.KeyframeAtOrBefore(target) is { } found
-                && found > (_current ? _decoder.Pts : 0) + (long)(1 / _decoder.TimeBase))
+                && found > (_current ? _decoder.Pts : 0) + (long)(1 / _decoder.TimeBase.Value))
             {
                 key = found;
                 // To the target, not the index entry: some containers index by dts and seek by pts, where the entry's dts
@@ -376,7 +379,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     {
         _decoder.EnsureRows(0, _decoder.Frame->height);
         long pts = _decoder.Pts;
-        Convert(_decoder.Frame, pts, TimeSpan.FromSeconds((pts + _decoder.StartOffset) * _decoder.TimeBase), out frame);
+        Convert(_decoder.Frame, pts, TimeSpan.FromSeconds((pts + _decoder.StartOffset) * _decoder.TimeBase.Value), out frame);
     }
 
     void Convert(AVFrame* src, long pts, TimeSpan time, out VideoFrame frame)
@@ -402,7 +405,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
         _in->flags &= ~ffmpeg.AV_FRAME_FLAG_INTERLACED;
         _in->chroma_location = AVChromaLocation.AVCHROMA_LOC_UNSPECIFIED;
         (_out->chroma_location, _out->color_primaries, _out->color_trc) = (_in->chroma_location, _in->color_primaries, _in->color_trc);
-        bool rgb = _options.Format is not (FrameFormat.Gray8 or FrameFormat.Yuv420p);
+        bool rgb = _options.FrameFormat is not (FrameFormat.Gray8 or FrameFormat.Yuv420p);
         _out->colorspace = rgb ? AVColorSpace.AVCOL_SPC_RGB : src->colorspace;
         _out->color_range = rgb ? AVColorRange.AVCOL_RANGE_JPEG : src->color_range;
         int ret = ffmpeg.sws_scale_frame(_sws, _out, _in);
@@ -410,7 +413,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
         Check(ret, "convert");
         int size = ffmpeg.av_image_get_buffer_size(_format, width, height, 1);
         ReadOnlySpan<byte> data;
-        if (_options.Format != FrameFormat.Yuv420p)
+        if (_options.FrameFormat != FrameFormat.Yuv420p)
             data = new ReadOnlySpan<byte>(_out->data[0], size); // one plane, rows packed (align 1)
         else
         {
@@ -428,7 +431,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 Check(ffmpeg.av_image_copy_to_buffer(p, size, in planes, in strides, _format, width, height, 1), "pack");
             data = _packed;
         }
-        frame = new VideoFrame(_index, pts, time, width, height, _options.Format, data);
+        frame = new VideoFrame(_index, pts, time, width, height, _options.FrameFormat, data);
     }
 
     /// <summary>Frees the decoder, the scaler and the output buffer.</summary>

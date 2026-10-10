@@ -3,6 +3,12 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## FrameReader's API before its package (2026-10-10)
+
+The review (docs/frame-reader-api-review.md) proposed seven changes. Asked which to make: **all of them, 1-3
+(libraries, names, time), 4-5 (errors, cancellation) and 6-7 (the advanced layer, small ones) (all recommended)**;
+the prerelease package not yet.
+
 ## H.264 for #81's user (2026-10-10)
 
 The user wanted to help #81's user with H.264 after all. Asked: **a GPL FFmpeg build package,

@@ -10,7 +10,7 @@ using FrameReader;
 /// </summary>
 public class SpectralStatsTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
 
     static readonly string[] Names = ["mean", "variance", "centroid", "spread", "skewness", "kurtosis", "entropy", "flatness", "crest", "flux", "slope", "decrease", "rolloff"];
 
@@ -64,7 +64,7 @@ public class SpectralStatsTests
                 $"aspectralstats=win_size={options.WindowSize}:win_func={options.WindowFunction}:overlap={options.Overlap},ametadata=print:file=-");
             var expected = Printed(Ffmpeg("-v", "error", "-i", path, "-af", filter, "-f", "null", "-"));
 
-            using var audio = new AudioReader(path, new AudioReaderOptions { LibraryDirectory = Libs });
+            using var audio = new AudioReader(path, new AudioReaderOptions());
             using var stats = new SpectralStats(audio, options);
             int n = 0;
             while (stats.TryRead(out var window))

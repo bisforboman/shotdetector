@@ -11,7 +11,7 @@ using FrameReader;
 /// </summary>
 public class AudioFilterTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
 
     static byte[] Ffmpeg(params string[] args)
     {
@@ -50,7 +50,7 @@ public class AudioFilterTests
             string[] conversion = [.. rate is { } r ? new[] { "-ar", $"{r}" } : [], .. channels is { } c ? new[] { "-ac", $"{c}" } : []];
             byte[] expected = Ffmpeg(["-v", "error", .. ss, "-i", path, "-af", graph, .. conversion, "-f", "f32le", "-"]);
 
-            using var audio = new AudioReader(path, new AudioReaderOptions { SampleRate = rate, Channels = channels, LibraryDirectory = Libs });
+            using var audio = new AudioReader(path, new AudioReaderOptions { SampleRate = rate, Channels = channels });
             if (seek is { } s)
                 audio.Seek(TimeSpan.FromSeconds(s));
             using var filter = new AudioFilter(audio, graph);
@@ -94,7 +94,7 @@ public class AudioFilterTests
                     expected[^1][line[..line.IndexOf('=')]] = line[(line.IndexOf('=') + 1)..];
             }
 
-            using var audio = new AudioReader(path, new AudioReaderOptions { LibraryDirectory = Libs });
+            using var audio = new AudioReader(path, new AudioReaderOptions());
             using var filter = new AudioFilter(audio, graph);
             var actual = new List<Dictionary<string, string>>();
             while (filter.TryRead(out _))
@@ -121,7 +121,7 @@ public class AudioFilterTests
         {
             string path = Path.Combine(dir, "a.wav");
             Ffmpeg("-v", "error", "-y", "-f", "lavfi", "-i", "sine=d=0.2", path);
-            using var audio = new AudioReader(path, new AudioReaderOptions { LibraryDirectory = Libs });
+            using var audio = new AudioReader(path, new AudioReaderOptions());
             using var filter = new AudioFilter(audio, "nosuchfilter=1");
             var e = Assert.Throws<FrameReaderException>(() => filter.TryRead(out _));
             Assert.Equal(FrameReaderError.InvalidInput, e.Reason);

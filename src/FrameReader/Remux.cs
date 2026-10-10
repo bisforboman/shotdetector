@@ -29,16 +29,13 @@ public sealed record RemuxOptions
     public IReadOnlyList<int>? StreamIndices { get; init; }
 
     /// <summary>FFmpeg's muxer name (<c>mp4</c>, <c>ipod</c>, <c>matroska</c>, <c>mp3</c>, ...); null: from the output's name.</summary>
-    public string? Format { get; init; }
+    public string? Container { get; init; }
 
     /// <summary>Leave out what makes a file differ between FFmpeg versions, as ffmpeg's <c>-fflags +bitexact</c>.</summary>
     public bool Bitexact { get; init; }
 
     /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
-
-    /// <summary>The folder with FFmpeg's libraries (<see cref="FFmpegLibraries.Load"/>); null: next to the app, then the system's.</summary>
-    public string? LibraryDirectory { get; init; }
 }
 
 /// <summary>
@@ -49,14 +46,15 @@ public static unsafe class Remux
 {
     /// <summary>Copies the selected streams of <paramref name="input"/> into <paramref name="output"/> (created or overwritten).</summary>
     /// <param name="input">A file or URL FFmpeg can read.</param>
-    /// <param name="output">The file to write; its name picks the container unless <see cref="RemuxOptions.Format"/> does.</param>
+    /// <param name="output">The file to write; its name picks the container unless <see cref="RemuxOptions.Container"/> does.</param>
     /// <param name="options">Streams and format; null: every stream, the container from the name.</param>
+    /// <param name="cancellationToken">Stops between packets (<see cref="OperationCanceledException"/>; the output is left unfinished).</param>
     /// <exception cref="FrameReaderException">The input can't be read, nothing is selected, or the container can't hold a
     /// selected stream (<see cref="FrameReaderError.InvalidInput"/>), or writing failed.</exception>
-    public static void Copy(string input, string output, RemuxOptions? options = null)
+    public static void Copy(string input, string output, RemuxOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new RemuxOptions();
-        FFmpegLibraries.Load(o.LibraryDirectory);
+        FFmpegLibraries.Load();
         AVFormatContext* ic = Demuxer.Open(input, o.InputOptions);
         AVFormatContext* oc = null;
         AVPacket* pkt = null;
@@ -65,10 +63,10 @@ public static unsafe class Remux
             var map = Select(ic, o); // output stream i comes from input stream map[i]
             if (map.Count == 0)
                 throw new FrameReaderException(FrameReaderError.InvalidInput, $"\"{input}\" has no stream of the kinds asked for.");
-            int ret = ffmpeg.avformat_alloc_output_context2(&oc, null, o.Format, output);
+            int ret = ffmpeg.avformat_alloc_output_context2(&oc, null, o.Container, output);
             if (ret < 0 || oc == null)
                 throw new FrameReaderException(FrameReaderError.InvalidInput,
-                    $"No muxer for \"{output}\"{(o.Format is null ? "" : $" ({o.Format})")} in these FFmpeg libraries: {FFmpegLibraries.ErrorMessage(ret)}");
+                    $"No muxer for \"{output}\"{(o.Container is null ? "" : $" ({o.Container})")} in these FFmpeg libraries: {FFmpegLibraries.ErrorMessage(ret)}");
             if (o.Bitexact)
                 oc->flags |= ffmpeg.AVFMT_FLAG_BITEXACT;
             oc->max_delay = 700000; // ffmpeg's -muxdelay default, 0.7 s
@@ -99,6 +97,11 @@ public static unsafe class Remux
             pkt = ffmpeg.av_packet_alloc();
             while ((ret = ffmpeg.av_read_frame(ic, pkt)) >= 0)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    ffmpeg.av_packet_unref(pkt);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
                 int to = pkt->stream_index < outOf.Length ? outOf[pkt->stream_index] : -1;
                 if (to < 0 || (!started[to] && (pkt->flags & ffmpeg.AV_PKT_FLAG_KEY) == 0))
                 {
@@ -109,7 +112,7 @@ public static unsafe class Remux
                 Write(ic, oc, pkt, to, tsOffset, ref lastDts[to], ref rescaleLast[to]);
             }
             if (ret != ffmpeg.AVERROR_EOF)
-                Check(ret, "read");
+                Check(ret, "read", FrameReaderError.InvalidInput);
             Check(ffmpeg.av_write_trailer(oc), "write the trailer");
         }
         finally
@@ -279,9 +282,9 @@ public static unsafe class Remux
         Check(ffmpeg.av_interleaved_write_frame(oc, pkt), "write");
     }
 
-    static void Check(int ret, string what)
+    static void Check(int ret, string what, FrameReaderError reason = FrameReaderError.WriteFailed)
     {
         if (ret < 0)
-            throw new FrameReaderException(FrameReaderError.DecodeFailed, $"FFmpeg ({what}): {FFmpegLibraries.ErrorMessage(ret)}");
+            throw new FrameReaderException(reason, $"FFmpeg ({what}): {FFmpegLibraries.ErrorMessage(ret)}");
     }
 }

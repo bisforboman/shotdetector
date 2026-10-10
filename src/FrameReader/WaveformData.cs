@@ -1,5 +1,15 @@
 namespace FrameReader;
 
+/// <summary>The resolution of a saved .dat (audiowaveform's <c>-b</c>).</summary>
+public enum WaveformBits
+{
+    /// <summary>8-bit values: each 16-bit one divided by 256, toward zero.</summary>
+    Eight = 8,
+
+    /// <summary>16-bit values, as computed.</summary>
+    Sixteen = 16,
+}
+
 /// <summary>How <see cref="WaveformData.Read"/> summarises the audio: audiowaveform's options.</summary>
 public sealed record WaveformOptions
 {
@@ -58,7 +68,8 @@ public sealed class WaveformData
     /// <param name="options">Points' size and channels; null: 256 samples per point, channels averaged.</param>
     /// <exception cref="ArgumentException">Fewer than 2 samples per point, or more than 24 channels to split.</exception>
     /// <exception cref="FrameReaderException">Decoding failed.</exception>
-    public static WaveformData Read(AudioReader audio, WaveformOptions? options = null)
+    /// <param name="cancellationToken">Stops between chunks (<see cref="OperationCanceledException"/>).</param>
+    public static WaveformData Read(AudioReader audio, WaveformOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new WaveformOptions();
         int rate = audio.SampleRate, inChannels = audio.Channels;
@@ -81,8 +92,9 @@ public sealed class WaveformData
         Span<int> frame = stackalloc int[inChannels];
         while (audio.TryRead(out var chunk))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var samples = chunk.Samples;
-            for (int i = 0; i < chunk.Length; i++)
+            for (int i = 0; i < chunk.SampleCount; i++)
             {
                 for (int c = 0; c < inChannels; c++)
                     frame[c] = ToShort(samples[i * inChannels + c], fromFloat);
@@ -138,15 +150,15 @@ public sealed class WaveformData
     /// little-endian.
     /// </summary>
     /// <param name="output">Where to write; not disposed.</param>
-    /// <param name="bits">16 (default), or 8: each value divided by 256, toward zero, as audiowaveform does.</param>
-    public void Save(Stream output, int bits = 16)
+    /// <param name="bits">Sixteen (default), or Eight: each value divided by 256, toward zero, as audiowaveform does.</param>
+    public void Save(Stream output, WaveformBits bits = WaveformBits.Sixteen)
     {
-        if (bits is not (8 or 16))
-            throw new ArgumentException("Bits must be 8 or 16.", nameof(bits));
+        if (bits is not (WaveformBits.Eight or WaveformBits.Sixteen))
+            throw new ArgumentException("Bits must be Eight or Sixteen.", nameof(bits));
         using var w = new BinaryWriter(output, System.Text.Encoding.ASCII, leaveOpen: true);
         int version = Channels == 1 ? 1 : 2;
         w.Write(version);
-        w.Write(bits == 8 ? 1u : 0u);
+        w.Write(bits == WaveformBits.Eight ? 1u : 0u);
         w.Write(SampleRate);
         w.Write(SamplesPerPixel);
         w.Write((uint)Length);
@@ -154,7 +166,7 @@ public sealed class WaveformData
             w.Write(Channels);
         foreach (short v in _data)
         {
-            if (bits == 8)
+            if (bits == WaveformBits.Eight)
                 w.Write((sbyte)(v / 256));
             else
                 w.Write(v);

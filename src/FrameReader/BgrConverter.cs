@@ -7,6 +7,8 @@ namespace FrameReader;
 /// <c>-vf scale,format=bgr24</c> gives (bicubic flag, the frame's colour matrix and range), and OpenCV's too. For speed,
 /// only some rows can be converted (<see cref="Convert(ReadOnlySpan{int}, out int)"/>): the same converter on those
 /// rows' slices, a fraction of the work.
+/// Advanced: part of the low-level layer ShotDetector's exact pipelines use; the main API is VideoFrameReader, the audio
+/// readers, the writers, Remux and MediaProbe.
 /// </summary>
 /// <param name="decoder">The decoder whose current frame is converted; not disposed with the converter.</param>
 public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable

@@ -9,7 +9,7 @@ using FrameReader;
 /// </summary>
 public class MediaProbeTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
 
     static string Tool(string name) => Path.Combine(Libs!, OperatingSystem.IsWindows() ? name + ".exe" : name);
 
@@ -46,7 +46,7 @@ public class MediaProbeTests
             else
                 File.Move(plain, path);
 
-            var info = MediaProbe.Probe(path, new ProbeOptions { PacketTimestamps = true, LibraryDirectory = Libs });
+            var info = MediaProbe.Probe(path, new ProbeOptions { PacketTimestamps = true });
             using var json = JsonDocument.Parse(Run("ffprobe", "-v", "error", "-show_entries",
                 "stream=index,codec_type,codec_name,width,height,pix_fmt,color_range,color_space,field_order,r_frame_rate,avg_frame_rate,time_base,start_pts,duration_ts,nb_frames:stream_side_data=rotation:format=format_name,duration",
                 "-of", "json", path));
@@ -77,7 +77,7 @@ public class MediaProbeTests
             Assert.Equal(rotation, v.Rotation is { } r ? (int)r : null);
             var format = json.RootElement.GetProperty("format");
             Assert.Equal(format.GetProperty("format_name").GetString(), info.Container);
-            Assert.Equal(format.GetProperty("duration").GetString(), (info.DurationMicroseconds!.Value / 1e6).ToString("F6", CultureInfo.InvariantCulture));
+            Assert.Equal(format.GetProperty("duration").GetString(), (info.Duration!.Value.Ticks / 10 / 1e6).ToString("F6", CultureInfo.InvariantCulture));
             Assert.Equal(streams.Any(s => s.GetProperty("codec_type").GetString() == "audio"), info.HasAudio);
             var packets = Run("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts", "-of", "csv=p=0", path)
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -87,7 +87,7 @@ public class MediaProbeTests
             if (path.EndsWith(".mkv"))
             {
                 using var stream = File.OpenRead(path);
-                var piped = MediaProbe.Probe(stream, new ProbeOptions { LibraryDirectory = Libs });
+                var piped = MediaProbe.Probe(stream, new ProbeOptions());
                 Assert.Equal((v.Codec, v.Width, v.Height, v.PixelFormat, v.AverageFrameRate, v.FieldOrder), (piped.Video!.Codec, piped.Video.Width, piped.Video.Height, piped.Video.PixelFormat, piped.Video.AverageFrameRate, piped.Video.FieldOrder));
                 Assert.Equal(info.Container, piped.Container);
             }
@@ -107,7 +107,7 @@ public class MediaProbeTests
         File.WriteAllText(path, "not a video");
         try
         {
-            var e = Assert.Throws<FrameReaderException>(() => MediaProbe.Probe(path, new ProbeOptions { LibraryDirectory = Libs }));
+            var e = Assert.Throws<FrameReaderException>(() => MediaProbe.Probe(path, new ProbeOptions()));
             Assert.Equal(FrameReaderError.InvalidInput, e.Reason);
         }
         finally

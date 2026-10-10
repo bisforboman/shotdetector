@@ -13,10 +13,10 @@ Plan and status: [docs/frame-reader-library.md](../../docs/frame-reader-library.
 ```csharp
 using FrameReader;
 
-using var reader = new VideoFrameReader("video.mp4", new FrameReaderOptions
+using var reader = new VideoFrameReader("video.mp4", new VideoFrameReaderOptions
 {
     Width = 160, Height = 90,          // both or neither (neither: the frame's own size)
-    Format = FrameFormat.Gray8,        // Bgr24 (default), Rgb24, Bgra32, Rgba32, Gray8, Yuv420p
+    FrameFormat = FrameFormat.Gray8,   // Bgr24 (default), Rgb24, Bgra32, Rgba32, Gray8, Yuv420p
 });
 while (reader.TryRead(out var frame))
 {
@@ -30,7 +30,7 @@ gives (the first at or after the time: from the keyframe before it, decoding for
 forwards or backwards, any number of times), and `reader.TryReadAt(time, out frame)` seeks and reads one frame.
 
 ```csharp
-using var thumbs = new VideoFrameReader("video.mp4", new() { Width = 320, Height = 180, Format = FrameFormat.Rgba32 });
+using var thumbs = new VideoFrameReader("video.mp4", new() { Width = 320, Height = 180, FrameFormat = FrameFormat.Rgba32 });
 foreach (var t in new[] { 10, 60, 120 })
     if (thumbs.TryReadAt(TimeSpan.FromSeconds(t), out var frame))
         Save(frame.Data.ToArray(), frame.Width, frame.Height);
@@ -54,7 +54,7 @@ the handler called from several threads. On a busy 16-core desktop, a picture a 
 with one reader, 6.1 s with four; one per 10 s: 1.5 s, 0.6 s.
 
 ```csharp
-using var sheet = new VideoFrameReader("film.mp4", new() { Width = 320, Height = 180, Format = FrameFormat.Rgba32 });
+using var sheet = new VideoFrameReader("film.mp4", new() { Width = 320, Height = 180, FrameFormat = FrameFormat.Rgba32 });
 for (int second = 0; sheet.TryReadForwardTo(TimeSpan.FromSeconds(second), out var frame); second++)
     Save(frame.Data.ToArray(), frame.Width, frame.Height);
 ```
@@ -66,7 +66,7 @@ seconds. The two rules can differ by a frame at the edges: reading forward takes
 fps rounds each frame onto its timeline (and decides whether a last frame fits).
 
 ```csharp
-using var sheet = new VideoFrameReader("film.mp4", new() { Width = 320, Height = 180, Format = FrameFormat.Rgba32, FrameRate = new(1, 1) });
+using var sheet = new VideoFrameReader("film.mp4", new() { Width = 320, Height = 180, FrameFormat = FrameFormat.Rgba32, FrameRate = new(1, 1) });
 while (sheet.TryRead(out var frame))
     Save(frame.Data.ToArray(), frame.Width, frame.Height); // frame.Time: 0, 1, 2, ... s
 ```
@@ -117,7 +117,7 @@ decoders can differ slightly.
 using var audio = new AudioReader("talk.mp4");
 var waveform = WaveformData.Read(audio, new() { PixelsPerSecond = 100 });
 using var dat = File.Create("talk.dat");
-waveform.Save(dat, bits: 8); // or read waveform.Min(0, i), waveform.Max(0, i) to draw it yourself
+waveform.Save(dat, WaveformBits.Eight); // or read waveform.Min(0, i), waveform.Max(0, i) to draw it yourself
 ```
 
 Audio filter graphs: `AudioFilter` runs an ffmpeg filter graph over an `AudioReader`'s audio, the samples `ffmpeg
@@ -139,8 +139,8 @@ while (silence.TryRead(out _))
 ```
 
 Our native libraries carry volume, equalizer, bass, treble, highpass, lowpass, bandpass, bandreject, afade, pan,
-acompressor, alimiter, dynaudnorm, agate, ebur128, loudnorm, silencedetect and astats; a full FFmpeg build in
-`LibraryDirectory` brings every filter it has.
+acompressor, alimiter, dynaudnorm, agate, ebur128, loudnorm, silencedetect and astats; a full FFmpeg build loaded with
+`FFmpegLibraries.Load(folder)` brings every filter it has.
 
 Writing audio: `AudioWriter` encodes interleaved float32 samples to MP3 (LAME), AAC (.m4a, .aac, .mka) or WAV, the
 file `ffmpeg -f f32le -ar R -ac C -i - -c:a ENCODER [-b:a B] OUT` writes, byte for byte with `Bitexact = true` on
@@ -171,7 +171,7 @@ ShotDetector.Native, or your own build. Those are GPL: an app that ships with th
 covered by Via LA's AVC patent pool either way (docs/encoding-package.md).
 
 ```csharp
-using var reader = new VideoFrameReader("in.mkv", new() { Format = FrameFormat.Bgr24 });
+using var reader = new VideoFrameReader("in.mkv", new() { FrameFormat = FrameFormat.Bgr24 });
 using var writer = new VideoWriter("out.mp4", new()
 {
     Width = 1280, Height = 720, FrameRate = new(25, 1),
@@ -197,7 +197,7 @@ foreach (var tone in ReferenceTone.Find(audio))
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio, and `Streams`: every
 stream with its type, codec, codec tag, language, title, flags, bit rate, duration and audio details; optionally
-every packet's timestamp). `FrameDecoder` is the lower level: decoded frames as FFmpeg holds them (`GetPlane`), with
+every packet's timestamp). **The advanced layer:** `FrameDecoder` is the lower level, decoded frames as FFmpeg holds them (`GetPlane`), with
 seeking. `BgrConverter` turns its current frame into BGR at its own size, the bytes `-vf scale,format=bgr24` gives
 (OpenCV's too); `Convert(rows, out stride)` converts only the slices holding the rows you read, for when you sample a
 few rows of each frame (ShotDetector reads its resize's rows this way).
@@ -235,10 +235,15 @@ for whole ones.
 - Errors as `FrameReaderException` with a `Reason`: the libraries missing, an input FFmpeg can't open (or without
   video), a decoding failure.
 
+Errors: what you pass wrong (sizes, rates, unknown option names) is an `ArgumentException`; what the media or the
+libraries do is a `FrameReaderException` with a `Reason` (`LibrariesNotFound`, `InvalidInput`, `DecodeFailed`,
+`WriteFailed`). The one-call operations (`Remux.Copy`, `WaveformData.Read`, `VideoFrameReader.ReadAt`) take a
+`CancellationToken`; the pull loops stop when you stop reading.
+
 ## FFmpeg's libraries
 
 FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, libavutil 60; libavfilter 11 to
 deinterlace). The ShotDetector.Native.&lt;rid&gt; packages carry a decode-only build for win-x64, linux-x64,
 linux-arm64, linux-musl-x64 and osx-arm64; a "shared" FFmpeg 8 build or the system's (`apk add ffmpeg-libs`) works
-too. They load once per process: from `FrameDecoderOptions.LibraryDirectory`, else next to the app, else the system's
-places. FrameReader is MIT; FFmpeg's libraries are LGPL and loaded dynamically.
+too. They load once per process, the first time anything needs them: next to the app, else the system's places;
+to use a folder of your own, call `FFmpegLibraries.Load(folder)` first (the one place that takes one). FrameReader is MIT; FFmpeg's libraries are LGPL and loaded dynamically.

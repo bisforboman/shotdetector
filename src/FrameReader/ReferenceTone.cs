@@ -82,7 +82,7 @@ public static class ReferenceTone
             cancellationToken.ThrowIfCancellationRequested();
             origin ??= chunk.Time;
             var samples = chunk.Samples;
-            for (int i = 0; i < chunk.Length; i++)
+            for (int i = 0; i < chunk.SampleCount; i++)
             {
                 for (int c = 0; c < channels; c++)
                 {

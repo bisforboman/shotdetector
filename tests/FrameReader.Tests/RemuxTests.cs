@@ -7,7 +7,7 @@ using FrameReader;
 /// </summary>
 public class RemuxTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
 
     static void Ffmpeg(params string[] args)
     {
@@ -45,8 +45,8 @@ public class RemuxTests
             Ffmpeg(["-v", "error", "-y", "-i", input, .. map.Split(' '), "-c", "copy", "-fflags", "+bitexact", expected]);
             // "-map 0:a:0" is the first audio stream: by index there.
             var options = map == "-map 0:a:0"
-                ? new RemuxOptions { StreamIndices = [1], Bitexact = true, LibraryDirectory = Libs }
-                : new RemuxOptions { Streams = streams, Bitexact = true, LibraryDirectory = Libs };
+                ? new RemuxOptions { StreamIndices = [1], Bitexact = true }
+                : new RemuxOptions { Streams = streams, Bitexact = true };
             Remux.Copy(input, actual, options);
             byte[] want = File.ReadAllBytes(expected), got = File.ReadAllBytes(actual);
             int first = 0;
@@ -72,10 +72,10 @@ public class RemuxTests
             File.WriteAllText(meta, ";FFMETADATA1\ntitle=Remux test\nartist=Someone\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=1500\ntitle=One\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=1500\nEND=3000\ntitle=Two\n");
             Ffmpeg(["-v", "error", "-y", .. Make.Split(' '), "-i", meta, "-map", "0", "-map", "1", "-map_metadata", "3", "-map_chapters", "3", "-c:v", "mpeg4", "-c:a", "aac", input]);
             Ffmpeg("-v", "error", "-y", "-i", input, "-map", "0", "-c", "copy", "-fflags", "+bitexact", expected);
-            Remux.Copy(input, actual, new RemuxOptions { Bitexact = true, LibraryDirectory = Libs });
+            Remux.Copy(input, actual, new RemuxOptions { Bitexact = true });
             Assert.Equal(File.ReadAllBytes(expected), File.ReadAllBytes(actual));
-            Assert.Throws<FrameReaderException>(() => Remux.Copy(input, Path.Combine(dir, "x.mp4"), new RemuxOptions { Streams = StreamSelection.Subtitle, LibraryDirectory = Libs }));
-            Assert.Throws<FrameReaderException>(() => Remux.Copy(input, Path.Combine(dir, "x.mp4"), new RemuxOptions { StreamIndices = [7], LibraryDirectory = Libs }));
+            Assert.Throws<FrameReaderException>(() => Remux.Copy(input, Path.Combine(dir, "x.mp4"), new RemuxOptions { Streams = StreamSelection.Subtitle }));
+            Assert.Throws<FrameReaderException>(() => Remux.Copy(input, Path.Combine(dir, "x.mp4"), new RemuxOptions { StreamIndices = [7] }));
         }
         finally
         {

@@ -31,8 +31,6 @@ internal static class InProcess
         }
     }
 
-    /// <summary>FFmpeg's message for an error code.</summary>
-    internal static string Error(int ret) => FFmpegLibraries.ErrorMessage(ret);
 
     /// <summary>A FrameReader failure as ShotDetector's (the same message; the libraries' with ShotDetector's advice).</summary>
     internal static ShotDetectionException Map(FrameReaderException e, string? libraryDirectory)

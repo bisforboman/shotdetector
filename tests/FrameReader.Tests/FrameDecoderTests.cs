@@ -9,7 +9,7 @@ using FrameReader;
 /// </summary>
 public class FrameDecoderTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
 
     static string Run(string tool, params string[] args)
     {
@@ -31,7 +31,7 @@ public class FrameDecoderTests
         return path;
     }
 
-    static FrameDecoderOptions Options => new() { LibraryDirectory = Libs };
+    static FrameDecoderOptions Options => new();
 
     [Fact]
     public void DecodesEveryFrameWithFfmpegsTimestamps()

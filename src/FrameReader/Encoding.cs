@@ -158,7 +158,7 @@ internal sealed unsafe class Encoder : IDisposable
             // Unknown options fail here, not at the first frame.
             foreach (var (key, value) in options)
                 Check(ffmpeg.av_opt_set(e._enc, key, value, ffmpeg.AV_OPT_SEARCH_CHILDREN) is var r && r == ffmpeg.AVERROR_OPTION_NOT_FOUND
-                    ? throw new FrameReaderException(FrameReaderError.InvalidInput, $"The {Marshal.PtrToStringAnsi((nint)codec->name)} encoder has no option \"{key}\".")
+                    ? throw new ArgumentException($"The {Marshal.PtrToStringAnsi((nint)codec->name)} encoder has no option \"{key}\".", "options")
                     : r, $"set {key}");
             e._threadsSet = options.ContainsKey("threads");
             e._codec = codec;
@@ -275,8 +275,8 @@ internal sealed unsafe class Encoder : IDisposable
             Check(ret, $"open the {Marshal.PtrToStringAnsi((nint)codec->name)} encoder");
             AVDictionaryEntry* unused = ffmpeg.av_dict_get(dict, "", null, ffmpeg.AV_DICT_IGNORE_SUFFIX);
             if (unused != null)
-                throw new FrameReaderException(FrameReaderError.InvalidInput,
-                    $"The {Marshal.PtrToStringAnsi((nint)codec->name)} encoder has no option \"{Marshal.PtrToStringAnsi((nint)unused->key)}\".");
+                throw new ArgumentException(
+                    $"The {Marshal.PtrToStringAnsi((nint)codec->name)} encoder has no option \"{Marshal.PtrToStringAnsi((nint)unused->key)}\".", "options");
         }
         finally
         {
@@ -376,6 +376,6 @@ internal sealed unsafe class Encoder : IDisposable
     internal static void Check(int ret, string what)
     {
         if (ret < 0)
-            throw new FrameReaderException(FrameReaderError.DecodeFailed, $"FFmpeg ({what}): {FFmpegLibraries.ErrorMessage(ret)}");
+            throw new FrameReaderException(FrameReaderError.WriteFailed, $"FFmpeg ({what}): {FFmpegLibraries.ErrorMessage(ret)}");
     }
 }

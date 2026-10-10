@@ -9,7 +9,7 @@ using FrameReader;
 /// </summary>
 public class AudioReaderTests
 {
-    static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+    static readonly string? Libs = TestLibraries.Load();
 
     static byte[] Ffmpeg(params string[] args)
     {
@@ -48,7 +48,7 @@ public class AudioReaderTests
                     string[] ss = seek is { } t ? ["-ss", t.ToString(CultureInfo.InvariantCulture)] : [];
                     string[] conversion = [.. rate is { } r ? new[] { "-ar", $"{r}" } : [], .. channels is { } c ? new[] { "-ac", $"{c}" } : []];
                     byte[] expected = Ffmpeg(["-v", "error", .. ss, "-i", path, "-vn", .. conversion, "-f", "f32le", "-"]);
-                    using var reader = new AudioReader(path, new AudioReaderOptions { SampleRate = rate, Channels = channels, LibraryDirectory = Libs });
+                    using var reader = new AudioReader(path, new AudioReaderOptions { SampleRate = rate, Channels = channels });
                     if (seek is { } s)
                         reader.Seek(TimeSpan.FromSeconds(s));
                     var actual = new MemoryStream();
@@ -78,7 +78,7 @@ public class AudioReaderTests
         {
             string path = Path.Combine(dir, "video.mp4");
             Ffmpeg("-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=d=1", "-c:v", "mpeg4", path);
-            var e = Assert.Throws<FrameReaderException>(() => new AudioReader(path, new AudioReaderOptions { LibraryDirectory = Libs }));
+            var e = Assert.Throws<FrameReaderException>(() => new AudioReader(path, new AudioReaderOptions()));
             Assert.Equal(FrameReaderError.InvalidInput, e.Reason);
         }
         finally

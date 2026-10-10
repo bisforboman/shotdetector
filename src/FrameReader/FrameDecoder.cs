@@ -9,6 +9,8 @@ namespace FrameReader;
 /// ABI), frame by frame as ffmpeg's command line does: the same decoder and timestamps, yadif deinterlacing (FFmpeg's
 /// filter on whole frames, or an <see cref="IRowDeinterlacer"/> on the rows asked for), and the display matrix applied
 /// as its autorotate does. Not thread-safe; the current frame is valid until the next <see cref="Next"/>.
+/// Advanced: part of the low-level layer ShotDetector's exact pipelines use; the main API is VideoFrameReader, the audio
+/// readers, the writers, Remux and MediaProbe.
 /// </summary>
 public sealed unsafe class FrameDecoder : IDisposable
 {
@@ -59,7 +61,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     internal AVRational StreamTimeBase => _timeBase;
 
     /// <summary>The stream's time base in seconds per pts unit.</summary>
-    public double TimeBase => _timeBase.num / (double)_timeBase.den;
+    public Rational TimeBase => new(_timeBase.num, _timeBase.den);
 
     /// <summary>The current frame's best-effort timestamp (what ffmpeg's command line gives each frame).</summary>
     public long Pts => _rowMode == true ? _rPts : _sink == null ? _frame->best_effort_timestamp
@@ -99,7 +101,7 @@ public sealed unsafe class FrameDecoder : IDisposable
         // Whatever fails after this point, what was opened so far is freed (the input, the decoder).
         try
         {
-            FFmpegLibraries.Load(o.LibraryDirectory);
+            FFmpegLibraries.Load();
             _deinterlace = deinterlace;
             _yadif = deinterlace ? o.RowDeinterlacer : null;
             _fmt = Demuxer.Open(path, o.InputOptions, io);
