@@ -143,7 +143,9 @@ public sealed unsafe class AudioReader : IDisposable
         if (_fmt->start_time != ffmpeg.AV_NOPTS_VALUE)
             timestamp += _fmt->start_time;
         long seekTo = Demuxer.SeekPoint(_fmt, timestamp);
-        Check(ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, seekTo, seekTo, 0), "seek");
+        // Like ffmpeg, a seek that fails (a Stream: not seekable) only warns; decoding goes on from where it is, and the
+        // trim below still starts at the time.
+        ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, seekTo, seekTo, 0);
         ffmpeg.avcodec_flush_buffers(_dec);
         ffmpeg.swr_close(_swr);
         Check(ffmpeg.swr_init(_swr), "resampler");

@@ -119,6 +119,8 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
   spills those to a temp file first (`VideoReader.HeadersLast`: mdat before moov in the first bytes).
 - Windows named pipe path is `\\.\pipe\…`; stdout's 4 KB pipe is far slower. Kill ffmpeg race-free (`Kill` helper).
 - NuGet trusted publishing: the policy's workflow must be `release.yml`, package glob `ShotDetector*`.
+- FFmpeg.AutoGen lays structs out for 8-byte `long`: on Windows every AVIOContext field from `checksum` (an `unsigned
+  long`) on is 8 bytes off, so don't write `seekable` and the like through it (StreamInput passes callbacks instead).
 - GitHub Actions queues can stall; re-run rather than diagnose when every job was cancelled at ~15 min.
 - CI downloads: BtbN's FFmpeg only through `.github/actions/btbn-ffmpeg` (retries, checked archive, daily cache with
   fallback), never `curl | tar` (a reset mid-stream left tar a truncated archive); Docker images from
