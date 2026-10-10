@@ -70,6 +70,22 @@ LAME at 192 kbit/s works as expected.
 
 They combine: 1 is the base of 2 and 3; 4 can come later on its own if anyone asks for x264 in-process.
 
+### A separate package: what it settles (added after the decision)
+
+A package of its own settles the **licence**: x264's GPL stays with those who opt in, and the MIT core and LGPL
+ShotDetector.Native stay as they are. It doesn't settle the **AVC patents**: they follow whoever distributes an H.264
+encoder, whichever package carries it. An FFmpeg-based package also has to be a whole second build replacing
+ShotDetector.Native. Lighter: a small package that uses an encoder **directly** (its own API, not through FFmpeg),
+beside ShotDetector.Native, writing frames into an mp4 with the muxers Native already has:
+
+5. **Cisco's OpenH264 binary, downloaded at runtime** to the user's machine: the only setup Cisco's patent cover
+   applies to (separate download, the user can switch it off, "OpenH264 Video Codec provided by Cisco Systems, Inc."
+   shown; by our reading for non-commercial use, commercial uncertain). No musl binary; baseline-class quality.
+6. **x264 directly, under GPL**: the best encoder without a second FFmpeg build; GPL and the AVC patents as in 4.
+
+Decided 2026-10-09: neither now; on the backlog as a Maybe, to revisit when the US patents expire (~late 2027) or a
+user asks.
+
 Whichever is chosen, the API would mirror the readers: a `VideoFrameWriter` (frames in, an encoder and muxer out)
 and an `AudioWriter`, in FrameReader, tested byte for byte against ffmpeg's command line where the encoder is
 deterministic (x264, OpenH264, LAME and FFmpeg's AAC with fixed threads are; platform encoders aren't).
