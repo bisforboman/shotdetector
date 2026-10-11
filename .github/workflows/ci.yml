@@ -120,7 +120,8 @@ jobs:
 
       # RTSP input (a live source, so not frame for frame against a file: the reader joins once the probe has started
       # the stream): mediamtx serves a five-shot clip (2 s shots at 25 fps) on demand, published over TCP, and the cuts found
-      # over rtsp:// must be exactly 50 frames apart. (A looping publisher with --duration read 18 frames: not used.)
+      # over rtsp:// must be exactly 50 frames apart. Then a live source that never ends (the clip looped) with --duration 8s:
+      # 8 s of frames. Each run gets a fresh server: a reader joining an on-demand stream an earlier one used up hangs.
       - name: RTSP input
         if: needs.changes.outputs.docs_only != 'true'
         timeout-minutes: 10
@@ -146,6 +147,15 @@ jobs:
           print('cuts at', starts, 'gaps', gaps)
           assert len(gaps) >= 2 and set(gaps) == {50}, gaps
           "
+          kill -9 $server 2>/dev/null || true; pkill -9 -f shots.mp4 || true; sleep 1
+          sed -i 's/ffmpeg -re -i/ffmpeg -re -stream_loop -1 -i/' mtx.yml
+          ./mediamtx mtx.yml & server=$!
+          sleep 2
+          timeout 60 dotnet run --project src/ShotDetector.Cli -- -i rtsp://127.0.0.1:8554/shots -d content --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" \
+            --duration 8s --stats live.csv
+          kill -9 $server 2>/dev/null || true; pkill -9 -f shots.mp4 || true
+          rows=$(($(wc -l < live.csv) - 1))   # 200 frames; the first has no score
+          echo "looped source, --duration 8s: $rows stats rows"; test "$rows" -eq 199
 
       # FrameReader's VideoWriter (H.264) against ffmpeg -c:v libx264, byte for byte: x264's output depends on how it
       # was compiled, so libraries and executable from one build, BtbN's shared GPL one (ours has no executables).
