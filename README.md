@@ -323,11 +323,13 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
 - **Damaged video:** when the decoder drops frames it can't decode, every frame still gets its own
   time and frame number, as with OpenCV (numbers skip; identical to scenedetect on the damaged files
   tested). Error concealment depends on the decoder's thread count, so ShotDetector uses OpenCV's (the CPUs,
-  at most 16): damaged TS and truncated files then match exactly, and a corrupt mp4 in a few pixels. On a **resolution change** mid-stream (two
+  at most 16): truncated files then match exactly, and a corrupt mp4 in a few pixels (on a corrupt TS,
+  scenedetect's own stats vary a little from run to run). On a **resolution change** mid-stream (two
   encodes joined), OpenCV scales the new frames to the stream's first size in its one conversion, and scenedetect
   numbers frames by their time, so where the timestamps start over its frame numbers do too: later frames overwrite
   earlier stats rows metric by metric (except the threshold detector's average, which scenedetect keeps and also
-  detects with) and the cuts are sorted. ShotDetector does the same (checked in CI).
+  detects with) and the cuts are sorted. ShotDetector does the same (checked in CI); with ShotDetector.FastYuv the
+  new size's frames are scaled differently, so their stats differ.
 - **Variable frame rate:** handled as PySceneDetect handles it. The fps is the *average* frame rate
   (what OpenCV reports, through PySceneDetect's `framerate_to_fraction`), min-scene-len is measured
   in time between frames, and printed frame numbers are `round(time × average fps)`, not decode
