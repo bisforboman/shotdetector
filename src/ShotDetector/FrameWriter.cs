@@ -13,7 +13,7 @@ namespace ShotDetector;
 internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : IDisposable
 {
     readonly FrameDecoder _d = decoder;
-    readonly BgrConverter _bgr = new(decoder);
+    readonly BgrConverter _bgr = new(decoder) { KeepFirstSize = true }; // OpenCV's buffer: the stream's size
     readonly int _turn = turn;
     byte[] _turned = [];
     SwsContext* _toSize;

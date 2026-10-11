@@ -17,6 +17,12 @@
         # Rotation as OpenCV's: the converted image turned by the display matrix's angle, not ffmpeg's autorotate
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '.. _inputOptions, "-noautorotate", "-i", _path,'; Replace = '.. _inputOptions, "-i", _path,'; Tests = 'InProcessTests.RotatesAsTheFfmpegExecutable' }
 
+        # Timestamps starting over (two encodes joined): labelled by time, cuts sorted, stats one row per number
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'seconds < _pts[previous] * _timeBase - tolerance)'; Replace = 'false)'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = 'if (!byPosition.TryGetValue(at.Key, out var merged))'; Replace = 'if (!byPosition.TryGetValue(at.Key, out var merged) || true)'; Tests = 'ThresholdDetectorTests.StatsAtTheSamePositionMergeKeyByKey' }
+        @{ File = 'src/ShotDetector/Detectors.cs'; Find = 'average = stored;'; Replace = '{ }'; Tests = 'ThresholdDetectorTests.RepeatedPositionReusesTheStoredAverageWithStats' }
+        @{ File = 'src/ShotDetector/FrameTime.cs'; Find = 'return (Value / g, TbDen / g);'; Replace = 'return (Value, TbDen);'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
+
         # Streamed input
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (o.StartTime is not null && video.Streaming)'; Replace = 'if (false)'; Tests = 'VideoTests' }
 

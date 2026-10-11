@@ -318,6 +318,37 @@ public class ThresholdDetectorTests
 
     [Fact]
     public void AverageIsMeanOfAllBytes() => Assert.Equal(2.5, ThresholdDetector.Average([0, 1, 2, 3, 4, 5]));
+
+    [Fact]
+    public void RepeatedPositionReusesTheStoredAverageWithStats()
+    {
+        // Frames 0-1 and 2-3 share positions (timestamps starting over); scenedetect reuses the stored average.
+        Func<int, FrameTime> position = i => Positions.Cfr(25)(i % 2);
+        var d = new ThresholdDetector(position, Fps25, 12, minSceneLen: 0) { Stats = new Stats() };
+        d.ProcessFrame(0, [100, 100]);
+        d.ProcessFrame(1, [100, 100]);
+        d.ProcessFrame(2, [0, 0]);             // dark, but position 0 already holds 100: no fade-out
+        Assert.Null(d.ProcessFrame(3, [100, 100]));
+        Assert.Equal("Frame Number,Timecode,average_rgb\n1,00:00:00.000,100.0\n2,00:00:00.040,100.0\n", d.Stats.Csv(position));
+
+        var plain = new ThresholdDetector(position, Fps25, 12, minSceneLen: 0);
+        plain.ProcessFrame(0, [100, 100]);
+        plain.ProcessFrame(1, [100, 100]);
+        plain.ProcessFrame(2, [0, 0]);         // without stats every frame's own average counts
+        Assert.NotNull(plain.ProcessFrame(3, [100, 100]));
+    }
+
+    [Fact]
+    public void StatsAtTheSamePositionMergeKeyByKey()
+    {
+        Func<int, FrameTime> position = i => Positions.Cfr(25)(i % 2);
+        var stats = new Stats();
+        stats.Set(0, "a", 1);
+        stats.Set(0, "b", 2);
+        stats.Set(2, "a", 3);                  // later frame at position 0: overwrites a, keeps b
+        stats.Set(1, "a", 4);
+        Assert.Equal("Frame Number,Timecode,a,b\n1,00:00:00.000,3.0,2.0\n2,00:00:00.040,4.0,None\n", stats.Csv(position));
+    }
 }
 
 // Expected values from cv2.Canny / cv2.dilate / numpy.median / _estimated_kernel_size.

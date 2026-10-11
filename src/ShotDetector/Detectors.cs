@@ -177,6 +177,7 @@ internal sealed class ThresholdDetector(
     int? _lastSceneCut;
     int _lastFadeFrame;
     bool _fadedOut, _processed;
+    readonly Dictionary<(long, long), double> _averages = [];
     /// <inheritdoc/>
     public Stats? Stats { get; set; }
 
@@ -184,7 +185,18 @@ internal sealed class ThresholdDetector(
     public FrameTime? ProcessFrame(int frame, byte[] bgr)
     {
         double average = Average(bgr);
-        Stats?.Set(frame, "average_rgb", average);
+        // With a stats manager, scenedetect reuses the average already stored at this position (a repeated timestamp, or
+        // two encodes joined) for both the stats and the detection; it doesn't overwrite it.
+        if (Stats is not null)
+        {
+            if (_averages.TryGetValue(position(frame).Key, out var stored))
+                average = stored;
+            else
+            {
+                _averages[position(frame).Key] = average;
+                Stats.Set(frame, "average_rgb", average);
+            }
+        }
         return ProcessAverage(frame, average);
     }
 

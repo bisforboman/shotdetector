@@ -35,9 +35,20 @@ public sealed class Stats
         foreach (var key in _keys)
             sb.Append(',').Append(key);
         sb.Append('\n');
+        // One row per position: scenedetect keys its stats by FrameTimecode (equal when the exact times are), so where
+        // timestamps repeat or start over (two encodes joined) a later frame's metrics overwrite an earlier one's, key by
+        // key; metrics the later frame doesn't set keep the earlier values.
+        var byPosition = new Dictionary<(long, long), (FrameTime At, Dictionary<string, double> Row)>();
         foreach (var (frame, row) in _rows)
         {
             var at = position(frame);
+            if (!byPosition.TryGetValue(at.Key, out var merged))
+                byPosition[at.Key] = merged = (at, []); // the row keeps its first position, as a dict keeps its first key
+            foreach (var (key, value) in row)
+                merged.Row[key] = value;
+        }
+        foreach (var (at, row) in byPosition.Values.OrderBy(p => p.At.Seconds).ThenBy(p => p.At.FrameNum))
+        {
             sb.Append(at.FrameNum + 1).Append(',').Append(at.Timecode());
             foreach (var key in _keys)
                 sb.Append(',').Append(row.TryGetValue(key, out var v) ? PyFloat(v) : "None");
