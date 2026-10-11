@@ -44,8 +44,8 @@ const string Usage = """
           --deinterlace [auto|on|off]    Deinterlace (ffmpeg's yadif) before analysis: on (no value),
                                          or auto: when the stream is flagged interlaced
           --crop <x0> <y0> <x1> <y1>     Only analyse this part of the frame (inclusive pixel corners)
-          --threads <n>                  ffmpeg decoder threads (0 = ffmpeg's choice; default: CPUs - 1, at most 4,
-                                         or 8 on the yuv420p fast path). ~20 MB each at 1080p
+          --threads <n>                  Decoder threads (0 = FFmpeg's choice; default: the CPUs, at most 16, as
+                                         OpenCV, which damaged video needs to match). ~20 MB each at 1080p
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
                                          cv2.resize (faster, but cuts can differ from PySceneDetect)
           --csv <file>                   Write shot list as CSV

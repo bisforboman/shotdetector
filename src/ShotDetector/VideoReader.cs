@@ -736,7 +736,7 @@ public sealed partial class VideoReader
         string[] mapInputs = maps is null ? [] : ["-loop", "1", "-i", Path.Combine(maps, "x.pgm"), "-loop", "1", "-i", Path.Combine(maps, "y.pgm")];
         // Rotated as OpenCV does (Turn), not by ffmpeg's autorotate.
         string[] args = ["-v", "info", "-nostats", .. noStdin, "-y",
-            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount)}", .. seek, .. _inputOptions, "-noautorotate", "-i", _path,
+            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount)}", .. seek, .. _inputOptions, "-noautorotate", "-i", _path,
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
         select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
         // Deinterlacing first, so the frames a seek decodes early still feed yadif, as in the copy it stands for.
@@ -905,14 +905,12 @@ public sealed partial class VideoReader
     }
 
     /// <summary>
-    /// The default decoder threads: one fewer than the CPUs available (Environment.ProcessorCount honours container
-    /// limits), leaving one for the conversion and our scoring; at least 1, at most 8 on the yuv420p path (bound by
-    /// decoding) and 4 elsewhere. With 2 CPUs, 1 thread gave the same wall time as 2-8 for ~9% less CPU (issue #12).
-    /// In-process there's no ffmpeg process to leave room for: all the CPUs, as OpenCV uses (with 2 CPUs, 10-23% less
-    /// wall time than 1 thread for 30-48% more CPU; the user chose speed, decisions.md).
+    /// The default decoder threads: OpenCV's, the CPUs available up to 16 (Environment.ProcessorCount honours container
+    /// limits), on both paths. Frame-threaded decoders conceal damaged data differently with each thread count, so only
+    /// OpenCV's gives scenedetect's frames for corrupt files (checked on Linux: exact at the CPU count, different at 1-3
+    /// and 16 on 4 CPUs); clean video decodes the same with any count (decisions.md, 2026-10-11; issue #12 before).
     /// </summary>
-    internal static int DefaultDecodeThreads(FramePipeline pipeline, int cpus, bool inProcess = false) =>
-        Math.Clamp(inProcess ? cpus : cpus - 1, 1, pipeline == FramePipeline.Yuv420Sampled ? 8 : 4);
+    internal static int DefaultDecodeThreads(int cpus) => Math.Clamp(cpus, 1, 16);
 
     /// <summary>remap's maps as 16-bit PGM files in a new temp folder: x.pgm (source column) and y.pgm (source row).</summary>
     string WriteMaps(CvResize resizer)
