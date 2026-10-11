@@ -58,3 +58,11 @@ dotnet_diagnostic.BRO1406.severity = none
 dotnet_diagnostic.BRO1001.severity = none
 # 'private' stays implicit, as everywhere in this code
 dotnet_diagnostic.BRO1404.severity = none
+# Summaries stay as written ("The samples ...", "Opens a file ..."), not "Gets ..." / "Initializes a new instance ..."
+dotnet_diagnostic.BRO1604.severity = none
+dotnet_diagnostic.BRO1606.severity = none
+# Combined declarations ('int n = h.Length, i = 0;') are kept, common in the exact ports' loops
+dotnet_diagnostic.BRO1142.severity = none
+dotnet_diagnostic.BRO1114.severity = none
+# Multi-line bodies without braces are kept (in the SIMD code, 'fixed (a) fixed (b) { }' pins several arrays)
+dotnet_diagnostic.BRO1515.severity = none

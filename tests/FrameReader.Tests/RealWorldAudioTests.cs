@@ -17,7 +17,7 @@ public class RealWorldAudioTests
     static Process Ffmpeg(params string[] args)
     {
         var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
-            { RedirectStandardOutput = true, RedirectStandardError = true };
+        { RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args)
             psi.ArgumentList.Add(a);
         return Process.Start(psi)!;
@@ -57,8 +57,10 @@ public class RealWorldAudioTests
                     ? $"ffmpeg's samples end at {sample} ({(double)sample / reader.SampleRate:F3} s); ours go on"
                     : $"sample {sample} ({(double)sample / reader.SampleRate:F3} s) differs from ffmpeg's");
             }
+
             compared += ours.Length;
         }
+
         long rest = 0;
         for (int n; (n = expected.Read(buffer)) > 0;)
             rest += n;
@@ -103,8 +105,10 @@ public class RealWorldAudioTests
                     Assert.True(SpectralStats.Parse(theirs).Equals(ours[i]), $"window {windows} ({time} s) channel {c + 1} {names[i]}: ffmpeg {theirs}, ours {ours[i]:R}");
                 }
             }
+
             windows++;
         }
+
         Assert.True(line is null, $"ours end after {windows} windows; ffmpeg has more ({line})");
         await p.WaitForExitAsync();
         Assert.True(p.ExitCode == 0, await stderr);

@@ -13,7 +13,7 @@ public class SeekTests
     static byte[] Ffmpeg(params string[] args)
     {
         var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
-            { RedirectStandardOutput = true, RedirectStandardError = true };
+        { RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args)
             psi.ArgumentList.Add(a);
         using var p = Process.Start(psi)!;
@@ -39,13 +39,25 @@ public class SeekTests
             string path = Path.Combine(dir, name);
             Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=3", .. encode.Split(' '), path]);
             using var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
-                { Width = 160, Height = 90, FrameFormat = FrameFormat.Gray8, Decoder = new FrameDecoderOptions() });
+            { Width = 160, Height = 90, FrameFormat = FrameFormat.Gray8, Decoder = new FrameDecoderOptions() });
+
             // From the start, mid-GOP, on frame boundaries (1.04 s is frame 26) and just before them, near and past the end;
             // backwards too, after reading on.
             foreach (double t in new[] { 0, 0.5, 1.04, 1.039, 1.0, 0.999, 2.9, 1.3, 0.1, 3.5 })
             {
-                byte[] expected = Ffmpeg("-v", "error", "-ss", t.ToString(CultureInfo.InvariantCulture), "-i", path, "-frames:v", "1",
-                    "-vf", "scale=160:90:flags=bicubic,format=gray", "-f", "rawvideo", "-");
+                byte[] expected = Ffmpeg("-v",
+                    "error",
+                    "-ss",
+                    t.ToString(CultureInfo.InvariantCulture),
+                    "-i",
+                    path,
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    "scale=160:90:flags=bicubic,format=gray",
+                    "-f",
+                    "rawvideo",
+                    "-");
                 bool got = reader.TryReadAt(TimeSpan.FromSeconds(t), out var frame);
                 Assert.Equal(expected.Length > 0, got);
                 if (got)
@@ -54,6 +66,7 @@ public class SeekTests
                     Assert.Equal(0, frame.Index);
                     Assert.True(frame.Time >= TimeSpan.FromSeconds(t) - TimeSpan.FromMilliseconds(1), $"{name} at {t} s: frame at {frame.Time}");
                 }
+
                 // Reading on from there gives the next frame.
                 if (got && t < 2.5)
                 {
@@ -82,18 +95,31 @@ public class SeekTests
             string path = Path.Combine(dir, name);
             Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=3", .. encode.Split(' '), path]);
             using var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
-                { Width = 160, Height = 90, FrameFormat = FrameFormat.Gray8, Decoder = new FrameDecoderOptions() });
+            { Width = 160, Height = 90, FrameFormat = FrameFormat.Gray8, Decoder = new FrameDecoderOptions() });
+
             // One pass: each time the frame ffmpeg's output -ss gives (decoding from the start, dropping the frames before:
             // exact even in open GOPs, where an input -ss can give a B-frame decoded without its reference); the same
             // time twice, the same frame; Index counts the distinct frames given.
             foreach (var (t, index) in new[] { (0.0, 0), (0.3, 1), (1.0, 2), (1.0, 2), (1.039, 3), (1.04, 3), (1.5, 4), (2.04, 5), (2.9, 6) })
             {
-                byte[] expected = Ffmpeg("-v", "error", "-i", path, "-ss", t.ToString(CultureInfo.InvariantCulture), "-frames:v", "1",
-                    "-vf", "scale=160:90:flags=bicubic,format=gray", "-f", "rawvideo", "-");
+                byte[] expected = Ffmpeg("-v",
+                    "error",
+                    "-i",
+                    path,
+                    "-ss",
+                    t.ToString(CultureInfo.InvariantCulture),
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    "scale=160:90:flags=bicubic,format=gray",
+                    "-f",
+                    "rawvideo",
+                    "-");
                 Assert.True(reader.TryReadForwardTo(TimeSpan.FromSeconds(t), out var frame), $"{name} at {t} s");
                 Assert.True(expected.AsSpan().SequenceEqual(frame.Data), $"{name} at {t} s: not ffmpeg's frame (got {frame.Time})");
                 Assert.Equal(index, frame.Index);
             }
+
             Assert.False(reader.TryReadForwardTo(TimeSpan.FromSeconds(3.5), out _));
         }
         finally
@@ -119,7 +145,7 @@ public class SeekTests
             {
                 byte[] expected = Ffmpeg("-v", "error", "-i", path, "-vf", $"fps={text},scale=160:90:flags=bicubic,format=gray", "-f", "rawvideo", "-");
                 using var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
-                    { Width = 160, Height = 90, FrameFormat = FrameFormat.Gray8, FrameRate = rate, Decoder = new FrameDecoderOptions() });
+                { Width = 160, Height = 90, FrameFormat = FrameFormat.Gray8, FrameRate = rate, Decoder = new FrameDecoderOptions() });
                 var actual = new MemoryStream();
                 int n = 0;
                 while (reader.TryRead(out var frame))
@@ -127,6 +153,7 @@ public class SeekTests
                     Assert.Equal(n++, frame.Index);
                     actual.Write(frame.Data);
                 }
+
                 Assert.True(expected.AsSpan().SequenceEqual(actual.ToArray()),
                     $"{name} fps={text}: {expected.Length / (160 * 90)} frames from ffmpeg, {actual.Length / (160 * 90)} read");
             }
@@ -154,9 +181,14 @@ public class SeekTests
             var times = Enumerable.Range(0, 30).Select(i => TimeSpan.FromSeconds(i * 0.21)).ToList(); // the last ones past the end
             var expected = new List<byte[]>();
             using (var reader = new VideoFrameReader(path, options))
+            {
                 foreach (var t in times)
+                {
                     if (reader.TryReadForwardTo(t, out var frame))
                         expected.Add(frame.Data.ToArray());
+                }
+            }
+
             var actual = new byte[times.Count][];
             int found = VideoFrameReader.ReadAt(path, times, options, 3, (i, frame) => actual[i] = frame.Data.ToArray());
             Assert.Equal(expected.Count, found);
@@ -181,20 +213,27 @@ public class SeekTests
         try
         {
             string path = Path.Combine(dir, name);
-            try { Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=25:d=4", .. encode.Split(' '), path]); }
-            catch (Xunit.Sdk.TrueException) { return; } // this ffmpeg can't encode H.264
+            try
+            {
+                Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=25:d=4", .. encode.Split(' '), path]);
+            }
+            catch (Xunit.Sdk.TrueException)
+            {
+                return;
+            } // this ffmpeg can't encode H.264
             List<(long Pts, byte[] Data)> Read(bool hardware, out bool used)
             {
                 var frames = new List<(long, byte[])>();
                 using var decoder = new FrameDecoder(path, new FrameDecoderOptions { HardwareDecoding = hardware });
                 using var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
-                    { FrameFormat = FrameFormat.Yuv420p, Decoder = new FrameDecoderOptions { HardwareDecoding = hardware } });
+                { FrameFormat = FrameFormat.Yuv420p, Decoder = new FrameDecoderOptions { HardwareDecoding = hardware } });
                 while (reader.TryRead(out var frame))
                     frames.Add((frame.Pts, frame.Data.ToArray()));
                 decoder.Next();
                 used = decoder.UsesHardware;
                 return frames;
             }
+
             var software = Read(false, out _);
             var hardware = Read(true, out bool used);
             if (!used)
@@ -228,7 +267,10 @@ public class SeekTests
                 byte[] expected = Ffmpeg("-v", "error", "-skip_frame", "nokey", "-i", path, "-vf", vf, "-fps_mode", "passthrough", "-f", "rawvideo", "-");
                 using var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
                 {
-                    Width = 160, Height = 90, FrameFormat = FrameFormat.Gray8, FrameRate = rate,
+                    Width = 160,
+                    Height = 90,
+                    FrameFormat = FrameFormat.Gray8,
+                    FrameRate = rate,
                     Decoder = new FrameDecoderOptions { KeyframesOnly = true },
                 });
                 var actual = new MemoryStream();

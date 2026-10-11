@@ -19,6 +19,7 @@ internal static unsafe class Demuxer
             fmt->pb = io.Context;
             fmt->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO;
         }
+
         AVDictionary* options = null;
         ffmpeg.av_dict_set(&options, "scan_all_pmts", "1", ffmpeg.AV_DICT_DONT_OVERWRITE);
         foreach (var (name, value) in inputOptions ?? new Dictionary<string, string>())
@@ -33,6 +34,7 @@ internal static unsafe class Demuxer
             ffmpeg.avformat_close_input(&fmt);
             throw new FrameReaderException(FrameReaderError.InvalidInput, $"FFmpeg (read stream info): {FFmpegLibraries.ErrorMessage(ret)}");
         }
+
         return fmt;
     }
 
@@ -40,8 +42,11 @@ internal static unsafe class Demuxer
     internal static int FirstVideoStream(AVFormatContext* fmt)
     {
         for (int i = 0; i < fmt->nb_streams; i++)
+        {
             if (fmt->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO)
                 return i;
+        }
+
         return -1;
     }
 
@@ -52,9 +57,14 @@ internal static unsafe class Demuxer
     internal static long SeekPoint(AVFormatContext* fmt, long timestamp)
     {
         if ((fmt->iformat->flags & ffmpeg.AVFMT_SEEK_TO_PTS) == 0)
+        {
             for (int i = 0; i < fmt->nb_streams; i++)
+            {
                 if (fmt->streams[i]->codecpar->video_delay > 0)
                     return timestamp - 3 * ffmpeg.AV_TIME_BASE / 23;
+            }
+        }
+
         return timestamp;
     }
 }

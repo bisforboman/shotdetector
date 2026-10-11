@@ -14,7 +14,7 @@ public class FrameDecoderTests
     static string Run(string tool, params string[] args)
     {
         var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? tool + ".exe" : tool))
-            { RedirectStandardOutput = true, RedirectStandardError = true };
+        { RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args)
             psi.ArgumentList.Add(a);
         using var p = Process.Start(psi)!;
@@ -55,6 +55,7 @@ public class FrameDecoderTests
                 Assert.True(ys >= 320 && y.Length == ys * 240);
                 Assert.True(us >= 160 && u.Length == us * 120);
             }
+
             Assert.Equal(expected, pts);
         }
         finally
@@ -100,6 +101,7 @@ public class FrameDecoderTests
                     n++;
                 return n;
             }
+
             using (var stream = File.OpenRead(interlaced))
             using (var decoder = new FrameDecoder(stream, Options))
             {

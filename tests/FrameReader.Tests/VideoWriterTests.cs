@@ -61,12 +61,21 @@ public class VideoWriterTests
         var data = new byte[w * h * bytesPerPixel * count];
         var random = new Random(3);
         for (int f = 0; f < count; f++)
+        {
             for (int y = 0; y < h; y++)
+            {
                 for (int x = 0; x < w; x++)
+                {
                     for (int c = 0; c < bytesPerPixel; c++)
+                    {
                         data[((f * h + y) * w + x) * bytesPerPixel + c] = (byte)(f < count / 2
                             ? ((x + f * 4) / 16 * 40 + c * 70 + random.Next(8))
                             : ((y + f * 3) / 12 * 50 + c * 30 + random.Next(8)));
+                    }
+                }
+            }
+        }
+
         return data;
     }
 
@@ -106,12 +115,19 @@ public class VideoWriterTests
             string? Arg(string key) => Array.IndexOf(a, key) is >= 0 and var i ? a[i + 1] : null;
             var options = new VideoWriterOptions
             {
-                Width = W, Height = H, FrameRate = new(25, 1), PixelFormat = Arg("-pix_fmt"),
+                Width = W,
+                Height = H,
+                FrameRate = new(25, 1),
+                PixelFormat = Arg("-pix_fmt"),
                 Crf = Arg("-crf") is { } crf ? double.Parse(crf, CultureInfo.InvariantCulture) : null,
-                Preset = Arg("-preset"), BitRate = Arg("-b:v") is { } b ? long.Parse(b.TrimEnd('k')) * 1000 : null,
-                Gop = Arg("-g") is { } g ? int.Parse(g) : null, KeyintMin = Arg("-keyint_min") is { } k ? int.Parse(k) : null,
-                KeyframeEvery = extra == "keys" ? TimeSpan.FromSeconds(1) : null, X264Params = Arg("-x264-params"),
+                Preset = Arg("-preset"),
+                BitRate = Arg("-b:v") is { } b ? long.Parse(b.TrimEnd('k')) * 1000 : null,
+                Gop = Arg("-g") is { } g ? int.Parse(g) : null,
+                KeyintMin = Arg("-keyint_min") is { } k ? int.Parse(k) : null,
+                KeyframeEvery = extra == "keys" ? TimeSpan.FromSeconds(1) : null,
+                X264Params = Arg("-x264-params"),
                 Audio = withAudio ? new AudioTrackOptions { SampleRate = 44100, Channels = 2 } : null,
+
                 // One thread on both sides: with several, x264's frame threading can vary run to run at fast presets.
                 EncoderOptions = new Dictionary<string, string> { ["threads"] = "1" },
                 Bitexact = true,
@@ -125,6 +141,7 @@ public class VideoWriterTests
                         writer.WriteAudio(audio.AsSpan(f / 25 * 44100 * 2, 44100 * 2));
                 }
             }
+
             byte[] want = File.ReadAllBytes(expected), got = File.ReadAllBytes(actual);
             int first = 0;
             while (first < Math.Min(want.Length, got.Length) && want[first] == got[first])
@@ -134,16 +151,20 @@ public class VideoWriterTests
                 File.Copy(expected, Path.Combine(keep, "ffmpeg-" + name), true);
                 File.Copy(actual, Path.Combine(keep, "ours-" + name), true);
             }
-            Assert.True(want.AsSpan().SequenceEqual(got), $"{name}: ffmpeg {want.Length} bytes, ours {got.Length}, first difference at {first}; " +
-                $"x264's settings, ffmpeg's: {X264Settings(want)} | ours: {X264Settings(got)}");
+
+            Assert.True(want.AsSpan().SequenceEqual(got), $"{name}: ffmpeg {want.Length} bytes, ours {got.Length}, first difference at {first}; "
+                + $"x264's settings, ffmpeg's: {X264Settings(want)} | ours: {X264Settings(got)}");
             if (extra == "keys")
             {
                 // A keyframe every second exactly: frames 0, 25, 50.
                 using var reader = new FrameDecoder(actual, new FrameDecoderOptions());
                 var keys = new List<int>();
                 for (int i = 0; reader.Next(); i++)
+                {
                     if (reader.IsKeyframe)
                         keys.Add(i);
+                }
+
                 Assert.Equal([0, 25, 50], keys);
             }
         }
@@ -181,14 +202,18 @@ public class VideoWriterTests
             Assert.False(Environment.GetEnvironmentVariable("SHOTDETECTOR_REQUIRE_X264") == "1", $"SHOTDETECTOR_REQUIRE_X264 is set, but {Libs} has no libx264.");
             return;
         }
+
         string dir = Directory.CreateTempSubdirectory("framereader-vwrite-").FullName;
         try
         {
             const int W = 64, H = 48, N = 30;
             string path = Path.Combine(dir, "x.mp4");
             using (var w = new VideoWriter(path, new VideoWriterOptions { Width = W, Height = H, FrameRate = new(24, 1), FrameFormat = format, PixelFormat = pixelFormat }))
+            {
                 for (int i = 0; i < N; i++)
                     w.Write(new byte[w.FrameSize]);
+            }
+
             using var reader = new VideoFrameReader(path);
             int n = 0;
             while (reader.TryRead(out _))
@@ -214,7 +239,7 @@ public class VideoWriterTests
             if (CanCompare())
             {
                 var e = Assert.Throws<ArgumentException>(() => new VideoWriter(path, new VideoWriterOptions
-                    { Width = 16, Height = 16, FrameRate = new(25, 1), EncoderOptions = new Dictionary<string, string> { ["nosuchoption"] = "1" } }));
+                { Width = 16, Height = 16, FrameRate = new(25, 1), EncoderOptions = new Dictionary<string, string> { ["nosuchoption"] = "1" } }));
                 Assert.Contains("nosuchoption", e.Message);
                 using var w = new VideoWriter(path, new VideoWriterOptions { Width = 16, Height = 16, FrameRate = new(25, 1) });
                 Assert.Throws<ArgumentException>(() => w.Write(new byte[10]));

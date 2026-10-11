@@ -45,7 +45,9 @@ public enum FieldOrder
 /// </summary>
 public sealed record VideoStreamInfo
 {
-    internal VideoStreamInfo() { }
+    internal VideoStreamInfo()
+    {
+    }
 
     /// <summary>The stream's index in the container.</summary>
     public int Index { get; init; }
@@ -127,7 +129,9 @@ public enum StreamType
 /// </summary>
 public sealed record StreamInfo
 {
-    internal StreamInfo() { }
+    internal StreamInfo()
+    {
+    }
 
     /// <summary>The stream's index in the container.</summary>
     public int Index { get; init; }
@@ -187,7 +191,9 @@ public sealed record StreamInfo
 /// <summary>A media file's properties from its headers (<see cref="MediaProbe"/>).</summary>
 public sealed record MediaInfo
 {
-    internal MediaInfo() { }
+    internal MediaInfo()
+    {
+    }
 
     /// <summary>FFmpeg's name for the container (its demuxer): mov,mp4,m4a,3gp,3g2,mj2, matroska,webm, mxf, ...</summary>
     public string Container { get; init; } = "";

@@ -30,6 +30,7 @@ internal sealed unsafe class StreamInput : IDisposable
         _read = Read;
         _seek = (_, _, whence) => whence == ffmpeg.AVSEEK_SIZE ? 0 : ffmpeg.AVERROR(29); // fstat of a FIFO; lseek: ESPIPE
         var buffer = (byte*)ffmpeg.av_malloc(BufferSize);
+
         // Without a seek function FFmpeg marks the context not seekable itself; the function goes in afterwards. Not
         // through the seekable field: FFmpeg.AutoGen lays AVIOContext out for 8-byte longs, and on Windows (4-byte
         // `unsigned long checksum`) every field from checksum on sits 8 bytes earlier than it says.
@@ -49,6 +50,7 @@ internal sealed unsafe class StreamInput : IDisposable
                 _at += n;
                 return n;
             }
+
             int read = _rest?.Read(span) ?? 0;
             return read > 0 ? read : ffmpeg.AVERROR_EOF;
         }

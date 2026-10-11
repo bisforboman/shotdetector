@@ -66,9 +66,9 @@ public sealed class WaveformData
     /// <summary>Reads the rest of <paramref name="audio"/> (at its rate and channels) into waveform points.</summary>
     /// <param name="audio">The samples; read to the end, not disposed.</param>
     /// <param name="options">Points' size and channels; null: 256 samples per point, channels averaged.</param>
+    /// <param name="cancellationToken">Stops between chunks (<see cref="OperationCanceledException"/>).</param>
     /// <exception cref="ArgumentException">Fewer than 2 samples per point, or more than 24 channels to split.</exception>
     /// <exception cref="FrameReaderException">Decoding failed.</exception>
-    /// <param name="cancellationToken">Stops between chunks (<see cref="OperationCanceledException"/>).</param>
     public static WaveformData Read(AudioReader audio, WaveformOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new WaveformOptions();
@@ -109,15 +109,19 @@ public sealed class WaveformData
                     max[0] = Math.Max(max[0], sample);
                 }
                 else
+                {
                     for (int c = 0; c < channels; c++)
                     {
                         min[c] = Math.Min(min[c], frame[c]);
                         max[c] = Math.Max(max[c], frame[c]);
                     }
+                }
+
                 if (++count == perPixel)
                     Flush();
             }
         }
+
         if (count > 0)
             Flush(); // the last, partial point
         return new WaveformData(rate, perPixel, channels, [.. data]);
@@ -131,6 +135,7 @@ public sealed class WaveformData
                 min[c] = short.MaxValue;
                 max[c] = short.MinValue;
             }
+
             count = 0;
         }
     }
@@ -158,7 +163,7 @@ public sealed class WaveformData
         using var w = new BinaryWriter(output, System.Text.Encoding.ASCII, leaveOpen: true);
         int version = Channels == 1 ? 1 : 2;
         w.Write(version);
-        w.Write(bits == WaveformBits.Eight ? 1u : 0u);
+        w.Write(bits == WaveformBits.Eight ? 1U : 0U);
         w.Write(SampleRate);
         w.Write(SamplesPerPixel);
         w.Write((uint)Length);

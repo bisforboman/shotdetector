@@ -21,6 +21,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     readonly int _stream;
     readonly AVRational _timeBase;
     bool _draining, _done;
+
     // Deinterlacing: decoded frames go through buffer -> yadif -> buffersink (as ffmpeg's -vf yadif), and _frame is
     // the sink's output. The graph is built from the first decoded frame.
     readonly bool _deinterlace;
@@ -28,6 +29,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     AVFilterGraph* _graph;
     AVFilterContext* _source, _sink;
     bool _flushed;
+
     // Deinterlacing with an IRowDeinterlacer instead: the previous, current and next decoded frames, and
     // _frame as the output, whose rows are computed when a writer asks for them (EnsureRows).
     readonly IRowDeinterlacer? _yadif;
@@ -38,6 +40,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     bool _rTff;
     int _rPlanes, _rChromaW, _rChromaH, _rBytes;
     bool[][]? _rRows; // per plane: rows computed for the current output frame
+
     // The display matrix applied as ffmpeg's autorotate does: transpose (its dir, -1 for none), then hflip, vflip. The
     // oriented frame is swapped in as _frame until the next frame.
     readonly int _transpose = -1;
@@ -54,7 +57,8 @@ public sealed unsafe class FrameDecoder : IDisposable
     /// What ffmpeg's command line adds to each timestamp without -copyts (its ts_offset, -start_time), in the stream's
     /// time base: streamed input's frame times start at 0.
     /// </summary>
-    public long StartOffset => _fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0
+    public long StartOffset => _fmt->start_time == ffmpeg.AV_NOPTS_VALUE
+        ? 0
         : ffmpeg.av_rescale_q(-_fmt->start_time, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase);
 
     /// <summary>The stream's time base as FFmpeg keeps it.</summary>
@@ -78,7 +82,9 @@ public sealed unsafe class FrameDecoder : IDisposable
     /// <param name="options">How to decode; null: the defaults.</param>
     /// <exception cref="FrameReaderException">The libraries didn't load, the input can't be opened, has no video or no
     /// decoder for it.</exception>
-    public FrameDecoder(string path, FrameDecoderOptions? options = null) : this(path, options, null) { }
+    public FrameDecoder(string path, FrameDecoderOptions? options = null) : this(path, options, null)
+    {
+    }
 
     /// <summary>
     /// Opens the bytes a stream gives, read once from where it is (not seekable, as ffmpeg reads a pipe): the headers
@@ -87,7 +93,9 @@ public sealed unsafe class FrameDecoder : IDisposable
     /// </summary>
     /// <param name="stream">The media's bytes; not disposed.</param>
     /// <param name="options">How to decode; null: the defaults.</param>
-    public FrameDecoder(Stream stream, FrameDecoderOptions? options = null) : this("pipe:0", options, new StreamInput([], stream)) { }
+    public FrameDecoder(Stream stream, FrameDecoderOptions? options = null) : this("pipe:0", options, new StreamInput([], stream))
+    {
+    }
 
     /// <param name="path">What to open (a name only when <paramref name="io"/> is given).</param>
     /// <param name="options">How to decode.</param>
@@ -98,6 +106,7 @@ public sealed unsafe class FrameDecoder : IDisposable
         bool deinterlace = o.Deinterlace;
         int threads = o.Threads;
         _io = io;
+
         // Whatever fails after this point, what was opened so far is freed (the input, the decoder).
         try
         {
@@ -153,7 +162,7 @@ public sealed unsafe class FrameDecoder : IDisposable
         var sd = ffmpeg.av_packet_side_data_get(par->coded_side_data, par->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_DISPLAYMATRIX);
         if (sd == null || sd->size < 36)
             return (-1, false, false);
-        var m = new int_array9();
+        var m = default(int_array9);
         for (uint i = 0; i < 9; i++)
             m[i] = ((int*)sd->data)[i];
         double theta = -Math.Round(ffmpeg.av_display_rotation_get(in m)); // get_rotation
@@ -175,6 +184,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     {
         var desc = ffmpeg.avcodec_descriptor_get_by_name(codec);
         if (desc != null && desc->id == AVCodecID.AV_CODEC_ID_AV1)
+
             // FFmpeg's own av1 decoder needs a GPU (it gives no frames): dav1d or libaom it is.
             return ffmpeg.avcodec_find_decoder_by_name("libdav1d") != null || ffmpeg.avcodec_find_decoder_by_name("libaom-av1") != null;
         return desc != null && ffmpeg.avcodec_find_decoder(desc->id) != null;
@@ -268,6 +278,7 @@ public sealed unsafe class FrameDecoder : IDisposable
             Orient();
             SwapOriented();
         }
+
         return true;
     }
 
@@ -294,9 +305,13 @@ public sealed unsafe class FrameDecoder : IDisposable
             if (desc->comp[i].step != bytes)
                 bytes = 0;
         }
+
         if (bytes == 0 || (desc->flags & (ffmpeg.AV_PIX_FMT_FLAG_PAL | ffmpeg.AV_PIX_FMT_FLAG_BITSTREAM | ffmpeg.AV_PIX_FMT_FLAG_HWACCEL)) != 0
             || ((desc->flags & ffmpeg.AV_PIX_FMT_FLAG_PLANAR) == 0 && desc->nb_components > 1))
+        {
             throw new FrameReaderException(FrameReaderError.DecodeFailed, $"Rotating {(AVPixelFormat)_frame->format} isn't supported in-process.");
+        }
+
         bool t = _transpose >= 0;
         int w = _frame->width, h = _frame->height, ow = t ? h : w, oh = t ? w : h;
         if (_oriented->width != ow || _oriented->height != oh || _oriented->format != _frame->format)
@@ -305,6 +320,7 @@ public sealed unsafe class FrameDecoder : IDisposable
             (_oriented->format, _oriented->width, _oriented->height) = (_frame->format, ow, oh);
             Check(ffmpeg.av_frame_get_buffer(_oriented, 64), "rotate");
         }
+
         ffmpeg.av_frame_side_data_free(&_oriented->side_data, &_oriented->nb_side_data);
         ffmpeg.av_dict_free(&_oriented->metadata);
         Check(ffmpeg.av_frame_copy_props(_oriented, _frame), "rotate");
@@ -324,15 +340,23 @@ public sealed unsafe class FrameDecoder : IDisposable
                 {
                     byte* s = src + (long)(_vflip ? ph - 1 - y : y) * ss;
                     if (!_hflip)
+                    {
                         Buffer.MemoryCopy(s, d, opw * bytes, opw * bytes);
+                    }
                     else if (bytes == 1)
+                    {
                         for (int x = 0; x < opw; x++)
                             d[x] = s[opw - 1 - x];
+                    }
                     else
+                    {
                         for (int x = 0; x < opw; x++)
                             ((ushort*)d)[x] = ((ushort*)s)[opw - 1 - x];
+                    }
+
                     continue;
                 }
+
                 // transpose: output row y is source column y (dir & 2: counted from the right), read top down (dir & 1: bottom up)
                 int col = (_transpose & 2) != 0 ? pw - 1 - y : y;
                 byte* s0 = src + (long)col * bytes;
@@ -342,12 +366,17 @@ public sealed unsafe class FrameDecoder : IDisposable
                     s0 += (long)(ph - 1) * ss;
                     step = -step;
                 }
+
                 if (bytes == 1)
+                {
                     for (int x = 0; x < opw; x++)
                         d[x] = s0[x * step];
+                }
                 else
+                {
                     for (int x = 0; x < opw; x++)
                         ((ushort*)d)[x] = *(ushort*)(s0 + x * step);
+                }
             }
         }
     }
@@ -361,8 +390,10 @@ public sealed unsafe class FrameDecoder : IDisposable
             bool? rows = NextRows();
             if (rows is { } more)
                 return more;
+
             // The first frame's format isn't one row-wise yadif handles: FFmpeg's yadif from here, with that frame.
         }
+
         while (true)
         {
             if (_sink != null)
@@ -376,6 +407,7 @@ public sealed unsafe class FrameDecoder : IDisposable
                 if (got != ffmpeg.AVERROR(ffmpeg.EAGAIN))
                     Check(got, "deinterlace");
             }
+
             if (_flushed)
                 return false;
             if (_rCur != null)
@@ -395,8 +427,10 @@ public sealed unsafe class FrameDecoder : IDisposable
                 _flushed = true;
                 continue;
             }
+
             if (_graph == null)
                 BuildGraph(_decoded);
+
             // As ffmpeg's command line hands frames to its filters: the best-effort timestamp as the pts.
             _decoded->pts = _decoded->best_effort_timestamp;
             Check(ffmpeg.av_buffersrc_add_frame_flags(_source, _decoded, 0), "deinterlace");
@@ -413,12 +447,18 @@ public sealed unsafe class FrameDecoder : IDisposable
         if (_rShift)
         {
             // Move on: the current frame becomes the previous one, the next one current.
-            if (_rPrev != _rCur) { var p = _rPrev; ffmpeg.av_frame_free(&p); }
+            if (_rPrev != _rCur)
+            {
+                var p = _rPrev;
+                ffmpeg.av_frame_free(&p);
+            }
+
             _rPrev = _rCur;
             _rCur = _rNext;
             _rNext = null;
             _rShift = false;
         }
+
         if (_rDone)
             return false;
         while (true)
@@ -429,11 +469,13 @@ public sealed unsafe class FrameDecoder : IDisposable
                 ffmpeg.av_frame_free(&f);
                 if (_rCur == null)
                     return false;
+
                 // The end: the last frame is its own next (yadif's flush).
                 _rDone = true;
                 Output(_rPrev, _rCur, _rCur);
                 return true;
             }
+
             if (_rCur == null)
             {
                 if (_rowMode == null && !SetUpRows(f))
@@ -442,10 +484,12 @@ public sealed unsafe class FrameDecoder : IDisposable
                     _rCur = f; // Next() feeds it to FFmpeg's yadif
                     return null;
                 }
+
                 _rowMode = true;
                 _rPrev = _rCur = f; // the first frame is its own previous
                 continue;
             }
+
             _rNext = f;
             Output(_rPrev, _rCur, _rNext);
             _rShift = true;
@@ -469,6 +513,7 @@ public sealed unsafe class FrameDecoder : IDisposable
             if (desc->comp[i].depth != depth || desc->comp[i].step > (depth > 8 ? 2 : 1))
                 return false;
         }
+
         if (depth > 16)
             return false;
         (_rPlanes, _rChromaW, _rChromaH, _rBytes) = (planes, desc->log2_chroma_w, desc->log2_chroma_h, depth > 8 ? 2 : 1);
@@ -483,8 +528,11 @@ public sealed unsafe class FrameDecoder : IDisposable
     void Output(AVFrame* prev, AVFrame* cur, AVFrame* next)
     {
         for (int p = 0; p < _rPlanes; p++)
+        {
             if (prev->linesize[(uint)p] != cur->linesize[(uint)p] || next->linesize[(uint)p] != cur->linesize[(uint)p])
                 throw new FrameReaderException(FrameReaderError.DecodeFailed, "Deinterlacing: frames with differing strides.");
+        }
+
         // copy_props adds to the side data and metadata already there: without this, every frame's would pile up
         // (and sws_frame_start refs them all).
         ffmpeg.av_frame_side_data_free(&_frame->side_data, &_frame->nb_side_data);
@@ -492,6 +540,7 @@ public sealed unsafe class FrameDecoder : IDisposable
         Check(ffmpeg.av_frame_copy_props(_frame, cur), "deinterlace");
         _frame->flags &= ~ffmpeg.AV_FRAME_FLAG_INTERLACED;
         _rPts = cur->best_effort_timestamp;
+
         // As yadif's auto parity: the frame's field order, top first when it isn't flagged interlaced.
         _rTff = (cur->flags & ffmpeg.AV_FRAME_FLAG_INTERLACED) == 0 || (cur->flags & ffmpeg.AV_FRAME_FLAG_TOP_FIELD_FIRST) != 0;
         for (int p = 0; p < _rPlanes; p++)
@@ -502,6 +551,7 @@ public sealed unsafe class FrameDecoder : IDisposable
             else
                 _rRows[p] = new bool[h];
         }
+
         _cPrev = prev;
         _cCur = cur;
         _cNext = next;
@@ -510,6 +560,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     AVFrame* _cPrev, _cCur, _cNext; // the frames the current output's rows come from
 
     int PlaneHeight(int p) => p is 1 or 2 ? -((-_frame->height) >> _rChromaH) : _frame->height;
+
     int PlaneWidth(int p) => p is 1 or 2 ? -((-_frame->width) >> _rChromaW) : _frame->width;
 
     /// <summary>
@@ -536,10 +587,15 @@ public sealed unsafe class FrameDecoder : IDisposable
         if (n == 0)
             return;
         if (n < 64 || Environment.ProcessorCount == 1)
+        {
             ComputeRows(0, n);
+        }
         else
+        {
             Parallel.ForEach(System.Collections.Concurrent.Partitioner.Create(0, n, Math.Max(16, n / (4 * Environment.ProcessorCount))),
                 r => ComputeRows(r.Item1, r.Item2));
+        }
+
         _rPending.Clear();
     }
 
@@ -572,11 +628,13 @@ public sealed unsafe class FrameDecoder : IDisposable
             int start = Math.Max(0, (from >> shift) - margin), end = Math.Min(h, ((to + (1 << shift) - 1) >> shift) + margin);
             var done = _rRows![p];
             for (int y = start; y < end; y++)
+            {
                 if (!done[y])
                 {
                     done[y] = true;
                     _rPending.Add((p, y));
                 }
+            }
         }
     }
 
@@ -610,11 +668,13 @@ public sealed unsafe class FrameDecoder : IDisposable
                     FromHardware(into);
                 return true;
             }
+
             if (got == ffmpeg.AVERROR_EOF)
             {
                 _done = true;
                 break;
             }
+
             if (_draining)
                 continue;
             if (ffmpeg.av_read_frame(_fmt, _pkt) < 0)
@@ -623,10 +683,12 @@ public sealed unsafe class FrameDecoder : IDisposable
                 ffmpeg.avcodec_send_packet(_dec, null);
                 continue;
             }
+
             if (_pkt->stream_index == _stream)
                 ffmpeg.avcodec_send_packet(_dec, _pkt); // errors (damaged data) only lose that packet
             ffmpeg.av_packet_unref(_pkt);
         }
+
         return false;
     }
 
@@ -689,12 +751,14 @@ public sealed unsafe class FrameDecoder : IDisposable
                 break;
             }
         }
+
         AVBufferRef* device = null;
         if (ffmpeg.av_hwdevice_ctx_create(&device, AVHWDeviceType.AV_HWDEVICE_TYPE_D3D11VA, null, null, 0) < 0)
         {
             _hwFormat = AVPixelFormat.AV_PIX_FMT_NONE;
             return;
         }
+
         _hwDevice = device;
         _dec->hw_device_ctx = ffmpeg.av_buffer_ref(device);
         _getFormat = (ctx, formats) =>
@@ -709,6 +773,7 @@ public sealed unsafe class FrameDecoder : IDisposable
                 if (first == AVPixelFormat.AV_PIX_FMT_NONE && desc != null && (desc->flags & ffmpeg.AV_PIX_FMT_FLAG_HWACCEL) == 0)
                     first = *f;
             }
+
             return first;
         };
         _dec->get_format = _getFormat;
@@ -723,6 +788,7 @@ public sealed unsafe class FrameDecoder : IDisposable
         Check(ffmpeg.av_hwframe_transfer_data(_hwCopy, frame, 0), "copy from the GPU");
         if ((AVPixelFormat)_hwCopy->format != AVPixelFormat.AV_PIX_FMT_NV12)
             throw new FrameReaderException(FrameReaderError.DecodeFailed, $"The GPU gave {(AVPixelFormat)_hwCopy->format}, not NV12.");
+
         // One output buffer, reused once nobody holds the last frame (the decoder unrefs it before the next).
         var yuv = _hwYuv;
         var format = _dec->sw_pix_fmt is AVPixelFormat.AV_PIX_FMT_YUVJ420P ? AVPixelFormat.AV_PIX_FMT_YUVJ420P : AVPixelFormat.AV_PIX_FMT_YUV420P;
@@ -732,6 +798,7 @@ public sealed unsafe class FrameDecoder : IDisposable
             (yuv->format, yuv->width, yuv->height) = ((int)format, frame->width, frame->height);
             Check(ffmpeg.av_frame_get_buffer(yuv, 32), "frame buffer");
         }
+
         int w = frame->width, h = frame->height, cw = (w + 1) / 2, ch = (h + 1) / 2;
         for (int y = 0; y < h; y++)
             Buffer.MemoryCopy(_hwCopy->data[0] + (long)y * _hwCopy->linesize[0], yuv->data[0] + (long)y * yuv->linesize[0], w, w);
@@ -749,6 +816,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     {
         int x = 0;
         if (Vector128.IsHardwareAccelerated)
+        {
             for (; x + 16 <= pairs; x += 16)
             {
                 var a = Vector128.Load((ushort*)(uv + 2 * x));
@@ -757,6 +825,8 @@ public sealed unsafe class FrameDecoder : IDisposable
                 Vector128.Narrow(a & mask, b & mask).Store(u + x);
                 Vector128.Narrow(a >>> 8, b >>> 8).Store(v + x);
             }
+        }
+
         for (; x < pairs; x++)
         {
             u[x] = uv[2 * x];
@@ -767,21 +837,98 @@ public sealed unsafe class FrameDecoder : IDisposable
     /// <summary>Frees the decoder, its frames and FFmpeg's contexts.</summary>
     public void Dispose()
     {
-        if (_frame != null) { var f = _frame; ffmpeg.av_frame_free(&f); _frame = null; }
-        if (_oriented != null) { var f = _oriented; ffmpeg.av_frame_free(&f); _oriented = null; }
-        if (_decoded != null) { var f = _decoded; ffmpeg.av_frame_free(&f); _decoded = null; }
-        if (_rNext != null) { var f = _rNext; ffmpeg.av_frame_free(&f); _rNext = null; }
-        if (_rPrev != null && _rPrev != _rCur) { var f = _rPrev; ffmpeg.av_frame_free(&f); }
-        if (_rCur != null) { var f = _rCur; ffmpeg.av_frame_free(&f); }
+        if (_frame != null)
+        {
+            var f = _frame;
+            ffmpeg.av_frame_free(&f);
+            _frame = null;
+        }
+
+        if (_oriented != null)
+        {
+            var f = _oriented;
+            ffmpeg.av_frame_free(&f);
+            _oriented = null;
+        }
+
+        if (_decoded != null)
+        {
+            var f = _decoded;
+            ffmpeg.av_frame_free(&f);
+            _decoded = null;
+        }
+
+        if (_rNext != null)
+        {
+            var f = _rNext;
+            ffmpeg.av_frame_free(&f);
+            _rNext = null;
+        }
+
+        if (_rPrev != null && _rPrev != _rCur)
+        {
+            var f = _rPrev;
+            ffmpeg.av_frame_free(&f);
+        }
+
+        if (_rCur != null)
+        {
+            var f = _rCur;
+            ffmpeg.av_frame_free(&f);
+        }
+
         _rPrev = _rCur = null;
-        if (_graph != null) { var g = _graph; ffmpeg.avfilter_graph_free(&g); _graph = null; _source = null; _sink = null; }
-        if (_pkt != null) { var p = _pkt; ffmpeg.av_packet_free(&p); _pkt = null; }
-        if (_dec != null) { var d = _dec; ffmpeg.avcodec_free_context(&d); _dec = null; }
-        if (_fmt != null) { var f = _fmt; ffmpeg.avformat_close_input(&f); _fmt = null; }
+        if (_graph != null)
+        {
+            var g = _graph;
+            ffmpeg.avfilter_graph_free(&g);
+            _graph = null;
+            _source = null;
+            _sink = null;
+        }
+
+        if (_pkt != null)
+        {
+            var p = _pkt;
+            ffmpeg.av_packet_free(&p);
+            _pkt = null;
+        }
+
+        if (_dec != null)
+        {
+            var d = _dec;
+            ffmpeg.avcodec_free_context(&d);
+            _dec = null;
+        }
+
+        if (_fmt != null)
+        {
+            var f = _fmt;
+            ffmpeg.avformat_close_input(&f);
+            _fmt = null;
+        }
+
         _io?.Dispose();
-        if (_hwCopy != null) { var f = _hwCopy; ffmpeg.av_frame_free(&f); _hwCopy = null; }
-        if (_hwYuv != null) { var f = _hwYuv; ffmpeg.av_frame_free(&f); _hwYuv = null; }
-        if (_hwDevice != null) { var d = _hwDevice; ffmpeg.av_buffer_unref(&d); _hwDevice = null; }
+        if (_hwCopy != null)
+        {
+            var f = _hwCopy;
+            ffmpeg.av_frame_free(&f);
+            _hwCopy = null;
+        }
+
+        if (_hwYuv != null)
+        {
+            var f = _hwYuv;
+            ffmpeg.av_frame_free(&f);
+            _hwYuv = null;
+        }
+
+        if (_hwDevice != null)
+        {
+            var d = _hwDevice;
+            ffmpeg.av_buffer_unref(&d);
+            _hwDevice = null;
+        }
     }
 
     static void Check(int ret, string what)

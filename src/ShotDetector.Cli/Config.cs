@@ -24,11 +24,13 @@ sealed class Config
                     config._sections[name] = section = new(StringComparer.OrdinalIgnoreCase);
                 continue;
             }
+
             int sep = line.IndexOfAny(['=', ':']);
             if (sep < 0 || section is null)
                 throw new FormatException($"{path}: can't read the line '{raw}'.");
             section[line[..sep].Trim()] = line[(sep + 1)..].Trim();
         }
+
         return config;
     }
 
@@ -63,7 +65,8 @@ sealed class Config
         if (Get(section, key) is not { } v)
             return null;
         var n = v.Split(new[] { ' ', ',', '/', '(', ')' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(x => double.Parse(x, CultureInfo.InvariantCulture)).ToArray();
+            .Select(x => double.Parse(x, CultureInfo.InvariantCulture))
+            .ToArray();
         return n.Length == 4 ? (n[0], n[1], n[2], n[3]) : throw new FormatException($"[{section}] {key}: weights need four numbers.");
     }
 

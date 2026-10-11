@@ -33,11 +33,12 @@ public sealed record SplitOptions
     {
         if (Copy && (HighQuality || RateFactor is not null || Preset is not null))
             throw new ArgumentException("High quality, rate factor and preset can't be used with Copy.");
+
         // As the scenedetect CLI builds them: copy, else the given args, else libx264 with crf and preset.
         string args = Copy ? "-map 0:v:0 -map 0:a? -map 0:s? -c:v copy -c:a copy"
             : Args is not null ? Args.Replace("\\\"", "\"")
-            : $"-map 0:v:0 -map 0:a? -map 0:s? -c:v libx264 -preset {Preset ?? (HighQuality ? "slow" : "veryfast")} " +
-              $"-crf {(RateFactor ?? (HighQuality ? 17 : 22)).ToString(CultureInfo.InvariantCulture)} -c:a aac";
+            : $"-map 0:v:0 -map 0:a? -map 0:s? -c:v libx264 -preset {Preset ?? (HighQuality ? "slow" : "veryfast")} "
+              + $"-crf {(RateFactor ?? (HighQuality ? 17 : 22)).ToString(CultureInfo.InvariantCulture)} -c:a aac";
         return args.Split(' ');
     }
 }
@@ -112,7 +113,9 @@ public static partial class Export
     /// Same frames as scenedetect (see <see cref="VideoReader.FrameAt"/>), but encoded by ffmpeg at
     /// -q:v 2 rather than OpenCV at JPEG quality 95, so files are similar, not byte-identical.
     /// </summary>
-    public static IReadOnlyList<string> SaveImages(DetectionResult result, string outputDir, ImageOptions? options = null,
+    public static IReadOnlyList<string> SaveImages(DetectionResult result,
+        string outputDir,
+        ImageOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -133,10 +136,12 @@ public static partial class Export
 
         // (frame index, file name) for every image; a frame may be wanted twice.
         var wanted = new List<(int Frame, string File)>();
+
         // scenedetect picks times and seeks to them.
         double[][] times = ImageTimes(shots, video.Fps, numImages, frameMargin);
         int[][] picked = times.Select(t => t.Select(video.FrameAt).ToArray()).ToArray();
         for (int i = 0; i < shots.Count; i++)
+        {
             for (int j = 0; j < numImages; j++)
             {
                 double seconds = times[i][j]; // the image's own time: the picked one
@@ -153,6 +158,7 @@ public static partial class Export
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 wanted.Add((Math.Clamp(picked[i][j], 0, frameCount - 1), path));
             }
+        }
 
         // One ffmpeg pass: select the wanted frames (in order) into numbered temp files, then rename.
         int[] frames = wanted.Select(w => w.Frame).Distinct().Order().ToArray();
@@ -169,8 +175,10 @@ public static partial class Export
                 "webp" => ["-quality", "100"],
                 _ => ["-q:v", "2"],
             };
-            VideoReader.Run(video.FfmpegExe, ["-v", "error", "-nostdin", "-y", "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
-                "-fps_mode", "passthrough", .. quality, Path.Combine(temp, $"%06d.{io.Format}")], cancellationToken,
+            VideoReader.Run(video.FfmpegExe,
+                ["-v", "error", "-nostdin", "-y", "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
+                    "-fps_mode", "passthrough", .. quality, Path.Combine(temp, $"%06d.{io.Format}")],
+                cancellationToken,
                 failure: ShotDetectionError.ExportFailed);
             var byFrame = frames.Select((f, i) => (f, Path.Combine(temp, $"{i + 1:000000}.{io.Format}"))).ToDictionary();
             foreach (var (frame, file) in wanted)
@@ -180,6 +188,7 @@ public static partial class Export
         {
             Directory.Delete(temp, recursive: true);
         }
+
         return wanted.Select(w => w.File).ToList();
     }
 
@@ -204,7 +213,6 @@ public static partial class Export
         }).ToArray();
     }
 
-
     /// <summary>
     /// split-video: one file per shot, "{video}-Scene-{NNN}.mp4", cut by ffmpeg with scenedetect's
     /// arguments (by default libx264 veryfast, CRF 22 and AAC audio; subtitles dropped).
@@ -225,8 +233,10 @@ public static partial class Export
             clips[0] = (FrameTime.Frame(0, video.Fps), clips[0].End);
             clips[^1] = (clips[^1].Start, FrameTime.Frame(video.OpenCvFrameCount, video.Fps));
         }
+
         Directory.CreateDirectory(outputDir);
         string name = Path.GetFileNameWithoutExtension(videoPath);
+
         // As the CLI: ".mp4" unless the template ends in a 2-4 character extension.
         int dot = so.FileName.LastIndexOf('.');
         string template = so.FileName + (dot >= 0 && so.FileName.Length - dot - 1 is >= 2 and <= 4 ? "" : ".mp4");
@@ -246,11 +256,15 @@ public static partial class Export
                 ["END_PTS"] = ((long)Math.Round(end.Seconds * 1000)).ToString(CultureInfo.InvariantCulture),
             }));
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-            VideoReader.Run(video.FfmpegExe, ["-v", "error", "-nostdin", "-y",
-                "-ss", Stats.PyFloat(start.Seconds), "-i", videoPath, "-t", Stats.PyFloat(end.Minus(start).Seconds),
-                .. codecArgs, "-sn", file], cancellationToken, failure: ShotDetectionError.ExportFailed);
+            VideoReader.Run(video.FfmpegExe,
+                ["-v", "error", "-nostdin", "-y",
+                    "-ss", Stats.PyFloat(start.Seconds), "-i", videoPath, "-t", Stats.PyFloat(end.Minus(start).Seconds),
+                    .. codecArgs, "-sn", file],
+                cancellationToken,
+                failure: ShotDetectionError.ExportFailed);
             files.Add(file);
         }
+
         return files;
     }
 }

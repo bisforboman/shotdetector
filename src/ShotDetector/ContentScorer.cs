@@ -12,6 +12,7 @@ internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, 
 
     /// <summary>Made by <see cref="LumaOnly"/> (luma_only=True), which names the adaptive_ratio stat "_lum".</summary>
     internal bool IsLumaOnly { get; private init; }
+
     /// <summary>True when edges have a weight, which requires <see cref="Edges"/>.</summary>
     internal bool UsesEdges => edgeWeight > 0;
 
@@ -40,8 +41,14 @@ internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, 
         int chunks = (n + ChunkPixels - 1) / ChunkPixels;
         if (_h.Length != n)
         {
-            _h = new byte[n]; _s = new byte[n]; _v = new byte[n]; _e = new byte[n];
-            _prevH = new byte[n]; _prevS = new byte[n]; _prevV = new byte[n]; _prevE = new byte[n];
+            _h = new byte[n];
+            _s = new byte[n];
+            _v = new byte[n];
+            _e = new byte[n];
+            _prevH = new byte[n];
+            _prevS = new byte[n];
+            _prevV = new byte[n];
+            _prevE = new byte[n];
             _sums = new long[chunks * 3];
             _hasPrev = false;
         }
@@ -49,6 +56,7 @@ internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, 
         // HSV conversion fused with the per-channel |difference| sums, in parallel chunks. The sums
         // are integers, so adding the chunks up gives exactly MeanPixelDistance's result.
         var (h, s, v, ph, ps, pv, sums, hasPrev) = (_h, _s, _v, _prevH, _prevS, _prevV, _sums, _hasPrev);
+
         // Small frames (scenedetect's are at most 256 pixels wide) are cheaper on one thread than split up.
         void Chunk(int c)
         {
@@ -59,11 +67,17 @@ internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, 
                    AbsDiffSum(v.AsSpan(start, len), pv.AsSpan(start, len)))
                 : (0, 0, 0);
         }
+
         if (n < ParallelPixels)
+        {
             for (int c = 0; c < chunks; c++)
                 Chunk(c);
+        }
         else
+        {
             Parallel.For(0, chunks, Chunk);
+        }
+
         Edges?.Detect(_v, _e);
 
         double score = 0;
@@ -120,9 +134,11 @@ internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, 
                 var (lo, hi) = System.Runtime.Intrinsics.Vector128.Widen(d);
                 acc += lo + hi;
             }
+
             var (l32, h32) = System.Runtime.Intrinsics.Vector128.Widen(acc);
             total += l32 + h32;
         }
+
         return ((long)(System.Runtime.Intrinsics.Vector128.Sum(System.Runtime.Intrinsics.Vector128.WidenLower(total))
             + System.Runtime.Intrinsics.Vector128.Sum(System.Runtime.Intrinsics.Vector128.WidenUpper(total))), i);
     }
@@ -147,14 +163,19 @@ internal sealed class ContentScorer(double hueWeight = 1, double satWeight = 1, 
                     var (lo, hi) = System.Runtime.Intrinsics.Vector256.Widen(d);
                     acc += lo + hi;
                 }
+
                 var (l32, h32) = System.Runtime.Intrinsics.Vector256.Widen(acc);
                 total += l32 + h32;
             }
+
             sum = (long)(System.Runtime.Intrinsics.Vector256.Sum(System.Runtime.Intrinsics.Vector256.WidenLower(total))
                 + System.Runtime.Intrinsics.Vector256.Sum(System.Runtime.Intrinsics.Vector256.WidenUpper(total)));
         }
         else if (System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated)
+        {
             (sum, i) = AbsDiffSum128(a, b);
+        }
+
         for (; i < a.Length; i++)
             sum += Math.Abs(a[i] - b[i]);
         return sum;

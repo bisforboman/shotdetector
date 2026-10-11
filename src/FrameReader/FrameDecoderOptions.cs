@@ -3,7 +3,6 @@ namespace FrameReader;
 /// <summary>How a <see cref="FrameDecoder"/> opens and decodes its input.</summary>
 public sealed record FrameDecoderOptions
 {
-
     /// <summary>Decoder threads; 0: FFmpeg's choice.</summary>
     public int Threads { get; init; }
 

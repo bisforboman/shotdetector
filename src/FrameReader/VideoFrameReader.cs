@@ -104,6 +104,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     byte[] _packed = [];
     int _index = -1;
     long? _keepFrom; // after a seek: frames whose pts plus this is below 0 are dropped (ffmpeg's trim)
+
     // FrameRate: buffer -> fps -> buffersink, fed the decoded frames, its output converted.
     AVFilterGraph* _fpsGraph;
     AVFilterContext* _fpsIn, _fpsOut;
@@ -114,12 +115,16 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <param name="path">What to open.</param>
     /// <param name="options">Size, format and decoding; null: the frames as they are, in Bgr24.</param>
     /// <exception cref="FrameReaderException">The libraries didn't load, or the input can't be opened or has no video.</exception>
-    public VideoFrameReader(string path, VideoFrameReaderOptions? options = null) : this(options, o => new FrameDecoder(path, o)) { }
+    public VideoFrameReader(string path, VideoFrameReaderOptions? options = null) : this(options, o => new FrameDecoder(path, o))
+    {
+    }
 
     /// <summary>Opens a stream's bytes, read once (headers first: mkv, webm, ts, mov or a faststart mp4).</summary>
     /// <param name="stream">The media's bytes; not disposed.</param>
     /// <param name="options">Size, format and decoding; null: the frames as they are, in Bgr24.</param>
-    public VideoFrameReader(Stream stream, VideoFrameReaderOptions? options = null) : this(options, o => new FrameDecoder(stream, o)) { }
+    public VideoFrameReader(Stream stream, VideoFrameReaderOptions? options = null) : this(options, o => new FrameDecoder(stream, o))
+    {
+    }
 
     VideoFrameReader(VideoFrameReaderOptions? options, Func<FrameDecoderOptions?, FrameDecoder> open)
     {
@@ -184,15 +189,22 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <param name="handler">Called for each frame found, with its time's index.</param>
     /// <param name="cancellationToken">Stops the readers between frames (<see cref="OperationCanceledException"/>).</param>
     /// <returns>How many times had a frame (the rest are past the end).</returns>
-    public static int ReadAt(string path, IReadOnlyList<TimeSpan> times, VideoFrameReaderOptions? options, int? parallelism, FrameHandler handler,
+    public static int ReadAt(string path,
+        IReadOnlyList<TimeSpan> times,
+        VideoFrameReaderOptions? options,
+        int? parallelism,
+        FrameHandler handler,
         CancellationToken cancellationToken = default)
     {
         options ??= new VideoFrameReaderOptions();
         if (options.FrameRate is not null)
             throw new ArgumentException("ReadAt reads frames at times; FrameRate isn't available.", nameof(options));
         for (int i = 1; i < times.Count; i++)
+        {
             if (times[i] < times[i - 1])
                 throw new ArgumentException("The times are in ascending order.", nameof(times));
+        }
+
         int cores = Environment.ProcessorCount;
         int workers = Math.Clamp(parallelism ?? Math.Min(4, cores / 2), 1, Math.Max(1, times.Count));
         var decoder = options.Decoder ?? new FrameDecoderOptions();
@@ -226,12 +238,14 @@ public sealed unsafe class VideoFrameReader : IDisposable
         while ((got = _decoder.Next()) && _keepFrom is { } keep && _decoder.Pts + keep < 0)
         {
         }
+
         _current = got;
         if (!got)
         {
             frame = default;
             return false;
         }
+
         _index++;
         Convert(out frame);
         return true;
@@ -265,11 +279,13 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 && found > (_current ? _decoder.Pts : 0) + (long)(1 / _decoder.TimeBase.Value))
             {
                 key = found;
+
                 // To the target, not the index entry: some containers index by dts and seek by pts, where the entry's dts
                 // would land a keyframe early. The container finds the keyframe at or before the target.
                 _decoder.Seek(target);
                 (_keepFrom, jumped) = (null, true);
             }
+
             bool got, beforeKeyframe = jumped;
             while (true)
             {
@@ -277,7 +293,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 if (!got)
                     break;
                 beforeKeyframe &= !_decoder.IsKeyframe;
-                if (_decoder.Pts + keep < 0 || _keepFrom is { } k && _decoder.Pts + k < 0)
+                if (_decoder.Pts + keep < 0 || (_keepFrom is { } k && _decoder.Pts + k < 0))
                     continue;
                 if (beforeKeyframe)
                 {
@@ -286,16 +302,20 @@ public sealed unsafe class VideoFrameReader : IDisposable
                     beforeKeyframe = false;
                     continue;
                 }
+
                 break;
             }
+
             _current = got;
             if (!got)
             {
                 frame = default;
                 return false;
             }
+
             _index++;
         }
+
         Convert(out frame);
         return true;
     }
@@ -318,11 +338,13 @@ public sealed unsafe class VideoFrameReader : IDisposable
                     Convert(_fpsFrame, pts, TimeSpan.FromSeconds(pts * rate.Den / (double)rate.Num), out frame);
                     return true;
                 }
+
                 if (got == ffmpeg.AVERROR_EOF)
                     break;
                 if (got != ffmpeg.AVERROR(ffmpeg.EAGAIN))
                     Check(got, "fps");
             }
+
             if (_fpsFlushed)
                 break;
             if (!_decoder.Next())
@@ -333,6 +355,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 _fpsFlushed = true;
                 continue;
             }
+
             var src = _decoder.Frame;
             _decoder.EnsureRows(0, src->height);
             if (_fpsIn == null)
@@ -349,6 +372,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 ffmpeg.av_frame_free(&feed);
             }
         }
+
         frame = default;
         return false;
     }
@@ -392,12 +416,14 @@ public sealed unsafe class VideoFrameReader : IDisposable
             _sws = ffmpeg.sws_alloc_context();
             Check(ffmpeg.av_opt_set(_sws, "sws_flags", "bicubic", 0), "scaler");
         }
+
         if (_out->width != width || _out->height != height)
         {
             ffmpeg.av_frame_unref(_out);
             (_out->format, _out->width, _out->height) = ((int)_format, width, height);
             Check(ffmpeg.av_frame_get_buffer(_out, 1), "frame buffer"); // rows packed, planes one after another
         }
+
         // As the scale filter does: the input read as progressive (its interl=0), and the output's tags those the link
         // negotiates (YUV and gray keep the input's matrix and range; RGB is RGB).
         // Its in_chroma_loc (default unspecified) replaces the frame's chroma location, so chroma isn't re-sited.
@@ -414,34 +440,69 @@ public sealed unsafe class VideoFrameReader : IDisposable
         int size = ffmpeg.av_image_get_buffer_size(_format, width, height, 1);
         ReadOnlySpan<byte> data;
         if (_options.FrameFormat != FrameFormat.Yuv420p)
+        {
             data = new ReadOnlySpan<byte>(_out->data[0], size); // one plane, rows packed (align 1)
+        }
         else
         {
             // The planes packed one after another, as rawvideo writes them (the frame's buffer may pad between them).
             if (_packed.Length != size)
                 _packed = new byte[size];
-            var planes = new byte_ptrArray4();
-            var strides = new int_array4();
+            var planes = default(byte_ptrArray4);
+            var strides = default(int_array4);
             for (uint i = 0; i < 4; i++)
             {
                 planes[i] = _out->data[i];
                 strides[i] = _out->linesize[i];
             }
+
             fixed (byte* p = _packed)
                 Check(ffmpeg.av_image_copy_to_buffer(p, size, in planes, in strides, _format, width, height, 1), "pack");
             data = _packed;
         }
+
         frame = new VideoFrame(_index, pts, time, width, height, _options.FrameFormat, data);
     }
 
     /// <summary>Frees the decoder, the scaler and the output buffer.</summary>
     public void Dispose()
     {
-        if (_sws != null) { var s = _sws; ffmpeg.sws_free_context(&s); _sws = null; }
-        if (_in != null) { var f = _in; ffmpeg.av_frame_free(&f); _in = null; }
-        if (_out != null) { var f = _out; ffmpeg.av_frame_free(&f); _out = null; }
-        if (_fpsFrame != null) { var f = _fpsFrame; ffmpeg.av_frame_free(&f); _fpsFrame = null; }
-        if (_fpsGraph != null) { var g = _fpsGraph; ffmpeg.avfilter_graph_free(&g); _fpsGraph = null; _fpsIn = _fpsOut = null; }
+        if (_sws != null)
+        {
+            var s = _sws;
+            ffmpeg.sws_free_context(&s);
+            _sws = null;
+        }
+
+        if (_in != null)
+        {
+            var f = _in;
+            ffmpeg.av_frame_free(&f);
+            _in = null;
+        }
+
+        if (_out != null)
+        {
+            var f = _out;
+            ffmpeg.av_frame_free(&f);
+            _out = null;
+        }
+
+        if (_fpsFrame != null)
+        {
+            var f = _fpsFrame;
+            ffmpeg.av_frame_free(&f);
+            _fpsFrame = null;
+        }
+
+        if (_fpsGraph != null)
+        {
+            var g = _fpsGraph;
+            ffmpeg.avfilter_graph_free(&g);
+            _fpsGraph = null;
+            _fpsIn = _fpsOut = null;
+        }
+
         _decoder.Dispose();
     }
 

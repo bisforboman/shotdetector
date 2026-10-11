@@ -36,8 +36,15 @@ public sealed class SwscaleYuv420 : IYuv420Converter
     /// <summary>ffprobe's color_space names → AVColorSpace.</summary>
     static readonly Dictionary<string, int> ColorSpaces = new()
     {
-        ["bt709"] = 1, ["unknown"] = 2, [""] = 2, ["fcc"] = 4, ["bt470bg"] = 5, ["smpte170m"] = 6,
-        ["smpte240m"] = 7, ["bt2020nc"] = 9, ["bt2020c"] = 10,
+        ["bt709"] = 1,
+        ["unknown"] = 2,
+        [""] = 2,
+        ["fcc"] = 4,
+        ["bt470bg"] = 5,
+        ["smpte170m"] = 6,
+        ["smpte240m"] = 7,
+        ["bt2020nc"] = 9,
+        ["bt2020c"] = 10,
     };
 
     // Each term of the asm is a 16-bit multiply-high of one shifted input, so precompute them per value.
@@ -47,7 +54,9 @@ public sealed class SwscaleYuv420 : IYuv420Converter
     static readonly byte[] Clip = Enumerable.Range(-ClipOffset, 2 * ClipOffset).Select(v => (byte)Math.Clamp(v, 0, 255)).ToArray();
 
     /// <summary>BT.601, limited range: what swscale uses for untagged video.</summary>
-    public SwscaleYuv420() : this(5, fullRange: false) { }
+    public SwscaleYuv420() : this(5, fullRange: false)
+    {
+    }
 
     SwscaleYuv420(int colorSpace, bool fullRange)
     {
@@ -66,6 +75,7 @@ public sealed class SwscaleYuv420 : IYuv420Converter
             cgu = cgu * 224 / 255;
             cgv = cgv * 224 / 255;
         }
+
         int yCoeff = RoundToInt16(cy * (1 << 13)), yOffset = RoundToInt16(oy * (1 << 3));
         int vrCoeff = RoundToInt16(crv * (1 << 13)), ubCoeff = RoundToInt16(cbu * (1 << 13));
         int ugCoeff = RoundToInt16(cgu * (1 << 13)), vgCoeff = RoundToInt16(cgv * (1 << 13));
@@ -85,7 +95,9 @@ public sealed class SwscaleYuv420 : IYuv420Converter
         ColorSpaces.TryGetValue(colorSpace, out int cs) ? new SwscaleYuv420(cs, fullRange) : null;
 
     static int RoundToInt16(long f) => (short)Math.Clamp((f + (1 << 15)) >> 16, -0x8000, 0x7FFF);
+
     static int Sat16(int v) => Math.Clamp(v, short.MinValue, short.MaxValue);
+
     static int MulHi(int a, int b) => (short)a * (short)b >> 16; // pmulhw
 
     /// <inheritdoc/>
@@ -95,6 +107,7 @@ public sealed class SwscaleYuv420 : IYuv420Converter
         var luma = yuv.Slice(y * width, width);
         var u = yuv.Slice(width * height + (y >> 1) * chromaWidth, chromaWidth);
         var v = yuv.Slice(width * height + chromaSize + (y >> 1) * chromaWidth, chromaWidth);
+
         // The asm saturates to 16 bits after each add, but every term here is within ±300, so
         // saturation never triggers and plain adds are exact; the final clamp to 0..255 is a lookup.
         var clip = Clip;

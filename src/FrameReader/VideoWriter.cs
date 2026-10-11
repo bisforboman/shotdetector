@@ -143,12 +143,26 @@ public sealed unsafe class VideoWriter : IDisposable
             _fmt = Output.Create(path, options.Container, options.Bitexact);
             string encoder = options.Encoder ?? "libx264";
             if (ffmpeg.avcodec_find_encoder_by_name(encoder) == null && options.Encoder is null)
+            {
                 throw new FrameReaderException(FrameReaderError.InvalidInput,
-                    "These FFmpeg libraries have no libx264: H.264 encoding needs an FFmpeg built with x264 " +
-                    "(a GPL build, loaded with FFmpegLibraries.Load), or set Encoder to one these libraries have.");
+                    "These FFmpeg libraries have no libx264: H.264 encoding needs an FFmpeg built with x264 "
+                    + "(a GPL build, loaded with FFmpegLibraries.Load), or set Encoder to one these libraries have.");
+            }
+
             var codec = Encoder.Find(_fmt, path, encoder, AVMediaType.AVMEDIA_TYPE_VIDEO, "video");
-            _video = Encoder.Video(_fmt, codec, _input, options.Width, options.Height, options.FrameRate, options.PixelFormat,
-                options.BitRate, options.Gop, options.KeyintMin, EncoderOptions(options, encoder), options.Bitexact);
+            _video = Encoder.Video(_fmt,
+                codec,
+                _input,
+                options.Width,
+                options.Height,
+                options.FrameRate,
+                options.PixelFormat,
+                options.BitRate,
+                options.Gop,
+                options.KeyintMin,
+                EncoderOptions(options, encoder),
+                options.Bitexact);
+
             // As ffmpeg: the video encoder opens on the first filtered frame (its colour tags), then the file starts.
             _video.Opened = Start;
             if (options.Audio is { } a)
@@ -171,6 +185,7 @@ public sealed unsafe class VideoWriter : IDisposable
             _audio = Encoder.Audio(_fmt, codec, a.SampleRate, a.Channels, a.BitRate, _o.Bitexact);
             _samples = ffmpeg.av_frame_alloc();
         }
+
         Output.Start(_fmt, _path);
         _started = true;
         foreach (var pending in _pendingAudio)
@@ -211,23 +226,26 @@ public sealed unsafe class VideoWriter : IDisposable
         _frame->format = (int)_input;
         _frame->width = _o.Width;
         _frame->height = _o.Height;
+
         // As ffmpeg's rawvideo input gives frames: rows packed (stride = width), and nothing uninitialised after them, which
         // the conversion's SIMD may read past the last pixel (CI saw files vary run to run with padded rows).
         Encoder.Check(ffmpeg.av_frame_get_buffer(_frame, 1), "frame buffer");
         for (uint i = 0; i < 8 && _frame->buf[i] != null; i++)
             new Span<byte>(_frame->buf[i]->data, (int)_frame->buf[i]->size).Clear();
-        var src = new byte_ptrArray4();
-        var srcLines = new int_array4();
+        var src = default(byte_ptrArray4);
+        var srcLines = default(int_array4);
         fixed (byte* data = frame)
         {
             Encoder.Check(ffmpeg.av_image_fill_arrays(ref src, ref srcLines, data, _input, _o.Width, _o.Height, 1), "frame");
-            var dst = new byte_ptrArray4();
-            var dstLines = new int_array4();
+            var dst = default(byte_ptrArray4);
+            var dstLines = default(int_array4);
             dst.UpdateFrom(_frame->data);
             dstLines.UpdateFrom(_frame->linesize);
             ffmpeg.av_image_copy(ref dst, in dstLines, src, srcLines, _input, _o.Width, _o.Height);
         }
+
         _frame->pts = _frames++;
+
         // -force_key_frames expr:gte(t,n_forced*N): the first frame at or after each multiple is a keyframe.
         var forced = AVPictureType.AV_PICTURE_TYPE_NONE;
         if (_o.KeyframeEvery is { } every)
@@ -239,6 +257,7 @@ public sealed unsafe class VideoWriter : IDisposable
                 _forced++;
             }
         }
+
         _video!.Send(_frame, forced);
     }
 
@@ -295,7 +314,18 @@ public sealed unsafe class VideoWriter : IDisposable
         _audio?.Dispose();
         _video = _audio = null;
         Output.Free(ref _fmt);
-        if (_frame != null) { var f = _frame; ffmpeg.av_frame_free(&f); _frame = null; }
-        if (_samples != null) { var f = _samples; ffmpeg.av_frame_free(&f); _samples = null; }
+        if (_frame != null)
+        {
+            var f = _frame;
+            ffmpeg.av_frame_free(&f);
+            _frame = null;
+        }
+
+        if (_samples != null)
+        {
+            var f = _samples;
+            ffmpeg.av_frame_free(&f);
+            _samples = null;
+        }
     }
 }

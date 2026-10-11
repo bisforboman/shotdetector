@@ -13,6 +13,7 @@ public class HashDetectorTests
             v = (v * 1103515245 + 12345) & 0x7fffffff;
             img[i] = (byte)((v >> 16) & 255);
         }
+
         return img;
     }
 
@@ -49,7 +50,8 @@ public class HashDetectorTests
         var dst = new byte[7 * 5];
         AreaResize.Resize(cropped, 60, 48, dst, 7, 5);
         Assert.Equal([124, 143, 132, 135, 121, 124, 121, 119, 131, 131, 130, 120, 124, 127, 126, 132, 130, 124, 127,
-            135, 127, 129, 134, 132, 138, 130, 130, 128, 126, 127, 133, 129, 122, 126, 123], dst.Select(b => (int)b));
+            135, 127, 129, 134, 132, 138, 130, 130, 128, 126, 127, 133, 129, 122, 126, 123],
+            dst.Select(b => (int)b));
     }
 
     [Fact]
@@ -72,7 +74,11 @@ public class HashDetectorTests
         var b = LcgImage(64, 48, seed: 777);
         var cuts = new List<long>();
         for (int i = 0; i < 10; i++)
-            if (d.ProcessFrame(i, i < 5 ? a : b) is { } cut) cuts.Add(cut.FrameNum);
+        {
+            if (d.ProcessFrame(i, i < 5 ? a : b) is { } cut)
+                cuts.Add(cut.FrameNum);
+        }
+
         Assert.Equal([5], cuts);
     }
 }

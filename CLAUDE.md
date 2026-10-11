@@ -57,6 +57,9 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 - Before pushing: `dotnet test ShotDetector.slnx` (needs ffmpeg on PATH; ~3 min, the video tests make clips),
   and for detector changes `python tools/compare.py samples/*.mp4 ... --detector all --stats` (`tools/make-samples.ps1`
   creates `samples/`; `pip install scenedetect==0.7.1 opencv-python-headless`).
+- Code style: StyleBro (analyzers on build; rules chosen in `.editorconfig`, docs/decisions.md). Before pushing,
+  `stylebro-migrate format ShotDetector.slnx` (`dotnet tool install StyleBro.Migrate --version 0.5.0-alpha.1
+  --tool-path <dir>`); CI checks it with `--verify-no-changes`. Feedback on StyleBro goes to its GitHub issues.
 - Commit messages: what and why, like the history. Small commits.
 
 ## Layout

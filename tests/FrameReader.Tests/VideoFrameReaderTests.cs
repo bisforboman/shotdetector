@@ -47,7 +47,7 @@ public class VideoFrameReaderTests
             string path = Path.Combine(dir, name);
             Run(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=1", .. encode.Split(' '), path]);
             foreach (var (format, ffmpegName) in new[] { (FrameFormat.Bgr24, "bgr24"), (FrameFormat.Rgb24, "rgb24"), (FrameFormat.Bgra32, "bgra"),
-                         (FrameFormat.Rgba32, "rgba"), (FrameFormat.Gray8, "gray"), (FrameFormat.Yuv420p, "yuv420p") })
+                         (FrameFormat.Rgba32, "rgba"), (FrameFormat.Gray8, "gray"), (FrameFormat.Yuv420p, "yuv420p"), })
             {
                 foreach (var size in new (int W, int H)?[] { null, (161, 91) })
                 {
@@ -56,13 +56,16 @@ public class VideoFrameReaderTests
                     var actual = new MemoryStream();
                     int frames = 0;
                     using (var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
-                           { Width = size?.W, Height = size?.H, FrameFormat = format, Decoder = new FrameDecoderOptions() }))
+                    { Width = size?.W, Height = size?.H, FrameFormat = format, Decoder = new FrameDecoderOptions() }))
+                    {
                         while (reader.TryRead(out var frame))
                         {
                             Assert.Equal(frames++, frame.Index);
                             Assert.Equal((size?.W ?? 320, size?.H ?? 240), (frame.Width, frame.Height));
                             actual.Write(frame.Data);
                         }
+                    }
+
                     Assert.Equal(25, frames);
                     Assert.True(expected.AsSpan().SequenceEqual(actual.ToArray()),
                         $"{name} {format} {scale}: {expected.Length} bytes from ffmpeg, {actual.Length} read; first difference at {FirstDifference(expected, actual.ToArray())}");
@@ -102,6 +105,7 @@ public class VideoFrameReaderTests
                 foreach (int y in rows)
                     Assert.True(sampled.Slice(y * stride, Row).SequenceEqual(expected.AsSpan(frames * Frame + y * Row, Row)), $"{name}: frame {frames}, row {y} alone");
             }
+
             Assert.Equal(25, frames);
         }
         finally
@@ -114,8 +118,11 @@ public class VideoFrameReaderTests
     {
         int n = Math.Min(a.Length, b.Length);
         for (int i = 0; i < n; i++)
+        {
             if (a[i] != b[i])
                 return i;
+        }
+
         return n;
     }
 

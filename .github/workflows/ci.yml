@@ -90,6 +90,12 @@ jobs:
             echo "::warning::audiowaveform didn't install: WaveformData's comparison with it is skipped"
           fi
 
+      - name: Code style (StyleBro)
+        if: needs.changes.outputs.docs_only != 'true'
+        run: |
+          dotnet tool install StyleBro.Migrate --version 0.5.0-alpha.1 --tool-path "$RUNNER_TEMP/stylebro" > /dev/null
+          "$RUNNER_TEMP/stylebro/stylebro-migrate" format ShotDetector.slnx --verify-no-changes
+
       - name: Test
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx

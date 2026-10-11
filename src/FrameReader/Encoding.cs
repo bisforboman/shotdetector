@@ -12,8 +12,11 @@ internal static unsafe class Output
         AVFormatContext* fmt = null;
         int ret = ffmpeg.avformat_alloc_output_context2(&fmt, null, format, path);
         if (ret < 0 || fmt == null)
+        {
             throw new FrameReaderException(FrameReaderError.InvalidInput,
                 $"No muxer for \"{path}\"{(format is null ? "" : $" ({format})")} in these FFmpeg libraries: {FFmpegLibraries.ErrorMessage(ret)}");
+        }
+
         if (bitexact)
             fmt->flags |= ffmpeg.AVFMT_FLAG_BITEXACT;
         return fmt;
@@ -51,6 +54,7 @@ internal sealed unsafe class Encoder : IDisposable
     AVStream* _st;
     AVFrame* _filtered, _clean;
     AVPacket* _pkt;
+
     // Video: the encoder opens on the first filtered frame, from its properties, as ffmpeg's does.
     AVCodec* _codec;
     IReadOnlyDictionary<string, string>? _options;
@@ -66,11 +70,15 @@ internal sealed unsafe class Encoder : IDisposable
     /// <summary>The encoder by name, or the container's usual one for the media type, as ffmpeg picks it from the file name.</summary>
     internal static AVCodec* Find(AVFormatContext* fmt, string path, string? name, AVMediaType type, string what)
     {
-        AVCodec* codec = name is not null ? ffmpeg.avcodec_find_encoder_by_name(name)
+        AVCodec* codec = name is not null
+            ? ffmpeg.avcodec_find_encoder_by_name(name)
             : ffmpeg.avcodec_find_encoder(ffmpeg.av_guess_codec(fmt->oformat, null, path, null, type));
         if (codec == null || codec->type != type)
+        {
             throw new FrameReaderException(FrameReaderError.InvalidInput,
                 $"No {what} encoder {(name is null ? $"for \"{Path.GetExtension(path)}\"" : $"\"{name}\"")} in these FFmpeg libraries.");
+        }
+
         return codec;
     }
 
@@ -87,6 +95,7 @@ internal sealed unsafe class Encoder : IDisposable
             string layoutName = Marshal.PtrToStringAnsi((nint)name)!;
             var formats = Supported<AVSampleFormat>(codec, AVCodecConfig.AV_CODEC_CONFIG_SAMPLE_FORMAT).Select(f => ffmpeg.av_get_sample_fmt_name(f)).ToList();
             var rates = Supported<int>(codec, AVCodecConfig.AV_CODEC_CONFIG_SAMPLE_RATE);
+
             // aformat with the encoder's sample formats and rates (ffmpeg picks the nearest), the samples' layout.
             string filter = "aformat=" + string.Join(":", new[]
             {
@@ -94,8 +103,11 @@ internal sealed unsafe class Encoder : IDisposable
                 "sample_rates=" + (rates.Count > 0 ? string.Join("|", rates) : rate.ToString(CultureInfo.InvariantCulture)),
                 "channel_layouts=" + layoutName,
             }.Where(s => s is not null));
-            e.Graph("abuffer", string.Create(CultureInfo.InvariantCulture,
-                $"time_base=1/{rate}:sample_rate={rate}:sample_fmt=flt:channel_layout={layoutName}"), filter, "abuffersink");
+            e.Graph("abuffer",
+                string.Create(CultureInfo.InvariantCulture,
+                    $"time_base=1/{rate}:sample_rate={rate}:sample_fmt=flt:channel_layout={layoutName}"),
+                filter,
+                "abuffersink");
 
             e._enc = ffmpeg.avcodec_alloc_context3(codec);
             e._enc->sample_fmt = (AVSampleFormat)ffmpeg.av_buffersink_get_format(e._out);
@@ -123,14 +135,26 @@ internal sealed unsafe class Encoder : IDisposable
     /// <paramref name="rate"/> into <paramref name="codec"/>, converted to <paramref name="pixelFormat"/> (null: the
     /// encoder's formats, ffmpeg picking the nearest) by the scale filter ffmpeg inserts.
     /// </summary>
-    internal static Encoder Video(AVFormatContext* fmt, AVCodec* codec, AVPixelFormat input, int width, int height, Rational rate,
-        string? pixelFormat, long? bitRate, int? gop, int? keyintMin, IReadOnlyDictionary<string, string> options, bool bitexact)
+    internal static Encoder Video(AVFormatContext* fmt,
+        AVCodec* codec,
+        AVPixelFormat input,
+        int width,
+        int height,
+        Rational rate,
+        string? pixelFormat,
+        long? bitRate,
+        int? gop,
+        int? keyintMin,
+        IReadOnlyDictionary<string, string> options,
+        bool bitexact)
     {
         var e = new Encoder(fmt);
         try
         {
-            var formats = pixelFormat is not null ? [pixelFormat]
+            var formats = pixelFormat is not null
+                ? [pixelFormat]
                 : Supported<AVPixelFormat>(codec, AVCodecConfig.AV_CODEC_CONFIG_PIX_FORMAT).Select(f => ffmpeg.av_get_pix_fmt_name(f)).ToList();
+
             // ffmpeg's output filter: the pixel formats, and the colour ranges and spaces the encoder takes (with them, the
             // conversion tags its frames: x264 gets limited range from BGR, as from ffmpeg).
             var ranges = Supported<AVColorRange>(codec, AVCodecConfig.AV_CODEC_CONFIG_COLOR_RANGE).Select(r => ffmpeg.av_color_range_name(r)).ToList();
@@ -142,9 +166,11 @@ internal sealed unsafe class Encoder : IDisposable
                 ranges.Count > 0 ? "color_ranges=" + string.Join("|", ranges) : null,
             }.Where(x => x is not null).ToList();
             string filter = parts.Count > 0 ? "format=" + string.Join(":", parts) : "null";
-            e.Graph("buffer", string.Create(CultureInfo.InvariantCulture,
-                $"video_size={width}x{height}:pix_fmt={(int)input}:time_base={rate.Den}/{rate.Num}:frame_rate={rate.Num}/{rate.Den}:pixel_aspect=0/1"),
-                filter, "buffersink");
+            e.Graph("buffer",
+                string.Create(CultureInfo.InvariantCulture,
+                    $"video_size={width}x{height}:pix_fmt={(int)input}:time_base={rate.Den}/{rate.Num}:frame_rate={rate.Num}/{rate.Den}:pixel_aspect=0/1"),
+                filter,
+                "buffersink");
 
             e._enc = ffmpeg.avcodec_alloc_context3(codec);
             e._enc->framerate = new AVRational { num = rate.Num, den = rate.Den };
@@ -155,11 +181,16 @@ internal sealed unsafe class Encoder : IDisposable
                 e._enc->gop_size = g;
             if (keyintMin is { } k)
                 e._enc->keyint_min = k;
+
             // Unknown options fail here, not at the first frame.
             foreach (var (key, value) in options)
+            {
                 Check(ffmpeg.av_opt_set(e._enc, key, value, ffmpeg.AV_OPT_SEARCH_CHILDREN) is var r && r == ffmpeg.AVERROR_OPTION_NOT_FOUND
                     ? throw new ArgumentException($"The {Marshal.PtrToStringAnsi((nint)codec->name)} encoder has no option \"{key}\".", "options")
-                    : r, $"set {key}");
+                    : r,
+                    $"set {key}");
+            }
+
             e._threadsSet = options.ContainsKey("threads");
             e._codec = codec;
             e._options = null; // set on the context above
@@ -174,20 +205,25 @@ internal sealed unsafe class Encoder : IDisposable
         }
     }
 
-    static List<T> Supported<T>(AVCodec* codec, AVCodecConfig config) where T : unmanaged
+    static List<T> Supported<T>(AVCodec* codec, AVCodecConfig config)
+        where T : unmanaged
     {
         var result = new List<T>();
         void* list;
         int count;
         if (ffmpeg.avcodec_get_supported_config(null, codec, config, 0, &list, &count) >= 0 && list != null)
+        {
             for (int i = 0; i < count; i++)
                 result.Add(((T*)list)[i]);
+        }
+
         return result;
     }
 
     void Graph(string source, string args, string filter, string sink)
     {
         _graph = ffmpeg.avfilter_graph_alloc();
+
         // One thread: the scale filter's slice threading varied the converted frames run to run (CI, 1 run in 8; the
         // conversion is cheap next to encoding).
         _graph->nb_threads = 1;
@@ -210,6 +246,7 @@ internal sealed unsafe class Encoder : IDisposable
             ffmpeg.avfilter_inout_free(&inputs);
             ffmpeg.avfilter_inout_free(&outputs);
         }
+
         _in = src;
         _out = snk;
     }
@@ -226,6 +263,7 @@ internal sealed unsafe class Encoder : IDisposable
         _enc->color_trc = frame->color_trc;
         _enc->colorspace = frame->colorspace;
         _enc->chroma_sample_location = frame->chroma_location;
+
         // Field order as ffmpeg sets it: from an interlaced frame's flags, else progressive.
         _enc->field_order = (frame->flags & ffmpeg.AV_FRAME_FLAG_INTERLACED) == 0 ? AVFieldOrder.AV_FIELD_PROGRESSIVE
             : (frame->flags & ffmpeg.AV_FRAME_FLAG_TOP_FIELD_FIRST) != 0 ? AVFieldOrder.AV_FIELD_TB : AVFieldOrder.AV_FIELD_BT;
@@ -275,13 +313,16 @@ internal sealed unsafe class Encoder : IDisposable
             Check(ret, $"open the {Marshal.PtrToStringAnsi((nint)codec->name)} encoder");
             AVDictionaryEntry* unused = ffmpeg.av_dict_get(dict, "", null, ffmpeg.AV_DICT_IGNORE_SUFFIX);
             if (unused != null)
+            {
                 throw new ArgumentException(
                     $"The {Marshal.PtrToStringAnsi((nint)codec->name)} encoder has no option \"{Marshal.PtrToStringAnsi((nint)unused->key)}\".", "options");
+            }
         }
         finally
         {
             ffmpeg.av_dict_free(&dict);
         }
+
         _st = ffmpeg.avformat_new_stream(_fmt, null);
         Check(ffmpeg.avcodec_parameters_from_context(_st->codecpar, _enc), "stream parameters");
         _st->time_base = _enc->time_base;
@@ -290,6 +331,7 @@ internal sealed unsafe class Encoder : IDisposable
             _st->avg_frame_rate = _enc->framerate;
             _st->sample_aspect_ratio = _enc->sample_aspect_ratio;
         }
+
         // ffmpeg's stream "encoder" tag (bitexact shortens it to "Lavc NAME"; the MP3 muxer writes it into its LAME
         // header). The container's "Lavf" tag libavformat adds itself, unless bitexact.
         uint v = ffmpeg.avcodec_version();
@@ -317,6 +359,7 @@ internal sealed unsafe class Encoder : IDisposable
                 WritePackets();
                 return;
             }
+
             Check(got, "filter");
             if (_codec != null)
                 OpenVideo(_filtered);
@@ -364,13 +407,44 @@ internal sealed unsafe class Encoder : IDisposable
         }
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
-        if (_enc != null) { var e = _enc; ffmpeg.avcodec_free_context(&e); _enc = null; }
-        if (_graph != null) { var g = _graph; ffmpeg.avfilter_graph_free(&g); _graph = null; _in = _out = null; }
-        if (_filtered != null) { var f = _filtered; ffmpeg.av_frame_free(&f); _filtered = null; }
-        if (_clean != null) { var f = _clean; ffmpeg.av_frame_free(&f); _clean = null; }
-        if (_pkt != null) { var p = _pkt; ffmpeg.av_packet_free(&p); _pkt = null; }
+        if (_enc != null)
+        {
+            var e = _enc;
+            ffmpeg.avcodec_free_context(&e);
+            _enc = null;
+        }
+
+        if (_graph != null)
+        {
+            var g = _graph;
+            ffmpeg.avfilter_graph_free(&g);
+            _graph = null;
+            _in = _out = null;
+        }
+
+        if (_filtered != null)
+        {
+            var f = _filtered;
+            ffmpeg.av_frame_free(&f);
+            _filtered = null;
+        }
+
+        if (_clean != null)
+        {
+            var f = _clean;
+            ffmpeg.av_frame_free(&f);
+            _clean = null;
+        }
+
+        if (_pkt != null)
+        {
+            var p = _pkt;
+            ffmpeg.av_packet_free(&p);
+            _pkt = null;
+        }
     }
 
     internal static void Check(int ret, string what)
