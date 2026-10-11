@@ -16,7 +16,7 @@ jobs:
   # their steps. Decided here, on a runner with git, from the PR's merge commit against its base.
   changes:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
@@ -45,7 +45,7 @@ jobs:
 
   build:
     needs: [changes, native]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -199,8 +199,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { rid: linux-x64, os: ubuntu-latest }
-          - { rid: linux-musl-x64, os: ubuntu-latest, container: 'mcr.microsoft.com/dotnet/sdk:10.0-alpine' }
+          - { rid: linux-x64, os: ubuntu-24.04 }
+          - { rid: linux-musl-x64, os: ubuntu-24.04, container: 'mcr.microsoft.com/dotnet/sdk:10.0-alpine' }
           - { rid: win-x64, os: windows-latest }
           - { rid: osx-arm64, os: macos-latest }
     runs-on: ${{ matrix.os }}
@@ -317,7 +317,7 @@ jobs:
   alpine:
     needs: changes
     if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     container: mcr.microsoft.com/dotnet/sdk:10.0-alpine
     steps:
@@ -339,7 +339,7 @@ jobs:
   samples:
     needs: changes
     if: needs.changes.outputs.light != 'true' && needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       FFMPEG: '9.0'   # parity's
@@ -373,7 +373,7 @@ jobs:
   parity:
     needs: [changes, samples]
     if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -507,7 +507,7 @@ jobs:
     name: CI passed
     needs: [changes, native, build, aot, native-arm, arm, alpine, samples, parity]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Every job passed or was skipped

@@ -20,7 +20,7 @@ jobs:
   # their steps. Decided here, on a runner with git, from the PR's merge commit against its base.
   changes:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
@@ -43,7 +43,7 @@ jobs:
     if: needs.changes.outputs.light != 'true'
     needs: changes
     name: Real world (${{ matrix.video }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -106,7 +106,7 @@ jobs:
     if: needs.changes.outputs.docs_only != 'true'
     needs: changes
     name: Real world audio
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       FILMS: bbb_640x360_h264.mp4 elephants_dream_426x240_h264.mp4 tears_of_steel_1280x534_h264.mov   # AAC 44.1 and 48 kHz, MP3
@@ -181,7 +181,7 @@ jobs:
     name: Real world passed
     needs: [changes, realworld, audio]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Every job passed or was skipped

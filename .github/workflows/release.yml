@@ -19,7 +19,7 @@ concurrency:
 jobs:
   # Which version, and whether it still needs releasing (most pushes to main: no, and nothing else runs).
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -51,7 +51,7 @@ jobs:
 
   release:
     needs: [version, native]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: ${{ contains(needs.version.outputs.version, '-') && 'prerelease' || 'release' }}
     permissions:
@@ -144,7 +144,7 @@ jobs:
   baseline:
     needs: [version, release]
     if: ${{ !contains(needs.version.outputs.version, '-') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     permissions:
       issues: write
@@ -183,8 +183,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { rid: linux-x64, os: ubuntu-latest }
-          - { rid: linux-musl-x64, os: ubuntu-latest, container: 'mcr.microsoft.com/dotnet/sdk:10.0-alpine' }
+          - { rid: linux-x64, os: ubuntu-24.04 }
+          - { rid: linux-musl-x64, os: ubuntu-24.04, container: 'mcr.microsoft.com/dotnet/sdk:10.0-alpine' }
           - { rid: win-x64, os: windows-latest }
           - { rid: osx-arm64, os: macos-latest }
     runs-on: ${{ matrix.os }}

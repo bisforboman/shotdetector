@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   scenedetect:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -50,7 +50,7 @@ jobs:
           )"
 
   ffmpeg:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -88,7 +88,7 @@ jobs:
   # zlib and dav1d, linked statically into our FFmpeg libraries: any newer release than build-ffmpeg.sh's.
   libraries:
     name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     strategy:
       fail-fast: false
@@ -135,7 +135,7 @@ jobs:
   # when to move our libraries (FFmpeg 9) or re-check colour and 10-bit parity. Compares the pinned wheel's libavcodec
   # with the newest wheel's.
   opencv:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7

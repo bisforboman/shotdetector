@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { rid: linux-x64, os: ubuntu-latest, btbn: linux64 }
+          - { rid: linux-x64, os: ubuntu-24.04, btbn: linux64 }
           - { rid: linux-arm64, os: ubuntu-24.04-arm, btbn: linuxarm64 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
