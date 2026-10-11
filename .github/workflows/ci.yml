@@ -147,13 +147,13 @@ jobs:
           print('cuts at', starts, 'gaps', gaps)
           assert len(gaps) >= 2 and set(gaps) == {50}, gaps
           "
-          kill -9 $server 2>/dev/null; pkill -9 -f shots.mp4 || true; sleep 1
+          kill -9 $server 2>/dev/null || true; pkill -9 -f shots.mp4 || true; sleep 1
           sed -i 's/ffmpeg -re -i/ffmpeg -re -stream_loop -1 -i/' mtx.yml
           ./mediamtx mtx.yml & server=$!
           sleep 2
           timeout 60 dotnet run --project src/ShotDetector.Cli -- -i rtsp://127.0.0.1:8554/shots -d content --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" \
             --duration 8s --stats live.csv
-          kill -9 $server; pkill -9 -f shots.mp4 || true
+          kill -9 $server 2>/dev/null || true; pkill -9 -f shots.mp4 || true
           rows=$(($(wc -l < live.csv) - 1))   # 200 frames; the first has no score
           echo "looped source, --duration 8s: $rows stats rows"; test "$rows" -eq 199
 
