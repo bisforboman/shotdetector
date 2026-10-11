@@ -105,6 +105,19 @@ jobs:
           "$AUDIOWAVEFORM" -q -i tone.wav -o theirs.dat -z 512 -b 8 --split-channels
           cmp ours.dat theirs.dat
 
+      # #81's job from the command line: line-up tone notched out for its first 4 s, written as MP3; the same audio as
+      # ffmpeg -af ... -c:a libmp3lame gives (decoded), and silencedetect's results as ffmpeg finds them.
+      - name: CLI --audio-filter and --audio-out are ffmpeg's
+        if: needs.changes.outputs.docs_only != 'true'
+        run: |
+          ffmpeg -v error -f lavfi -i "aevalsrc='if(lt(t,4),0.13*sin(1000*2*PI*t),if(lt(t,6),0,0.3*sin(440*2*PI*t)))':s=48000:d=10" -ac 2 -c:a pcm_s16le job.wav
+          G="equalizer=f=1000:t=q:w=8:g=-40:enable='between(t,0,4)'"
+          dotnet run --project src/ShotDetector.Cli -- -i job.wav --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" --audio-filter "$G" --audio-out ours.mp3
+          ffmpeg -v error -i job.wav -af "$G" -c:a libmp3lame theirs.mp3
+          test "$(ffmpeg -v error -i ours.mp3 -f f32le - | md5sum)" = "$(ffmpeg -v error -i theirs.mp3 -f f32le - | md5sum)"
+          dotnet run --project src/ShotDetector.Cli -- -i job.wav --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" --audio-filter "silencedetect=n=-50dB:d=1" | tee silence.txt
+          grep -q "lavfi.silence_start=4$" silence.txt && grep -q "lavfi.silence_end=6.000021 " silence.txt
+
       # FrameReader's VideoWriter (H.264) against ffmpeg -c:v libx264, byte for byte: x264's output depends on how it
       # was compiled, so libraries and executable from one build, BtbN's shared GPL one (ours has no executables).
       - name: FFmpeg 8.1 with x264, shared

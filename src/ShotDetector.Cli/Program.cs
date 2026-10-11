@@ -86,6 +86,10 @@ const string Usage = """
       --waveform-pixels-per-second <n>  Points per second instead
       --waveform-bits <8|16>         Resolution of the .dat (default 16)
       --waveform-split-channels      One waveform per channel (default: the channels averaged)
+      --audio-filter <graph>         Only run an ffmpeg -af filter graph over the audio, then stop: analysis
+                                     filters' results (silencedetect, ebur128=metadata=1, astats=metadata=1)
+                                     go to standard output with their times
+      --audio-out <file>             Write the (filtered) audio, encoded by the extension (.mp3, .m4a, .wav, ...)
           --find-tone                    Only list reference tone (1 kHz line-up tone) in the audio, then stop;
                                          video or audio-only input. Not in scenedetect
           --trim-tone                    Leave reference tone at the start and end out of detection
@@ -95,7 +99,7 @@ const string Usage = """
     """;
 
 bool skipCuts = false, quiet = false, htmlNoImages = false, findTone = false, probe = false, probeJson = false;
-string? waveformPath = null;
+string? waveformPath = null, audioFilter = null, audioOut = null;
 var waveform = new FrameReader.WaveformOptions();
 var waveformBits = FrameReader.WaveformBits.Sixteen;
 int? htmlWidth = null, htmlHeight = null;
@@ -265,6 +269,8 @@ try
                 _ => throw new ArgumentException("--waveform-bits is 8 or 16"),
             }; break;
             case "--waveform-split-channels": waveform = waveform with { SplitChannels = true }; break;
+            case "--audio-filter": audioFilter = Next(); break;
+            case "--audio-out": audioOut = Next(); break;
             case "--trim-tone": options = options with { TrimReferenceTone = true }; break;
             case "--tone-min-duration": options = options with { ReferenceToneMinDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
             case "--tone-search": options = options with { ReferenceToneSearchDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
@@ -305,6 +311,41 @@ try
             throw new ArgumentException("--probe needs a file or URL");
         var info = ShotDetection.Probe(input, options);
         Console.WriteLine(probeJson ? ProbeJson(info) : string.Join(Environment.NewLine, ProbeLines(info)));
+        return 0;
+    }
+    if (audioFilter is not null || audioOut is not null)
+    {
+        if (input == "-")
+            throw new ArgumentException("--audio-filter and --audio-out need a file or URL");
+        try
+        {
+            FrameReader.FFmpegLibraries.Load(options.FfmpegDirectory);
+            using var audio = new FrameReader.AudioReader(input);
+            using var filter = audioFilter is null ? null : new FrameReader.AudioFilter(audio, audioFilter);
+            FrameReader.AudioWriter? writer = null;
+            try
+            {
+                while (filter is not null ? filter.TryRead(out var chunk) : audio.TryRead(out chunk))
+                {
+                    if (filter is { Metadata.Count: > 0 })
+                        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{chunk.Time.TotalSeconds:0.000}")
+                            + string.Concat(filter.Metadata.Select(kv => $" {kv.Key}={kv.Value}")));
+                    if (audioOut is null)
+                        continue;
+                    writer ??= new FrameReader.AudioWriter(audioOut, new FrameReader.AudioWriterOptions { SampleRate = chunk.SampleRate, Channels = chunk.Channels });
+                    writer.Write(chunk.Samples);
+                }
+            }
+            finally
+            {
+                writer?.Dispose(); // finishes the file
+            }
+        }
+        catch (FrameReader.FrameReaderException e)
+        {
+            Console.Error.WriteLine(e.Message);
+            return 1;
+        }
         return 0;
     }
     if (waveformPath is not null)
