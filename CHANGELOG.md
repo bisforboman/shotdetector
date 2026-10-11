@@ -4,6 +4,39 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 What's merged but not released yet is in changes/ (one file per pull request).
 
+## 1.7.0 – 2026-10-11
+
+Joined encodes (timestamps starting over, a resolution change) now give scenedetect's results, with its stats
+where a time repeats; damaged files decode with OpenCV's thread count, so concealed frames match; the
+ShotDetector.Native.Gpl packages are gone.
+
+### Breaking changes (packages only: no API changes)
+
+- `ShotDetector.Native.Gpl.<rid>` (our FFmpeg build with x264, GPL) is no longer built or published; earlier versions
+  stay on nuget.org. FrameReader's `VideoWriter` is unchanged and still encodes H.264 byte for byte as
+  `ffmpeg -c:v libx264`, but needs FFmpeg 8 libraries with libx264 of your own, such as a "gpl" shared build, loaded
+  with `FFmpegLibraries.Load(folder)`. `ShotDetector.Native.<rid>` (LGPL) is unchanged.
+
+### New
+
+- FrameReader: `BgrConverter.KeepFirstSize`, to scale frames of another size to the first one's.
+
+### Fixed
+
+- Damaged video: the default decoder threads are OpenCV's (the CPUs, at most 16) on both paths, since error
+  concealment depends on the count; truncated files now give scenedetect's stats exactly (they differed a
+  little), and a corrupt TS as closely as scenedetect's own runs agree with each other. `DecodeThreads` / `--threads` still override it.
+- Two encodes joined (timestamps that start over, a resolution change): ShotDetector now gives scenedetect's results
+  (it found 2 cuts where scenedetect finds 7 on the test file, and in-process decoding failed). Frames are labelled by
+  their time as scenedetect labels them, so cuts that come out of order are sorted and a later frame's stats replace
+  an earlier one's at the same time, metric by metric; frames of a new size are scaled to the stream's size in the one
+  conversion, as OpenCV does. Damaged files are now compared with scenedetect in CI.
+- Stats where a timestamp repeats (two encodes joined, duplicated timestamps): the threshold detector keeps the
+  average already stored at that time, for its stats and its cuts, as scenedetect's does when writing stats.
+- FrameReader's `SpectralStats` places each window where ffmpeg's `aspectralstats` does when the stream's timestamps
+  have a gap (Ogg Vorbis's first pages can): it counted samples from the start, so times after the gap were early
+  (10 ms on a Commons recording). The real-world audio check now covers Vorbis too.
+
 ## 1.6.0 – 2026-10-11
 
 Rotated and 10-bit video now give scenedetect's results exactly (OpenCV's chroma siting and its turn of the
