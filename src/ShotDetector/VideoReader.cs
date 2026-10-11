@@ -246,6 +246,7 @@ public sealed partial class VideoReader
     double _timeBase;                  // seconds per pts unit, as OpenCV's r2d(time_base)
     readonly double _startSeconds;
     readonly string _pixelFormat;
+    readonly (int W, int H) _codedSize; // the stream's size from its headers, before rotation
     readonly string? _chromaLocation;
     readonly IYuv420Converter? _yuv420ForVideo;   // _yuv420 configured for this video's colours
 
@@ -350,6 +351,7 @@ public sealed partial class VideoReader
             throw new ShotDetectionException(ShotDetectionError.InvalidInput, $"The input has no video stream: {path}");
         SourceWidth = int.Parse(stream["width"], CultureInfo.InvariantCulture);
         SourceHeight = int.Parse(stream["height"], CultureInfo.InvariantCulture);
+        _codedSize = (SourceWidth, SourceHeight);
         // Phone video is often stored sideways with a rotation tag. ffmpeg and OpenCV both rotate it
         // upright when decoding, so for ±90° the frames we get (and OpenCV's reported size) are
         // height x width.
@@ -443,11 +445,15 @@ public sealed partial class VideoReader
     /// <summary>
     /// The packet a decoded frame is, from its absolute showinfo time: the first packet after
     /// <paramref name="previous"/> within half a frame of it; if none is (a time the packet list doesn't
-    /// have), simply the next one.
+    /// have), simply the next one. A time before the previous packet's (timestamps that start over, as in two
+    /// streams joined) is looked up from the start: scenedetect labels frames by their time, so its numbers go
+    /// back there too.
     /// </summary>
     int PacketOf(double seconds, int previous)
     {
         double tolerance = 0.5 / Fps.Value;
+        if (previous >= 0 && previous < _pts.Length && seconds < _pts[previous] * _timeBase - tolerance)
+            previous = -1;
         for (int i = previous + 1; i < _pts.Length; i++)
         {
             double t = _pts[i] * _timeBase;
@@ -743,7 +749,9 @@ public sealed partial class VideoReader
         if (_deinterlace)
             select = ["-vf", "yadif" + (select.Length > 0 ? "," + select[1] : "")];
         string prefix = select.Length > 0 ? select[1] + "," : "";
-        string toBgr = "scale=flags=bicubic" + (_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "") + ",format=bgr24" + TurnFilters;
+        // The stream's size, explicitly: a frame of another size (a resolution change) is scaled to it in the same
+        // conversion, as OpenCV's sws_scale_frame does into its buffer (ffmpeg would convert, then scale at the encoder).
+        string toBgr = $"scale={_codedSize.W}:{_codedSize.H}:flags=bicubic" + (_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "") + ",format=bgr24" + TurnFilters;
         args = pipeline switch
         {
             // The source's own format, so ffmpeg passes the samples through untouched.

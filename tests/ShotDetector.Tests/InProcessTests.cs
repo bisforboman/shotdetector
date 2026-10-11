@@ -321,6 +321,42 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // Two encodes joined (tools/make-broken.py's res_change.ts in small): the second half at another size, its
+    // timestamps starting over. Frames are labelled by time as scenedetect labels them, so the second half's cuts come
+    // out of order (sorted at the end) and its stats rows replace the first half's; its frames are scaled to the first
+    // size in one conversion. Both paths give the same.
+    [Fact]
+    public void JoinedEncodesWithTimestampsStartingOver()
+    {
+        if (Libs is null)
+            return;
+        string dir = Path.Combine(Path.GetTempPath(), $"shotdetector-joined-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts");
+            // The halves as separate encodes, each starting at the same timestamp; the second's shots cut at other times.
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-t", "4", "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb", a], default);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "1", "-i", clips.ThreeShots, "-vf", "scale=240:180", "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb", b], default);
+            File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
+            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess };
+            var pipe = ShotDetection.Detect(joined, options);
+            var inProcess = ShotDetection.Detect(joined, options with { Decoder = VideoDecoder.InProcess });
+            Assert.True(inProcess.Video.DecodesInProcess);
+            Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
+            Assert.Equal(Shots.Csv(pipe.Shots), Shots.Csv(inProcess.Shots));
+            // Cuts from both halves by their time labels, sorted (scenedetect's res_change.ts result is checked in CI).
+            Assert.Equal([50L, 75L, 100L], pipe.Cuts.Select(c => c.FrameNum));
+            // One stats row per frame number: the second half (5 s, numbers 0-124 by time) reuses all of the first half's
+            // (0-99); frame 0 has no score; plus the header.
+            Assert.Equal(125, pipe.Stats.Csv(pipe.Video.Position).Split('\n', StringSplitOptions.RemoveEmptyEntries).Length);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // Display matrices as OpenCV applies them (VideoReader.Turn): the angle alone, turning the converted image, so flips
     // only count as far as they change the angle; deinterlaced first, then turned; every pixel format.
     [Theory]

@@ -35,9 +35,16 @@ public sealed class Stats
         foreach (var key in _keys)
             sb.Append(',').Append(key);
         sb.Append('\n');
+        // One row per position, the last frame's: scenedetect keys its stats by frame number, so where timestamps start
+        // over (two streams joined) a later frame overwrites an earlier one at the same number.
+        var byPosition = new SortedDictionary<long, (FrameTime At, Dictionary<string, double> Row)>();
         foreach (var (frame, row) in _rows)
         {
             var at = position(frame);
+            byPosition[at.FrameNum] = (at, row);
+        }
+        foreach (var (at, row) in byPosition.Values)
+        {
             sb.Append(at.FrameNum + 1).Append(',').Append(at.Timecode());
             foreach (var key in _keys)
                 sb.Append(',').Append(row.TryGetValue(key, out var v) ? PyFloat(v) : "None");

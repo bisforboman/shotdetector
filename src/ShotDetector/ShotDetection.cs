@@ -829,7 +829,12 @@ public static class ShotDetection
                 if (SameCut(cut, previous))
                     return; // the same cut twice
                 if (CompareCuts(cut, previous) < 0)
-                    throw new InvalidOperationException($"Cut at frame {cut.FrameNum} came after one at {previous.FrameNum}.");
+                {
+                    // Timestamps that start over (two streams joined): scenedetect labels frames by time, so its cuts
+                    // come out of order too, and it sorts them at the end. Shots from here on come from the sorted cuts.
+                    incremental = false;
+                    return;
+                }
             }
             lastCut = cut;
             var shot = new Shot(shots.Count + 1, start, cut);
@@ -846,6 +851,7 @@ public static class ShotDetection
             : o.Duration is not null ? Frames(o.Duration, video.Fps) + startFrame
             : null;
         start = video.Position(startFrame);
+        var first = start;
         int frameCount = 0, stride = o.FrameSkip + 1;
         bool readToEnd = true;
         long lastReport = 0;
@@ -891,9 +897,12 @@ public static class ShotDetection
             }
             else
             {
-                shots = Scenes(Unique(cuts), start, last.PlusFrames(1), o.MergeLastScene, o.DropShortScenes ? minSceneLen : 0, minSceneLen);
+                // Shots already streamed out before the cuts came out of order aren't repeated.
+                var streamedUntil = shots.Count > 0 ? shots[^1].End : (FrameTime?)null;
+                shots = Scenes(Unique(cuts), first, last.PlusFrames(1), o.MergeLastScene, o.DropShortScenes ? minSceneLen : 0, minSceneLen);
                 foreach (var shot in shots)
-                    onShot?.Invoke(shot);
+                    if (streamedUntil is not { } until || CompareCuts(shot.Start, until) >= 0)
+                        onShot?.Invoke(shot);
             }
         }
         return new()

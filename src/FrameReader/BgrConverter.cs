@@ -16,6 +16,12 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
     readonly FrameDecoder _d = decoder;
     AVFrame* _bgr;
     SwsContext* _toBgr, _toRows;
+
+    /// <summary>
+    /// Keep the first frame's size: a frame of another size (the stream changed resolution) is scaled to it in the same
+    /// conversion (bicubic), as OpenCV does into its buffer; false (the default): each frame at its own size.
+    /// </summary>
+    public bool KeepFirstSize { get; init; }
     (int W, int H, int Format, AVColorSpace Space, AVColorRange Range, AVChromaLocation Loc) _rowsFor;
 
     /// <summary>The whole current frame as BGR, its rows <paramref name="stride"/> bytes apart.</summary>
@@ -41,6 +47,9 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
     public ReadOnlySpan<byte> Convert(ReadOnlySpan<int> rows, out int stride)
     {
         Prepare();
+        // Scaled to the first size: the rows wanted aren't the decoded frame's rows, so the whole frame.
+        if (_bgr->width != _d.Frame->width || _bgr->height != _d.Frame->height)
+            return Convert(out stride);
         // Deinterlacing row by row: only the rows that are read (a slice's other rows come out wrong, and nothing reads them).
         if (_d.RowMode)
         {
@@ -88,7 +97,7 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
             ffmpeg.av_opt_set_int(_toBgr, "sws_flags", (long)SwsFlags.SWS_BICUBIC, 0);
             _bgr = ffmpeg.av_frame_alloc();
         }
-        if (_bgr->width != _d.Frame->width || _bgr->height != _d.Frame->height)
+        if ((_bgr->width != _d.Frame->width || _bgr->height != _d.Frame->height) && !(KeepFirstSize && _bgr->width > 0))
         {
             ffmpeg.av_frame_unref(_bgr);
             _bgr->format = (int)AVPixelFormat.AV_PIX_FMT_BGR24;

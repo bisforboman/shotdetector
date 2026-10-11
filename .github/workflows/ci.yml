@@ -464,6 +464,21 @@ jobs:
             echo "### Interlaced broadcast, --deinterlace auto vs a yadif copy, ${{ matrix.path }} path"; cat auto.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
+      # Damaged files (tools/make-broken.py): concealment as OpenCV's decoder threads give it (the default thread count),
+      # and two encodes joined, whose timestamps start over and whose resolution changes (frames labelled by time, cuts
+      # sorted, the new size scaled in one conversion, as scenedetect gets them). corrupt.mp4 still differs in a few
+      # stats cells (backlog), so not here.
+      - name: Compare damaged files with scenedetect
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.part == 'more')
+        run: |
+          python tools/make-broken.py > /dev/null
+          status=0
+          python tools/compare.py samples/broken/base.mp4 samples/broken/corrupt.ts samples/broken/truncated.mp4 samples/broken/truncated.ts \
+            samples/broken/dup_pts.mkv samples/broken/res_change.ts --detector all --stats --report broken.md \
+            ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || status=$?
+          { echo "### Damaged files, ${{ matrix.path }} path"; cat broken.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
       # Interlaced 10-bit (AVC-Intra 100, ProRes 422) with deinterlacing off: informational, as above (OpenCV can't
       # convert interlaced frames). Progressive 10-bit is in the exact set.
       - name: Compare interlaced 10-bit video with scenedetect (informational)

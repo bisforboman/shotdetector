@@ -17,6 +17,10 @@
         # Rotation as OpenCV's: the converted image turned by the display matrix's angle, not ffmpeg's autorotate
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '.. _inputOptions, "-noautorotate", "-i", _path,'; Replace = '.. _inputOptions, "-i", _path,'; Tests = 'InProcessTests.RotatesAsTheFfmpegExecutable' }
 
+        # Timestamps starting over (two encodes joined): labelled by time, cuts sorted, stats one row per number
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'seconds < _pts[previous] * _timeBase - tolerance)'; Replace = 'false)'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = 'byPosition[at.FrameNum] = (at, row);'; Replace = 'byPosition[frame] = (at, row);'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
+
         # Streamed input
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (o.StartTime is not null && video.Streaming)'; Replace = 'if (false)'; Tests = 'VideoTests' }
 
