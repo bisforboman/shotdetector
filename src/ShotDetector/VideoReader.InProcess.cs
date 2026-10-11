@@ -7,14 +7,14 @@ public sealed partial class VideoReader
     /// <summary>
     /// Whether frames are decoded in this process (<see cref="VideoDecoder.InProcess"/>, or <see cref="VideoDecoder.Auto"/>
     /// with FFmpeg 8's libraries available) rather than by the ffmpeg executable. Inputs it doesn't handle yet use the
-    /// executable: URLs (and Streaming on a path), codecs the libraries have no decoder for, rotations other than quarter turns, and
-    /// rotated video deinterlaced (ffmpeg rotates before yadif there).
+    /// executable: URLs (and Streaming on a path), codecs the libraries have no decoder for, and rotations other than
+    /// quarter turns.
     /// </summary>
     public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && (_stream is not null || !Streaming)
         && !_inProcessGaveNothing
         && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory))
         && FrameReader.FrameDecoder.HasDecoder(Codec)
-        && (_rotation == 0 || (!_deinterlace && FrameReader.FrameDecoder.CanRotate(_rotation, _pixelFormat)))
+        && _rotation % 90 == 0
         // Deinterlacing needs libavfilter's yadif too (ShotDetector.Native has it since 0.9).
         && (!_deinterlace || InProcess.CanDeinterlace(_ffmpegDirectory));
 
@@ -61,11 +61,13 @@ public sealed partial class VideoReader
                     Deinterlace = _deinterlace,
                     RowDeinterlacer = _yadif is null ? null : new RowDeinterlacer(_yadif),
                     InputOptions = InProcessProbe.Options(_inputOptions),
+                    // Rotated as OpenCV rotates (FrameWriter): by the display matrix's angle alone, after converting.
+                    Autorotate = false,
                 };
                 using var decoder = _stream is null
                     ? new FrameReader.FrameDecoder(_path, decoderOptions)
                     : new FrameReader.FrameDecoder(new PrefixedStream(_prefix, _stream), decoderOptions);
-                using var writer = new FrameWriter(decoder);
+                using var writer = new FrameWriter(decoder, Turn);
                 timeBase = decoder.TimeBase.Value;
                 // Streamed: times from the stream's start, as ffmpeg gives them without -copyts.
                 long offset = Streaming ? decoder.StartOffset : 0;

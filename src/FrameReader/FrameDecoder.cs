@@ -127,7 +127,8 @@ public sealed unsafe class FrameDecoder : IDisposable
             _frame = ffmpeg.av_frame_alloc();
             if (deinterlace)
                 _decoded = ffmpeg.av_frame_alloc();
-            (_transpose, _hflip, _vflip) = Orientation(st->codecpar);
+            if (o.Autorotate)
+                (_transpose, _hflip, _vflip) = Orientation(st->codecpar);
             if (_transpose >= 0 || _hflip || _vflip)
             {
                 // ffmpeg's command line orients before the -vf chain, so before yadif; here it would come after.

@@ -48,6 +48,12 @@ try {
     # Phone-style rotation tags (pixels stored sideways or upside down; decoders rotate them upright).
     ffmpeg -v error -y -display_rotation 90 -i sintel_trailer-480p.mp4 -c copy sintel_rotated.mp4
     ffmpeg -v error -y -display_rotation 180 -i sintel_trailer-480p.mp4 -c copy sintel_rotated180.mp4
+    # Rotated where turning before or after converting differs (OpenCV turns the converted image): 10-bit, and 4:2:2 at 90.
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -c:v libx264 -pix_fmt yuv420p10le -crf 18 rot_10bit.mp4
+    ffmpeg -v error -y -display_rotation 90 -i rot_10bit.mp4 -c copy sintel_rotated_10bit.mp4
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -c:v libx264 -pix_fmt yuv422p -crf 18 rot_422.mp4
+    ffmpeg -v error -y -display_rotation -90 -i rot_422.mp4 -c copy sintel_rotated_422.mp4
+    Remove-Item rot_10bit.mp4, rot_422.mp4
 
     # MPEG-2 in a program stream: most packets carry no pts (timestamps come from a decoding pass).
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mpeg2video -q:v 3 sintel_mpeg2.mpg

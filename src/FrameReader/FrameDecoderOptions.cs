@@ -32,6 +32,12 @@ public sealed record FrameDecoderOptions
     /// For contact sheets and previews, not for exact frames.
     /// </summary>
     public bool KeyframesOnly { get; init; }
+
+    /// <summary>
+    /// Apply the stream's display matrix (rotation, flips) to the frames as ffmpeg's autorotate does (the default);
+    /// false: the frames as coded, as <c>-noautorotate</c> (to rotate after converting, as OpenCV does).
+    /// </summary>
+    public bool Autorotate { get; init; } = true;
 }
 
 /// <summary>
