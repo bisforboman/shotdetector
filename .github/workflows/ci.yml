@@ -469,11 +469,11 @@ jobs:
             echo "### Interlaced broadcast, --deinterlace auto vs a yadif copy, ${{ matrix.path }} path"; cat auto.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
-      - name: Compare 10-bit video with scenedetect (informational)
+      - name: Compare interlaced 10-bit video with scenedetect (informational)
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.part == 'more')
         run: |
-          python tools/compare.py samples/informational/*.mp4 samples/informational/*.mov samples/informational/*.mxf --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
-          { echo "### 10-bit (informational), ${{ matrix.path }} path"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
+          python tools/compare.py samples/informational/*.mov samples/informational/*.mxf --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
+          { echo "### Interlaced 10-bit, AVC-Intra and ProRes (informational), ${{ matrix.path }} path"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
 
   # The one check branch protection requires from this workflow: every job above passed or was skipped (a light PR
   # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
