@@ -589,6 +589,9 @@ public class FrameTimeTests
     [InlineData(0.00001, "1e-05")]
     [InlineData(1.3862395109953702, "1.3862395109953702")]
     [InlineData(255.0, "255.0")]
+    [InlineData(9999999999999998.0, "9999999999999998.0")]
+    [InlineData(1e16, "1e+16")]
+    [InlineData(-1.5e16, "-1.5e+16")]
     public void StatsFloatsPrintLikePythonRepr(double x, string expected) => Assert.Equal(expected, Stats.PyFloat(x));
 }
 
