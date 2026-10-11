@@ -132,7 +132,7 @@ jobs:
           ffmpeg -v error -f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 -f lavfi -i rgbtestsrc=s=320x240:r=25:d=2 \
             -filter_complex "[0][1][2]concat=n=3:v=1:a=0,format=yuv420p" -c:v libx264 -g 25 loop.mp4
           printf '%s\n' 'logLevel: warn' 'rtmp: no' 'hls: no' 'webrtc: no' 'srt: no' 'rtspTransports: [tcp]' 'paths:' '  loop:' \
-            "    runOnDemand: ffmpeg -re -stream_loop -1 -i $PWD/loop.mp4 -c copy -f rtsp rtsp://localhost:\$RTSP_PORT/\$MTX_PATH" > mtx.yml
+            "    runOnDemand: ffmpeg -re -stream_loop -1 -i $PWD/loop.mp4 -c copy -f rtsp -rtsp_transport tcp rtsp://localhost:\$RTSP_PORT/\$MTX_PATH" > mtx.yml
           ./mediamtx mtx.yml & server=$!
           sleep 2
           dotnet run --project src/ShotDetector.Cli -- -i rtsp://127.0.0.1:8554/loop -d content --duration 14 --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" --csv rtsp.csv
