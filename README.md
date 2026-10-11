@@ -315,10 +315,6 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   frame, so scenedetect finds nothing (or a fade at frame 0) on interlaced MPEG-2, AVC-Intra or ProRes. ShotDetector
   analyses the real frames instead of reproducing that. With `DeinterlaceMode.On` or `Auto` the results equal
   scenedetect's on a deinterlaced copy, which OpenCV reads correctly (checked in CI on 1080i XDCAM HD).
-- **10-bit video (Linux):** OpenCV's bundled FFmpeg converts 10-bit frames to 8-bit BGR with ±1
-  differences in red and green on some pixels that no ffmpeg command-line option reproduces (tested
-  FFmpeg 8.1 and 9.0, every swscale flag and dither mode). Per-frame stats differ slightly; the cuts
-  were identical on every 10-bit clip tested. On Windows, 10-bit matched exactly.
 - **Damaged video:** when the decoder drops frames it can't decode, every frame still gets its own
   time and frame number, as with OpenCV (numbers skip; identical to scenedetect on the damaged files
   tested). Error concealment on damaged data can differ in a few pixels, since OpenCV runs FFmpeg's

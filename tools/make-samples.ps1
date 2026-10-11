@@ -52,15 +52,14 @@ try {
     # MPEG-2 in a program stream: most packets carry no pts (timestamps come from a decoding pass).
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mpeg2video -q:v 3 sintel_mpeg2.mpg
 
-    # Known differences, compared informationally (samples/informational/): 10-bit h264. Its conversion
-    # to 8-bit BGR differs by +-1 in red and green on some pixels between OpenCV's bundled FFmpeg on
-    # Linux and the ffmpeg CLI (any version, flags or dithering); cuts stay the same. See README.
+    # 10-bit h264: its conversion interpolates chroma, from where the stream says the samples sit (left for h264), as
+    # OpenCV does; compared exactly. (Informational until 2026-10-11: ffmpeg's command line drops that siting.)
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libx264 -pix_fmt yuv420p10le -crf 18 sintel_10bit.mp4
     New-Item -ItemType Directory -Force informational | Out-Null
-    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libx264 -pix_fmt yuv420p10le -crf 18 informational/sintel_10bit.mp4
 
     # Interlaced broadcast video (issue #42): 10 s of 1080i25, top field first, made from the 1080p trailer
     # (50p woven into fields). XDCAM HD (MPEG-2 4:2:2, 50 Mbit/s, in MXF) is compared exactly (samples/broadcast/);
-    # AVC-Intra 100 and ProRes 422 are 10-bit, so informational like the 10-bit h264 above.
+    # AVC-Intra 100 and ProRes 422 are informational (deinterlacing off: OpenCV can't convert interlaced 10-bit frames).
     New-Item -ItemType Directory -Force broadcast | Out-Null
     # The interlace filter marks the frames top field first (FFmpeg 9 dropped the -top encoder option).
     $i25 = "fps=50,scale=1920:1080,setsar=1,interlace=scan=tff"
