@@ -232,7 +232,7 @@ public sealed partial class VideoReader
     readonly bool _probesInProcess;    // read with FFmpeg's libraries rather than ffprobe
 
     /// <summary>The stream entries read from ffprobe (or the same in-process, <see cref="InProcessProbe"/>); files add :packet=pts.</summary>
-    internal const string ProbeEntries = "stream=codec_name,field_order,width,height,pix_fmt,color_space,color_range,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration,format_name";
+    internal const string ProbeEntries = "stream=codec_name,field_order,width,height,pix_fmt,color_space,color_range,chroma_location,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration,format_name";
     readonly IYuv420Converter? _yuv420;
     readonly IYadif? _yadif;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
@@ -246,6 +246,7 @@ public sealed partial class VideoReader
     double _timeBase;                  // seconds per pts unit, as OpenCV's r2d(time_base)
     readonly double _startSeconds;
     readonly string _pixelFormat;
+    readonly string? _chromaLocation;
     readonly IYuv420Converter? _yuv420ForVideo;   // _yuv420 configured for this video's colours
 
     /// <param name="path">Video file, or a URL (http(s), rtsp, ... ; read as a stream).</param>
@@ -388,6 +389,10 @@ public sealed partial class VideoReader
                 : (Math.Max(1, (int)Math.Round(CropRegion.Width / (double)d)), Math.Max(1, (int)Math.Round(CropRegion.Height / (double)d)))
             : DownscaledSize(effective.Item1, effective.Item2, CropRegion.Width, CropRegion.Height);
         _pixelFormat = stream.GetValueOrDefault("pix_fmt", "");
+        // Where the chroma samples sit, which OpenCV's converter (sws_scale_frame) takes from the frame; ffmpeg's command
+        // line loses it on the way to its filters, so the scale filter is told (scenedetect's 10-bit frames, issue-free
+        // for 8-bit 4:2:0, whose unscaled conversion doesn't interpolate chroma).
+        _chromaLocation = stream.GetValueOrDefault("chroma_location") is { } loc and not ("unspecified" or "unknown" or "") ? loc : null;
         FieldOrder = stream.GetValueOrDefault("field_order") switch
         {
             "progressive" => FieldOrder.Progressive, "tt" => FieldOrder.TopFirst, "bb" => FieldOrder.BottomFirst,
@@ -723,17 +728,18 @@ public sealed partial class VideoReader
         if (_deinterlace)
             select = ["-vf", "yadif" + (select.Length > 0 ? "," + select[1] : "")];
         string prefix = select.Length > 0 ? select[1] + "," : "";
+        string toBgr = "scale=flags=bicubic" + (_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "") + ",format=bgr24";
         args = pipeline switch
         {
             // The source's own format, so ffmpeg passes the samples through untouched.
             FramePipeline.Yuv420Sampled => [.. args, .. select, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
             // Like OpenCV: SWS_BICUBIC, colour matrix and range from the stream's tags (BT.601 if untagged).
-            FramePipeline.FullFrameResize => [.. args, "-vf", prefix + "scale=flags=bicubic,format=bgr24" + crop,
+            FramePipeline.FullFrameResize => [.. args, "-vf", prefix + toBgr + crop,
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
             FramePipeline.SampledBgr => [.. args, "-filter_complex",
-                $"[0:v]{prefix}scale=flags=bicubic,format=bgr24[c];[c][1:v][2:v]remap=format=color[out]", "-map", "[out]",
+                $"[0:v]{prefix}{toBgr}[c];[c][1:v][2:v]remap=format=color[out]", "-map", "[out]",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
-            _ => [.. args, "-vf", prefix + "scale=flags=bicubic,format=bgr24" + crop + $",scale={Width}:{Height}:flags=bilinear",
+            _ => [.. args, "-vf", prefix + toBgr + crop + $",scale={Width}:{Height}:flags=bilinear",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
         };
         foreach (var a in args)

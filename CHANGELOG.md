@@ -4,6 +4,31 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 What's merged but not released yet is in changes/ (one file per pull request).
 
+## 1.5.0 – 2026-10-11
+
+FrameReader is stable and a ShotDetector dependency; what issue #81 needs to move its tone job in-process (a
+limited tone search, checks for a system FFmpeg's encoders and filters); audio from a Stream as ffmpeg reads a
+pipe; and `--probe` in the CLI.
+
+### New
+
+- **FrameReader is stable** (1.5.0): under semantic versioning with package validation, like ShotDetector, and
+  ShotDetector depends on the `FrameReader` package instead of carrying its own copy of FrameReader.dll, so its XML
+  documentation (IntelliSense) comes with it (issue #81).
+- CLI `--probe` and `--probe-json`: describe the input (container, duration, the video's codec, size, frame rate,
+  pixel format, field order, rotation; every stream's codec, size or sample rate and layout, language, title, bit
+  rate, flags) as text or JSON, then stop. The library's `ShotDetection.Probe` with `VideoInfo.Streams`, in the CLI.
+- `ReferenceToneOptions.SearchDuration`, `DetectionOptions.ReferenceToneSearchDuration` and the CLI's `--tone-search`:
+  search only the first minutes for reference tone, then stop decoding (issue #81).
+- `FFmpegLibraries.HasEncoder`, `HasFilter` and `HasMuxer`: check a system FFmpeg build at startup; FrameReader's
+  README lists what each reader and writer needs from one (issue #81).
+
+### Fixed
+
+- FrameReader, audio from a `Stream` (read as ffmpeg reads `-i -`): MP3 kept the encoder's end padding (a few hundred
+  samples more than ffmpeg gives; the input reported no size, which the mp3 demuxer took for a concatenated file),
+  and `AudioReader.Seek` on a Stream threw instead of decoding on and trimming as ffmpeg's `-ss` does on a pipe.
+
 ## 1.4.1 – 2026-10-10
 
 VideoWriter with ShotDetector.Native.Gpl's libraries (issue #127). APIs unchanged.

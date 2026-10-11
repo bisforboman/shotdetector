@@ -7,6 +7,9 @@
     <Project Path="src/ShotDetector.Native.Gpl/ShotDetector.Native.Gpl.csproj" />
     <Project Path="src/ShotDetector/ShotDetector.csproj" />
   </Folder>
+  <Folder Name="/examples/">
+    <Project Path="examples/ShotDetector.Example/ShotDetector.Example.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FrameReader.Tests/FrameReader.Tests.csproj" />
     <Project Path="tests/ShotDetector.Tests/ShotDetector.Tests.csproj" />

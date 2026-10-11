@@ -105,19 +105,23 @@ jobs:
           "$AUDIOWAVEFORM" -q -i tone.wav -o theirs.dat -z 512 -b 8 --split-channels
           cmp ours.dat theirs.dat
 
-      # #81's job from the command line: line-up tone notched out for its first 4 s, written as MP3; the same audio as
-      # ffmpeg -af ... -c:a libmp3lame gives (decoded), and silencedetect's results as ffmpeg finds them.
+<<<<<<< HEAD
+      # #81's job from the command line: line-up tone notched out for its first 4 s and written out; the same samples as
+      # ffmpeg -af ... gives (as WAV: an MP3's bytes depend on how LAME was built, and ours isn't BtbN's), and
+      # silencedetect's results as ffmpeg finds them.
       - name: CLI --audio-filter and --audio-out are ffmpeg's
         if: needs.changes.outputs.docs_only != 'true'
         run: |
           ffmpeg -v error -f lavfi -i "aevalsrc='if(lt(t,4),0.13*sin(1000*2*PI*t),if(lt(t,6),0,0.3*sin(440*2*PI*t)))':s=48000:d=10" -ac 2 -c:a pcm_s16le job.wav
           G="equalizer=f=1000:t=q:w=8:g=-40:enable='between(t,0,4)'"
-          dotnet run --project src/ShotDetector.Cli -- -i job.wav --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" --audio-filter "$G" --audio-out ours.mp3
-          ffmpeg -v error -i job.wav -af "$G" -c:a libmp3lame theirs.mp3
-          test "$(ffmpeg -v error -i ours.mp3 -f f32le - | md5sum)" = "$(ffmpeg -v error -i theirs.mp3 -f f32le - | md5sum)"
+          dotnet run --project src/ShotDetector.Cli -- -i job.wav --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" --audio-filter "$G" --audio-out ours.wav
+          ffmpeg -v error -i job.wav -af "$G" -c:a pcm_s16le theirs.wav
+          test "$(ffmpeg -v error -i ours.wav -f f32le - | md5sum)" = "$(ffmpeg -v error -i theirs.wav -f f32le - | md5sum)"
           dotnet run --project src/ShotDetector.Cli -- -i job.wav --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" --audio-filter "silencedetect=n=-50dB:d=1" | tee silence.txt
           grep -q "lavfi.silence_start=4$" silence.txt && grep -q "lavfi.silence_end=6.000021 " silence.txt
 
+=======
+>>>>>>> origin/main
       # FrameReader's VideoWriter (H.264) against ffmpeg -c:v libx264, byte for byte: x264's output depends on how it
       # was compiled, so libraries and executable from one build, BtbN's shared GPL one (ours has no executables).
       - name: FFmpeg 8.1 with x264, shared
@@ -462,9 +466,6 @@ jobs:
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg             --detector hash --stats --report hash.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### detect-hash (informational), ${{ matrix.path }} path"; cat hash.md; } >> "$GITHUB_STEP_SUMMARY"
 
-      # 10-bit video: OpenCV's bundled FFmpeg converts it to 8-bit BGR with +-1 differences in red and
-      # green on some pixels that no ffmpeg CLI option reproduces, so per-frame stats differ a little.
-      # Cuts should still match; eyeball the table if they don't.
       # Interlaced broadcast video (issue #42): with --deinterlace auto, exact against scenedetect on a lossless yadif
       # copy (FFV1, progressive), which is what deinterlacing stands for. With deinterlacing off it's informational:
       # opencv-python 5.0.0.93 (FFmpeg 8) can't convert interlaced frames ("Cannot convert interlaced to progressive")
@@ -482,11 +483,13 @@ jobs:
             echo "### Interlaced broadcast, --deinterlace auto vs a yadif copy, ${{ matrix.path }} path"; cat auto.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
-      - name: Compare 10-bit video with scenedetect (informational)
+      # Interlaced 10-bit (AVC-Intra 100, ProRes 422) with deinterlacing off: informational, as above (OpenCV can't
+      # convert interlaced frames). Progressive 10-bit is in the exact set.
+      - name: Compare interlaced 10-bit video with scenedetect (informational)
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.part == 'more')
         run: |
-          python tools/compare.py samples/informational/*.mp4 samples/informational/*.mov samples/informational/*.mxf --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
-          { echo "### 10-bit (informational), ${{ matrix.path }} path"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
+          python tools/compare.py samples/informational/*.mov samples/informational/*.mxf --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
+          { echo "### Interlaced 10-bit, AVC-Intra and ProRes (informational), ${{ matrix.path }} path"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
 
   # The one check branch protection requires from this workflow: every job above passed or was skipped (a light PR
   # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).

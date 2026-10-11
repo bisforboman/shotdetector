@@ -50,6 +50,11 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
     [InlineData("422", "-pix_fmt yuv422p")]
     [InlineData("444", "-pix_fmt yuv444p -colorspace bt709")]
     [InlineData("10bit", "-pix_fmt yuv420p10le")]
+    // Chroma siting (Matroska keeps it): 10-bit conversion interpolates chroma, from where the frame says it sits, as
+    // OpenCV's sws_scale_frame does; the executable path is told with in_chroma_loc (ffmpeg's command line drops it).
+    [InlineData("10bit-left", "-pix_fmt yuv420p10le -chroma_sample_location left")]
+    [InlineData("10bit-topleft", "-pix_fmt yuv420p10le -chroma_sample_location topleft")]
+    [InlineData("422-10bit-left", "-pix_fmt yuv422p10le -chroma_sample_location left")]
     [InlineData("oddheight", "-vf crop=320:237:0:0 -pix_fmt yuv420p")]
     public void SameAsTheFfmpegExecutableForEachFormat(string name, string args)
     {

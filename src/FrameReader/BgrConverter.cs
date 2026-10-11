@@ -16,7 +16,7 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
     readonly FrameDecoder _d = decoder;
     AVFrame* _bgr;
     SwsContext* _toBgr, _toRows;
-    (int W, int H, int Format, AVColorSpace Space, AVColorRange Range) _rowsFor;
+    (int W, int H, int Format, AVColorSpace Space, AVColorRange Range, AVChromaLocation Loc) _rowsFor;
 
     /// <summary>The whole current frame as BGR, its rows <paramref name="stride"/> bytes apart.</summary>
     /// <param name="stride">Bytes from one row to the next (at least 3 x width).</param>
@@ -105,28 +105,59 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
 
     /// <summary>
     /// A converter set up as sws_scale_frame sets itself up from the frame (bicubic flag, the colour matrix and
-    /// range from its tags, full-range RGB out), which the slice calls need beforehand; made again if those change.
+    /// range from its tags, the chroma samples' position from its chroma location, full-range RGB out), which the slice
+    /// calls need beforehand; made again if those change.
     /// </summary>
     SwsContext* RowsContext()
     {
-        (int W, int H, int Format, AVColorSpace Space, AVColorRange Range) key = (_d.Frame->width, _d.Frame->height, _d.Frame->format, _d.Frame->colorspace, _d.Frame->color_range);
+        var key = (_d.Frame->width, _d.Frame->height, _d.Frame->format, _d.Frame->colorspace, _d.Frame->color_range, _d.Frame->chroma_location);
         if (_toRows != null && _rowsFor == key)
             return _toRows;
         if (_toRows != null)
             ffmpeg.sws_freeContext(_toRows);
-        _toRows = ffmpeg.sws_getContext(key.W, key.H, (AVPixelFormat)key.Format, key.W, key.H,
-            AVPixelFormat.AV_PIX_FMT_BGR24, (int)SwsFlags.SWS_BICUBIC, null, null, null);
+        _toRows = ffmpeg.sws_alloc_context();
         if (_toRows == null)
             throw new FrameReaderException(FrameReaderError.DecodeFailed, "Can't set up the converter.");
-        int* coefficients = ffmpeg.sws_getCoefficients((int)key.Space);
+        var (hPos, vPos) = ChromaPosition((AVPixelFormat)key.Item3, key.Item6);
+        ffmpeg.av_opt_set_int(_toRows, "srcw", key.Item1, 0);
+        ffmpeg.av_opt_set_int(_toRows, "srch", key.Item2, 0);
+        ffmpeg.av_opt_set_int(_toRows, "dstw", key.Item1, 0);
+        ffmpeg.av_opt_set_int(_toRows, "dsth", key.Item2, 0);
+        ffmpeg.av_opt_set_pixel_fmt(_toRows, "src_format", (AVPixelFormat)key.Item3, 0);
+        ffmpeg.av_opt_set_pixel_fmt(_toRows, "dst_format", AVPixelFormat.AV_PIX_FMT_BGR24, 0);
+        ffmpeg.av_opt_set_int(_toRows, "sws_flags", (long)SwsFlags.SWS_BICUBIC, 0);
+        ffmpeg.av_opt_set_int(_toRows, "src_h_chr_pos", hPos, 0);
+        ffmpeg.av_opt_set_int(_toRows, "src_v_chr_pos", vPos, 0);
+        if (ffmpeg.sws_init_context(_toRows, null, null) < 0)
+        {
+            ffmpeg.sws_freeContext(_toRows);
+            _toRows = null;
+            throw new FrameReaderException(FrameReaderError.DecodeFailed, "Can't set up the converter.");
+        }
+        int* coefficients = ffmpeg.sws_getCoefficients((int)key.Item4);
         var table = new int_array4();
         for (uint i = 0; i < 4; i++)
             table[i] = coefficients[i];
         var rgb = table; // the output's table is unused for RGB
-        int fullRange = key.Range == AVColorRange.AVCOL_RANGE_JPEG ? 1 : 0;
+        int fullRange = key.Item5 == AVColorRange.AVCOL_RANGE_JPEG ? 1 : 0;
         Check(ffmpeg.sws_setColorspaceDetails(_toRows, in table, fullRange, in rgb, 1, 0, 1 << 16, 1 << 16), "colour details");
         _rowsFor = key;
         return _toRows;
+    }
+
+    /// <summary>
+    /// The source chroma position sws_scale_frame derives from a progressive frame's chroma location (libswscale's
+    /// get_chroma_pos): center when unspecified, scaled to the subsampling grid, -513 (none) along an axis that isn't
+    /// subsampled. h264 and HEVC mark 4:2:0 left-sited, so for 10-bit video (whose conversion interpolates chroma) this
+    /// is what makes OpenCV's frames.
+    /// </summary>
+    static (int H, int V) ChromaPosition(AVPixelFormat format, AVChromaLocation location)
+    {
+        var desc = ffmpeg.av_pix_fmt_desc_get(format);
+        int subX = desc == null ? 0 : desc->log2_chroma_w, subY = desc == null ? 0 : desc->log2_chroma_h;
+        int x, y;
+        ffmpeg.av_chroma_location_enum_to_pos(&x, &y, location == AVChromaLocation.AVCHROMA_LOC_UNSPECIFIED ? AVChromaLocation.AVCHROMA_LOC_CENTER : location);
+        return (subX != 0 ? x * ((1 << subX) - 1) : -513, subY != 0 ? y * ((1 << subY) - 1) : -513);
     }
 
     /// <summary>Frees the converter's buffers.</summary>

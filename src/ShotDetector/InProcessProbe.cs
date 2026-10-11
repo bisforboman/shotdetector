@@ -40,6 +40,7 @@ internal static unsafe class InProcessProbe
         Line("pix_fmt", v.PixelFormat ?? "unknown");
         Line("color_range", v.ColorRange ?? "unknown");
         Line("color_space", v.ColorSpace ?? "unknown");
+        Line("chroma_location", v.ChromaLocation ?? "unspecified");
         Line("r_frame_rate", v.FrameRate.ToString());
         Line("avg_frame_rate", v.AverageFrameRate.ToString());
         Line("time_base", v.TimeBase.ToString());

@@ -68,6 +68,9 @@ public sealed record VideoStreamInfo
     /// <summary>FFmpeg's colour space name (bt709, smpte170m, ...); null if unspecified.</summary>
     public string? ColorSpace { get; init; }
 
+    /// <summary>Where the chroma samples sit (left, center, topleft, ...), as ffprobe's chroma_location; null when unspecified.</summary>
+    public string? ChromaLocation { get; init; }
+
     /// <summary>Field order.</summary>
     public FieldOrder FieldOrder { get; init; }
 

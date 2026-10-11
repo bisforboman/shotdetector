@@ -22,7 +22,7 @@ CHANGELOG section (release.yml extracts it), so keep sections grouped: breaking 
 All five detectors, scenedetect 0.7.1 (`PySceneDetectVersion.V0_7_1`; the 0.6.4 mode was dropped in 0.9.0), exports
 (save-images, save-html, split-video), stats, streaming out (`DetectStreamAsync`) and in (`Detect(Stream)`, URLs,
 CLI `-i -`). CI compares every sample clip against scenedetect 0.7.1 on Linux for the core and FastYuv
-paths; detect-hash and 10-bit video are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
+paths (10-bit h264 too); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
 weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what the user decided and why.
 
 **Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Open a release
@@ -103,9 +103,10 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 - Interlaced video: opencv-python 5.0.0.93 can't convert interlaced frames (FFmpeg 8 swscale: "Cannot convert
   interlaced to progressive") and gives scenedetect one nearly black frame throughout; we read the real frames. CI:
   informational with deinterlacing off, exact with `--deinterlace auto` vs scenedetect on a lossless yadif copy.
-- 10-bit on Linux: OpenCV's FFmpeg converts to BGR with ±1 differences no ffmpeg CLI flag reproduces (FFmpeg 8.1/9.0,
-  sws flags, dither, cpuflags all tried); compared informationally (`samples/informational/`). Linux OpenCV can't
-  decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments.
+- 10-bit (any format without swscale's unscaled path to BGR): chroma is interpolated from where the samples sit. OpenCV's
+  `sws_scale_frame` takes that from the frame (h264/HEVC 4:2:0: left); ffmpeg's command line drops it before its filters
+  (center), so the executable path passes `in_chroma_loc` and BgrConverter's row context sets swscale's position. Linux
+  OpenCV can't decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments.
 - Frame labels (0.7.1): each decoded frame's showinfo time is matched to its packet (`PacketOf`), so frames
   the decoder drops make numbers skip as in OpenCV. Files always run with `-copyts` (absolute times); streamed
   times already start at 0 (ffmpeg shifts them), so `_startPts` must not be subtracted there.

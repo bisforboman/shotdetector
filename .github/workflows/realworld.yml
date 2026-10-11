@@ -52,9 +52,7 @@ jobs:
           - bbb_640x360_h264.mp4
           - elephants_dream_426x240_h264.mp4
           - tears_of_steel_1280x534_h264.mov
-          - bbb_10s_h264.mp4
-          - bbb_10s_h265.mp4
-          - bbb_10s_vp9.webm
+          - bbb_10s_h264.mp4 bbb_10s_h265.mp4 bbb_10s_vp9.webm   # 10 s clips: one job (a minute's setup for each otherwise)
           # Not bbb_10s_av1.mp4: OpenCV's Linux wheel has no software AV1 decoder (it opens the file and
           # reads 0 frames), so scenedetect has nothing to compare with here. It matches on Windows.
     env:
@@ -101,23 +99,18 @@ jobs:
           { echo "### ${{ matrix.video }}"; cat realworld.md; } >> "$GITHUB_STEP_SUMMARY"
           exit ${status:-0}
 
-  # FrameReader's AudioReader and SpectralStats on the films' own audio (AAC at 44.1 and 48 kHz, MP3, Opus) against ffmpeg's
-  # command line (tests/FrameReader.Tests/RealWorldAudioTests.cs). Libraries and executable from one FFmpeg 8.1 build.
+  # FrameReader's AudioReader and SpectralStats on the films' own audio (AAC at 44.1 and 48 kHz, MP3, Opus) against
+  # ffmpeg's command line (tests/FrameReader.Tests/RealWorldAudioTests.cs), one file after another in one job (five
+  # jobs before, each mostly setup). Libraries and executable from one FFmpeg 8.1 build.
   audio:
     if: needs.changes.outputs.docs_only != 'true'
     needs: changes
-    name: Real world audio (${{ matrix.video }})
+    name: Real world audio
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        video:
-          - bbb_640x360_h264.mp4               # AAC, 44.1 kHz
-          - elephants_dream_426x240_h264.mp4   # AAC, 48 kHz
-          - tears_of_steel_1280x534_h264.mov   # MP3, 44.1 kHz
-          - elephants_dream_1920x1080_vp9.webm # 5.1 Opus (Commons' copy; Matroska's millisecond timestamps)
-          - going_some_1909.opus               # stereo Opus, audio only
+    timeout-minutes: 40
+    env:
+      FILMS: bbb_640x360_h264.mp4 elephants_dream_426x240_h264.mp4 tears_of_steel_1280x534_h264.mov   # AAC 44.1 and 48 kHz, MP3
+      OPUS: elephants_dream_1920x1080_vp9.webm going_some_1909.opus   # 5.1 Opus (Commons' copy, Matroska's ms timestamps); stereo Opus
     steps:
       - uses: actions/checkout@v7
 
@@ -133,18 +126,54 @@ jobs:
           build: gpl-shared
           add-to-path: 'false'
 
-      - name: Cache the video
-        uses: actions/cache@v5
+      # The Opus files, cached here (restored and saved before the films join the folder); the films from the caches the
+      # jobs above keep (downloaded on a miss, not saved again here).
+      - id: opus
+        uses: actions/cache/restore@v5
         with:
           path: samples/realworld
-          key: realworld-${{ matrix.video }}-${{ hashFiles('tools/realworld.py') }}
+          key: realworld-opus-${{ hashFiles('tools/realworld.py') }}
+
+      - name: Download the Opus files
+        if: steps.opus.outputs.cache-hit != 'true'
+        run: python3 tools/realworld.py $OPUS --download
+
+      - uses: actions/cache/save@v5
+        if: steps.opus.outputs.cache-hit != 'true'
+        with:
+          path: samples/realworld
+          key: ${{ steps.opus.outputs.cache-primary-key }}
+
+      - uses: actions/cache/restore@v5
+        with:
+          path: samples/realworld
+          key: realworld-bbb_640x360_h264.mp4-${{ hashFiles('tools/realworld.py') }}
+
+      - uses: actions/cache/restore@v5
+        with:
+          path: samples/realworld
+          key: realworld-elephants_dream_426x240_h264.mp4-${{ hashFiles('tools/realworld.py') }}
+
+      - uses: actions/cache/restore@v5
+        with:
+          path: samples/realworld
+          key: realworld-tears_of_steel_1280x534_h264.mov-${{ hashFiles('tools/realworld.py') }}
 
       - name: Compare with ffmpeg
         env:
           SHOTDETECTOR_FFMPEG_LIBS: ${{ steps.ffmpeg.outputs.bin }}
         run: |
-          export SHOTDETECTOR_REALWORLD_AUDIO=$(python3 tools/realworld.py ${{ matrix.video }} --download | tail -1)
-          dotnet test tests/FrameReader.Tests --filter "FullyQualifiedName~RealWorldAudio"
+          dotnet build tests/FrameReader.Tests -v q > /dev/null
+          status=0
+          for f in $FILMS $OPUS; do
+            echo "::group::$f"
+            export SHOTDETECTOR_REALWORLD_AUDIO=$(python3 tools/realworld.py "$f" --download | tail -1)
+            if dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~RealWorldAudio"; then r=identical; else r=DIFFERS; status=1; fi
+            echo "::endgroup::"
+            echo "| $f | $r |" >> results.md
+          done
+          { echo "### Real world audio"; echo; echo "| File | AudioReader, SpectralStats vs ffmpeg |"; echo "|---|---|"; cat results.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
 
   # The one check branch protection requires from this workflow: every job above passed or was skipped (a light PR
   # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).

@@ -147,6 +147,9 @@ scenedetect 0.6.4 mode was dropped in 0.9.0; use ShotDetector 0.8 for it.
 `Shot.Start`/`End` are `FrameTime`s: `FrameNum` (0-based; `End` is exclusive), `Seconds`,
 `Timecode()` (also what `ToString()` gives). They print exactly as scenedetect prints them.
 
+A runnable example of the library end to end (probe, shots, reference tone, a waveform with FrameReader) is in
+[examples/ShotDetector.Example](examples/ShotDetector.Example/Program.cs): `dotnet run --project examples/ShotDetector.Example -- video.mp4`.
+
 ## Command line
 
 ```
@@ -164,9 +167,13 @@ min scene length 0.6s. `--help` lists all options.
 
 `--probe` only describes the input (container, video, every stream: codecs, sizes, languages, channel layouts)
 and `--probe-json` prints the same as JSON. `--waveform peaks.dat` writes the audio's waveform as BBC audiowaveform's .dat
+<<<<<<< HEAD
 (peaks.js loads it; `--waveform-zoom`, `--waveform-pixels-per-second`, `--waveform-bits`, `--waveform-split-channels`). `--audio-filter "<graph>"` runs an ffmpeg `-af` graph over the audio
 (analysis results such as silencedetect's go to standard output) and `--audio-out <file>` writes the result, encoded
 by the extension. `--find-tone` only lists reference tone (1 kHz line-up tone) in the audio, also of audio-only files; `--trim-tone`
+=======
+(peaks.js loads it; `--waveform-zoom`, `--waveform-pixels-per-second`, `--waveform-bits`, `--waveform-split-channels`). `--find-tone` only lists reference tone (1 kHz line-up tone) in the audio, also of audio-only files; `--trim-tone`
+>>>>>>> origin/main
 detects shots without it at the start and end (`--tone-min-duration` sets the shortest run, 5 s by default;
 `--tone-search 180` searches only the first 3 minutes, much faster on a feature film, and then finds no tone at the end).
 
@@ -317,10 +324,6 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   frame, so scenedetect finds nothing (or a fade at frame 0) on interlaced MPEG-2, AVC-Intra or ProRes. ShotDetector
   analyses the real frames instead of reproducing that. With `DeinterlaceMode.On` or `Auto` the results equal
   scenedetect's on a deinterlaced copy, which OpenCV reads correctly (checked in CI on 1080i XDCAM HD).
-- **10-bit video (Linux):** OpenCV's bundled FFmpeg converts 10-bit frames to 8-bit BGR with ±1
-  differences in red and green on some pixels that no ffmpeg command-line option reproduces (tested
-  FFmpeg 8.1 and 9.0, every swscale flag and dither mode). Per-frame stats differ slightly; the cuts
-  were identical on every 10-bit clip tested. On Windows, 10-bit matched exactly.
 - **Damaged video:** when the decoder drops frames it can't decode, every frame still gets its own
   time and frame number, as with OpenCV (numbers skip; identical to scenedetect on the damaged files
   tested). Error concealment on damaged data can differ in a few pixels, since OpenCV runs FFmpeg's

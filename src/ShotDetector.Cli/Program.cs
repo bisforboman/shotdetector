@@ -86,10 +86,13 @@ const string Usage = """
       --waveform-pixels-per-second <n>  Points per second instead
       --waveform-bits <8|16>         Resolution of the .dat (default 16)
       --waveform-split-channels      One waveform per channel (default: the channels averaged)
+<<<<<<< HEAD
       --audio-filter <graph>         Only run an ffmpeg -af filter graph over the audio, then stop: analysis
                                      filters' results (silencedetect, ebur128=metadata=1, astats=metadata=1)
                                      go to standard output with their times
       --audio-out <file>             Write the (filtered) audio, encoded by the extension (.mp3, .m4a, .wav, ...)
+=======
+>>>>>>> origin/main
           --find-tone                    Only list reference tone (1 kHz line-up tone) in the audio, then stop;
                                          video or audio-only input. Not in scenedetect
           --trim-tone                    Leave reference tone at the start and end out of detection
@@ -99,7 +102,11 @@ const string Usage = """
     """;
 
 bool skipCuts = false, quiet = false, htmlNoImages = false, findTone = false, probe = false, probeJson = false;
+<<<<<<< HEAD
 string? waveformPath = null, audioFilter = null, audioOut = null;
+=======
+string? waveformPath = null;
+>>>>>>> origin/main
 var waveform = new FrameReader.WaveformOptions();
 var waveformBits = FrameReader.WaveformBits.Sixteen;
 int? htmlWidth = null, htmlHeight = null;
@@ -269,8 +276,11 @@ try
                 _ => throw new ArgumentException("--waveform-bits is 8 or 16"),
             }; break;
             case "--waveform-split-channels": waveform = waveform with { SplitChannels = true }; break;
+<<<<<<< HEAD
             case "--audio-filter": audioFilter = Next(); break;
             case "--audio-out": audioOut = Next(); break;
+=======
+>>>>>>> origin/main
             case "--trim-tone": options = options with { TrimReferenceTone = true }; break;
             case "--tone-min-duration": options = options with { ReferenceToneMinDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
             case "--tone-search": options = options with { ReferenceToneSearchDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
@@ -313,6 +323,7 @@ try
         Console.WriteLine(probeJson ? ProbeJson(info) : string.Join(Environment.NewLine, ProbeLines(info)));
         return 0;
     }
+<<<<<<< HEAD
     if (audioFilter is not null || audioOut is not null)
     {
         if (input == "-")
@@ -348,6 +359,8 @@ try
         }
         return 0;
     }
+=======
+>>>>>>> origin/main
     if (waveformPath is not null)
     {
         if (input == "-")

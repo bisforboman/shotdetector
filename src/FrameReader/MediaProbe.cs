@@ -78,6 +78,7 @@ public static unsafe class MediaProbe
             PixelFormat = ffmpeg.av_get_pix_fmt_name((AVPixelFormat)par->format),
             ColorRange = par->color_range == AVColorRange.AVCOL_RANGE_UNSPECIFIED ? null : ffmpeg.av_color_range_name(par->color_range),
             ColorSpace = par->color_space == AVColorSpace.AVCOL_SPC_UNSPECIFIED ? null : ffmpeg.av_color_space_name(par->color_space),
+            ChromaLocation = par->chroma_location == AVChromaLocation.AVCHROMA_LOC_UNSPECIFIED ? null : ffmpeg.av_chroma_location_name(par->chroma_location),
             FieldOrder = par->field_order switch
             {
                 AVFieldOrder.AV_FIELD_PROGRESSIVE => FieldOrder.Progressive,
