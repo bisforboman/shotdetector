@@ -449,9 +449,6 @@ jobs:
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg             --detector hash --stats --report hash.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### detect-hash (informational), ${{ matrix.path }} path"; cat hash.md; } >> "$GITHUB_STEP_SUMMARY"
 
-      # 10-bit video: OpenCV's bundled FFmpeg converts it to 8-bit BGR with +-1 differences in red and
-      # green on some pixels that no ffmpeg CLI option reproduces, so per-frame stats differ a little.
-      # Cuts should still match; eyeball the table if they don't.
       # Interlaced broadcast video (issue #42): with --deinterlace auto, exact against scenedetect on a lossless yadif
       # copy (FFV1, progressive), which is what deinterlacing stands for. With deinterlacing off it's informational:
       # opencv-python 5.0.0.93 (FFmpeg 8) can't convert interlaced frames ("Cannot convert interlaced to progressive")
@@ -469,6 +466,8 @@ jobs:
             echo "### Interlaced broadcast, --deinterlace auto vs a yadif copy, ${{ matrix.path }} path"; cat auto.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
+      # Interlaced 10-bit (AVC-Intra 100, ProRes 422) with deinterlacing off: informational, as above (OpenCV can't
+      # convert interlaced frames). Progressive 10-bit is in the exact set.
       - name: Compare interlaced 10-bit video with scenedetect (informational)
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.1' && matrix.part == 'more')
         run: |
