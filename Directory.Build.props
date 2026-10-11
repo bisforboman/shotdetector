@@ -21,4 +21,7 @@
          the last stable version on nuget.org (docs/decisions.md, 2026-10-08). -->
     <ApiBaselineVersion>1.6.0</ApiBaselineVersion>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="StyleBro.Analyzers" PrivateAssets="all" />
+  </ItemGroup>
 </Project>

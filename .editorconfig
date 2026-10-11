@@ -1,0 +1,60 @@
+root = true
+
+# BEGIN stylebro-migrate (stylebro-migrate init: built-in .NET rules for StyleBro's preset; edits inside are replaced)
+[*.cs]
+# Built-in .NET rules that cover StyleCop rules, at the preset's severities. Their options (brace placement, modifier
+# order, ...) come from StyleBro's preset. The severities have to be here: 'dotnet format' ignores rule severities in a
+# package's global config. Add <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild> to report them on build too.
+
+# Braces (SA1503, SA1519, SA1520) are StyleBro's BRO1514-BRO1516: IDE0011's fix breaks multi-targeted projects
+dotnet_diagnostic.IDE0011.severity = none
+# Formatting: spacing, indentation, line breaks (SA1000-SA1028, SA1107, SA1134, SA1137, SA1500)
+dotnet_diagnostic.IDE0055.severity = warning
+# Access modifiers (SA1400, SA1205) are StyleBro's BRO1404/BRO1007: IDE0040's fix breaks multi-targeted projects
+dotnet_diagnostic.IDE0040.severity = none
+# Modifier order: access modifier first, then static (SA1206, SA1207)
+dotnet_diagnostic.IDE0036.severity = warning
+# 'int' instead of 'Int32' (SA1121)
+dotnet_diagnostic.IDE0049.severity = warning
+# Unnecessary parentheses (SA1119) are StyleBro's BRO1405: IDE0047's fix breaks multi-targeted projects
+dotnet_diagnostic.IDE0047.severity = none
+# Parentheses that show precedence (SA1407, SA1408) are StyleBro's BRO1406/BRO1407: IDE0048's fix breaks multi-targeted projects
+dotnet_diagnostic.IDE0048.severity = none
+# Using placement (SA1200) is StyleBro's BRO1008: IDE0065's fix can change what names bind to (CS0104, CS0118)
+dotnet_diagnostic.IDE0065.severity = none
+# Blank lines (SA1507, SA1508, SA1513) are StyleBro's BRO1517-BRO1519: the SDK's fixes break multi-targeted projects
+dotnet_diagnostic.IDE2000.severity = none
+dotnet_diagnostic.IDE2002.severity = none
+dotnet_diagnostic.IDE2003.severity = none
+# 'this.' qualification isn't required (SA1101 is off in the preset)
+dotnet_diagnostic.IDE0009.severity = none
+
+# Conventions in this repository's code (stylebro-migrate init counted them)
+# init: private fields: named '_field' in 268 of 268 places in your code
+stylebro_private_field_naming = _camelCase
+# init: one-line if/else/loop/using/lock bodies: without braces in 668 of 668 places in your code
+csharp_prefer_braces = when_multiline
+# init: empty strings: "" in 53 of 53 places in your code
+stylebro_empty_string_style = literal
+# init: null checks: your code mixes both forms (170 'is null', 120 '== null'), so BRO1133 is off. To choose one: set stylebro_null_check_style and remove the next line.
+dotnet_diagnostic.BRO1133.severity = none
+# init: one-line <summary> texts: on one line in 566 of 568 places in your code
+stylebro_summary_layout = single_line_when_fits
+# init: default values: 'default' in 54 of 54 places in your code
+csharp_prefer_simple_default_expression = true
+# init: split lists: first item after '(' in 49 of 56 places in your code
+stylebro_split_list_first_item = same_line
+# init: ': base(...)'/': this(...)': your code mixes both forms (3 on its own line, 7 on the constructor's line), so BRO1105 is off. To choose one: set stylebro_constructor_initializer_placement and remove the next line.
+dotnet_diagnostic.BRO1105.severity = none
+# init: switch sections: without a blank line in 90 of 90 places in your code
+stylebro_blank_line_between_switch_sections = omit
+# init: mixed arithmetic ('a + b * c'): your code mixes both forms (66 with parentheses, 176 without parentheses), so BRO1406 is off. To choose one: set dotnet_style_parentheses_in_arithmetic_binary_operators and remove the next line.
+dotnet_diagnostic.BRO1406.severity = none
+# END stylebro-migrate
+
+# This repository's own choices (docs/decisions.md, 2026-10-11)
+[*.cs]
+# Members are ordered by reading flow, not by kind; moving them would rewrite whole files for blame and open branches
+dotnet_diagnostic.BRO1001.severity = none
+# 'private' stays implicit, as everywhere in this code
+dotnet_diagnostic.BRO1404.severity = none
