@@ -80,6 +80,12 @@ const string Usage = """
           --split-expand                 Stretch the first/last clip to the video's start/end (with -s/-e)
           --probe                        Only describe the input (container, video, every stream), then stop
           --probe-json                   The same as JSON on standard output
+      --waveform <file.dat>          Only write the audio's waveform peaks as BBC audiowaveform's .dat (for
+                                     peaks.js and other viewers), then stop; video or audio-only input
+      --waveform-zoom <n>            Samples per point (audiowaveform --zoom; default 256)
+      --waveform-pixels-per-second <n>  Points per second instead
+      --waveform-bits <8|16>         Resolution of the .dat (default 16)
+      --waveform-split-channels      One waveform per channel (default: the channels averaged)
           --find-tone                    Only list reference tone (1 kHz line-up tone) in the audio, then stop;
                                          video or audio-only input. Not in scenedetect
           --trim-tone                    Leave reference tone at the start and end out of detection
@@ -89,6 +95,9 @@ const string Usage = """
     """;
 
 bool skipCuts = false, quiet = false, htmlNoImages = false, findTone = false, probe = false, probeJson = false;
+string? waveformPath = null;
+var waveform = new FrameReader.WaveformOptions();
+var waveformBits = FrameReader.WaveformBits.Sixteen;
 int? htmlWidth = null, htmlHeight = null;
 string? htmlPath = null;
 string? edlPath = null, edlTitle = null, edlReel = "AX", edlStart = null, fcpPath = null, fcpFormat = "fcpx";
@@ -246,6 +255,16 @@ try
             case "--find-tone": findTone = true; break;
             case "--probe": probe = true; break;
             case "--probe-json": probeJson = true; break;
+            case "--waveform": waveformPath = Next(); break;
+            case "--waveform-zoom": waveform = waveform with { SamplesPerPixel = NextInt() }; break;
+            case "--waveform-pixels-per-second": waveform = waveform with { PixelsPerSecond = NextInt() }; break;
+            case "--waveform-bits": waveformBits = NextInt() switch
+            {
+                8 => FrameReader.WaveformBits.Eight,
+                16 => FrameReader.WaveformBits.Sixteen,
+                _ => throw new ArgumentException("--waveform-bits is 8 or 16"),
+            }; break;
+            case "--waveform-split-channels": waveform = waveform with { SplitChannels = true }; break;
             case "--trim-tone": options = options with { TrimReferenceTone = true }; break;
             case "--tone-min-duration": options = options with { ReferenceToneMinDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
             case "--tone-search": options = options with { ReferenceToneSearchDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
@@ -286,6 +305,29 @@ try
             throw new ArgumentException("--probe needs a file or URL");
         var info = ShotDetection.Probe(input, options);
         Console.WriteLine(probeJson ? ProbeJson(info) : string.Join(Environment.NewLine, ProbeLines(info)));
+        return 0;
+    }
+    if (waveformPath is not null)
+    {
+        if (input == "-")
+            throw new ArgumentException("--waveform needs a file or URL");
+        try
+        {
+            // FrameReader's own reader (ShotDetector doesn't wrap it): the CLI's bundled libraries, or --ffmpeg-dir's.
+            FrameReader.FFmpegLibraries.Load(options.FfmpegDirectory);
+            using var audio = new FrameReader.AudioReader(input);
+            var data = FrameReader.WaveformData.Read(audio, waveform);
+            using (var file = File.Create(waveformPath))
+                data.Save(file, waveformBits);
+            if (!quiet)
+                Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                    $"{data.Length} points, {data.SamplesPerPixel} samples each at {data.SampleRate} Hz, {data.Channels} channel(s): {waveformPath}"));
+        }
+        catch (FrameReader.FrameReaderException e)
+        {
+            Console.Error.WriteLine(e.Message);
+            return 1;
+        }
         return 0;
     }
     if (findTone)
