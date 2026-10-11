@@ -36,7 +36,7 @@ libraries when OpenCV's wheels do, since scenedetect's frames come from OpenCV's
 The ffmpeg and ffprobe executables (on `PATH`, or in `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`) are still
 needed without those libraries, and for URLs and the image and clip exports. Files of every kind decode
 in-process, including image sequences, rotated phone video, AV1 (dav1d in our build) and deinterlacing; a codec the
-libraries can't decode, a rotation that isn't a quarter turn and rotated video that is deinterlaced use the executable.
+libraries can't decode and a rotation that isn't a quarter turn use the executable.
 
 Releases are built by GitHub Actions from the tagged commit: packages carry SourceLink and symbol packages, and
 every package and binary has a signed build attestation (`gh attestation verify <file> --repo bisforboman/shotdetector`).

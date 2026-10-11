@@ -618,6 +618,20 @@ public sealed partial class VideoReader
         return (Math.Max(1, (int)Math.Round(width / factor)), Math.Max(1, (int)Math.Round(height / factor)));
     }
 
+    /// <summary>
+    /// The clockwise quarter turn OpenCV gives the frames, in degrees (0, 90, 180, 270): the display matrix's angle alone
+    /// (-round(av_display_rotation_get), so flips are ignored), applied to the converted image (cv::rotate). ffmpeg's
+    /// autorotate rotates the planes before converting and applies flips, which differs where conversion interpolates
+    /// chroma (4:2:2 at 90 degrees, 10-bit): never used.
+    /// </summary>
+    internal int Turn => ((-_rotation) % 360 + 360) % 360;
+
+    /// <summary>
+    /// ffmpeg's filters for <see cref="Turn"/>: on bgr24 a pure rearrangement, as cv::rotate; on the yuv420p pipeline's
+    /// planes too, where converting interpolates nothing (nearest chroma), so turning before or after is the same.
+    /// </summary>
+    string TurnFilters => Turn switch { 90 => ",transpose=clock", 180 => ",hflip,vflip", 270 => ",transpose=cclock", _ => "" };
+
     /// <summary>How frames get from ffmpeg to the downscaled BGR the detectors see.</summary>
     public FramePipeline Pipeline => !_ffmpegResize && (Width, Height) != (CropRegion.Width, CropRegion.Height)
         // swscale's unscaled yuv420p converter (what OpenCV gets) needs an even height.
@@ -720,19 +734,20 @@ public sealed partial class VideoReader
         var resizer = resizeHere ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
         string? maps = sampled ? WriteMaps(resizer!) : null;
         string[] mapInputs = maps is null ? [] : ["-loop", "1", "-i", Path.Combine(maps, "x.pgm"), "-loop", "1", "-i", Path.Combine(maps, "y.pgm")];
+        // Rotated as OpenCV does (Turn), not by ffmpeg's autorotate.
         string[] args = ["-v", "info", "-nostats", .. noStdin, "-y",
-            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount)}", .. seek, .. _inputOptions, "-i", _path,
+            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(pipeline, Environment.ProcessorCount)}", .. seek, .. _inputOptions, "-noautorotate", "-i", _path,
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
         select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
         // Deinterlacing first, so the frames a seek decodes early still feed yadif, as in the copy it stands for.
         if (_deinterlace)
             select = ["-vf", "yadif" + (select.Length > 0 ? "," + select[1] : "")];
         string prefix = select.Length > 0 ? select[1] + "," : "";
-        string toBgr = "scale=flags=bicubic" + (_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "") + ",format=bgr24";
+        string toBgr = "scale=flags=bicubic" + (_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "") + ",format=bgr24" + TurnFilters;
         args = pipeline switch
         {
             // The source's own format, so ffmpeg passes the samples through untouched.
-            FramePipeline.Yuv420Sampled => [.. args, .. select, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
+            FramePipeline.Yuv420Sampled => [.. args, "-vf", select[1] + TurnFilters, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
             // Like OpenCV: SWS_BICUBIC, colour matrix and range from the stream's tags (BT.601 if untagged).
             FramePipeline.FullFrameResize => [.. args, "-vf", prefix + toBgr + crop,
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],

@@ -14,6 +14,9 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "")'; Replace = '""'; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
         @{ File = 'src/FrameReader/BgrConverter.cs'; Find = 'ffmpeg.av_opt_set_int(_toRows, "src_h_chr_pos", hPos, 0);'; Replace = ''; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
 
+        # Rotation as OpenCV's: the converted image turned by the display matrix's angle, not ffmpeg's autorotate
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '.. _inputOptions, "-noautorotate", "-i", _path,'; Replace = '.. _inputOptions, "-i", _path,'; Tests = 'InProcessTests.RotatesAsTheFfmpegExecutable' }
+
         # Streamed input
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (o.StartTime is not null && video.Streaming)'; Replace = 'if (false)'; Tests = 'VideoTests' }
 

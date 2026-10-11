@@ -321,7 +321,8 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
-    // Display matrices (rotations and flips) as ffmpeg's autorotate applies them: transpose, hflip, vflip.
+    // Display matrices as OpenCV applies them (VideoReader.Turn): the angle alone, turning the converted image, so flips
+    // only count as far as they change the angle; deinterlaced first, then turned; every pixel format.
     [Theory]
     [InlineData("90", "-pix_fmt yuv420p", "-display_rotation 90", "")]
     [InlineData("270", "-pix_fmt yuv420p", "-display_rotation -90", "")]
@@ -333,11 +334,13 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
     [InlineData("180-hflip", "-pix_fmt yuv420p", "-display_rotation 180 -display_hflip", "")]
     [InlineData("90-odd", "-vf crop=319:237:0:0 -pix_fmt yuv420p", "-display_rotation 90", "")]
     [InlineData("90-10bit", "-pix_fmt yuv420p10le", "-display_rotation 90", "")]
+    [InlineData("270-10bit", "-pix_fmt yuv420p10le", "-display_rotation -90", "")]
+    [InlineData("90-422-10bit", "-pix_fmt yuv422p10le", "-display_rotation 90", "")]
     [InlineData("180-422", "-pix_fmt yuv422p", "-display_rotation 180", "")]
     [InlineData("90-start", "-pix_fmt yuv420p", "-display_rotation 90", "start")]
     [InlineData("90-full", "-pix_fmt yuv420p", "-display_rotation 90", "full")]
-    [InlineData("90-deinterlace", "-pix_fmt yuv420p -vf setfield=tff", "-display_rotation 90", "deinterlace-executable")] // ffmpeg rotates before yadif
-    [InlineData("90-422", "-pix_fmt yuv422p", "-display_rotation 90", "executable")] // transpose converts 4:2:2 first
+    [InlineData("90-deinterlace", "-pix_fmt yuv420p -vf setfield=tff", "-display_rotation 90", "deinterlace")]
+    [InlineData("90-422", "-pix_fmt yuv422p", "-display_rotation 90", "")]
     public void RotatesAsTheFfmpegExecutable(string name, string format, string display, string variant)
     {
         if (Libs is null)
@@ -354,12 +357,12 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             {
                 "start" => options with { StartTime = "1.5" },
                 "full" => options with { FullFrames = true },
-                "deinterlace-executable" => options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() },
+                "deinterlace" => options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() },
                 _ => options,
             };
             var pipe = ShotDetection.Detect(rotated, options);
             var inProcess = ShotDetection.Detect(rotated, options with { Decoder = VideoDecoder.InProcess });
-            Assert.Equal(!variant.EndsWith("executable"), inProcess.Video.DecodesInProcess);
+            Assert.True(inProcess.Video.DecodesInProcess);
             Assert.Equal((pipe.Video.Width, pipe.Video.Height), (inProcess.Video.Width, inProcess.Video.Height));
             Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
         }
