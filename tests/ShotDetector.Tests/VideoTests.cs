@@ -714,6 +714,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
 
                 string untagged = Stats(plain, options);
                 Assert.NotEqual(untagged, Stats(tagged, options));
+
                 // In-process follows the tags, so even when asked for it the flag decodes with the executable.
                 string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
                 var decoder = libs is null ? VideoDecoder.Auto : VideoDecoder.InProcess;
