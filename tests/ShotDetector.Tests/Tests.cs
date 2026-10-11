@@ -29,22 +29,15 @@ public class DecodeThreadsTests
     public void SamplingOnlyWhenItReadsUnderAQuarter(int sw, int sh, int w, int h, bool sampled) =>
         Assert.Equal(sampled, VideoReader.SampledPays(sw, sh, w, h));
 
-    [Theory]
-    [InlineData(1, FramePipeline.SampledBgr, 1)]
-    [InlineData(2, FramePipeline.SampledBgr, 1)]    // a 2-CPU container: one decoder thread
-    [InlineData(4, FramePipeline.SampledBgr, 3)]
-    [InlineData(16, FramePipeline.SampledBgr, 4)]
-    [InlineData(16, FramePipeline.Yuv420Sampled, 8)]
-    [InlineData(6, FramePipeline.Yuv420Sampled, 5)]
-    public void DefaultLeavesOneCpu(int cpus, FramePipeline pipeline, int threads) =>
-        Assert.Equal(threads, VideoReader.DefaultDecodeThreads(pipeline, cpus));
-
+    // OpenCV's decoder threads (cap_ffmpeg's fill_codec_context): every CPU, at most 16; what damaged files need.
     [Theory]
     [InlineData(1, 1)]
     [InlineData(2, 2)]
-    [InlineData(16, 4)]
-    public void InProcessUsesEveryCpu(int cpus, int threads) =>
-        Assert.Equal(threads, VideoReader.DefaultDecodeThreads(FramePipeline.SampledBgr, cpus, inProcess: true));
+    [InlineData(4, 4)]
+    [InlineData(16, 16)]
+    [InlineData(64, 16)]
+    public void DefaultIsOpenCvs(int cpus, int threads) =>
+        Assert.Equal(threads, VideoReader.DefaultDecodeThreads(cpus));
 }
 
 public class ContentScorerTests

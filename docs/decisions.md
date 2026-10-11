@@ -3,6 +3,17 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## Decoder threads like OpenCV (2026-10-11)
+
+Damaged files decoded like scenedetect's only with OpenCV's thread count (Linux, 4 CPUs: exact at 4, different at
+1-3 and 16). Asked: **match OpenCV, min(CPUs, 16), on both paths** (over an opt-in, and leaving it), replacing
+issue #12's CPUs - 1 (executable) and the 4/8 caps.
+
+## Drop the GPL native packages (2026-10-11)
+
+#81's user no longer needs H.264. Asked: **stop building and publishing ShotDetector.Native.Gpl.<rid>** (over keeping
+them, isolated and opt-in, or deciding later); VideoWriter stays and works with any FFmpeg that has libx264.
+
 ## CLI audio filter and output (2026-10-11)
 
 Not asked (the user asked for more work to be picked): `--audio-filter "<graph>"` prints analysis filters'
