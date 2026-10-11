@@ -147,6 +147,9 @@ scenedetect 0.6.4 mode was dropped in 0.9.0; use ShotDetector 0.8 for it.
 `Shot.Start`/`End` are `FrameTime`s: `FrameNum` (0-based; `End` is exclusive), `Seconds`,
 `Timecode()` (also what `ToString()` gives). They print exactly as scenedetect prints them.
 
+A runnable example of the library end to end (probe, shots, reference tone, a waveform with FrameReader) is in
+[examples/ShotDetector.Example](examples/ShotDetector.Example/Program.cs): `dotnet run --project examples/ShotDetector.Example -- video.mp4`.
+
 ## Command line
 
 ```

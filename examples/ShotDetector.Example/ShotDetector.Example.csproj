@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- An example, not a package: the API end to end (README "Example"). In the solution so it keeps compiling.
+       In your own project: dotnet add package ShotDetector (and ShotDetector.Native.<rid> for in-process decoding). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ShotDetector\ShotDetector.csproj" />
+  </ItemGroup>
+
+</Project>
