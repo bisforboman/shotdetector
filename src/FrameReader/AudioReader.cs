@@ -168,10 +168,14 @@ public sealed unsafe class AudioReader : IDisposable
         {
             int got;
             TimeSpan time;
-            if (TryDecode(out int skip, out _))
+            ChunkPosition = null;
+            if (TryDecode(out int skip, out long position))
             {
                 long pts = _frame->best_effort_timestamp;
                 got = Convert(_frame->extended_data, _frame->nb_samples, skip, _frame->format, _frame->ch_layout.nb_channels);
+                // The frame's samples one for one (no resampling held any back): its place, as ffmpeg's filters get it.
+                if (_frame->sample_rate == _outRate && got == _frame->nb_samples - skip)
+                    ChunkPosition = position;
                 time = pts == ffmpeg.AV_NOPTS_VALUE ? TimeSpan.Zero
                     : TimeSpan.FromSeconds((pts - (_fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : ffmpeg.av_rescale_q(_fmt->start_time, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase))) * (_timeBase.num / (double)_timeBase.den));
             }
@@ -193,6 +197,13 @@ public sealed unsafe class AudioReader : IDisposable
             }
         }
     }
+
+    /// <summary>
+    /// The last chunk's first sample's place in samples, from the input's start (or the seek point), as ffmpeg's
+    /// decoder gives it to its filters (gaps in the stream's timestamps included); null when the chunk isn't one
+    /// decoded frame's samples as they are (resampled, or the resampler's leftovers).
+    /// </summary>
+    internal long? ChunkPosition { get; private set; }
 
     /// <summary>
     /// The next decoded frame, as the decoder gives it (<see cref="Decoded"/>: its own sample format, rate and layout),

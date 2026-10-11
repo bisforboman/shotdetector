@@ -55,6 +55,7 @@ public sealed unsafe class SpectralStats : IDisposable
     readonly SpectralMeasures[] _measures;
     readonly string[] _keys;
     long _fed;
+    long? _first;
     TimeSpan? _start;
     bool _flushed;
 
@@ -141,7 +142,9 @@ public sealed unsafe class SpectralStats : IDisposable
             frame->sample_rate = _rate;
             frame->nb_samples = chunk.SampleCount;
             ffmpeg.av_channel_layout_default(&frame->ch_layout, _channels);
-            frame->pts = _fed;
+            // Where ffmpeg's aspectralstats would see it: the decoded frame's place (a stream can have gaps, as Ogg
+            // Vorbis's first pages do), else right after the last chunk.
+            frame->pts = _audio.ChunkPosition is { } p ? p - (_first ??= p) : _fed;
             Check(ffmpeg.av_frame_get_buffer(frame, 0), "frame buffer");
             var samples = chunk.Samples;
             for (int c = 0; c < _channels; c++)
@@ -150,7 +153,7 @@ public sealed unsafe class SpectralStats : IDisposable
                 for (int i = 0; i < chunk.SampleCount; i++)
                     plane[i] = samples[i * _channels + c];
             }
-            _fed += chunk.SampleCount;
+            _fed = frame->pts + chunk.SampleCount;
             Check(ffmpeg.av_buffersrc_add_frame_flags(_in, frame, 0), "aspectralstats");
         }
         finally
