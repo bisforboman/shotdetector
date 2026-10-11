@@ -118,6 +118,35 @@ jobs:
           dotnet run --project src/ShotDetector.Cli -- -i job.wav --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" --audio-filter "silencedetect=n=-50dB:d=1" | tee silence.txt
           grep -q "lavfi.silence_start=4$" silence.txt && grep -q "lavfi.silence_end=6.000021 " silence.txt
 
+      # RTSP input (a live source, so not frame for frame against a file: the reader joins once the probe has started
+      # the stream): mediamtx serves a five-shot clip (2 s shots at 25 fps) on demand, published over TCP, and the cuts found
+      # over rtsp:// must be exactly 50 frames apart. (A looping publisher with --duration read 18 frames: not used.)
+      - name: RTSP input
+        if: needs.changes.outputs.docs_only != 'true'
+        timeout-minutes: 10
+        run: |
+          curl -fsSL --retry 5 --retry-all-errors -o mtx.tgz https://github.com/bluenviron/mediamtx/releases/download/v1.21.2/mediamtx_v1.21.2_linux_amd64.tar.gz
+          echo "121be6e00397e473a95d83c75f4fcd3819a6af3b0e1a50889cba43ab4fab6a27  mtx.tgz" | sha256sum -c
+          tar xzf mtx.tgz mediamtx
+          ffmpeg -v error -f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 -f lavfi -i rgbtestsrc=s=320x240:r=25:d=2 \
+            -f lavfi -i testsrc=s=320x240:r=25:d=2 -f lavfi -i smptehdbars=s=320x240:r=25:d=2 \
+            -filter_complex "[0][1][2][3][4]concat=n=5:v=1:a=0,format=yuv420p" -c:v libx264 -g 25 shots.mp4
+          printf '%s\n' 'logLevel: warn' 'rtmp: no' 'hls: no' 'webrtc: no' 'srt: no' 'paths:' '  shots:' \
+            "    runOnDemand: ffmpeg -re -i $PWD/shots.mp4 -c copy -f rtsp -rtsp_transport tcp rtsp://localhost:\$RTSP_PORT/\$MTX_PATH" > mtx.yml
+          ./mediamtx mtx.yml & server=$!
+          sleep 2
+          dotnet run --project src/ShotDetector.Cli -- -i rtsp://127.0.0.1:8554/shots -d content --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" --csv rtsp.csv
+          kill $server
+          # Cut frames (the CSV's Start Frame column after the header rows): every gap between cuts is one shot, 50 frames.
+          python3 -c "
+          import csv
+          rows = list(csv.reader(open('rtsp.csv')))[2:]
+          starts = [int(r[1]) for r in rows[1:]]
+          gaps = [b - a for a, b in zip(starts, starts[1:])]
+          print('cuts at', starts, 'gaps', gaps)
+          assert len(gaps) >= 2 and set(gaps) == {50}, gaps
+          "
+
       # FrameReader's VideoWriter (H.264) against ffmpeg -c:v libx264, byte for byte: x264's output depends on how it
       # was compiled, so libraries and executable from one build, BtbN's shared GPL one (ours has no executables).
       - name: FFmpeg 8.1 with x264, shared
