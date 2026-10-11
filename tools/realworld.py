@@ -10,6 +10,8 @@ import argparse
 import hashlib
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -57,11 +59,20 @@ def fetch(name: str) -> Path:
     path = CACHE / name
     if not path.exists():
         CACHE.mkdir(parents=True, exist_ok=True)
-        print(f"downloading {url}", flush=True)
         req = urllib.request.Request(url, headers={"User-Agent": "ShotDetector real-world check"})
-        with urllib.request.urlopen(req) as r, open(path, "wb") as f:
-            while chunk := r.read(1 << 20):
-                f.write(chunk)
+        # A few tries: archive.org and Wikimedia answer 500 or drop the connection now and then.
+        for attempt in range(1, 5):
+            print(f"downloading {url}" + (f" (try {attempt})" if attempt > 1 else ""), flush=True)
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r, open(path, "wb") as f:
+                    while chunk := r.read(1 << 20):
+                        f.write(chunk)
+                break
+            except (urllib.error.URLError, OSError) as e:
+                path.unlink(missing_ok=True)
+                if attempt == 4:
+                    sys.exit(f"{name}: download failed: {e}")
+                time.sleep(20 * attempt)
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual != sha:
         path.unlink()
