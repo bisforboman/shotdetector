@@ -1,4 +1,4 @@
-### Breaking changes
+### Breaking changes (packages only: no API changes)
 
 - `ShotDetector.Native.Gpl.<rid>` (our FFmpeg build with x264, GPL) is no longer built or published; earlier versions
   stay on nuget.org. FrameReader's `VideoWriter` is unchanged and still encodes H.264 byte for byte as
