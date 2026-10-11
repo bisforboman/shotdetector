@@ -48,6 +48,21 @@ public readonly record struct FrameTime
     /// <summary>FrameTimecode.frame_num.</summary>
     public long FrameNum => IsFrame ? Value : (long)Math.Round(Seconds * FpsValue);
 
+    /// <summary>
+    /// What FrameTimecode's == compares, as a dictionary key (StatsManager's): a pts as its exact rational time
+    /// (100/25 s equals 4000000/1000000 s), anything else by frame number.
+    /// </summary>
+    internal (long, long) Key
+    {
+        get
+        {
+            if (TbDen <= 0)
+                return (FrameNum, 0);
+            long g = (long)BigInteger.GreatestCommonDivisor(Value, TbDen);
+            return (Value / g, TbDen / g);
+        }
+    }
+
     /// <summary>FrameTimecode.get_timecode(): HH:MM:SS.mmm.</summary>
     public string Timecode() =>
         // nearest_frame: frame numbers and seconds go through the frame number and the float frame rate;
