@@ -692,4 +692,36 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    // compare.py on Windows: the Windows OpenCV wheel converts with BT.601 whatever the tags say. AlwaysBt601 on a
+    // BT.709-tagged copy gives the untagged copy's results (BT.601, the default), on the core and FastYuv paths.
+    [Fact]
+    public void AlwaysBt601IgnoresTheColourTags()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"shotdetector-bt601-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string tagged = Path.Combine(dir, "tagged.mkv"), plain = Path.Combine(dir, "plain.mkv");
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-pix_fmt", "yuv420p", "-c:v", "ffv1", plain], default);
+
+            // Tagged by a stream copy: the same pixels (on an encode, -colorspace makes ffmpeg convert them too).
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", plain, "-c", "copy", "-colorspace", "bt709", tagged], default);
+            foreach (var converter in new IYuv420Converter?[] { null, new SwscaleYuv420() })
+            {
+                var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, Yuv420Converter = converter, Decoder = VideoDecoder.FfmpegProcess };
+                string Stats(string path, DetectionOptions o) => ShotDetection.Detect(path, o) is var r ? r.Stats!.Csv(r.Video.Position) : "";
+
+                string untagged = Stats(plain, options);
+                Assert.NotEqual(untagged, Stats(tagged, options));
+                var bt601 = ShotDetection.Detect(tagged, options with { AlwaysBt601 = true, Decoder = VideoDecoder.Auto });
+                Assert.False(bt601.Video.DecodesInProcess); // in-process follows the tags: the executable instead
+                Assert.Equal(untagged, bt601.Stats!.Csv(bt601.Video.Position));
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

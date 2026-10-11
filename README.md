@@ -234,8 +234,9 @@ dotnet test
   (24 → 48 fps, and phone-like jittery timestamps), with phone-style rotation tags (90°, 180°), and
   as full-range, MJPEG and 4:4:4 video.
 
-On Windows, compare.py differs from scenedetect on BT.709-tagged video: the Windows OpenCV wheel
-ignores colour tags (see below). With `--ffmpeg-resize`, cuts on real footage differ (2–6 per trailer).
+The Windows OpenCV wheel converts BT.709-tagged video with BT.601 coefficients (it ignores the matrix tag), so
+on Windows compare.py passes our CLI the hidden `--always-bt601`, which does the same: exact there too.
+With `--ffmpeg-resize`, cuts on real footage differ (2–6 per trailer).
 
 ## Performance
 
@@ -309,7 +310,8 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   is not consistent here: the opencv-python wheels for Linux bundle FFmpeg 8 and follow the tags,
   while the Windows wheels (FFmpeg 7.1) convert everything as BT.601. ShotDetector matches
   scenedetect on Linux; on Windows they differ only for tagged video, by enough to flip borderline
-  cuts. CI compares against scenedetect on Linux with the latest stable ffmpeg (9.0).
+  cuts (compare.py passes the hidden `--always-bt601` there to match). CI compares against scenedetect on Linux
+  with the latest stable ffmpeg (9.0).
 - **Timestamps:** scenedetect prints times from OpenCV's frame positions (container pts → ms →
   rounded to µs, with Python's exact-binary rounding), not from frame/fps. `FrameTime.cs` reproduces
   that, taking the pts from an extra demux-only ffprobe pass. That assumes OpenCV's best-effort

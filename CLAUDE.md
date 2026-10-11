@@ -100,7 +100,8 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 - End of a time range is compared as frame numbers (`Position(i).PlusFrames(1).FrameNum >= end`), with
   `-e`/`-d` rounded to frames at the average rate; frame skip reads ahead before checking.
 - FFmpeg 8+ ignores `in_color_matrix`: we follow the colour tags like OpenCV with FFmpeg 8 (Windows OpenCV wheels
-  still carry FFmpeg 7.1 and differ on BT.709; Linux is the reference).
+  still carry FFmpeg 7.1 and always use BT.601; compare.py passes the hidden `--always-bt601` there; Linux is the
+  reference).
 - MPEG-PS packets mostly lack a pts: OpenCV uses the frame's dts, so the reader takes per-frame timestamps
   from an ffprobe decoding pass when any packet has none (`FrameTimestamps`).
 - Interlaced video: opencv-python 5.0.0.93 can't convert interlaced frames (FFmpeg 8 swscale: "Cannot convert
