@@ -4,6 +4,39 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 What's merged but not released yet is in changes/ (one file per pull request).
 
+## 1.6.0 – 2026-10-11
+
+Rotated and 10-bit video now give scenedetect's results exactly (OpenCV's chroma siting and its turn of the
+converted image, both found by probing OpenCV on Linux); the CLI does #81's audio job (`--audio-filter`,
+`--audio-out`) and writes waveforms; DASH input is tested.
+
+### New
+
+- CLI `--audio-filter "<graph>"` and `--audio-out <file>`: an ffmpeg `-af` graph over the audio, with analysis
+  filters' results (silencedetect, ebur128, astats) printed with their times, and the filtered audio written
+  (encoded by the extension). E.g. line-up tone notched out and the result as MP3, the same audio ffmpeg gives:
+  `shotdetect -i in.mxf --audio-filter "equalizer=f=1000:t=q:w=8:g=-40:enable='between(t,0,60)'" --audio-out out.mp3`.
+- CLI `--waveform <file.dat>`: the audio's waveform peaks as BBC audiowaveform's .dat (for peaks.js and other
+  viewers), with `--waveform-zoom`, `--waveform-pixels-per-second`, `--waveform-bits` and
+  `--waveform-split-channels` (audiowaveform's `-z`, `--pixels-per-second`, `-b`, `--split-channels`); byte for byte
+  audiowaveform's for PCM input (CI compares them).
+- FrameReader: `FrameDecoderOptions.Autorotate` (default true): false gives the frames as coded, as `-noautorotate`.
+
+### Faster
+
+- Rotated 4:2:2 and rotated, deinterlaced video decode in-process (they needed the ffmpeg executable).
+
+### Fixed
+
+- Rotated video turns as OpenCV turns it: the converted BGR image, by the display matrix's angle (flips aside), not
+  ffmpeg's autorotate, which turns the planes before converting. Rotated 10-bit video and 4:2:2 at 90 or 270 degrees
+  now give scenedetect's results (they differed on both decoding paths); checked against OpenCV on Linux for 8- and
+  10-bit 4:2:0 and 4:2:2 at 90 and 180 degrees.
+- 10-bit video now gives scenedetect's results exactly on Linux (it was ±1, and up to ±100 on sharp colour edges, in
+  red and green). Converting it to BGR interpolates chroma from where the stream says the samples sit (left for
+  h264), which OpenCV's converter takes from the frame and ffmpeg's command line drops; both decoding paths now use
+  it. FrameReader's `VideoStreamInfo.ChromaLocation` reports it.
+
 ## 1.5.0 – 2026-10-11
 
 FrameReader is stable and a ShotDetector dependency; what issue #81 needs to move its tone job in-process (a
