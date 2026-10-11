@@ -1,0 +1,31 @@
+name: 10-bit probe (debug)
+on:
+  push:
+    branches: ['debug/**']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: ./.github/actions/btbn-ffmpeg
+      - run: pip install opencv-python-headless==5.0.0.93 numpy
+      - name: Clips
+        run: |
+          # Gradients and colour bars, 10-bit 4:2:0 (and an 8-bit control), BT.709 tagged like the informational sample.
+          ffmpeg -v error -f lavfi -i "testsrc2=s=320x240:r=25:d=0.4,format=yuv420p10le" -c:v libx264 -crf 10 -colorspace bt709 -color_primaries bt709 -color_trc bt709 t10.mp4
+          ffmpeg -v error -f lavfi -i "testsrc2=s=320x240:r=25:d=0.4,format=yuv420p10le" -c:v libx264 -crf 10 t10u.mp4
+          ffmpeg -v error -f lavfi -i "testsrc2=s=320x240:r=25:d=0.4,format=yuv420p" -c:v libx264 -crf 10 t8.mp4
+      - name: 8-bit control
+        run: python tools/tenbit_probe.py t8.mp4 320 240 | grep -v "^\s" | tail -12
+      - name: 10-bit, untagged
+        run: python tools/tenbit_probe.py t10u.mp4 320 240 | tail -55
+      - name: 10-bit, BT.709
+        run: python tools/tenbit_probe.py t10.mp4 320 240 | tail -55
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tenbit
+          path: tenbit.npz
