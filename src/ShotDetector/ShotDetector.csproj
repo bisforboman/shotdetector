@@ -44,6 +44,7 @@
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
     <InternalsVisibleTo Include="ShotDetector.Tests" />
+    <InternalsVisibleTo Include="shotdetect" />
   </ItemGroup>
 
 </Project>

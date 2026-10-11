@@ -181,7 +181,9 @@ def main() -> int:
     detectors = {"both": ["adaptive", "content"], "all": ["adaptive", "content", "threshold", "hist"]}.get(
         a.detector, [a.detector])
     extra_args = ((["--ffmpeg-resize"] if a.ffmpeg_resize else []) + (["--fast-yuv"] if a.fast_yuv else [])
-                  + (["--compat", a.compat] if a.compat else []))
+                  + (["--compat", a.compat] if a.compat else [])
+                  # The Windows OpenCV wheel converts with BT.601 whatever the colour tags say (docs/decisions.md)
+                  + (["--always-bt601"] if sys.platform == "win32" else []))
     shared = [*(["-w", *a.weights.split()] if a.weights else []), *(["-k", a.kernel_size] if a.kernel_size else [])]
     rows = [compare(v, d, a.tolerance, extra_args, a.stats, shared) for v in a.videos for d in detectors]
 

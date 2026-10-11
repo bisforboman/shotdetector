@@ -210,6 +210,9 @@ try
             case "--threads":
                 options = options with { DecodeThreads = NextInt() };
                 break;
+            case "--always-bt601": // not in --help: compare.py on Windows, whose OpenCV wheel converts with BT.601
+                options = options with { AlwaysBt601 = true };
+                break;
             case "--ffmpeg-dir":
                 options = options with { FfmpegDirectory = Next() };
                 break;

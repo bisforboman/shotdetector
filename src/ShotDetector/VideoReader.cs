@@ -257,6 +257,7 @@ public sealed partial class VideoReader
     readonly int? _decodeThreads;
     readonly string[] _inputOptions;   // ffmpeg/ffprobe options for the input (an image sequence's rate)
     readonly bool _fullFrames;         // tests: the full-frame pipeline instead of the sampled one
+    readonly bool _alwaysBt601;        // compare.py on Windows: BT.601 whatever the tags, as the Windows OpenCV wheel
     readonly VideoDecoder _decoder;
     readonly string? _ffmpegDirectory;
     readonly int _rotation;            // the display rotation ffmpeg applies (degrees); 0 if none
@@ -326,6 +327,7 @@ public sealed partial class VideoReader
         _ffmpegResize = o.FfmpegResize;
         _decodeThreads = o.DecodeThreads;
         _fullFrames = o.FullFrames;
+        _alwaysBt601 = o.AlwaysBt601;
         _decoder = o.Decoder;
         _ffmpegDirectory = o.FfmpegDirectory;
         FfmpegExe = Executable(o.FfmpegDirectory, "ffmpeg");
@@ -480,7 +482,7 @@ public sealed partial class VideoReader
 
         // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
         bool fullRange = _pixelFormat == "yuvj420p" || stream.GetValueOrDefault("color_range") == "pc";
-        _yuv420ForVideo = _yuv420?.ForColor(stream.GetValueOrDefault("color_space", ""), fullRange);
+        _yuv420ForVideo = _yuv420?.ForColor(_alwaysBt601 ? "bt470bg" : stream.GetValueOrDefault("color_space", ""), fullRange);
 
         var tb = Fps.Parse(stream["time_base"]);
         _timeBase = tb.Num / (double)tb.Den;
@@ -861,7 +863,8 @@ public sealed partial class VideoReader
 
         // The stream's size, explicitly: a frame of another size (a resolution change) is scaled to it in the same
         // conversion, as OpenCV's sws_scale_frame does into its buffer (ffmpeg would convert, then scale at the encoder).
-        string toBgr = $"scale={_codedSize.W}:{_codedSize.H}:flags=bicubic" + (_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "") + ",format=bgr24" + TurnFilters;
+        string toBgr = $"scale={_codedSize.W}:{_codedSize.H}:flags=bicubic" + (_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "")
+            + (_alwaysBt601 ? ":in_color_matrix=bt601" : "") + ",format=bgr24" + TurnFilters;
         args = pipeline switch
         {
             // The source's own format, so ffmpeg passes the samples through untouched.
