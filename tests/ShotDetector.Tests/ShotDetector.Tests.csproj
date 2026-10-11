@@ -16,8 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Data/*.html" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../tools/oracle.py" Link="oracle.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Data/*.html;Data/oracle.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

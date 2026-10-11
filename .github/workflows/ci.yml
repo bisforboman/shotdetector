@@ -90,16 +90,6 @@ jobs:
             echo "::warning::audiowaveform didn't install: WaveformData's comparison with it is skipped"
           fi
 
-      # scenedetect 0.7.1, the oracle PropertyTests ask (tools/oracle.py; they check nothing without it).
-      - uses: actions/setup-python@v6
-        if: needs.changes.outputs.docs_only != 'true'
-        with:
-          python-version: '3.12'
-
-      - name: Install scenedetect
-        if: needs.changes.outputs.docs_only != 'true'
-        run: pip install scenedetect==0.7.1 opencv-python-headless==5.0.0.93
-
       - name: Test
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx
