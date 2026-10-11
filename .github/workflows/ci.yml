@@ -120,7 +120,7 @@ jobs:
           grep -q "lavfi.silence_start=4$" silence.txt && grep -q "lavfi.silence_end=6.000021 " silence.txt
 
       # RTSP input (a live source, so not frame for frame against a file: the reader joins once the probe has started
-      # the stream): mediamtx serves a looping three-shot clip (2 s shots at 25 fps) on demand, and the cuts found
+      # the stream): mediamtx serves a looping three-shot clip (2 s shots at 25 fps) on demand, published over TCP, and the cuts found
       # over rtsp:// must be exactly 50 frames apart.
       - name: RTSP input
         if: needs.changes.outputs.docs_only != 'true'
@@ -131,7 +131,7 @@ jobs:
           tar xzf mtx.tgz mediamtx
           ffmpeg -v error -f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 -f lavfi -i rgbtestsrc=s=320x240:r=25:d=2 \
             -filter_complex "[0][1][2]concat=n=3:v=1:a=0,format=yuv420p" -c:v libx264 -g 25 loop.mp4
-          printf '%s\n' 'logLevel: warn' 'rtmp: no' 'hls: no' 'webrtc: no' 'srt: no' 'rtspTransports: [tcp]' 'paths:' '  loop:' \
+          printf '%s\n' 'logLevel: warn' 'rtmp: no' 'hls: no' 'webrtc: no' 'srt: no' 'paths:' '  loop:' \
             "    runOnDemand: ffmpeg -re -stream_loop -1 -i $PWD/loop.mp4 -c copy -f rtsp -rtsp_transport tcp rtsp://localhost:\$RTSP_PORT/\$MTX_PATH" > mtx.yml
           ./mediamtx mtx.yml & server=$!
           sleep 2
