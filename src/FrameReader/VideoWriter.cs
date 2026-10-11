@@ -38,7 +38,7 @@ public sealed record VideoWriterOptions
     /// <summary>The layout of the frames you write (as <see cref="VideoFrameReader"/> gives them); default BGR.</summary>
     public FrameFormat FrameFormat { get; init; } = FrameFormat.Bgr24;
 
-    /// <summary>FFmpeg's encoder name; null: <c>libx264</c> (in the ShotDetector.Native.Gpl libraries, or any FFmpeg with it).</summary>
+    /// <summary>FFmpeg's encoder name; null: <c>libx264</c> (in any FFmpeg built with it; not in ShotDetector.Native).</summary>
     public string? Encoder { get; init; }
 
     /// <summary>The encoded pixel format (<c>-pix_fmt</c>), e.g. <c>yuv420p</c> for players everywhere; null: the encoder's nearest to the input, as ffmpeg picks it (yuv444p for BGR with x264).</summary>
@@ -94,8 +94,8 @@ public sealed record VideoWriterOptions
 /// <see cref="VideoFrameReader"/>.
 /// </summary>
 /// <remarks>
-/// H.264 needs an FFmpeg with x264: the ShotDetector.Native.Gpl.&lt;rid&gt; packages, used instead of
-/// ShotDetector.Native, or your own build. x264 is GPL: an app that ships with it falls under the GPL; and H.264 is
+/// H.264 needs FFmpeg libraries with x264, which ShotDetector.Native doesn't have: a "gpl" FFmpeg 8 build of your own,
+/// loaded with <see cref="FFmpegLibraries.Load"/>. x264 is GPL: an app that ships with it falls under the GPL; and H.264 is
 /// covered by Via LA's AVC patent pool, whoever distributes the encoder. <see cref="Dispose"/> finishes the file.
 /// </remarks>
 public sealed unsafe class VideoWriter : IDisposable
@@ -116,7 +116,7 @@ public sealed unsafe class VideoWriter : IDisposable
     /// <param name="path">The file to write (.mp4, .mkv, .mov).</param>
     /// <param name="options">The frames' size, rate and layout, and how to encode them.</param>
     /// <exception cref="ArgumentException">A size or rate below 1.</exception>
-    /// <exception cref="FrameReaderException">The libraries didn't load or lack the encoder (libx264: the GPL libraries) or
+    /// <exception cref="FrameReaderException">The libraries didn't load or lack the encoder (libx264: a GPL build) or
     /// muxer, an encoder option is unknown, or the file can't be created.</exception>
     public VideoWriter(string path, VideoWriterOptions options)
     {
@@ -144,8 +144,8 @@ public sealed unsafe class VideoWriter : IDisposable
             string encoder = options.Encoder ?? "libx264";
             if (ffmpeg.avcodec_find_encoder_by_name(encoder) == null && options.Encoder is null)
                 throw new FrameReaderException(FrameReaderError.InvalidInput,
-                    "These FFmpeg libraries have no libx264: H.264 encoding needs the ShotDetector.Native.Gpl.<rid> package " +
-                    "(GPL; instead of ShotDetector.Native) or an FFmpeg built with x264, or set Encoder to one these libraries have.");
+                    "These FFmpeg libraries have no libx264: H.264 encoding needs an FFmpeg built with x264 " +
+                    "(a GPL build, loaded with FFmpegLibraries.Load), or set Encoder to one these libraries have.");
             var codec = Encoder.Find(_fmt, path, encoder, AVMediaType.AVMEDIA_TYPE_VIDEO, "video");
             _video = Encoder.Video(_fmt, codec, _input, options.Width, options.Height, options.FrameRate, options.PixelFormat,
                 options.BitRate, options.Gop, options.KeyintMin, EncoderOptions(options, encoder), options.Bitexact);

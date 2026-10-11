@@ -165,8 +165,8 @@ public class VideoWriterTests
     }
 
     /// <summary>
-    /// Writes with whatever libraries these are (CI: the GPL native package's, with no ffmpeg executable of their own
-    /// build to compare with) and reads the frames back: every input layout through the graph to the encoder's format.
+    /// Writes with whatever libraries these are (no ffmpeg executable of their own build needed to compare with) and
+    /// reads the frames back: every input layout through the graph to the encoder's format.
     /// With SHOTDETECTOR_REQUIRE_X264=1 libraries without libx264 fail.
     /// </summary>
     [Theory]

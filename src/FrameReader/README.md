@@ -10,7 +10,7 @@ Extracted from [ShotDetector](https://github.com/bisforboman/shotdetector)'s in-
 
 ```
 dotnet add package FrameReader
-dotnet add package ShotDetector.Native.linux-x64   # FFmpeg's libraries for your platform (or .Gpl. for H.264)
+dotnet add package ShotDetector.Native.linux-x64   # FFmpeg's libraries for your platform
 ```
 
 ShotDetector's own package carries a copy of FrameReader.dll; reference one or the other version consistently.
@@ -173,9 +173,10 @@ Remux.Copy("film.mkv", "commentary.mka", new() { StreamIndices = [2] });
 Our native libraries carry the AAC, MP3 and 16-bit PCM encoders and the mp4, mov, ipod (.m4a), matroska, matroska_audio (.mka), webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass muxers.
 Writing video: `VideoWriter` encodes frames to H.264 (x264) in .mp4/.mkv/.mov, optionally with an AAC track, the
 file `ffmpeg -c:v libx264` writes from the same frames with the same FFmpeg build (byte for byte with `Bitexact` on
-both sides). It needs FFmpeg with x264: the `ShotDetector.Native.Gpl.<rid>` packages, used **instead of**
-ShotDetector.Native, or your own build. Those are GPL: an app that ships with them falls under the GPL, and H.264 is
-covered by Via LA's AVC patent pool either way (docs/encoding-package.md).
+both sides). It needs FFmpeg libraries with libx264, which ShotDetector.Native doesn't have: a "gpl" FFmpeg 8 build
+of your own (a shared one, such as BtbN's `gpl-shared`), loaded with `FFmpegLibraries.Load(folder)`. Those are GPL: an
+app that ships with them falls under the GPL, and H.264 is covered by Via LA's AVC patent pool either way
+(docs/encoding-package.md).
 
 ```csharp
 using var reader = new VideoFrameReader("in.mkv", new() { FrameFormat = FrameFormat.Bgr24 });
@@ -252,7 +253,7 @@ libraries do is a `FrameReaderException` with a `Reason` (`LibrariesNotFound`, `
 FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, libavutil 60; libavfilter 11 to
 deinterlace and filter, libswresample for audio). The ShotDetector.Native.&lt;rid&gt; packages carry a build for
 win-x64, linux-x64, linux-arm64, linux-musl-x64 and osx-arm64 with everything below but x264
-(ShotDetector.Native.Gpl.&lt;rid&gt; adds it); a "shared" FFmpeg 8 build or the system's (`apk add ffmpeg-libs`)
+(for `VideoWriter`, load a build with it); a "shared" FFmpeg 8 build or the system's (`apk add ffmpeg-libs`)
 works too. They load once per process, the first time anything needs them: next to the app, else the system's places;
 to use a folder of your own, call `FFmpegLibraries.Load(folder)` first (the one place that takes one). FrameReader is MIT; FFmpeg's libraries are LGPL and loaded dynamically.
 
