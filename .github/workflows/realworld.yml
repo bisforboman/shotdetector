@@ -99,7 +99,7 @@ jobs:
           { echo "### ${{ matrix.video }}"; cat realworld.md; } >> "$GITHUB_STEP_SUMMARY"
           exit ${status:-0}
 
-  # FrameReader's AudioReader and SpectralStats on the films' own audio (AAC at 44.1 and 48 kHz, MP3, Opus) against
+  # FrameReader's AudioReader and SpectralStats on the films' own audio (AAC at 44.1 and 48 kHz, MP3, Opus, Vorbis) against
   # ffmpeg's command line (tests/FrameReader.Tests/RealWorldAudioTests.cs), one file after another in one job (five
   # jobs before, each mostly setup). Libraries and executable from one FFmpeg 8.1 build.
   audio:
@@ -110,7 +110,7 @@ jobs:
     timeout-minutes: 40
     env:
       FILMS: bbb_640x360_h264.mp4 elephants_dream_426x240_h264.mp4 tears_of_steel_1280x534_h264.mov   # AAC 44.1 and 48 kHz, MP3
-      OPUS: elephants_dream_1920x1080_vp9.webm going_some_1909.opus   # 5.1 Opus (Commons' copy, Matroska's ms timestamps); stereo Opus
+      OPUS: elephants_dream_1920x1080_vp9.webm going_some_1909.opus maple_leaf_rag.ogg   # 5.1 Opus (Commons' copy, Matroska's ms timestamps); stereo Opus; stereo Vorbis
     steps:
       - uses: actions/checkout@v7
 

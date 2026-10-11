@@ -43,7 +43,8 @@ VIDEOS = {
                         "56ce7a65bc942fefcccbea30844d539e1aec32e8aee73a7345a01b8b9bac072b"),
 }
 
-# Only their audio is compared (tests/FrameReader.Tests/RealWorldAudioTests.cs): Opus, which none of the videos has.
+# Only their audio is compared (tests/FrameReader.Tests/RealWorldAudioTests.cs): Opus and Vorbis, which none of the
+# videos has.
 AUDIO = {
     # Elephants Dream as Wikimedia Commons has it: 1080p VP9 with 5.1 Opus at 48 kHz in a webm, 11 minutes (840 MB).
     "elephants_dream_1920x1080_vp9.webm": ("https://upload.wikimedia.org/wikipedia/commons/a/a2/Elephants_Dream_%282006%29.webm",
@@ -51,6 +52,9 @@ AUDIO = {
     # "Going Some" by Marcel Francis Dumas (1909, public domain), Wikimedia Commons: stereo Opus at 48 kHz, 2.5 minutes.
     "going_some_1909.opus": ("https://upload.wikimedia.org/wikipedia/commons/b/bf/Going_Some_by_Marcel_Francis_Dumas_%281909%29.opus",
                              "fe05690df51cc82ed8c550cf8423b9d02e2a2ba29a0745854fd6d0a468694e43"),
+    # "Maple Leaf Rag" (Scott Joplin, public domain), Wikimedia Commons: stereo Vorbis in Ogg at 44.1 kHz, 3 minutes.
+    "maple_leaf_rag.ogg": ("https://upload.wikimedia.org/wikipedia/commons/a/a6/Maple_Leaf_RagQ.ogg",
+                           "8f3f2d28e5d27e290475ec92a723d1ba4d7b9448cc4553390af6c578cad10387"),
 }
 
 
