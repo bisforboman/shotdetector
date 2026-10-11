@@ -163,7 +163,10 @@ content threshold 27, adaptive threshold 3, min-content-val 15, frame window 2, 
 min scene length 0.6s. `--help` lists all options.
 
 `--probe` only describes the input (container, video, every stream: codecs, sizes, languages, channel layouts)
-and `--probe-json` prints the same as JSON. `--find-tone` only lists reference tone (1 kHz line-up tone) in the audio, also of audio-only files; `--trim-tone`
+and `--probe-json` prints the same as JSON. `--waveform peaks.dat` writes the audio's waveform as BBC audiowaveform's .dat
+(peaks.js loads it; `--waveform-zoom`, `--waveform-pixels-per-second`, `--waveform-bits`, `--waveform-split-channels`). `--audio-filter "<graph>"` runs an ffmpeg `-af` graph over the audio
+(analysis results such as silencedetect's go to standard output) and `--audio-out <file>` writes the result, encoded
+by the extension. `--find-tone` only lists reference tone (1 kHz line-up tone) in the audio, also of audio-only files; `--trim-tone`
 detects shots without it at the start and end (`--tone-min-duration` sets the shortest run, 5 s by default;
 `--tone-search 180` searches only the first 3 minutes, much faster on a feature film, and then finds no tone at the end).
 
