@@ -287,7 +287,7 @@ How it keeps up while computing exactly what OpenCV and scenedetect compute:
 - only the pixels the exact `cv2.resize` port reads are converted to BGR (in-process, the row slices that hold
   them; with the executable, ffmpeg's `remap` filter keeps just those, or whole frames when that is cheaper);
 - the resize, BGR to HSV and the frame differences are vectorised (AVX2), with the same integer arithmetic;
-- decoding overlaps scoring, with all the CPUs as decoder threads in-process (`--threads` to change).
+- decoding overlaps scoring, with all the CPUs (at most 16) as decoder threads, as OpenCV (`--threads` to change).
 
 The FastYuv package (LGPL) is an alternative for the executable path: ffmpeg sends raw yuv420p and a bit-exact
 port of swscale's converter converts only the pixels the resize reads. Files in other pixel formats (10-bit,
@@ -322,8 +322,8 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   scenedetect's on a deinterlaced copy, which OpenCV reads correctly (checked in CI on 1080i XDCAM HD).
 - **Damaged video:** when the decoder drops frames it can't decode, every frame still gets its own
   time and frame number, as with OpenCV (numbers skip; identical to scenedetect on the damaged files
-  tested). Error concealment on damaged data can differ in a few pixels, since OpenCV runs FFmpeg's
-  decoder with other threading. On a **resolution change** mid-stream, OpenCV returns the last frame
+  tested). Error concealment depends on the decoder's thread count, so ShotDetector uses OpenCV's (the CPUs,
+  at most 16): damaged TS and truncated files then match exactly, and a corrupt mp4 in a few pixels. On a **resolution change** mid-stream, OpenCV returns the last frame
   from before the change over and over, so scenedetect sees no cuts after it; ShotDetector keeps
   decoding (ffmpeg scales the new frames to the first size) and finds them.
 - **Variable frame rate:** handled as PySceneDetect handles it. The fps is the *average* frame rate

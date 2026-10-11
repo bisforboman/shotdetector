@@ -364,9 +364,8 @@ public sealed record DetectionOptions
     public DeinterlaceMode Deinterlace { get; init; }
 
     /// <summary>
-    /// ffmpeg decoder threads; 0 = ffmpeg's choice. Null (the default) is one fewer than the CPUs available (so 1 on a
-    /// 2-CPU container), at most 8 when ffmpeg sends yuv420p (<see cref="FramePipeline.Yuv420Sampled"/>, bound by
-    /// decoding) and at most 4 otherwise.
+    /// Decoder threads; 0 = FFmpeg's choice. Null (the default) is OpenCV's: the CPUs available, at most 16. Damaged
+    /// video decodes like scenedetect's only with that count (concealment depends on it); clean video with any.
     /// </summary>
     public int? DecodeThreads { get; init; }
 
