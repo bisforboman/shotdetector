@@ -7,7 +7,7 @@ reader will read it.
 ```markdown
 ### Fixed
 
-- `VideoWriter` with ShotDetector.Native.Gpl's libraries: every writer failed with "Filter not found" (issue #127).
+- `VideoWriter`: every writer failed with "Filter not found" (issue #127).
 ```
 
 Sections, in the release notes' order: `### Breaking changes` (words may follow, e.g. `(FrameReader only)`),
