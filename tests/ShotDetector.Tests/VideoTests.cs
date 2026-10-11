@@ -340,16 +340,22 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.False(VideoReader.HeadersLast(File.ReadAllBytes(clips.ThreeShotsFaststart)));
     }
 
-    // Over HTTP: an mp4, and HLS (a playlist of MPEG-TS segments), with the file's stats.
+    // Over HTTP: an mp4, HLS (a playlist of MPEG-TS segments) and DASH (a manifest of fragmented-mp4 segments; ffmpeg
+    // reads it with libxml2, which BtbN's builds have), with the file's stats.
     [Theory]
     [InlineData("three.mp4")]
     [InlineData("play.m3u8")]
+    [InlineData("play.mpd")]
     public void UrlInputIsStreamed(string name)
     {
         string dir = Directory.CreateTempSubdirectory("shotdetector-url-").FullName;
         File.Copy(clips.ThreeShotsFaststart, Path.Combine(dir, "three.mp4"));
         VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-bsf:v", "dump_extra", "-f", "hls", "-hls_time", "2", "-hls_playlist_type", "vod",
             "-hls_segment_filename", Path.Combine(dir, "seg%03d.ts"), Path.Combine(dir, "play.m3u8")], default);
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-f", "dash", "-seg_duration", "2",
+            // Forward slashes: the dash muxer finds the manifest's folder by '/' only (with '\' it writes the segments
+            // to the working directory).
+            "-init_seg_name", "init.m4s", "-media_seg_name", "chunk$Number%03d$.m4s", Path.Combine(dir, "play.mpd").Replace('\\', '/')], default);
         var (server, port) = Listen();
         using var _ = server;
         var serving = Task.Run(async () =>
@@ -382,7 +388,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             Assert.True(r.Video.Streaming);
             Assert.Equal([0L, 50L, 100L], r.Shots.Select(s => s.Start.FrameNum));
             Assert.Equal(expected.Stats!.Csv(expected.Video.Position), r.Stats!.Csv(r.Video.Position));
-            // Streams over the URL: ffprobe's, as for the file (HLS: its segments' streams).
+            // Streams over the URL: ffprobe's, as for the file (HLS and DASH: their segments' streams).
             var streams = r.Video.Info.Streams!;
             if (name.EndsWith(".mp4"))
                 Assert.Equal(ShotDetection.Probe(Path.Combine(dir, name), new() { Decoder = VideoDecoder.FfmpegProcess }).Streams, streams);
