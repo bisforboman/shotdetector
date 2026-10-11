@@ -11,7 +11,6 @@ public sealed record AudioReaderOptions
     /// <summary>Output channel count (FFmpeg's default layout for it: 1 mono, 2 stereo, ...); null: the stream's own.</summary>
     public int? Channels { get; init; }
 
-
     /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
 }
@@ -60,6 +59,7 @@ public sealed unsafe class AudioReader : IDisposable
     bool _draining, _decoderDone, _flushed;
     long _trimFrom = long.MinValue; // after a seek: input samples before this (in 1/sample_rate units, shifted) are dropped
     long _start;    // where shifted timestamps count from (AV_TIME_BASE): the input's start, or the seek point
+
     // fftools' audio timestamps (ffmpeg_dec.c's audio_ts_process): its internal time base, the last frame's pts and
     // duration in it, and av_rescale_delta's state.
     AVRational _tsBase = new() { num = 1, den = 1 };
@@ -70,12 +70,16 @@ public sealed unsafe class AudioReader : IDisposable
     /// <param name="path">What to open.</param>
     /// <param name="options">Rate, channels, libraries; null: the stream as it is.</param>
     /// <exception cref="FrameReaderException">The libraries didn't load, or the input can't be opened or has no audio.</exception>
-    public AudioReader(string path, AudioReaderOptions? options = null) : this(path, options, null) { }
+    public AudioReader(string path, AudioReaderOptions? options = null) : this(path, options, null)
+    {
+    }
 
     /// <summary>Opens a stream's bytes, read once (headers first).</summary>
     /// <param name="stream">The media's bytes; not disposed.</param>
     /// <param name="options">Rate, channels, libraries; null: the stream as it is.</param>
-    public AudioReader(Stream stream, AudioReaderOptions? options = null) : this("pipe:0", options, new StreamInput([], stream)) { }
+    public AudioReader(Stream stream, AudioReaderOptions? options = null) : this("pipe:0", options, new StreamInput([], stream))
+    {
+    }
 
     AudioReader(string path, AudioReaderOptions? options, StreamInput? io)
     {
@@ -110,8 +114,16 @@ public sealed unsafe class AudioReader : IDisposable
             else
                 Check(ffmpeg.av_channel_layout_copy(&outLayout, &_dec->ch_layout), "channel layout");
             SwrContext* swr = null;
-            Check(ffmpeg.swr_alloc_set_opts2(&swr, &outLayout, AVSampleFormat.AV_SAMPLE_FMT_FLT, _outRate,
-                &_dec->ch_layout, _dec->sample_fmt, _dec->sample_rate, 0, null), "resampler");
+            Check(ffmpeg.swr_alloc_set_opts2(&swr,
+                &outLayout,
+                AVSampleFormat.AV_SAMPLE_FMT_FLT,
+                _outRate,
+                &_dec->ch_layout,
+                _dec->sample_fmt,
+                _dec->sample_rate,
+                0,
+                null),
+                "resampler");
             ffmpeg.av_channel_layout_uninit(&outLayout);
             _swr = swr;
             Check(ffmpeg.swr_init(_swr), "resampler");
@@ -143,6 +155,7 @@ public sealed unsafe class AudioReader : IDisposable
         if (_fmt->start_time != ffmpeg.AV_NOPTS_VALUE)
             timestamp += _fmt->start_time;
         long seekTo = Demuxer.SeekPoint(_fmt, timestamp);
+
         // Like ffmpeg, a seek that fails (a Stream: not seekable) only warns; decoding goes on from where it is, and the
         // trim below still starts at the time.
         ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, seekTo, seekTo, 0);
@@ -150,6 +163,7 @@ public sealed unsafe class AudioReader : IDisposable
         ffmpeg.swr_close(_swr);
         Check(ffmpeg.swr_init(_swr), "resampler");
         _draining = _decoderDone = _flushed = false;
+
         // ffmpeg shifts the timestamps by -(start + T) and trims what's still below 0, counted in samples.
         _trimFrom = 0;
         _start = timestamp;
@@ -173,10 +187,12 @@ public sealed unsafe class AudioReader : IDisposable
             {
                 long pts = _frame->best_effort_timestamp;
                 got = Convert(_frame->extended_data, _frame->nb_samples, skip, _frame->format, _frame->ch_layout.nb_channels);
+
                 // The frame's samples one for one (no resampling held any back): its place, as ffmpeg's filters get it.
                 if (_frame->sample_rate == _outRate && got == _frame->nb_samples - skip)
                     ChunkPosition = position;
-                time = pts == ffmpeg.AV_NOPTS_VALUE ? TimeSpan.Zero
+                time = pts == ffmpeg.AV_NOPTS_VALUE
+                    ? TimeSpan.Zero
                     : TimeSpan.FromSeconds((pts - (_fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : ffmpeg.av_rescale_q(_fmt->start_time, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase))) * (_timeBase.num / (double)_timeBase.den));
             }
             else if (!_flushed)
@@ -190,6 +206,7 @@ public sealed unsafe class AudioReader : IDisposable
                 chunk = default;
                 return false;
             }
+
             if (got > 0)
             {
                 chunk = new AudioChunk(_out.AsSpan(0, got * _outChannels), _outChannels, _outRate, time);
@@ -225,9 +242,11 @@ public sealed unsafe class AudioReader : IDisposable
                 skip = (int)Math.Max(0, -shifted);
                 _trimFrom = long.MinValue;
             }
+
             position = shifted + skip;
             return true;
         }
+
         skip = 0;
         position = 0;
         return false;
@@ -246,7 +265,8 @@ public sealed unsafe class AudioReader : IDisposable
         {
             // audio_samplerate_update: a time base for every rate seen so far.
             long gcd = ffmpeg.av_gcd(_tsBase.den, rate);
-            var next = _tsBase.den / gcd >= int.MaxValue / rate ? new AVRational { num = 1, den = 28224000 }
+            var next = _tsBase.den / gcd >= int.MaxValue / rate
+                ? new AVRational { num = 1, den = 28224000 }
                 : new AVRational { num = 1, den = (int)(_tsBase.den / gcd * rate) };
             if (_timeBase.num == 1 && _timeBase.den > next.den && _timeBase.den % next.den == 0)
                 next = _timeBase;
@@ -256,6 +276,7 @@ public sealed unsafe class AudioReader : IDisposable
             _tsBase = next;
             _tsRate = rate;
         }
+
         var tb = _tsBase;
         long predicted = _lastPts == ffmpeg.AV_NOPTS_VALUE ? 0 : _lastPts + _lastDuration;
         var inBase = _timeBase;
@@ -270,6 +291,7 @@ public sealed unsafe class AudioReader : IDisposable
             if (_lastPts != ffmpeg.AV_NOPTS_VALUE && pts > ffmpeg.av_rescale_q_rnd(predicted, tb, _timeBase, AVRounding.AV_ROUND_UP))
                 _rescaleDelta = ffmpeg.AV_NOPTS_VALUE; // a gap: start over
         }
+
         long delta = _rescaleDelta;
         pts = ffmpeg.av_rescale_delta(inBase, pts, tb, _frame->nb_samples, &delta, tb);
         _rescaleDelta = delta;
@@ -299,10 +321,11 @@ public sealed unsafe class AudioReader : IDisposable
             // Skip the first samples: per plane for planar formats, interleaved otherwise.
             bool planar = ffmpeg.av_sample_fmt_is_planar((AVSampleFormat)format) != 0;
             int bytes = ffmpeg.av_get_bytes_per_sample((AVSampleFormat)format);
-            for (uint i = 0; i < (planar ? (uint)channels : 1u) && i < 8; i++)
+            for (uint i = 0; i < (planar ? (uint)channels : 1U) && i < 8; i++)
                 offset[i] = data[i] + (long)skip * bytes * (planar ? 1 : channels);
             input = (byte**)&offset;
         }
+
         fixed (float* o = _out)
         {
             byte* outPtr = (byte*)o;
@@ -324,32 +347,66 @@ public sealed unsafe class AudioReader : IDisposable
                 _decoderDone = true;
                 break;
             }
+
             if (_draining)
             {
                 _decoderDone = true;
                 break;
             }
+
             if (ffmpeg.av_read_frame(_fmt, _pkt) < 0)
             {
                 ffmpeg.avcodec_send_packet(_dec, null);
                 _draining = true;
                 continue;
             }
+
             if (_pkt->stream_index == _stream)
                 ffmpeg.avcodec_send_packet(_dec, _pkt); // errors (damaged data) only lose that packet
             ffmpeg.av_packet_unref(_pkt);
         }
+
         return false;
     }
 
     /// <summary>Frees the decoder, the resampler and the input.</summary>
     public void Dispose()
     {
-        if (_swr != null) { var s = _swr; ffmpeg.swr_free(&s); _swr = null; }
-        if (_frame != null) { var f = _frame; ffmpeg.av_frame_free(&f); _frame = null; }
-        if (_pkt != null) { var p = _pkt; ffmpeg.av_packet_free(&p); _pkt = null; }
-        if (_dec != null) { var d = _dec; ffmpeg.avcodec_free_context(&d); _dec = null; }
-        if (_fmt != null) { var f = _fmt; ffmpeg.avformat_close_input(&f); _fmt = null; }
+        if (_swr != null)
+        {
+            var s = _swr;
+            ffmpeg.swr_free(&s);
+            _swr = null;
+        }
+
+        if (_frame != null)
+        {
+            var f = _frame;
+            ffmpeg.av_frame_free(&f);
+            _frame = null;
+        }
+
+        if (_pkt != null)
+        {
+            var p = _pkt;
+            ffmpeg.av_packet_free(&p);
+            _pkt = null;
+        }
+
+        if (_dec != null)
+        {
+            var d = _dec;
+            ffmpeg.avcodec_free_context(&d);
+            _dec = null;
+        }
+
+        if (_fmt != null)
+        {
+            var f = _fmt;
+            ffmpeg.avformat_close_input(&f);
+            _fmt = null;
+        }
+
         _io?.Dispose();
     }
 

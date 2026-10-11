@@ -24,6 +24,7 @@ public static class Shots
             shots.Add(new(shots.Count + 1, start, cut));
             start = cut;
         }
+
         shots.Add(new(shots.Count + 1, start, end));
         return shots;
     }
@@ -37,8 +38,11 @@ public static class Shots
           .AppendLine(" | Scene # | Start Frame |  Start Time  |  End Frame  |   End Time   |")
           .AppendLine(rule);
         foreach (var s in shots)
+        {
             sb.AppendLine(string.Create(CultureInfo.InvariantCulture,
                 $" |  {s.Number,5}  | {s.Start.FrameNum + 1,11} | {s.Start.Timecode()} | {s.End.FrameNum,11} | {s.End.Timecode()} |"));
+        }
+
         return sb.Append(rule).ToString();
     }
 
@@ -50,23 +54,27 @@ public static class Shots
     {
         var list = shots.ToList();
         var sb = new StringBuilder();
+
         // scenedetect's first row: "Timecode List:" and the cuts; without cuts, its fallback row of the shot starts
         // after the first (empty for one shot). list-scenes --skip-cuts leaves it out.
         if (includeCutList)
         {
             var cutList = (cuts ?? list.Skip(1).Select(s => s.Start)).ToList();
-            sb.Append(cutList.Count > 0 ? "Timecode List:," + string.Join(',', cutList.Select(c => c.Timecode()))
+            sb.Append(cutList.Count > 0
+                ? "Timecode List:," + string.Join(',', cutList.Select(c => c.Timecode()))
                 : string.Join(',', list.Skip(1).Select(s => s.Start.Timecode()))).Append('\n');
         }
+
         sb.Append(
-            "Scene Number,Start Frame,Start Timecode,Start Time (seconds),End Frame,End Timecode," +
-            "End Time (seconds),Length (frames),Length (timecode),Length (seconds)\n");
+            "Scene Number,Start Frame,Start Timecode,Start Time (seconds),End Frame,End Timecode,"
+            + "End Time (seconds),Length (frames),Length (timecode),Length (seconds)\n");
         foreach (var s in list)
         {
             var d = s.Duration;
             sb.Append(string.Create(CultureInfo.InvariantCulture,
                 $"{s.Number},{s.Start.FrameNum + 1},{s.Start.Timecode()},{s.Start.SecondsText()},{s.End.FrameNum},{s.End.Timecode()},{s.End.SecondsText()},{d.FrameNum},{d.Timecode()},{d.SecondsText()}\n"));
         }
+
         return sb.ToString();
     }
 
@@ -79,13 +87,17 @@ public static class Shots
     /// <param name="imageWidth">Width attribute of the images, if any.</param>
     /// <param name="imageHeight">Height attribute of the images, if any.</param>
     /// <param name="cuts">The cut list for the first table (<see cref="DetectionResult.Cuts"/>); default the shot starts after the first.</param>
-    public static string Html(IEnumerable<Shot> shots, IReadOnlyList<IReadOnlyList<string>>? images = null, int? imageWidth = null, int? imageHeight = null,
+    public static string Html(IEnumerable<Shot> shots,
+        IReadOnlyList<IReadOnlyList<string>>? images = null,
+        int? imageWidth = null,
+        int? imageHeight = null,
         IEnumerable<FrameTime>? cuts = null)
     {
         var list = shots.ToList();
         var cutList = (cuts ?? []).ToList();
         var timecodes = (cutList.Count > 0 ? cutList : list.Skip(1).Select(s => s.Start)).Select(c => c.Timecode());
         static string Row(IEnumerable<string> cells, string tag = "td") => string.Join('\n', ["<tr>", .. cells.Select(c => $"<{tag}>{c}</{tag}>"), "</tr>"]);
+
         // urllib.parse.quote: letters, digits and "_.-~" stay, "/" separates; everything else is %XX (UTF-8).
         static string Quote(string path) => string.Join('/', path.Replace('\\', '/').Split('/').Select(Uri.EscapeDataString));
         string Image(string file)
@@ -94,6 +106,7 @@ public static class Shots
             return $"<a href=\"{q}\" target=\"_blank\"><img src=\"{q}\"" + (imageHeight is { } h ? $" height=\"{h}\"" : "")
                 + (imageWidth is { } w ? $" width=\"{w}\"" : "") + "></a>";
         }
+
         var rows = list.Select((s, i) =>
         {
             var d = s.Duration;

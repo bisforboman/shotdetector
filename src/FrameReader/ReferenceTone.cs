@@ -63,6 +63,7 @@ public static class ReferenceTone
             w[i] = 0.5 - 0.5 * Math.Cos(2 * Math.PI * (i + 0.5) / n); // Hann
             (sumW, sumW2) = (sumW + w[i], sumW2 + w[i] * w[i]);
         }
+
         // A sine at the frequency: |X|^2 / windowed energy = sumW^2 / (2 sumW2); purity scales that to 1.
         double purityScale = 2 * sumW2 / (sumW * sumW);
         double coeff = 2 * Math.Cos(2 * Math.PI * o.Frequency / rate);
@@ -104,6 +105,7 @@ public static class ReferenceTone
                     energy[c] += y * y;
                     power[c] += x * x;
                 }
+
                 if (++at < n)
                     continue;
 
@@ -117,12 +119,16 @@ public static class ReferenceTone
                         tone = db;
                     s1[c] = s2[c] = energy[c] = power[c] = 0;
                 }
+
                 at = 0;
 
                 if (tone is { } t)
                 {
                     if (start >= 0 && Math.Abs(t - level) <= LevelTolerance)
+                    {
                         last = window;
+                    }
+
                     // Off level: a break while within MaxGap, unless the run is one (perhaps partial) window so far.
                     else if (start < 0 || last == start || window - last - 1 > gapWindows)
                     {
@@ -131,10 +137,14 @@ public static class ReferenceTone
                     }
                 }
                 else if (start >= 0 && window - last > gapWindows)
+                {
                     Close();
+                }
+
                 window++;
             }
         }
+
         Close();
         return segments;
     }

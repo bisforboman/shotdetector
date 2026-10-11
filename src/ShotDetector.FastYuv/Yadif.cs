@@ -29,10 +29,20 @@ public sealed unsafe class Yadif : IYadif
         int mode = y == 1 || y + 2 == height ? 2 : 0;
         long row = (long)y * srcStride;
         if (bytesPerSample == 1)
+        {
             Row((byte*)dst + (long)y * dstStride, (byte*)prev + row, (byte*)cur + row, (byte*)next + row, width, prefs, mrefs, mode);
+        }
         else
-            Row16((ushort*)((byte*)dst + (long)y * dstStride), (ushort*)((byte*)prev + row), (ushort*)((byte*)cur + row),
-                (ushort*)((byte*)next + row), width, prefs / 2, mrefs / 2, mode);
+        {
+            Row16((ushort*)((byte*)dst + (long)y * dstStride),
+                (ushort*)((byte*)prev + row),
+                (ushort*)((byte*)cur + row),
+                (ushort*)((byte*)next + row),
+                width,
+                prefs / 2,
+                mrefs / 2,
+                mode);
+        }
     }
 
     // filter_line_c (x in [3, w-3), with the spatial check) and filter_edges (the 3 pixels at each end, without it).
@@ -41,6 +51,7 @@ public sealed unsafe class Yadif : IYadif
     static void Row(byte* dst, byte* prev, byte* cur, byte* next, int w, int prefs, int mrefs, int mode)
     {
         int x = 0;
+
         // 16 pixels at a time where the spatial check applies and mode 0's y±2 rows exist; the ends and the rows next
         // to the plane's top and bottom one at a time.
         if (mode == 0 && Vector128.IsHardwareAccelerated && w >= 3 + 16 + 3)
@@ -50,6 +61,7 @@ public sealed unsafe class Yadif : IYadif
             for (; x + 16 <= w - 3; x += 16)
                 Pixels16(dst + x, prev + x, cur + x, next + x, prefs, mrefs);
         }
+
         for (; x < w; x++)
             dst[x] = (byte)Pixel8(prev + x, cur + x, next + x, prefs, mrefs, mode, x >= 3 && x < w - 3);
     }
@@ -63,6 +75,7 @@ public sealed unsafe class Yadif : IYadif
             Vector256.Narrow(r, r).GetLower().Store(dst);
             return;
         }
+
         // 0..255 each, so narrowing keeps every value.
         Vector128.Narrow(Half(prev, cur, next, prefs, mrefs, 0).AsUInt16(), Half(prev, cur, next, prefs, mrefs, 8).AsUInt16()).Store(dst);
     }
@@ -73,7 +86,9 @@ public sealed unsafe class Yadif : IYadif
         // Exactly 8 bytes, widened: nothing read past the pixels used (the plane's last rows end at its buffer's end).
         static Vector128<short> L(byte* p) => Vector128.WidenLower(Vector128.CreateScalarUnsafe(*(ulong*)p).AsByte()).AsInt16();
         static Vector128<short> Abs(Vector128<short> v) => Vector128.Abs(v);
-        prev += o; cur += o; next += o;
+        prev += o;
+        cur += o;
+        next += o;
         var c = L(cur + mrefs);
         var e = L(cur + prefs);
         var p0 = L(prev);
@@ -123,8 +138,11 @@ public sealed unsafe class Yadif : IYadif
             var v = Vector128.Load(p);
             return Vector256.Create(Vector128.WidenLower(v), Vector128.WidenUpper(v)).AsInt16();
         }
+
         static Vector256<short> Abs(Vector256<short> v) => Vector256.Abs(v);
-        prev += o; cur += o; next += o;
+        prev += o;
+        cur += o;
+        next += o;
         var c = L(cur + mrefs);
         var e = L(cur + prefs);
         var p0 = L(prev);
@@ -184,12 +202,14 @@ public sealed unsafe class Yadif : IYadif
         if (notEdge)
         {
             int spatialScore = Math.Abs(cur[mrefs - 1] - cur[prefs - 1]) + Math.Abs(c - e) + Math.Abs(cur[mrefs + 1] - cur[prefs + 1]) - 1;
+
             // CHECK(-1) then CHECK(-2) only if -1 won; CHECK(1) then CHECK(2) only if 1 won.
             if (Check(cur, mrefs, prefs, -1, ref spatialScore, ref spatialPred))
                 Check(cur, mrefs, prefs, -2, ref spatialScore, ref spatialPred);
             if (Check(cur, mrefs, prefs, 1, ref spatialScore, ref spatialPred))
                 Check(cur, mrefs, prefs, 2, ref spatialScore, ref spatialPred);
         }
+
         if ((mode & 2) == 0)
         {
             int b = (prev2[2 * mrefs] + next2[2 * mrefs]) >> 1;
@@ -198,6 +218,7 @@ public sealed unsafe class Yadif : IYadif
             int min = Math.Min(Math.Min(d - e, d - c), Math.Max(b - c, f - e));
             diff = Math.Max(Math.Max(diff, min), -max);
         }
+
         if (spatialPred > d + diff)
             spatialPred = d + diff;
         else if (spatialPred < d - diff)
@@ -234,6 +255,7 @@ public sealed unsafe class Yadif : IYadif
             if (Check16(cur, mrefs, prefs, 1, ref spatialScore, ref spatialPred))
                 Check16(cur, mrefs, prefs, 2, ref spatialScore, ref spatialPred);
         }
+
         if ((mode & 2) == 0)
         {
             int b = (prev2[2 * mrefs] + next2[2 * mrefs]) >> 1;
@@ -242,6 +264,7 @@ public sealed unsafe class Yadif : IYadif
             int min = Math.Min(Math.Min(d - e, d - c), Math.Max(b - c, f - e));
             diff = Math.Max(Math.Max(diff, min), -max);
         }
+
         if (spatialPred > d + diff)
             spatialPred = d + diff;
         else if (spatialPred < d - diff)

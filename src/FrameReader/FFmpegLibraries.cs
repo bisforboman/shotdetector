@@ -31,7 +31,8 @@ public static unsafe class FFmpegLibraries
             if (_loaded)
                 return;
             Exception? error = null;
-            string[] places = directory is not null ? [directory]
+            string[] places = directory is not null
+                ? [directory]
                 : [Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native"), AppContext.BaseDirectory, ""];
             foreach (string dir in places)
             {
@@ -51,11 +52,13 @@ public static unsafe class FFmpegLibraries
                     error = e;
                 }
             }
+
             throw new FrameReaderException(FrameReaderError.LibrariesNotFound,
-                "In-process decoding needs FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, " +
-                "libavutil 60): add the ShotDetector.Native.<rid> package for your platform, or install them (Alpine: " +
-                "`apk add ffmpeg-libs`; Windows: a \"shared\" FFmpeg 8 build, with the folder set to its bin folder). " +
-                $"({error?.Message})", error);
+                "In-process decoding needs FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, "
+                + "libavutil 60): add the ShotDetector.Native.<rid> package for your platform, or install them (Alpine: "
+                + "`apk add ffmpeg-libs`; Windows: a \"shared\" FFmpeg 8 build, with the folder set to its bin folder). "
+                + $"({error?.Message})",
+                error);
         }
     }
 
@@ -70,10 +73,19 @@ public static unsafe class FFmpegLibraries
             string dir = directory ?? "";
             if (!Loadable.TryGetValue(dir, out bool ok))
             {
-                try { Load(directory); ok = true; }
-                catch (FrameReaderException) { ok = false; }
+                try
+                {
+                    Load(directory);
+                    ok = true;
+                }
+                catch (FrameReaderException)
+                {
+                    ok = false;
+                }
+
                 Loadable[dir] = ok;
             }
+
             return ok;
         }
     }
@@ -88,9 +100,16 @@ public static unsafe class FFmpegLibraries
         {
             if (_canDeinterlace is null)
             {
-                try { _canDeinterlace = ffmpeg.avfilter_get_by_name("yadif") != null && ffmpeg.avfilter_get_by_name("buffer") != null; }
-                catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException) { _canDeinterlace = false; }
+                try
+                {
+                    _canDeinterlace = ffmpeg.avfilter_get_by_name("yadif") != null && ffmpeg.avfilter_get_by_name("buffer") != null;
+                }
+                catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException)
+                {
+                    _canDeinterlace = false;
+                }
             }
+
             return _canDeinterlace.Value;
         }
     }
@@ -117,8 +136,14 @@ public static unsafe class FFmpegLibraries
     {
         if (!CanLoad(directory))
             return false;
-        try { return lookup(); }
-        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException) { return false; } // no libavfilter
+        try
+        {
+            return lookup();
+        }
+        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or NotSupportedException)
+        {
+            return false;
+        } // no libavfilter
     }
 
     /// <summary>FFmpeg's message for an error code (av_strerror).</summary>

@@ -15,6 +15,7 @@ public sealed partial class VideoReader
         && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory))
         && FrameReader.FrameDecoder.HasDecoder(Codec)
         && _rotation % 90 == 0
+
         // Deinterlacing needs libavfilter's yadif too (ShotDetector.Native has it since 0.9).
         && (!_deinterlace || InProcess.CanDeinterlace(_ffmpegDirectory));
 
@@ -35,6 +36,7 @@ public sealed partial class VideoReader
             FramePipeline.FullFrameResize => CropRegion.Width * CropRegion.Height * 3,
             _ => Width * Height * 3,
         };
+
         // The sampled pixels, with the crop's offset, as the remap maps hold them.
         int[]? cols = resizer?.SourceCols.Select(c => c + CropRegion.X).ToArray();
         int[]? rows = resizer?.SourceRows.Select(r => r + CropRegion.Y).ToArray();
@@ -61,6 +63,7 @@ public sealed partial class VideoReader
                     Deinterlace = _deinterlace,
                     RowDeinterlacer = _yadif is null ? null : new RowDeinterlacer(_yadif),
                     InputOptions = InProcessProbe.Options(_inputOptions),
+
                     // Rotated as OpenCV rotates (FrameWriter): by the display matrix's angle alone, after converting.
                     Autorotate = false,
                 };
@@ -69,8 +72,10 @@ public sealed partial class VideoReader
                     : new FrameReader.FrameDecoder(new PrefixedStream(_prefix, _stream), decoderOptions);
                 using var writer = new FrameWriter(decoder, Turn);
                 timeBase = decoder.TimeBase.Value;
+
                 // Streamed: times from the stream's start, as ffmpeg gives them without -copyts.
                 long offset = Streaming ? decoder.StartOffset : 0;
+
                 // Seek as the command line does: two frames early, then drop every frame before the wanted one's pts.
                 // Not when the packets carry no pts (MPEG-PS): there libavformat's seek lands after the wanted frame (no
                 // index to go by), so decode from the start and drop.
@@ -86,18 +91,30 @@ public sealed partial class VideoReader
                     var buffer = free.Take(cancel.Token);
                     switch (pipeline)
                     {
-                        case FramePipeline.Yuv420Sampled: writer.WriteYuv420(buffer); break;
-                        case FramePipeline.SampledBgr: writer.WriteSampledBgr(buffer, cols!, rows!); break;
-                        case FramePipeline.FullFrameResize: writer.WriteBgr(buffer, CropRegion); break;
-                        default: writer.WriteScaledBgr(buffer, CropRegion, Width, Height); break;
+                        case FramePipeline.Yuv420Sampled:
+                            writer.WriteYuv420(buffer);
+                            break;
+                        case FramePipeline.SampledBgr:
+                            writer.WriteSampledBgr(buffer, cols!, rows!);
+                            break;
+                        case FramePipeline.FullFrameResize:
+                            writer.WriteBgr(buffer, CropRegion);
+                            break;
+                        default:
+                            writer.WriteScaledBgr(buffer, CropRegion, Width, Height);
+                            break;
                     }
+
                     full.Add((buffer, pts + offset), cancel.Token);
                     emitted++;
                 }
+
                 if (decoder.InputError is { } e)
                     throw new ShotDetectionException(ShotDetectionError.DecodeFailed, $"Reading the stream failed: {e.Message}", e);
             }
-            catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+            {
+            }
             catch (FrameReader.FrameReaderException e)
             {
                 throw InProcess.Map(e, _ffmpegDirectory);
@@ -122,7 +139,10 @@ public sealed partial class VideoReader
                     _livePts.Add(pts);
                 }
                 else
+                {
                     _livePackets.Add(PacketOf(pts * timeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
+                }
+
                 switch (pipeline)
                 {
                     case FramePipeline.Yuv420Sampled:
@@ -139,15 +159,23 @@ public sealed partial class VideoReader
                         yield return buffer;
                         continue;
                 }
+
                 free.Add(buffer);
                 yield return small;
             }
+
             producer.GetAwaiter().GetResult(); // decoding errors
         }
         finally
         {
             cancel.Cancel();
-            try { producer.Wait(); } catch (AggregateException) { } // the decoder is disposed on its thread
+            try
+            {
+                producer.Wait();
+            }
+            catch (AggregateException)
+            {
+            } // the decoder is disposed on its thread
         }
     }
 }

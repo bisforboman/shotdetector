@@ -65,8 +65,11 @@ public static unsafe class Remux
                 throw new FrameReaderException(FrameReaderError.InvalidInput, $"\"{input}\" has no stream of the kinds asked for.");
             int ret = ffmpeg.avformat_alloc_output_context2(&oc, null, o.Container, output);
             if (ret < 0 || oc == null)
+            {
                 throw new FrameReaderException(FrameReaderError.InvalidInput,
                     $"No muxer for \"{output}\"{(o.Container is null ? "" : $" ({o.Container})")} in these FFmpeg libraries: {FFmpegLibraries.ErrorMessage(ret)}");
+            }
+
             if (o.Bitexact)
                 oc->flags |= ffmpeg.AVFMT_FLAG_BITEXACT;
             oc->max_delay = 700000; // ffmpeg's -muxdelay default, 0.7 s
@@ -78,14 +81,17 @@ public static unsafe class Remux
                 outOf[map[i]] = i;
                 AddStream(oc, ic->streams[map[i]]);
             }
+
             CopyMetadataAndChapters(ic, oc);
 
             if ((oc->oformat->flags & ffmpeg.AVFMT_NOFILE) == 0)
                 Check(ffmpeg.avio_open(&oc->pb, output, ffmpeg.AVIO_FLAG_WRITE), $"create \"{output}\"");
             ret = ffmpeg.avformat_write_header(oc, null);
             if (ret < 0)
+            {
                 throw new FrameReaderException(FrameReaderError.InvalidInput,
                     $"The {new string((sbyte*)oc->oformat->name)} container can't take these streams: {FFmpegLibraries.ErrorMessage(ret)}");
+            }
 
             // ffmpeg shifts every timestamp by the input's start time (no -copyts), drops each stream's packets before
             // its first keyframe, and fixes up what the muxer would reject.
@@ -102,15 +108,18 @@ public static unsafe class Remux
                     ffmpeg.av_packet_unref(pkt);
                     cancellationToken.ThrowIfCancellationRequested();
                 }
+
                 int to = pkt->stream_index < outOf.Length ? outOf[pkt->stream_index] : -1;
                 if (to < 0 || (!started[to] && (pkt->flags & ffmpeg.AV_PKT_FLAG_KEY) == 0))
                 {
                     ffmpeg.av_packet_unref(pkt);
                     continue;
                 }
+
                 started[to] = true;
                 Write(ic, oc, pkt, to, tsOffset, ref lastDts[to], ref rescaleLast[to]);
             }
+
             if (ret != ffmpeg.AVERROR_EOF)
                 Check(ret, "read", FrameReaderError.InvalidInput);
             Check(ffmpeg.av_write_trailer(oc), "write the trailer");
@@ -125,6 +134,7 @@ public static unsafe class Remux
                     ffmpeg.avio_closep(&oc->pb);
                 ffmpeg.avformat_free_context(oc);
             }
+
             ffmpeg.avformat_close_input(&ic);
         }
     }
@@ -134,10 +144,14 @@ public static unsafe class Remux
         if (o.StreamIndices is { } indices)
         {
             foreach (int i in indices)
+            {
                 if (i < 0 || i >= ic->nb_streams)
                     throw new FrameReaderException(FrameReaderError.InvalidInput, $"No stream {i}: the input has {ic->nb_streams}.");
+            }
+
             return [.. indices];
         }
+
         var map = new List<int>();
         for (int i = 0; i < ic->nb_streams; i++)
         {
@@ -151,6 +165,7 @@ public static unsafe class Remux
             if (o.Streams == StreamSelection.All || (o.Streams & kind) != 0)
                 map.Add(i);
         }
+
         return map;
     }
 
@@ -159,6 +174,7 @@ public static unsafe class Remux
     {
         var st = ffmpeg.avformat_new_stream(oc, null);
         var par = st->codecpar;
+
         // Through a codec context and back, as ffmpeg does.
         var ctx = ffmpeg.avcodec_alloc_context3(null);
         try
@@ -170,6 +186,7 @@ public static unsafe class Remux
         {
             ffmpeg.avcodec_free_context(&ctx);
         }
+
         // Keep the input's codec tag only where the container would map it to the same codec (or has no tag for it).
         uint tag = 0;
         var tags = oc->oformat->codec_tag;
@@ -194,6 +211,7 @@ public static unsafe class Remux
                 st->r_frame_rate = ist->r_frame_rate;
                 break;
         }
+
         st->disposition = ist->disposition;
         ffmpeg.av_dict_copy(&st->metadata, ist->metadata, ffmpeg.AV_DICT_DONT_OVERWRITE);
         if (ist->duration > 0) // a hint to the muxer, as ffmpeg gives it
@@ -222,6 +240,7 @@ public static unsafe class Remux
                 oc->chapters[oc->nb_chapters++] = oc2;
             }
         }
+
         ffmpeg.av_dict_copy(&oc->metadata, ic->metadata, ffmpeg.AV_DICT_DONT_OVERWRITE);
         foreach (var key in new[] { "creation_time", "company_name", "product_name", "product_version" })
             ffmpeg.av_dict_set(&oc->metadata, key, null, 0);
@@ -255,7 +274,9 @@ public static unsafe class Remux
             pkt->duration = ffmpeg.av_rescale_q(pkt->duration, tb, st->time_base);
         }
         else
+        {
             ffmpeg.av_packet_rescale_ts(pkt, tb, st->time_base);
+        }
 
         if ((oc->oformat->flags & ffmpeg.AVFMT_NOTIMESTAMPS) == 0)
         {
@@ -264,6 +285,7 @@ public static unsafe class Remux
                 long a = pkt->pts, b = pkt->dts, c = lastDts + 1;
                 pkt->pts = pkt->dts = a + b + c - Math.Min(a, Math.Min(b, c)) - Math.Max(a, Math.Max(b, c));
             }
+
             var type = st->codecpar->codec_type;
             if (type is AVMediaType.AVMEDIA_TYPE_AUDIO or AVMediaType.AVMEDIA_TYPE_VIDEO or AVMediaType.AVMEDIA_TYPE_SUBTITLE
                 && pkt->dts != ffmpeg.AV_NOPTS_VALUE && lastDts != ffmpeg.AV_NOPTS_VALUE)
@@ -277,6 +299,7 @@ public static unsafe class Remux
                 }
             }
         }
+
         lastDts = pkt->dts;
         pkt->stream_index = to;
         Check(ffmpeg.av_interleaved_write_frame(oc, pkt), "write");

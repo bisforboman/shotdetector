@@ -10,7 +10,9 @@ namespace ShotDetector;
 /// </summary>
 public sealed class Stats
 {
-    internal Stats() { }
+    internal Stats()
+    {
+    }
 
     readonly SortedDictionary<int, Dictionary<string, double>> _rows = [];
     readonly SortedSet<string> _keys = new(StringComparer.Ordinal); // Python sorts by code point
@@ -35,6 +37,7 @@ public sealed class Stats
         foreach (var key in _keys)
             sb.Append(',').Append(key);
         sb.Append('\n');
+
         // One row per position: scenedetect keys its stats by FrameTimecode (equal when the exact times are), so where
         // timestamps repeat or start over (two encodes joined) a later frame's metrics overwrite an earlier one's, key by
         // key; metrics the later frame doesn't set keep the earlier values.
@@ -47,6 +50,7 @@ public sealed class Stats
             foreach (var (key, value) in row)
                 merged.Row[key] = value;
         }
+
         foreach (var (at, row) in byPosition.Values.OrderBy(p => p.At.Seconds).ThenBy(p => p.At.FrameNum))
         {
             sb.Append(at.FrameNum + 1).Append(',').Append(at.Timecode());
@@ -54,6 +58,7 @@ public sealed class Stats
                 sb.Append(',').Append(row.TryGetValue(key, out var v) ? PyFloat(v) : "None");
             sb.Append('\n');
         }
+
         return sb.ToString();
     }
 
@@ -67,6 +72,7 @@ public sealed class Stats
             int exponent = int.Parse(s[(e + 1)..], CultureInfo.InvariantCulture);
             return $"{s[..e]}e{(exponent < 0 ? '-' : '+')}{Math.Abs(exponent):00}";
         }
+
         return s.Contains('.') ? s : s + ".0";
     }
 }

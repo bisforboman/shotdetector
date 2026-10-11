@@ -230,6 +230,14 @@ jobs:
           name: native-linux-x64
           path: native/linux-x64
 
+      # On Windows: dotnet format on Linux wants LF after '=>' before a comment even in CRLF files; Windows, where the
+      # code is written and formatted, accepts the file's own line endings.
+      - name: Code style (StyleBro)
+        if: needs.changes.outputs.docs_only != 'true' && matrix.rid == 'win-x64'
+        run: |
+          dotnet tool install StyleBro.Migrate --version 0.5.0-alpha.1 --tool-path "$RUNNER_TEMP/stylebro" > /dev/null
+          "$RUNNER_TEMP/stylebro/stylebro-migrate" format ShotDetector.slnx --verify-no-changes
+
       - name: Publish
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet publish src/ShotDetector.Cli -c Release -r ${{ matrix.rid }} -p:PublishAot=true -o out

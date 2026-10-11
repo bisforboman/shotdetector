@@ -62,11 +62,13 @@ public sealed unsafe class AudioFilter : IDisposable
                     chunk = Chunk();
                     return true;
                 }
+
                 if (got == ffmpeg.AVERROR_EOF)
                     break;
                 if (got != ffmpeg.AVERROR(ffmpeg.EAGAIN))
                     Check(got, "filter");
             }
+
             if (_flushed)
                 break;
             if (_audio.TryDecode(out int skip, out long position))
@@ -86,6 +88,7 @@ public sealed unsafe class AudioFilter : IDisposable
                 _flushed = true;
             }
         }
+
         _metadata.Clear();
         chunk = default;
         return false;
@@ -101,6 +104,7 @@ public sealed unsafe class AudioFilter : IDisposable
         _result = ffmpeg.av_frame_alloc();
         _feed = ffmpeg.av_frame_alloc();
         byte* layout = stackalloc byte[128];
+
         // An unknown layout (a WAV without a channel mask) gets the default one for its channel count, as ffmpeg guesses.
         AVChannelLayout input;
         if (first->ch_layout.order == AVChannelOrder.AV_CHANNEL_ORDER_UNSPEC)
@@ -121,6 +125,7 @@ public sealed unsafe class AudioFilter : IDisposable
             ffmpeg.av_channel_layout_describe(&target, layout, 128);
             format += $":channel_layouts={Marshal.PtrToStringAnsi((nint)layout)}";
         }
+
         AVFilterContext* source, sink;
         Check(ffmpeg.avfilter_graph_create_filter(&source, ffmpeg.avfilter_get_by_name("abuffer"), "in", args, null, _graph), "abuffer");
         Check(ffmpeg.avfilter_graph_create_filter(&sink, ffmpeg.avfilter_get_by_name("abuffersink"), "out", null, null, _graph), "abuffersink");
@@ -134,8 +139,11 @@ public sealed unsafe class AudioFilter : IDisposable
             inputs->filter_ctx = sink;
             int ret = ffmpeg.avfilter_graph_parse_ptr(_graph, $"{_graphText},{format}", &inputs, &outputs, null);
             if (ret < 0)
+            {
                 throw new FrameReaderException(FrameReaderError.InvalidInput,
                     $"The filter graph \"{_graphText}\" doesn't parse, or uses a filter these libraries leave out: {FFmpegLibraries.ErrorMessage(ret)}");
+            }
+
             Check(ffmpeg.avfilter_graph_config(_graph, null), "filter graph");
         }
         finally
@@ -143,6 +151,7 @@ public sealed unsafe class AudioFilter : IDisposable
             ffmpeg.avfilter_inout_free(&inputs);
             ffmpeg.avfilter_inout_free(&outputs);
         }
+
         _in = source;
         _out = sink;
     }
@@ -152,7 +161,9 @@ public sealed unsafe class AudioFilter : IDisposable
     {
         ffmpeg.av_frame_unref(_feed);
         if (skip == 0)
+        {
             Check(ffmpeg.av_frame_ref(_feed, frame), "filter");
+        }
         else
         {
             _feed->format = frame->format;
@@ -160,9 +171,16 @@ public sealed unsafe class AudioFilter : IDisposable
             _feed->nb_samples = frame->nb_samples - skip;
             Check(ffmpeg.av_channel_layout_copy(&_feed->ch_layout, &frame->ch_layout), "filter");
             Check(ffmpeg.av_frame_get_buffer(_feed, 0), "filter");
-            Check(ffmpeg.av_samples_copy(_feed->extended_data, frame->extended_data, 0, skip, _feed->nb_samples,
-                frame->ch_layout.nb_channels, (AVSampleFormat)frame->format), "filter");
+            Check(ffmpeg.av_samples_copy(_feed->extended_data,
+                frame->extended_data,
+                0,
+                skip,
+                _feed->nb_samples,
+                frame->ch_layout.nb_channels,
+                (AVSampleFormat)frame->format),
+                "filter");
         }
+
         _feed->pts = position;
         Check(ffmpeg.av_buffersrc_add_frame_flags(_in, _feed, 0), "filter");
     }
@@ -185,9 +203,27 @@ public sealed unsafe class AudioFilter : IDisposable
     /// <summary>Frees the filter graph (not the <see cref="AudioReader"/>).</summary>
     public void Dispose()
     {
-        if (_graph != null) { var g = _graph; ffmpeg.avfilter_graph_free(&g); _graph = null; _in = _out = null; }
-        if (_result != null) { var f = _result; ffmpeg.av_frame_free(&f); _result = null; }
-        if (_feed != null) { var f = _feed; ffmpeg.av_frame_free(&f); _feed = null; }
+        if (_graph != null)
+        {
+            var g = _graph;
+            ffmpeg.avfilter_graph_free(&g);
+            _graph = null;
+            _in = _out = null;
+        }
+
+        if (_result != null)
+        {
+            var f = _result;
+            ffmpeg.av_frame_free(&f);
+            _result = null;
+        }
+
+        if (_feed != null)
+        {
+            var f = _feed;
+            ffmpeg.av_frame_free(&f);
+            _feed = null;
+        }
     }
 
     static void Check(int ret, string what)

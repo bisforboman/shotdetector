@@ -50,6 +50,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
     [InlineData("422", "-pix_fmt yuv422p")]
     [InlineData("444", "-pix_fmt yuv444p -colorspace bt709")]
     [InlineData("10bit", "-pix_fmt yuv420p10le")]
+
     // Chroma siting (Matroska keeps it): 10-bit conversion interpolates chroma, from where the frame says it sits, as
     // OpenCV's sws_scale_frame does; the executable path is told with in_chroma_loc (ffmpeg's command line drops it).
     [InlineData("10bit-left", "-pix_fmt yuv420p10le -chroma_sample_location left")]
@@ -69,6 +70,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             var inProcess = ShotDetection.Detect(copy, options with { Decoder = VideoDecoder.InProcess });
             Assert.True(inProcess.Video.DecodesInProcess);
             Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
+
             // The colour tags, pixel format and the rest, read in-process as ffprobe reads them.
             string ffprobe = Path.Combine(Libs, OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
             Assert.Equal(Values(VideoReader.Run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", VideoReader.ProbeEntries, "-of", "default=nw=1", copy], default)),
@@ -102,8 +104,14 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         string av1 = Path.Combine(Path.GetTempPath(), $"shotdetector-av1-{Guid.NewGuid():N}.mkv");
         try
         {
-            try { VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c:v", "libaom-av1", "-cpu-used", "8", "-crf", "40", av1], default); }
-            catch (ShotDetectionException) { return; } // this ffmpeg can't encode AV1
+            try
+            {
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c:v", "libaom-av1", "-cpu-used", "8", "-crf", "40", av1], default);
+            }
+            catch (ShotDetectionException)
+            {
+                return;
+            } // this ffmpeg can't encode AV1
             var result = ShotDetection.Detect(av1, new DetectionOptions { FfmpegDirectory = Libs });
             Assert.Equal(150, result.FrameCount);
             Assert.Equal(3, result.Shots.Count);
@@ -125,12 +133,20 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             return;
         string path = name switch
         {
-            "rotated" => clips.Rotated, "mkv" => clips.ThreeShotsMkv, "faststart" => clips.ThreeShotsFaststart,
-            "mpegps" => clips.ThreeShotsMpegPs, "dropped" => clips.ThreeShotsDropped, "long" => clips.Long, "interlaced" => clips.Interlaced, _ => clips.ThreeShots,
+            "rotated" => clips.Rotated,
+            "mkv" => clips.ThreeShotsMkv,
+            "faststart" => clips.ThreeShotsFaststart,
+            "mpegps" => clips.ThreeShotsMpegPs,
+            "dropped" => clips.ThreeShotsDropped,
+            "long" => clips.Long,
+            "interlaced" => clips.Interlaced,
+            _ => clips.ThreeShots,
         };
         string ffprobe = Path.Combine(Libs, OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
-        var expected = Parse(VideoReader.Run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries",
-            VideoReader.ProbeEntries + ":packet=pts", "-of", "default=nw=1", path], default));
+        var expected = Parse(VideoReader.Run(ffprobe,
+            ["-v", "error", "-select_streams", "v:0", "-show_entries",
+                VideoReader.ProbeEntries + ":packet=pts", "-of", "default=nw=1", path],
+            default));
         var actual = Parse(InProcessProbe.Properties(path, Libs));
         Assert.Equal(expected.Values, actual.Values);
         Assert.Equal(expected.Pts, actual.Pts);
@@ -148,8 +164,12 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             foreach (var line in text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
             {
                 int eq = line.IndexOf('=');
-                if (line[..eq] == "pts") pts.Add(line[(eq + 1)..]); else values[line[..eq]] = line[(eq + 1)..];
+                if (line[..eq] == "pts")
+                    pts.Add(line[(eq + 1)..]);
+                else
+                    values[line[..eq]] = line[(eq + 1)..];
             }
+
             return (values, pts);
         }
 
@@ -158,13 +178,18 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             var result = new List<long>();
             long? framePts = null;
             foreach (var line in text.Split('\n', StringSplitOptions.TrimEntries))
+            {
                 if (line.StartsWith("pts="))
+                {
                     framePts = long.TryParse(line[4..], out long p) && p != 0 ? p : null;
+                }
                 else if (line.StartsWith("pkt_dts="))
                 {
                     result.Add(framePts ?? (long.TryParse(line[8..], out long d) ? d : 0));
                     framePts = null;
                 }
+            }
+
             return result;
         }
     }
@@ -215,6 +240,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
                 "fastyuv" => options with { Yuv420Converter = new SwscaleYuv420() },
                 _ => options,
             };
+
             // 9 to 16 bits: FFmpeg 8.1's x86 SIMD yadif gives a different result on every run, so the reference is its C
             // code (-cpuflags 0) as a lossless copy, read without deinterlacing.
             bool deep = args.Contains("10le");
@@ -253,13 +279,29 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         {
             if (file.EndsWith(".mkv"))
             {
-                try { VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c:v", "libaom-av1", "-cpu-used", "8", "-crf", "40", path], default); }
-                catch (ShotDetectionException) { return; } // this ffmpeg can't encode AV1
+                try
+                {
+                    VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c:v", "libaom-av1", "-cpu-used", "8", "-crf", "40", path], default);
+                }
+                catch (ShotDetectionException)
+                {
+                    return;
+                } // this ffmpeg can't encode AV1
             }
             else
+            {
                 VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, .. file.EndsWith(".jpg") ? new[] { "-q:v", "3" } : [], path], default);
-            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess,
-                FrameRate = rate > 0 ? rate : null, StartTime = variant == "start" ? "1.5" : null };
+            }
+
+            var options = new DetectionOptions
+            {
+                Detector = DetectorKind.Content,
+                CollectStats = true,
+                FfmpegDirectory = Libs,
+                Decoder = VideoDecoder.FfmpegProcess,
+                FrameRate = rate > 0 ? rate : null,
+                StartTime = variant == "start" ? "1.5" : null,
+            };
             var pipe = ShotDetection.Detect(path, options);
             var inProcess = ShotDetection.Detect(path, options with { Decoder = VideoDecoder.InProcess });
             Assert.True(inProcess.Video.DecodesInProcess);
@@ -297,13 +339,20 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         {
             if (remux.Length > 0)
                 VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", .. remux.Split(' '), path], default);
-            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess,
-                ProbeBytes = name == "small-probe" ? 4096 : 16 << 20 };
+            var options = new DetectionOptions
+            {
+                Detector = DetectorKind.Content,
+                CollectStats = true,
+                FfmpegDirectory = Libs,
+                Decoder = VideoDecoder.FfmpegProcess,
+                ProbeBytes = name == "small-probe" ? 4096 : 16 << 20,
+            };
             DetectionResult Piped(DetectionOptions o)
             {
                 using var stream = File.OpenRead(path);
                 return ShotDetection.Detect(stream, o);
             }
+
             var pipe = Piped(options);
             var inProcess = Piped(options with { Decoder = VideoDecoder.InProcess });
             Assert.False(pipe.Video.DecodesInProcess);
@@ -335,6 +384,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         try
         {
             string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts");
+
             // The halves as separate encodes, each starting at the same timestamp; the second's shots cut at other times.
             VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-t", "4", "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb", a], default);
             VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "1", "-i", clips.ThreeShots, "-vf", "scale=240:180", "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb", b], default);
@@ -345,8 +395,10 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             Assert.True(inProcess.Video.DecodesInProcess);
             Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
             Assert.Equal(Shots.Csv(pipe.Shots), Shots.Csv(inProcess.Shots));
+
             // Cuts from both halves by their time labels, sorted (scenedetect's res_change.ts result is checked in CI).
             Assert.Equal([50L, 75L, 100L], pipe.Cuts.Select(c => c.FrameNum));
+
             // One stats row per frame number: the second half (5 s, numbers 0-124 by time) reuses all of the first half's
             // (0-99); frame 0 has no score; plus the header.
             Assert.Equal(125, pipe.Stats.Csv(pipe.Video.Position).Split('\n', StringSplitOptions.RemoveEmptyEntries).Length);
@@ -441,7 +493,9 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
                 Assert.Equal(("subrip", true), (inProcess[3].Codec, inProcess[3].IsForced));
             }
             else
+            {
                 Assert.Equal(("mp4v", "mp4a", 44100), (inProcess[0].CodecTag, inProcess[1].CodecTag, inProcess[1].SampleRate));
+            }
         }
         finally
         {

@@ -26,6 +26,7 @@ public class FFmpegLibrariesTests
         {
             Directory.Delete(empty);
         }
+
         if (Libs is null)
             return;
         FFmpegLibraries.Load(Libs);
@@ -40,6 +41,7 @@ public class FFmpegLibrariesTests
         if (Libs is null)
             return;
         FFmpegLibraries.Load(Libs);
+
         // What every build these tests run on has (ours and full builds alike).
         Assert.True(FFmpegLibraries.HasEncoder("pcm_s16le"));
         Assert.True(FFmpegLibraries.HasEncoder("aac"));

@@ -52,10 +52,13 @@ public class ContentScorerTests
     {
         var rnd = new Random(length);
         var (a, b) = (new byte[length], new byte[length]);
-        rnd.NextBytes(a); rnd.NextBytes(b);
-        a.AsSpan(0, length / 2).Fill(255); b.AsSpan(0, length / 2).Fill(0); // worst case: 255 per byte
+        rnd.NextBytes(a);
+        rnd.NextBytes(b);
+        a.AsSpan(0, length / 2).Fill(255);
+        b.AsSpan(0, length / 2).Fill(0); // worst case: 255 per byte
         long expected = 0;
-        for (int i = 0; i < length; i++) expected += Math.Abs(a[i] - b[i]);
+        for (int i = 0; i < length; i++)
+            expected += Math.Abs(a[i] - b[i]);
         Assert.Equal(expected, ContentScorer.AbsDiffSum(a, b));
     }
 
@@ -105,8 +108,10 @@ public class ContentScorerTests
                 (bgr[3 * k], bgr[3 * k + 1], bgr[3 * k + 2]) = ((byte)b, (byte)(k >> 8), (byte)k);
             Hsv.Convert(bgr, h, s, v);
             for (int k = 0; k < 65536; k++)
+            {
                 if ((h[k], s[k], v[k]) != Hsv.FromBgr((byte)b, (byte)(k >> 8), (byte)k))
                     Assert.Fail($"BGR {b},{k >> 8},{k & 255}: {(h[k], s[k], v[k])} != {Hsv.FromBgr((byte)b, (byte)(k >> 8), (byte)k)}");
+            }
         }
     }
 
@@ -183,7 +188,8 @@ public class DetectorTests
     {
         var a = Enumerable.Repeat(baseline, count).ToArray();
         a[0] = 0; // first frame always scores 0
-        foreach (var (f, s) in spikes) a[f] = s;
+        foreach (var (f, s) in spikes)
+            a[f] = s;
         return a;
     }
 
@@ -239,6 +245,7 @@ public class DetectorTests
         // Spike at 13 is evaluated at frame 15, and 15 - 0 >= 15, so it counts.
         Assert.Equal([13], RunAdaptive(Scores(40, 1, (13, 40))));
         Assert.Empty(RunAdaptive(Scores(40, 1, (12, 40))));
+
         // After a cut, the next must come >= 15 frames after it (minus the window lag).
         Assert.Equal([20], RunAdaptive(Scores(60, 1, (20, 40), (32, 40))));
         Assert.Equal([20, 33], RunAdaptive(Scores(60, 1, (20, 40), (33, 40))));
@@ -269,7 +276,11 @@ public class DetectorTests
         {
             var cuts = new List<long>();
             for (int i = 0; i < 60; i++)
-                if (d.ProcessFrame(i, i < 30 ? black : white) is { } c) cuts.Add(c.FrameNum);
+            {
+                if (d.ProcessFrame(i, i < 30 ? black : white) is { } c)
+                    cuts.Add(c.FrameNum);
+            }
+
             Assert.Equal([30], cuts);
         }
     }
@@ -287,7 +298,8 @@ public class ThresholdDetectorTests
     {
         var d = new ThresholdDetector(Positions.Cfr(25), Fps25, 12, minSceneLen, fadeBias);
         var cuts = levels.Select((v, i) => d.ProcessAverage(i, v)).OfType<FrameTime>().Select(c => c.FrameNum).ToList();
-        if (d.PostProcess(FrameTime.Pts(levels.Length - 1, 25, Fps25)) is { } last) cuts.Add(last.FrameNum);
+        if (d.PostProcess(FrameTime.Pts(levels.Length - 1, 25, Fps25)) is { } last)
+            cuts.Add(last.FrameNum);
         return cuts;
     }
 
@@ -361,8 +373,11 @@ public class EdgeDetectorTests
     {
         var img = new byte[6 * 8];
         for (int y = 0; y < 6; y++)
+        {
             for (int x = 4; x < 8; x++)
                 img[y * 8 + x] = 200;
+        }
+
         img[0] = 90;          // (0, 0)
         img[5 * 8 + 1] = 120; // (1, 5)
         return img;
@@ -476,6 +491,7 @@ public class ExportTests
         Assert.Throws<ArgumentException>(() => new SplitOptions { Copy = true, RateFactor = 20 }.FfmpegArgs());
 
     static readonly Fps Fps25 = new(25, 1);
+
     static FrameTime F(long n) => FrameTime.Frame(n, Fps25);
 
     [Fact]
@@ -506,6 +522,7 @@ public class CvResizeTests
 public class FrameTimeTests
 {
     static readonly Fps Ntsc = new(30000, 1001), Fps24 = new(24, 1);
+
     static FrameTime Micros(long us, Fps fps) => FrameTime.Pts(us, 1_000_000, fps);
 
     [Theory]
@@ -578,8 +595,11 @@ public class FrameTimeTests
 public class SceneListTests
 {
     static readonly Fps Fps25 = new(25, 1);
+
     static FrameTime F(long frame) => FrameTime.Frame(frame, Fps25);
+
     static FrameTime P(long micros) => FrameTime.Pts(micros, 1_000_000, Fps25);
+
     static (long, long)[] Spans(List<Shot> shots) => [.. shots.Select(s => (s.Start.FrameNum, s.End.FrameNum))];
 
     [Fact]
@@ -590,6 +610,7 @@ public class SceneListTests
         var cuts = ShotDetection.Unique([P(4_000_000), F(50), P(2_000_000), F(100), P(2_000_000)]);
         Assert.Equal([50L, 100L], cuts.Select(c => c.FrameNum));
         Assert.True(cuts[0].TbDen == 0 && cuts[1].TbDen > 0); // whichever came first: F(50) before P(2s), P(4s) before F(100)
+
         // Two different timestamps that round to the same frame number (VFR) are two cuts, as in scenedetect.
         Assert.Equal(2, ShotDetection.Unique([P(2_000_000), P(2_010_000)]).Count);
     }
@@ -601,6 +622,7 @@ public class SceneListTests
         var ntsc = new Fps(30000, 1001);
         var t = FrameTime.FromSeconds(5.0, ntsc);
         Assert.Equal((150L, "00:00:05.005", "5.000"), (t.FrameNum, t.Timecode(), t.SecondsText()));
+
         // Seconds minus a frame number stay seconds; a frame number minus seconds counts frames.
         Assert.Equal(5.0 - 1.001, t.Minus(FrameTime.Frame(30, ntsc)).Seconds); // frame 30 is exactly 30030/30000 s; 3.999 as in scenedetect
         Assert.Equal(30L, FrameTime.Frame(180, ntsc).Minus(t).FrameNum);
@@ -650,6 +672,7 @@ public class ShotsTests
         Shot S(int n, long a, long b) => new(n, FrameTime.Frame(a, fps), FrameTime.Frame(b, fps));
         string csv = Shots.Csv([S(1, 0, 50), S(2, 50, 100), S(3, 100, 150)]);
         Assert.StartsWith("Timecode List:,00:00:02.000,00:00:04.000\nScene Number,", csv);
+
         // No cuts: scenedetect's fallback row is empty, so the file starts with a blank line.
         Assert.StartsWith("\nScene Number,", Shots.Csv([S(1, 0, 150)]));
         Assert.StartsWith("Scene Number,", Shots.Csv([S(1, 0, 50), S(2, 50, 100)], includeCutList: false));
@@ -720,7 +743,11 @@ public class HistogramDetectorTests
         var d = new HistogramDetector(i => FrameTime.Frame(i, fps), minSceneLen: 2);
         var cuts = new List<long>();
         for (int i = 0; i < 10; i++)
-            if (d.ProcessFrame(i, i < 5 ? Image : Brighter()) is { } cut) cuts.Add(cut.FrameNum);
+        {
+            if (d.ProcessFrame(i, i < 5 ? Image : Brighter()) is { } cut)
+                cuts.Add(cut.FrameNum);
+        }
+
         Assert.Equal([5], cuts);
     }
 
@@ -732,7 +759,11 @@ public class HistogramDetectorTests
         var d = new HistogramDetector(i => FrameTime.Frame(i, fps), minSceneLen: 2);
         var cuts = new List<long>();
         for (int i = 0; i < 6; i++)
-            if (d.ProcessFrame(i, i < 2 ? Image : Brighter()) is { } cut) cuts.Add(cut.FrameNum);
+        {
+            if (d.ProcessFrame(i, i < 2 ? Image : Brighter()) is { } cut)
+                cuts.Add(cut.FrameNum);
+        }
+
         Assert.Equal([2], cuts);
     }
 }

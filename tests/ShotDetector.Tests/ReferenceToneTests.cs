@@ -13,8 +13,8 @@ public sealed class ReferenceToneTests : IDisposable
 
     // Bars and -18 dBFS tone, and programme: two test patterns (a cut between them) over noise.
     const string Bars = "-f lavfi -i smptebars=s=320x240:r=25:d={0} -f lavfi -i sine=f=1000:r=48000:d={0}";
-    const string Programme = "-f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i anoisesrc=r=48000:a=0.1:d=2 " +
-        "-f lavfi -i mandelbrot=s=320x240:r=25 -f lavfi -i anoisesrc=r=48000:a=0.1:c=pink:d=2";
+    const string Programme = "-f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i anoisesrc=r=48000:a=0.1:d=2 "
+        + "-f lavfi -i mandelbrot=s=320x240:r=25 -f lavfi -i anoisesrc=r=48000:a=0.1:c=pink:d=2";
 
     DetectionOptions Options => new() { FfmpegDirectory = Libs, Detector = DetectorKind.Content };
 
@@ -42,7 +42,8 @@ public sealed class ReferenceToneTests : IDisposable
     {
         if (Libs is null)
             return;
-        string path = Make("lead.mp4", string.Format(Bars, 6) + " " + Programme,
+        string path = Make("lead.mp4",
+            string.Format(Bars, 6) + " " + Programme,
             "[4]trim=duration=2,setpts=PTS-STARTPTS[m];[0:v][1:a][2:v][3:a][m][5:a]concat=n=3:v=1:a=1[v][a]");
         var tone = Assert.Single(ShotDetection.FindReferenceTone(path, Options));
         Assert.InRange(tone.Start.TotalSeconds, 0, 0.1);
@@ -52,6 +53,7 @@ public sealed class ReferenceToneTests : IDisposable
         var trimmed = ShotDetection.Detect(path, Options with { TrimReferenceTone = true });
         Assert.Equal(tone, Assert.Single(trimmed.ReferenceTone!));
         Same(ShotDetection.Detect(path, Options with { StartTime = FormattableString.Invariant($"{tone.End.TotalSeconds:0.###}s") }), trimmed);
+
         // The programme's first frame starts the first shot: the bars are gone.
         Assert.Equal(150, trimmed.Shots[0].Start.FrameNum);
         Assert.Equal(2, trimmed.Shots.Count);
@@ -62,7 +64,8 @@ public sealed class ReferenceToneTests : IDisposable
     {
         if (Libs is null)
             return;
-        string path = Make("trail.mp4", Programme + " " + string.Format(Bars, 6),
+        string path = Make("trail.mp4",
+            Programme + " " + string.Format(Bars, 6),
             "[2]trim=duration=2,setpts=PTS-STARTPTS[m];[0:v][1:a][m][3:a][4:v][5:a]concat=n=3:v=1:a=1[v][a]");
         var tone = Assert.Single(ShotDetection.FindReferenceTone(path, Options));
         Assert.InRange(tone.Start.TotalSeconds, 3.9, 4.1);
@@ -118,12 +121,15 @@ public sealed class ReferenceToneTests : IDisposable
         var o = new DetectionOptions();
         var t = ShotDetection.TrimmedToTone(o, [S(1, 31.5), S(100, 110), S(596, 600)], TimeSpan.FromSeconds(600));
         Assert.Equal(("31.5s", "596s"), (t.StartTime, t.EndTime));
+
         // Starting after 5 s, ending more than 5 s before the end: programme time, left alone.
         t = ShotDetection.TrimmedToTone(o, [S(6, 40), S(500, 590)], TimeSpan.FromSeconds(600));
         Assert.Equal((null, null), (t.StartTime, t.EndTime));
+
         // One segment over the whole file is leading only.
         t = ShotDetection.TrimmedToTone(o, [S(0, 600)], TimeSpan.FromSeconds(600));
         Assert.Equal(("600s", null), (t.StartTime, t.EndTime));
+
         // A short file: tone from 4 s to the end is trailing, though it starts in the first 5 s.
         t = ShotDetection.TrimmedToTone(o, [S(4, 10)], TimeSpan.FromSeconds(10));
         Assert.Equal((null, "4s"), (t.StartTime, t.EndTime));

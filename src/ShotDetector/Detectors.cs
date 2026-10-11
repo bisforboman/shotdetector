@@ -33,6 +33,7 @@ internal sealed class ContentDetector(
     int? _lastAbove, _mergeStart;
     bool _mergeEnabled, _mergeTriggered;
     readonly double _minSeconds = minSceneLen / fps.Value;
+
     /// <inheritdoc/>
     public Stats? Stats { get; set; }
 
@@ -66,6 +67,7 @@ internal sealed class ContentDetector(
             _lastAbove = frame;
             return frame;
         }
+
         if (above)
             _lastAbove = frame;
 
@@ -77,8 +79,10 @@ internal sealed class ContentDetector(
                 _mergeTriggered = false;
                 return _lastAbove;
             }
+
             return null;
         }
+
         if (!above)
             return null;
         if (minLengthMet)
@@ -86,11 +90,13 @@ internal sealed class ContentDetector(
             _mergeEnabled = true; // merging only kicks in after the first cut
             return frame;
         }
+
         if (_mergeEnabled)
         {
             _mergeTriggered = true;
             _mergeStart = frame;
         }
+
         return null;
     }
 }
@@ -110,6 +116,7 @@ internal sealed class AdaptiveDetector(
     readonly List<(int Frame, double Score)> _buffer = [];
     readonly string _ratioKey = $"adaptive_ratio{(scorer.IsLumaOnly ? "_lum" : "")} (w={windowWidth})";
     int? _lastCut;
+
     /// <inheritdoc/>
     public Stats? Stats { get; set; }
 
@@ -135,7 +142,11 @@ internal sealed class AdaptiveDetector(
         var (targetFrame, targetScore) = _buffer[windowWidth];
         double sum = 0;
         for (int i = 0; i < _buffer.Count; i++)
-            if (i != windowWidth) sum += _buffer[i].Score;
+        {
+            if (i != windowWidth)
+                sum += _buffer[i].Score;
+        }
+
         double average = sum / (2.0 * windowWidth);
 
         double ratio = Math.Abs(average) < 0.00001
@@ -144,6 +155,7 @@ internal sealed class AdaptiveDetector(
         Stats?.Set(targetFrame, _ratioKey, ratio);
 
         bool thresholdMet = ratio >= adaptiveThreshold && targetScore >= minContentVal;
+
         // Faithful quirk: min length is measured from the *current* frame, not the target frame,
         // as a frame count derived from the time between them (round(seconds * fps)).
         bool minLengthMet = position(frame).Minus(position(_lastCut.Value)).FrameNum >= minSceneLen;
@@ -152,6 +164,7 @@ internal sealed class AdaptiveDetector(
             _lastCut = targetFrame;
             return targetFrame;
         }
+
         return null;
     }
 }
@@ -178,6 +191,7 @@ internal sealed class ThresholdDetector(
     int _lastFadeFrame;
     bool _fadedOut, _processed;
     readonly Dictionary<(long, long), double> _averages = [];
+
     /// <inheritdoc/>
     public Stats? Stats { get; set; }
 
@@ -185,18 +199,22 @@ internal sealed class ThresholdDetector(
     public FrameTime? ProcessFrame(int frame, byte[] bgr)
     {
         double average = Average(bgr);
+
         // With a stats manager, scenedetect reuses the average already stored at this position (a repeated timestamp, or
         // two encodes joined) for both the stats and the detection; it doesn't overwrite it.
         if (Stats is not null)
         {
             if (_averages.TryGetValue(position(frame).Key, out var stored))
+            {
                 average = stored;
+            }
             else
             {
                 _averages[position(frame).Key] = average;
                 Stats.Set(frame, "average_rgb", average);
             }
         }
+
         return ProcessAverage(frame, average);
     }
 
@@ -236,9 +254,11 @@ internal sealed class ThresholdDetector(
                 cut = FrameTime.Frame(fadeOut + (long)Math.Round((fadeIn - fadeOut) * (1.0 + fadeBias) / 2.0), fps);
                 _lastSceneCut = frame;
             }
+
             _fadedOut = false;
             _lastFadeFrame = frame;
         }
+
         return cut;
     }
 
@@ -285,8 +305,10 @@ internal sealed class HistogramDetector(
                 cut = position(frame);
                 _lastCut = frame;
             }
+
             Stats?.Set(frame, _key, correlation);
         }
+
         _lastHist = hist;
         return cut;
     }
@@ -313,6 +335,7 @@ internal sealed class HistogramDetector(
     internal static double Correlation(float[] a, float[] b)
     {
         int n = a.Length, paired = n - n % 2;
+
         // Two lanes, as OpenCV's v_float64x2 accumulation, added together at the end.
         Span<double> lane0 = stackalloc double[5], lane1 = stackalloc double[5];
         for (int i = 0; i < paired; i += 2)
@@ -320,6 +343,7 @@ internal sealed class HistogramDetector(
             Accumulate(lane0, a[i], b[i]);
             Accumulate(lane1, a[i + 1], b[i + 1]);
         }
+
         Span<double> s = stackalloc double[5];
         for (int k = 0; k < 5; k++)
             s[k] = lane0[k] + lane1[k];

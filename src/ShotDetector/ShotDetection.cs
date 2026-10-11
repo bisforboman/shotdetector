@@ -19,12 +19,16 @@ public enum DetectorKind
 {
     /// <summary>AdaptiveDetector (scenedetect detect-adaptive): content changes relative to neighbouring frames.</summary>
     Adaptive,
+
     /// <summary>ContentDetector (detect-content): content changes above a fixed threshold.</summary>
     Content,
+
     /// <summary>ThresholdDetector (detect-threshold): fades to and from black.</summary>
     Threshold,
+
     /// <summary>HistogramDetector (detect-hist): changes in the luma histogram.</summary>
     Histogram,
+
     /// <summary>HashDetector (detect-hash): changes in a perceptual hash of the frame.</summary>
     Hash,
 }
@@ -70,7 +74,9 @@ public enum FieldOrder
 /// </summary>
 public sealed record VideoInfo
 {
-    internal VideoInfo() { }
+    internal VideoInfo()
+    {
+    }
 
     /// <summary>Width as shown (a 90° rotation tag swaps it with the height, as decoding does).</summary>
     public int Width { get; init; }
@@ -138,7 +144,9 @@ public enum StreamType
 /// <summary>One stream of a file, as ffprobe's <c>-show_streams</c> describes it (<see cref="VideoInfo.Streams"/>).</summary>
 public sealed record StreamInfo
 {
-    internal StreamInfo() { }
+    internal StreamInfo()
+    {
+    }
 
     /// <summary>The stream's index in the container.</summary>
     public int Index { get; init; }
@@ -478,7 +486,9 @@ public readonly record struct DetectionProgress
 /// <summary>The outcome of <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/>.</summary>
 public sealed record DetectionResult
 {
-    internal DetectionResult() { }
+    internal DetectionResult()
+    {
+    }
 
     /// <summary>The video analysed: a path or URL, or null for a Stream input (exports need a path).</summary>
     public string? VideoPath { get; init; }
@@ -605,8 +615,11 @@ public static class ShotDetection
     /// <param name="column">The column with each shot's start.</param>
     /// <param name="options">Uses the time range, MinSceneLength, DropShortScenes, MergeLastScene, Compatibility and FfmpegDirectory.</param>
     /// <param name="cancellationToken">Cancels the probe.</param>
-    public static DetectionResult LoadScenes(string videoPath, string sceneListCsv, string column = "Start Frame",
-        DetectionOptions? options = null, CancellationToken cancellationToken = default)
+    public static DetectionResult LoadScenes(string videoPath,
+        string sceneListCsv,
+        string column = "Start Frame",
+        DetectionOptions? options = null,
+        CancellationToken cancellationToken = default)
     {
         var o = options ?? new DetectionOptions();
         var video = new VideoReader(videoPath, o, cancellationToken);
@@ -618,16 +631,21 @@ public static class ShotDetection
         int col = header.IndexOf(column);
         if (col < 0)
             throw new ArgumentException($"The scene list has no column '{column}'.");
+
         // FrameTimecode(value, fps): digits are a frame number, anything else a time in seconds.
         FrameTime Time(string value, int shift = 0) => value.All(char.IsDigit)
             ? FrameTime.Frame(Math.Max(0, long.Parse(value, CultureInfo.InvariantCulture) - shift), fps)
             : FrameTime.FromSeconds(TimecodeSeconds(value, fps), fps);
+
         // Start Frame values are 1-based in the CLI's output.
         FrameTime Parse(string value) => Time(value, shift: 1);
         var starts = new List<FrameTime>();
         for (string? line; (line = reader.ReadLine()) is not null;)
+        {
             if (line.Length > 0 && CsvRow(line) is var row && col < row.Count)
                 starts.Add(Parse(row[col]));
+        }
+
         // sorted(...)[1:]: the first shot's start is no cut. None of these are exact timestamps, so they
         // compare (and sort, stably) by frame number, as FrameTimecode does.
         var cuts = starts.OrderBy(c => c.FrameNum).Skip(1).ToList();
@@ -637,6 +655,7 @@ public static class ShotDetection
             start = Time(s.Trim(), shift: 1); // `time -s`: a frame number is 1-based (parse_timecode(correct_pts=True))
             cuts = [.. cuts.Where(c => c.FrameNum > start.FrameNum)];
         }
+
         // min(x, duration): the first one unless the video is shorter (by frame number).
         var duration = FrameTime.Frame(video.OpenCvFrameCount, fps);
         FrameTime Min(FrameTime x) => duration.FrameNum < x.FrameNum ? duration : x;
@@ -648,8 +667,13 @@ public static class ShotDetection
         var shots = Scenes(cuts, start, end, o.MergeLastScene, o.DropShortScenes ? minSceneLen : 0, minSceneLen);
         return new()
         {
-            VideoPath = videoPath, Video = video, Shots = shots, FrameCount = (int)video.OpenCvFrameCount, MinSceneLengthFrames = minSceneLen,
-            Stats = null, Cuts = cuts,
+            VideoPath = videoPath,
+            Video = video,
+            Shots = shots,
+            FrameCount = (int)video.OpenCvFrameCount,
+            MinSceneLengthFrames = minSceneLen,
+            Stats = null,
+            Cuts = cuts,
         };
     }
 
@@ -666,14 +690,35 @@ public static class ShotDetection
             char c = line[i];
             if (quoted)
             {
-                if (c != '"') cell.Append(c);
-                else if (i + 1 < line.Length && line[i + 1] == '"') { cell.Append('"'); i++; }
-                else quoted = false;
+                if (c != '"')
+                {
+                    cell.Append(c);
+                }
+                else if (i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    cell.Append('"');
+                    i++;
+                }
+                else
+                {
+                    quoted = false;
+                }
             }
-            else if (c == '"') quoted = true;
-            else if (c == ',') { cells.Add(cell.ToString()); cell.Clear(); }
-            else cell.Append(c);
+            else if (c == '"')
+            {
+                quoted = true;
+            }
+            else if (c == ',')
+            {
+                cells.Add(cell.ToString());
+                cell.Clear();
+            }
+            else
+            {
+                cell.Append(c);
+            }
         }
+
         cells.Add(cell.ToString());
         return cells;
     }
@@ -699,20 +744,25 @@ public static class ShotDetection
     /// <exception cref="ArgumentException">Invalid options.</exception>
     /// <exception cref="InvalidOperationException">ffprobe or ffmpeg failed (e.g. missing file).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; ffmpeg is stopped.</exception>
-    public static IAsyncEnumerable<Shot> DetectStreamAsync(string videoPath, DetectionOptions? options = null,
+    public static IAsyncEnumerable<Shot> DetectStreamAsync(string videoPath,
+        DetectionOptions? options = null,
         CancellationToken cancellationToken = default) => StreamShots(videoPath, null, options, cancellationToken);
 
     /// <summary>
     /// As <see cref="DetectStreamAsync(string, DetectionOptions?, CancellationToken)"/>, reading the
     /// video's bytes from <paramref name="video"/>: bytes in, shots out, while both are in progress.
     /// </summary>
-    public static IAsyncEnumerable<Shot> DetectStreamAsync(Stream video, DetectionOptions? options = null,
+    public static IAsyncEnumerable<Shot> DetectStreamAsync(Stream video,
+        DetectionOptions? options = null,
         CancellationToken cancellationToken = default) => StreamShots(null, video, options, cancellationToken);
 
-    static async IAsyncEnumerable<Shot> StreamShots(string? videoPath, Stream? video, DetectionOptions? options,
+    static async IAsyncEnumerable<Shot> StreamShots(string? videoPath,
+        Stream? video,
+        DetectionOptions? options,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var channel = Channel.CreateUnbounded<Shot>(new() { SingleReader = true, SingleWriter = true });
+
         // Also cancelled when the caller stops enumerating, so the decoding thread and ffmpeg stop too.
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var producer = Task.Run(() =>
@@ -726,7 +776,8 @@ public static class ShotDetection
             {
                 channel.Writer.Complete(e);
             }
-        }, CancellationToken.None);
+        },
+            CancellationToken.None);
         try
         {
             await foreach (var shot in channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -757,6 +808,7 @@ public static class ShotDetection
                 activity.SetTag("shotdetector.frames", result.FrameCount);
                 activity.SetTag("shotdetector.shots", result.Shots.Count);
             }
+
             return result;
         }
         catch (Exception e)
@@ -801,6 +853,7 @@ public static class ShotDetection
             tone = FindReferenceTone(videoPath!, o, cancellationToken);
             o = TrimmedToTone(o, tone, video.Duration);
         }
+
         if (o.StartTime is not null && video.Streaming)
             throw new ArgumentException("StartTime isn't available for a streamed input (a Stream, a URL, or Streaming = true).");
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
@@ -810,6 +863,7 @@ public static class ShotDetection
         var settings = single ? [new DetectorSettings(o.Detector) { Threshold = o.Threshold }] : o.Detectors!;
         var stats = o.CollectStats ? new Stats() : null;
         var detectors = settings.Select(st => Build(st, o, video, minSceneLen, stats)).ToList();
+
         // Shots stream out as cuts arrive only when nothing can reorder or change them later.
         bool incremental = detectors.Count == 1 && !o.DropShortScenes && !o.MergeLastScene;
 
@@ -823,6 +877,7 @@ public static class ShotDetection
             cuts.Add(cut);
             if (!incremental)
                 return;
+
             // A cut at frame 0 still makes a (zero-length) first shot, as in scenedetect.
             if (lastCut is { } previous)
             {
@@ -836,6 +891,7 @@ public static class ShotDetection
                     return;
                 }
             }
+
             lastCut = cut;
             var shot = new Shot(shots.Count + 1, start, cut);
             shots.Add(shot);
@@ -857,21 +913,28 @@ public static class ShotDetection
         long lastReport = 0;
         DetectionProgress Progress(int done, int expected) =>
             new() { FramesProcessed = done, ExpectedFrames = expected, DecodesInProcess = video.DecodesInProcess, Pipeline = video.Pipeline };
+
         // A first report before any frame: which decoder and pipeline this run uses.
         o.Progress?.Report(Progress(0, Math.Max(0, video.ExpectedFrames - startFrame)));
         foreach (var frame in video.Frames(startFrame, null, cancellationToken))
         {
             int index = startFrame + frameCount;
             if (frameCount % stride == 0)
+            {
                 foreach (var detector in detectors)
+                {
                     if (detector.ProcessFrame(index, frame) is { } cut)
                         Cut(cut);
+                }
+            }
+
             frameCount++;
             if (o.Progress is not null && Environment.TickCount64 - lastReport >= 100)
             {
                 o.Progress.Report(Progress(frameCount, Math.Max(0, video.ExpectedFrames - startFrame)));
                 lastReport = Environment.TickCount64;
             }
+
             // scenedetect analyses a frame, skips the next FrameSkip frames, then stops if the last
             // frame read plus one frame reaches the end (an end hit while skipping counts as EOF).
             if (endFrame is { } e && frameCount % stride == 0 && video.Position(index).PlusFrames(1).FrameNum >= e)
@@ -880,6 +943,7 @@ public static class ShotDetection
                 break;
             }
         }
+
         o.Progress?.Report(Progress(frameCount, frameCount));
         if (frameCount > 0)
         {
@@ -887,8 +951,11 @@ public static class ShotDetection
             // otherwise at the last frame read (which may be a skipped one).
             var last = readToEnd ? video.PositionAfterDecoding(startFrame + frameCount) : video.Position(startFrame + frameCount - 1);
             foreach (var detector in detectors)
+            {
                 if (detector.PostProcess(last) is { } trailingCut)
                     Cut(trailingCut);
+            }
+
             if (incremental)
             {
                 var final = new Shot(shots.Count + 1, start, last.PlusFrames(1));
@@ -901,14 +968,23 @@ public static class ShotDetection
                 var streamedUntil = shots.Count > 0 ? shots[^1].End : (FrameTime?)null;
                 shots = Scenes(Unique(cuts), first, last.PlusFrames(1), o.MergeLastScene, o.DropShortScenes ? minSceneLen : 0, minSceneLen);
                 foreach (var shot in shots)
+                {
                     if (streamedUntil is not { } until || CompareCuts(shot.Start, until) >= 0)
                         onShot?.Invoke(shot);
+                }
             }
         }
+
         return new()
         {
-            VideoPath = videoPath, Video = video, Shots = shots, FrameCount = frameCount, MinSceneLengthFrames = minSceneLen,
-            Stats = stats, Cuts = Unique(cuts), ReferenceTone = tone,
+            VideoPath = videoPath,
+            Video = video,
+            Shots = shots,
+            FrameCount = frameCount,
+            MinSceneLengthFrames = minSceneLen,
+            Stats = stats,
+            Cuts = Unique(cuts),
+            ReferenceTone = tone,
         };
     }
 
@@ -926,6 +1002,7 @@ public static class ShotDetection
             o = o with { StartTime = Seconds(tone[0].End) };
             first = 1;
         }
+
         if (tone.Count > first && duration is { } d && tone[^1].End >= d - ends)
             o = o with { EndTime = Seconds(tone[^1].Start) };
         return o;
@@ -944,22 +1021,33 @@ public static class ShotDetection
             throw new ArgumentException("Bins must be between 1 and 256.");
         if (hashSize < 1 || hashLowpass < 1)
             throw new ArgumentException("HashSize and HashLowpass must be at least 1.");
+
         // --drop-short-scenes: detectors cut freely; the short shots are dropped afterwards.
         int min = o.DropShortScenes ? 0 : st.MinSceneLength is { } m ? MinSceneLengthInFrames(m, video.Fps) : minSceneLen;
         ContentScorer Scorer()
         {
             var w = st.Weights ?? o.Weights;
             var scorer = st.LumaOnly ?? o.LumaOnly ? ContentScorer.LumaOnly() : new ContentScorer(w.Hue, w.Sat, w.Lum, w.Edges);
+
             // Like PySceneDetect, edges are computed when they're weighted or stats are collected.
             if (scorer.UsesEdges || o.CollectStats)
                 scorer.Edges = new EdgeDetector(video.Width, video.Height, kernelSize);
             return scorer;
         }
+
         IDetector detector = st.Kind switch
         {
-            DetectorKind.Content => new ContentDetector(Scorer(), video.Position, video.Fps, st.Threshold ?? 27.0, min,
+            DetectorKind.Content => new ContentDetector(Scorer(),
+                video.Position,
+                video.Fps,
+                st.Threshold ?? 27.0,
+                min,
                 (st.FilterMode ?? o.FilterMode) == FlashFilterMode.Suppress),
-            DetectorKind.Threshold => new ThresholdDetector(video.Position, video.Fps, st.Threshold ?? 12.0, min, st.FadeBias ?? o.FadeBias,
+            DetectorKind.Threshold => new ThresholdDetector(video.Position,
+                video.Fps,
+                st.Threshold ?? 12.0,
+                min,
+                st.FadeBias ?? o.FadeBias,
                 st.AddLastScene ?? o.AddLastScene),
             DetectorKind.Histogram => new HistogramDetector(video.Position, st.Threshold ?? 0.05, bins, min),
             DetectorKind.Hash => new HashDetector(video.Position, st.Threshold ?? 0.395, hashSize, hashLowpass, min),
@@ -971,9 +1059,7 @@ public static class ShotDetection
         return detector;
     }
 
-    /// <summary>
-    /// FrameTimecode equality: exact times when both are timestamps at the same rate, else frame numbers.
-    /// </summary>
+    /// <summary>FrameTimecode equality: exact times when both are timestamps at the same rate, else frame numbers.</summary>
     internal static bool SameCut(FrameTime a, FrameTime b) => CompareCuts(a, b) == 0;
 
     /// <summary>FrameTimecode ordering, as scenedetect sorts its cut list.</summary>
@@ -987,8 +1073,11 @@ public static class ShotDetection
     {
         var unique = new List<FrameTime>();
         foreach (var cut in cuts)
+        {
             if (!unique.Any(u => SameCut(u, cut)))
                 unique.Add(cut);
+        }
+
         // A stable sort, so equal-rank cuts keep their order as Python's sorted does.
         return [.. unique.Select((c, i) => (c, i)).OrderBy(x => x.c, Comparer<FrameTime>.Create(CompareCuts)).ThenBy(x => x.i).Select(x => x.c)];
     }
@@ -1003,12 +1092,14 @@ public static class ShotDetection
             scenes.Add((from, cut));
             from = cut;
         }
+
         scenes.Add((from, end));
         if (mergeLast && minSceneLen > 0 && scenes.Count > 1 && scenes[^1].End.Minus(scenes[^1].Start).FrameNum < minSceneLen)
         {
             scenes[^2] = (scenes[^2].Start, scenes[^1].End);
             scenes.RemoveAt(scenes.Count - 1);
         }
+
         if (dropShorterThan > 0)
             scenes.RemoveAll(sc => sc.End.Minus(sc.Start).FrameNum < dropShorterThan);
         return [.. scenes.Select((sc, i) => new Shot(i + 1, sc.Start, sc.End))];
@@ -1029,18 +1120,22 @@ public static class ShotDetection
         if (value.All(char.IsDigit))
         {
             long frames = long.Parse(value, CultureInfo.InvariantCulture);
-            if (oneBasedFrames && frames >= 1) frames--;
+            if (oneBasedFrames && frames >= 1)
+                frames--;
             return frames / fps.Value;
         }
+
         if (value.EndsWith('s'))
             return double.Parse(value[..^1], CultureInfo.InvariantCulture);
         if (value.Contains(':'))
         {
             var parts = value.Split(':');
-            if (parts.Length != 3) throw new FormatException($"Timecode '{value}' must be HH:MM:SS[.mmm].");
+            if (parts.Length != 3)
+                throw new FormatException($"Timecode '{value}' must be HH:MM:SS[.mmm].");
             return int.Parse(parts[0], CultureInfo.InvariantCulture) * 3600 + int.Parse(parts[1], CultureInfo.InvariantCulture) * 60
                 + double.Parse(parts[2], CultureInfo.InvariantCulture);
         }
+
         return double.Parse(value, CultureInfo.InvariantCulture);
     }
 }

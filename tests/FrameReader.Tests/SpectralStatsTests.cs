@@ -17,7 +17,7 @@ public class SpectralStatsTests
     static byte[] Ffmpeg(params string[] args)
     {
         var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
-            { RedirectStandardOutput = true, RedirectStandardError = true };
+        { RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args)
             psi.ArgumentList.Add(a);
         using var p = Process.Start(psi)!;
@@ -40,6 +40,7 @@ public class SpectralStatsTests
             else
                 frames[^1].Item2[line[..line.IndexOf('=')]] = line[(line.IndexOf('=') + 1)..];
         }
+
         return frames;
     }
 
@@ -56,8 +57,16 @@ public class SpectralStatsTests
         {
             // Two different channels: a tone, and a higher tone with noise.
             string path = Path.Combine(dir, name);
-            Ffmpeg("-v", "error", "-y", "-f", "lavfi", "-i", "aevalsrc=sin(440*2*PI*t)|0.5*sin(3000*2*PI*t)+0.1*random(0):s=44100:d=2",
-                "-c:a", name.EndsWith(".flac") ? "flac" : "aac", path);
+            Ffmpeg("-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "aevalsrc=sin(440*2*PI*t)|0.5*sin(3000*2*PI*t)+0.1*random(0):s=44100:d=2",
+                "-c:a",
+                name.EndsWith(".flac") ? "flac" : "aac",
+                path);
             var options = new SpectralStatsOptions();
             options = options with { WindowSize = windowSize ?? options.WindowSize, WindowFunction = function ?? options.WindowFunction, Overlap = overlap ?? options.Overlap };
             string filter = string.Create(CultureInfo.InvariantCulture,
@@ -83,8 +92,10 @@ public class SpectralStatsTests
                         Assert.True(SpectralStats.Parse(theirs).Equals(ours[i]), $"window {n} channel {c + 1} {Names[i]}: ffmpeg {theirs}, ours {ours[i]:R}");
                     }
                 }
+
                 n++;
             }
+
             Assert.Equal(expected.Count, n);
             Assert.True(n > 10);
         }

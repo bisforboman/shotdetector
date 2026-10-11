@@ -127,6 +127,7 @@ try
         config = Config.Read(args[configAt + 1]);
         ApplyConfig(config);
     }
+
     for (int i = 0; i < args.Length; i++)
     {
         given.Add(args[i]);
@@ -135,13 +136,17 @@ try
         int NextInt() => int.Parse(Next(), CultureInfo.InvariantCulture);
         switch (args[i])
         {
-            case "-i" or "--input": input = Next(); break;
+            case "-i" or "--input":
+                input = Next();
+                break;
             case "-d" or "--detector":
                 detectorList.Add(new DetectorSettings(KindOf(Next())));
                 break;
             case "-t" or "--threshold":
-                if (detectorList.Count > 0) detectorList[^1] = detectorList[^1] with { Threshold = NextDouble() };
-                else options = options with { Threshold = NextDouble() };
+                if (detectorList.Count > 0)
+                    detectorList[^1] = detectorList[^1] with { Threshold = NextDouble() };
+                else
+                    options = options with { Threshold = NextDouble() };
                 break;
             case "--filter-mode":
                 var mode = Next() switch
@@ -150,29 +155,64 @@ try
                     "suppress" => FlashFilterMode.Suppress,
                     var m => throw new ArgumentException($"Unknown filter mode '{m}' (merge or suppress)"),
                 };
-                if (detectorList.Count > 0) detectorList[^1] = detectorList[^1] with { FilterMode = mode };
-                else options = options with { FilterMode = mode };
+                if (detectorList.Count > 0)
+                    detectorList[^1] = detectorList[^1] with { FilterMode = mode };
+                else
+                    options = options with { FilterMode = mode };
                 break;
-            case "--drop-short-scenes": options = options with { DropShortScenes = true }; break;
-            case "--merge-last-scene": options = options with { MergeLastScene = true }; break;
-            case "--downscale": options = options with { Downscale = NextInt() }; break;
+            case "--drop-short-scenes":
+                options = options with { DropShortScenes = true };
+                break;
+            case "--merge-last-scene":
+                options = options with { MergeLastScene = true };
+                break;
+            case "--downscale":
+                options = options with { Downscale = NextInt() };
+                break;
             case "-m" or "--min-scene-len":
-                if (detectorList.Count > 0) detectorList[^1] = detectorList[^1] with { MinSceneLength = Next() };
-                else options = options with { MinSceneLength = Next() };
+                if (detectorList.Count > 0)
+                    detectorList[^1] = detectorList[^1] with { MinSceneLength = Next() };
+                else
+                    options = options with { MinSceneLength = Next() };
                 break;
-            case "-c" or "--min-content-val": options = options with { MinContentVal = NextDouble() }; break;
-            case "--frame-window": options = options with { FrameWindow = NextInt() }; break;
-            case "-w" or "--weights": options = options with { Weights = (NextDouble(), NextDouble(), NextDouble(), NextDouble()) }; break;
+            case "-c" or "--min-content-val":
+                options = options with { MinContentVal = NextDouble() };
+                break;
+            case "--frame-window":
+                options = options with { FrameWindow = NextInt() };
+                break;
+            case "-w" or "--weights":
+                options = options with { Weights = (NextDouble(), NextDouble(), NextDouble(), NextDouble()) };
+                break;
+
             // -1 is scenedetect's spelling of "automatic".
-            case "-k" or "--kernel-size": options = options with { KernelSize = NextInt() is var k and not -1 ? k : null }; break;
-            case "-b" or "--bins": options = options with { Bins = NextInt() }; break;
-            case "--hash-size": options = options with { HashSize = NextInt() }; break;
-            case "--hash-lowpass": options = options with { HashLowpass = NextInt() }; break;
-            case "-f" or "--fade-bias": options = options with { FadeBias = NextDouble() }; break;
-            case "-l" or "--luma-only": options = options with { LumaOnly = true }; break;
-            case "--ffmpeg-resize": options = options with { FfmpegResize = true }; break;
-            case "--threads": options = options with { DecodeThreads = NextInt() }; break;
-            case "--ffmpeg-dir": options = options with { FfmpegDirectory = Next() }; break;
+            case "-k" or "--kernel-size":
+                options = options with { KernelSize = NextInt() is var k and not -1 ? k : null };
+                break;
+            case "-b" or "--bins":
+                options = options with { Bins = NextInt() };
+                break;
+            case "--hash-size":
+                options = options with { HashSize = NextInt() };
+                break;
+            case "--hash-lowpass":
+                options = options with { HashLowpass = NextInt() };
+                break;
+            case "-f" or "--fade-bias":
+                options = options with { FadeBias = NextDouble() };
+                break;
+            case "-l" or "--luma-only":
+                options = options with { LumaOnly = true };
+                break;
+            case "--ffmpeg-resize":
+                options = options with { FfmpegResize = true };
+                break;
+            case "--threads":
+                options = options with { DecodeThreads = NextInt() };
+                break;
+            case "--ffmpeg-dir":
+                options = options with { FfmpegDirectory = Next() };
+                break;
             case "--decoder":
                 options = options with
                 {
@@ -185,7 +225,9 @@ try
                     },
                 };
                 break;
-            case "--frame-rate" or "--framerate": options = options with { FrameRate = NextDouble() }; break;
+            case "--frame-rate" or "--framerate":
+                options = options with { FrameRate = NextDouble() };
+                break;
             case "--compat":
                 options = options with
                 {
@@ -199,41 +241,102 @@ try
 #if FASTYUV
             case "--fast-yuv": options = options with { Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420() }; break;
 #endif
-            case "--csv": csvPath = Next(); break;
-            case "--skip-cuts": skipCuts = true; break;
-            case "--save-html": htmlPath = Next(); break;
-            case "--save-edl": edlPath = Next(); break;
-            case "--edl-title": edlTitle = Next(); break;
-            case "--edl-reel": edlReel = Next(); break;
-            case "--edl-start-timecode": edlStart = Next(); break;
-            case "--save-fcp": fcpPath = Next(); break;
+            case "--csv":
+                csvPath = Next();
+                break;
+            case "--skip-cuts":
+                skipCuts = true;
+                break;
+            case "--save-html":
+                htmlPath = Next();
+                break;
+            case "--save-edl":
+                edlPath = Next();
+                break;
+            case "--edl-title":
+                edlTitle = Next();
+                break;
+            case "--edl-reel":
+                edlReel = Next();
+                break;
+            case "--edl-start-timecode":
+                edlStart = Next();
+                break;
+            case "--save-fcp":
+                fcpPath = Next();
+                break;
             case "--fcp-format":
                 fcpFormat = Next();
                 if (fcpFormat is not ("fcpx" or "fcp7"))
                     throw new ArgumentException("--fcp-format must be fcpx or fcp7");
                 break;
-            case "--save-otio": otioPath = Next(); break;
-            case "--otio-name": otioName = Next(); break;
-            case "--otio-no-audio": otioAudio = false; break;
-            case "--save-qp": qpPath = Next(); break;
-            case "--qp-disable-shift": qpShift = false; break;
-            case "--html-no-images": htmlNoImages = true; break;
-            case "--html-image-width": htmlWidth = NextInt(); break;
-            case "--html-image-height": htmlHeight = NextInt(); break;
-            case "-q" or "--quiet": quiet = true; break;
-            case "--json": jsonPath = Next(); break;
-            case "--stats": statsPath = Next(); options = options with { CollectStats = true }; break;
-            case "--save-images": imagesDir = Next(); break;
-            case "--num-images": images = images with { NumImages = NextInt() }; break;
-            case "--frame-margin": images = images with { FrameMargin = NextInt() }; break;
-            case "--image-width": images = images with { Width = NextInt() }; break;
-            case "--image-height": images = images with { Height = NextInt() }; break;
-            case "--image-scale": images = images with { Scale = NextDouble() }; break;
-            case "--image-format": images = images with { Format = Next() }; break;
-            case "-s" or "--start": options = options with { StartTime = Next() }; break;
-            case "-e" or "--end": options = options with { EndTime = Next() }; break;
-            case "--duration": options = options with { Duration = Next() }; break;
-            case "--frame-skip": options = options with { FrameSkip = NextInt() }; break;
+            case "--save-otio":
+                otioPath = Next();
+                break;
+            case "--otio-name":
+                otioName = Next();
+                break;
+            case "--otio-no-audio":
+                otioAudio = false;
+                break;
+            case "--save-qp":
+                qpPath = Next();
+                break;
+            case "--qp-disable-shift":
+                qpShift = false;
+                break;
+            case "--html-no-images":
+                htmlNoImages = true;
+                break;
+            case "--html-image-width":
+                htmlWidth = NextInt();
+                break;
+            case "--html-image-height":
+                htmlHeight = NextInt();
+                break;
+            case "-q" or "--quiet":
+                quiet = true;
+                break;
+            case "--json":
+                jsonPath = Next();
+                break;
+            case "--stats":
+                statsPath = Next();
+                options = options with { CollectStats = true };
+                break;
+            case "--save-images":
+                imagesDir = Next();
+                break;
+            case "--num-images":
+                images = images with { NumImages = NextInt() };
+                break;
+            case "--frame-margin":
+                images = images with { FrameMargin = NextInt() };
+                break;
+            case "--image-width":
+                images = images with { Width = NextInt() };
+                break;
+            case "--image-height":
+                images = images with { Height = NextInt() };
+                break;
+            case "--image-scale":
+                images = images with { Scale = NextDouble() };
+                break;
+            case "--image-format":
+                images = images with { Format = Next() };
+                break;
+            case "-s" or "--start":
+                options = options with { StartTime = Next() };
+                break;
+            case "-e" or "--end":
+                options = options with { EndTime = Next() };
+                break;
+            case "--duration":
+                options = options with { Duration = Next() };
+                break;
+            case "--frame-skip":
+                options = options with { FrameSkip = NextInt() };
+                break;
             case "--deinterlace":
                 // An optional value: --deinterlace alone means on.
                 options = options with
@@ -243,42 +346,100 @@ try
                         : DeinterlaceMode.On,
                 };
                 break;
-            case "--crop": options = options with { Crop = (NextInt(), NextInt(), NextInt(), NextInt()) }; break;
-            case "--split-video": splitDir = Next(); break;
-            case "--image-filename": images = images with { FileName = Next() }; break;
-            case "--split-filename": split = split with { FileName = Next() }; break;
-            case "-o" or "--output": outputDir = Next(); break;
-            case "--load-scenes": loadScenes = Next(); break;
-            case "--load-scenes-column": loadColumn = Next(); break;
-            case "--split-copy": split = split with { Copy = true }; break;
-            case "--split-high-quality": split = split with { HighQuality = true }; break;
-            case "--split-crf": split = split with { RateFactor = NextInt() }; break;
-            case "--split-preset": split = split with { Preset = Next() }; break;
-            case "--split-args": split = split with { Args = Next() }; break;
-            case "--split-expand": split = split with { Expand = true }; break;
-            case "--find-tone": findTone = true; break;
-            case "--probe": probe = true; break;
-            case "--probe-json": probeJson = true; break;
-            case "--waveform": waveformPath = Next(); break;
-            case "--waveform-zoom": waveform = waveform with { SamplesPerPixel = NextInt() }; break;
-            case "--waveform-pixels-per-second": waveform = waveform with { PixelsPerSecond = NextInt() }; break;
-            case "--waveform-bits": waveformBits = NextInt() switch
-            {
-                8 => FrameReader.WaveformBits.Eight,
-                16 => FrameReader.WaveformBits.Sixteen,
-                _ => throw new ArgumentException("--waveform-bits is 8 or 16"),
-            }; break;
-            case "--waveform-split-channels": waveform = waveform with { SplitChannels = true }; break;
-            case "--audio-filter": audioFilter = Next(); break;
-            case "--audio-out": audioOut = Next(); break;
-            case "--trim-tone": options = options with { TrimReferenceTone = true }; break;
-            case "--tone-min-duration": options = options with { ReferenceToneMinDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
-            case "--tone-search": options = options with { ReferenceToneSearchDuration = TimeSpan.FromSeconds(NextDouble()) }; break;
-            case "--config": i++; break; // read above
-            case "-h" or "--help": Console.WriteLine(Usage); return 0;
-            default: throw new ArgumentException($"Unknown option {args[i]}");
+            case "--crop":
+                options = options with { Crop = (NextInt(), NextInt(), NextInt(), NextInt()) };
+                break;
+            case "--split-video":
+                splitDir = Next();
+                break;
+            case "--image-filename":
+                images = images with { FileName = Next() };
+                break;
+            case "--split-filename":
+                split = split with { FileName = Next() };
+                break;
+            case "-o" or "--output":
+                outputDir = Next();
+                break;
+            case "--load-scenes":
+                loadScenes = Next();
+                break;
+            case "--load-scenes-column":
+                loadColumn = Next();
+                break;
+            case "--split-copy":
+                split = split with { Copy = true };
+                break;
+            case "--split-high-quality":
+                split = split with { HighQuality = true };
+                break;
+            case "--split-crf":
+                split = split with { RateFactor = NextInt() };
+                break;
+            case "--split-preset":
+                split = split with { Preset = Next() };
+                break;
+            case "--split-args":
+                split = split with { Args = Next() };
+                break;
+            case "--split-expand":
+                split = split with { Expand = true };
+                break;
+            case "--find-tone":
+                findTone = true;
+                break;
+            case "--probe":
+                probe = true;
+                break;
+            case "--probe-json":
+                probeJson = true;
+                break;
+            case "--waveform":
+                waveformPath = Next();
+                break;
+            case "--waveform-zoom":
+                waveform = waveform with { SamplesPerPixel = NextInt() };
+                break;
+            case "--waveform-pixels-per-second":
+                waveform = waveform with { PixelsPerSecond = NextInt() };
+                break;
+            case "--waveform-bits":
+                waveformBits = NextInt() switch
+                {
+                    8 => FrameReader.WaveformBits.Eight,
+                    16 => FrameReader.WaveformBits.Sixteen,
+                    _ => throw new ArgumentException("--waveform-bits is 8 or 16"),
+                };
+                break;
+            case "--waveform-split-channels":
+                waveform = waveform with { SplitChannels = true };
+                break;
+            case "--audio-filter":
+                audioFilter = Next();
+                break;
+            case "--audio-out":
+                audioOut = Next();
+                break;
+            case "--trim-tone":
+                options = options with { TrimReferenceTone = true };
+                break;
+            case "--tone-min-duration":
+                options = options with { ReferenceToneMinDuration = TimeSpan.FromSeconds(NextDouble()) };
+                break;
+            case "--tone-search":
+                options = options with { ReferenceToneSearchDuration = TimeSpan.FromSeconds(NextDouble()) };
+                break;
+            case "--config":
+                i++;
+                break; // read above
+            case "-h" or "--help":
+                Console.WriteLine(Usage);
+                return 0;
+            default:
+                throw new ArgumentException($"Unknown option {args[i]}");
         }
     }
+
     if (input is null)
         throw new ArgumentException("Missing -i <video>");
     if (config is not null)
@@ -291,6 +452,7 @@ try
         foreach (string key in config.Unsupported())
             Console.Error.WriteLine($"Config: {key} isn't supported by ShotDetector; ignored.");
     }
+
     // One -d keeps the single-detector shorthand (a -t given before it still applies); several are combined.
     if (detectorList.Count == 1)
         options = options with { Detectors = [detectorList[0] with { Threshold = detectorList[0].Threshold ?? options.Threshold }] };
@@ -313,6 +475,7 @@ try
         Console.WriteLine(probeJson ? ProbeJson(info) : string.Join(Environment.NewLine, ProbeLines(info)));
         return 0;
     }
+
     if (audioFilter is not null || audioOut is not null)
     {
         if (input == "-")
@@ -328,8 +491,11 @@ try
                 while (filter is not null ? filter.TryRead(out var chunk) : audio.TryRead(out chunk))
                 {
                     if (filter is { Metadata.Count: > 0 })
+                    {
                         Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{chunk.Time.TotalSeconds:0.000}")
                             + string.Concat(filter.Metadata.Select(kv => $" {kv.Key}={kv.Value}")));
+                    }
+
                     if (audioOut is null)
                         continue;
                     writer ??= new FrameReader.AudioWriter(audioOut, new FrameReader.AudioWriterOptions { SampleRate = chunk.SampleRate, Channels = chunk.Channels });
@@ -346,8 +512,10 @@ try
             Console.Error.WriteLine(e.Message);
             return 1;
         }
+
         return 0;
     }
+
     if (waveformPath is not null)
     {
         if (input == "-")
@@ -361,16 +529,20 @@ try
             using (var file = File.Create(waveformPath))
                 data.Save(file, waveformBits);
             if (!quiet)
+            {
                 Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
                     $"{data.Length} points, {data.SamplesPerPixel} samples each at {data.SampleRate} Hz, {data.Channels} channel(s): {waveformPath}"));
+            }
         }
         catch (FrameReader.FrameReaderException e)
         {
             Console.Error.WriteLine(e.Message);
             return 1;
         }
+
         return 0;
     }
+
     if (findTone)
     {
         if (input == "-")
@@ -379,34 +551,48 @@ try
             Console.WriteLine(line);
         return 0;
     }
+
     // A live percentage on stderr, only when it's a terminal (not when output is redirected).
     if (!Console.IsErrorRedirected)
-        options = options with { Progress = new SyncProgress<DetectionProgress>(p => Console.Error.Write(
-            p.Fraction is { } f ? $"\r{f:P0} ({p.FramesProcessed} frames)  " : $"\r{p.FramesProcessed} frames  ")) };
+    {
+        options = options with
+        {
+            Progress = new SyncProgress<DetectionProgress>(p => Console.Error.Write(
+            p.Fraction is { } f ? $"\r{f:P0} ({p.FramesProcessed} frames)  " : $"\r{p.FramesProcessed} frames  ")),
+        };
+    }
+
     var result = loadScenes is not null ? ShotDetection.LoadScenes(input, loadScenes, loadColumn!, options)
         : input == "-" ? ShotDetection.Detect(Console.OpenStandardInput(), options)
         : ShotDetection.Detect(input, options);
     if (!Console.IsErrorRedirected)
         Console.Error.Write("\r" + new string(' ', 40) + "\r");
     var video = result.Video;
+
     // Output paths: $VIDEO_NAME expanded, relative ones under -o.
     string videoName = input == "-" ? "stdin" : Path.GetFileNameWithoutExtension(input);
-    string? Out(string? path) => path is null ? null
+    string? Out(string? path) => path is null
+        ? null
         : Path.Combine(outputDir ?? "", path.Replace("$VIDEO_NAME", videoName).Replace("${VIDEO_NAME}", videoName));
     (csvPath, jsonPath, statsPath, imagesDir, htmlPath, splitDir) = (Out(csvPath), Out(jsonPath), Out(statsPath), Out(imagesDir), Out(htmlPath), Out(splitDir));
     (edlPath, fcpPath, otioPath, qpPath) = (Out(edlPath), Out(fcpPath), Out(otioPath), Out(qpPath));
     foreach (var file in new[] { csvPath, jsonPath, statsPath, htmlPath, edlPath, fcpPath, otioPath, qpPath })
+    {
         if (file is not null && Path.GetDirectoryName(Path.GetFullPath(file)) is { } dir)
             Directory.CreateDirectory(dir);
+    }
+
     Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
-        $"{(input == "-" ? "stdin" : Path.GetFileName(input))}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, " +
-        $"{result.FrameCount} frames, processed at {video.Width}x{video.Height}, " +
-        $"detector={string.Join('+', (options.Detectors?.Select(d => d.Kind) ?? [options.Detector]).Select(k => k.ToString().ToLowerInvariant()))}, " +
-        $"min-scene-len={result.MinSceneLengthFrames} frames, decoded {(video.DecodesInProcess ? "in-process" : "by ffmpeg")}"));
+        $"{(input == "-" ? "stdin" : Path.GetFileName(input))}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, "
+        + $"{result.FrameCount} frames, processed at {video.Width}x{video.Height}, "
+        + $"detector={string.Join('+', (options.Detectors?.Select(d => d.Kind) ?? [options.Detector]).Select(k => k.ToString().ToLowerInvariant()))}, "
+        + $"min-scene-len={result.MinSceneLengthFrames} frames, decoded {(video.DecodesInProcess ? "in-process" : "by ffmpeg")}"));
 
     if (result.ReferenceTone is { } tone)
+    {
         foreach (var line in ToneLines(tone))
             Console.Error.WriteLine(line);
+    }
 
     if (!quiet)
         Console.WriteLine(Shots.Table(result.Shots));
@@ -416,6 +602,7 @@ try
         File.WriteAllText(jsonPath, Shots.Json(result.Shots));
     if (statsPath is not null)
         File.WriteAllText(statsPath, result.Stats!.Csv(video.Position));
+
     // save-html includes thumbnails by default; like scenedetect, it saves them (next to the page) if
     // save-images wasn't asked for.
     if (htmlPath is not null && !htmlNoImages)
@@ -426,15 +613,18 @@ try
         saved = Export.SaveImages(result, imagesDir, images);
         Console.Error.WriteLine($"Saved {saved.Count} images to {imagesDir}");
     }
+
     if (htmlPath is not null)
     {
         // Image links relative to the page, grouped per shot (SaveImages writes NumImages per shot, in order).
         string pageDir = Path.GetDirectoryName(Path.GetFullPath(htmlPath))!;
-        var perShot = htmlNoImages || saved is null ? null
+        var perShot = htmlNoImages || saved is null
+            ? null
             : saved.Select(f => Path.GetRelativePath(pageDir, f)).Chunk(images.NumImages).Select(c => (IReadOnlyList<string>)c).ToList();
         File.WriteAllText(htmlPath, Shots.Html(result.Shots, perShot, htmlWidth, htmlHeight, result.Cuts));
         Console.Error.WriteLine($"Wrote {htmlPath}");
     }
+
     if (edlPath is not null)
         File.WriteAllText(edlPath, Timeline.Edl(result, edlTitle, edlReel!, edlStart));
     if (fcpPath is not null && result.Shots.Count > 0)
@@ -458,8 +648,8 @@ catch (InvalidOperationException e)
     return 1;
 }
 
-
-static IEnumerable<string> ToneLines(IReadOnlyList<ReferenceToneSegment> tone) => tone.Count == 0 ? ["No reference tone"]
+static IEnumerable<string> ToneLines(IReadOnlyList<ReferenceToneSegment> tone) => tone.Count == 0
+    ? ["No reference tone"]
     : tone.Select(t => string.Create(CultureInfo.InvariantCulture,
         $"Reference tone: {t.Start:hh\\:mm\\:ss\\.fff} - {t.End:hh\\:mm\\:ss\\.fff} ({(t.End - t.Start).TotalSeconds:0.00} s) at {t.Level:0.0} dBFS"));
 
@@ -507,12 +697,20 @@ static string ProbeJson(VideoInfo v)
     {
         static void Time(System.Text.Json.Utf8JsonWriter j, string name, TimeSpan? t)
         {
-            if (t is { } x) j.WriteNumber(name, Math.Round(x.TotalSeconds, 6)); else j.WriteNull(name);
+            if (t is { } x)
+                j.WriteNumber(name, Math.Round(x.TotalSeconds, 6));
+            else
+                j.WriteNull(name);
         }
+
         static void Int(System.Text.Json.Utf8JsonWriter j, string name, long? n)
         {
-            if (n is { } x) j.WriteNumber(name, x); else j.WriteNull(name);
+            if (n is { } x)
+                j.WriteNumber(name, x);
+            else
+                j.WriteNull(name);
         }
+
         j.WriteStartObject();
         j.WriteString("container", v.Container);
         Time(j, "duration", v.Duration);
@@ -526,7 +724,10 @@ static string ProbeJson(VideoInfo v)
         j.WriteString("fieldOrder", char.ToLowerInvariant(v.FieldOrder.ToString()[0]) + v.FieldOrder.ToString()[1..]); // progressive, topFirst, ...
         j.WriteNumber("rotation", v.Rotation);
         j.WriteEndObject();
-        if (v.HasAudio is { } a) j.WriteBoolean("hasAudio", a); else j.WriteNull("hasAudio");
+        if (v.HasAudio is { } a)
+            j.WriteBoolean("hasAudio", a);
+        else
+            j.WriteNull("hasAudio");
         j.WriteStartArray("streams");
         foreach (var s in v.Streams ?? [])
         {
@@ -549,9 +750,11 @@ static string ProbeJson(VideoInfo v)
             j.WriteString("sampleFormat", s.SampleFormat);
             j.WriteEndObject();
         }
+
         j.WriteEndArray();
         j.WriteEndObject();
     }
+
     return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
 }
 
@@ -575,7 +778,8 @@ DetectorSettings FromConfig(Config c, DetectorSettings d)
         Threshold = d.Threshold ?? (Free("-t", "--threshold") ? c.Double(section, "threshold") : null),
         MinSceneLength = d.MinSceneLength ?? c.Time(section, "min-scene-len"),
         FilterMode = d.FilterMode ?? (Free("--filter-mode") && c.Get(section, "filter-mode") is { } fm
-            ? (fm.Trim().ToLowerInvariant() == "suppress" ? FlashFilterMode.Suppress : FlashFilterMode.Merge) : null),
+            ? (fm.Trim().ToLowerInvariant() == "suppress" ? FlashFilterMode.Suppress : FlashFilterMode.Merge)
+            : null),
         Weights = Free("-w", "--weights") ? c.Weights(section, "weights") : null,
         LumaOnly = Free("-l", "--luma-only") ? c.Bool(section, "luma-only") : null,
         KernelSize = Free("-k", "--kernel-size") && c.Int(section, "kernel-size") is { } ks && ks > 0 ? ks : null,

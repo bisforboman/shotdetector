@@ -47,9 +47,14 @@ public class MediaProbeTests
                 File.Move(plain, path);
 
             var info = MediaProbe.Probe(path, new ProbeOptions { PacketTimestamps = true });
-            using var json = JsonDocument.Parse(Run("ffprobe", "-v", "error", "-show_entries",
+            using var json = JsonDocument.Parse(Run("ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
                 "stream=index,codec_type,codec_name,width,height,pix_fmt,color_range,color_space,field_order,r_frame_rate,avg_frame_rate,time_base,start_pts,duration_ts,nb_frames:stream_side_data=rotation:format=format_name,duration",
-                "-of", "json", path));
+                "-of",
+                "json",
+                path));
             var streams = json.RootElement.GetProperty("streams").EnumerateArray().ToList();
             var video = streams.First(s => s.GetProperty("codec_type").GetString() == "video");
             string? S(string key) => video.TryGetProperty(key, out var v) ? v.ToString() : null;
@@ -68,8 +73,12 @@ public class MediaProbeTests
             Assert.Equal(S("nb_frames"), v.FrameCount?.ToString(CultureInfo.InvariantCulture));
             Assert.Equal(S("field_order") ?? "unknown", v.FieldOrder switch
             {
-                FieldOrder.Progressive => "progressive", FieldOrder.TopFirst => "tt", FieldOrder.BottomFirst => "bb",
-                FieldOrder.TopCodedBottomFirst => "tb", FieldOrder.BottomCodedTopFirst => "bt", _ => "unknown",
+                FieldOrder.Progressive => "progressive",
+                FieldOrder.TopFirst => "tt",
+                FieldOrder.BottomFirst => "bb",
+                FieldOrder.TopCodedBottomFirst => "tb",
+                FieldOrder.BottomCodedTopFirst => "bt",
+                _ => "unknown",
             });
             int? rotation = video.TryGetProperty("side_data_list", out var sd)
                 ? sd.EnumerateArray().Where(e => e.TryGetProperty("rotation", out _)).Select(e => (int?)e.GetProperty("rotation").GetInt32()).FirstOrDefault()

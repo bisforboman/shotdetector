@@ -42,7 +42,11 @@ internal sealed class HashDetector(
         {
             int distance = 0;
             for (int i = 0; i < hash.Length; i++)
-                if (hash[i] != _lastHash[i]) distance++;
+            {
+                if (hash[i] != _lastHash[i])
+                    distance++;
+            }
+
             double normalized = distance / (double)(size * size);
             Stats?.Set(frame, _key, normalized);
             if (normalized >= threshold && position(frame).Minus(position(_lastCut.Value)).FrameNum >= minSceneLen)
@@ -51,6 +55,7 @@ internal sealed class HashDetector(
                 _lastCut = frame;
             }
         }
+
         _lastHash = hash;
         return cut;
     }
@@ -71,6 +76,7 @@ internal sealed class HashDetector(
     {
         Gray(bgr, _gray);
         AreaResize.Resize(_gray, _width, _height, _small, _n, _n);
+
         // numpy.float32(img) / max: float32 division (max 0 → 1).
         int max = 0;
         foreach (byte v in _small)
@@ -82,6 +88,7 @@ internal sealed class HashDetector(
         // Low size×size block of the 2D DCT-II (orthonormal, like cv2.dct): C_low · x · C_lowᵀ.
         int n = _n;
         for (int y = 0; y < n; y++)
+        {
             for (int k = 0; k < size; k++)
             {
                 double sum = 0;
@@ -89,7 +96,10 @@ internal sealed class HashDetector(
                     sum += _norm[y * n + x] * _cos[k, x];
                 _tmp[y * size + k] = sum;
             }
+        }
+
         for (int j = 0; j < size; j++)
+        {
             for (int k = 0; k < size; k++)
             {
                 double sum = 0;
@@ -97,6 +107,7 @@ internal sealed class HashDetector(
                     sum += _cos[j, y] * _tmp[y * size + k];
                 _low[j * size + k] = (float)sum;
             }
+        }
 
         // numpy.median of float32: mean of the two middle values, in float32.
         var sorted = (float[])_low.Clone();
@@ -121,8 +132,11 @@ internal sealed class HashDetector(
     {
         var c = new double[rows, n];
         for (int k = 0; k < rows; k++)
+        {
             for (int x = 0; x < n; x++)
                 c[k, x] = Math.Sqrt(2.0 / n) * (k == 0 ? Math.Sqrt(0.5) : 1.0) * Math.Cos(Math.PI * (2 * x + 1) * k / (2.0 * n));
+        }
+
         return c;
     }
 }
@@ -141,6 +155,7 @@ internal static class AreaResize
             ResizeFast(src, sw, dst, dw, dh, sw / dw, sh / dh);
             return;
         }
+
         var xtab = Table(sw, dw);
         var ytab = Table(sh, dh);
         Span<float> acc = stackalloc float[dw];
@@ -154,6 +169,7 @@ internal static class AreaResize
                 acc.Clear();
                 currentDy = dy;
             }
+
             buf.Clear();
             var row = src.Slice(sy * sw, sw);
             foreach (var (dx, sx, alpha) in xtab)
@@ -161,6 +177,7 @@ internal static class AreaResize
             for (int dx = 0; dx < dw; dx++)
                 acc[dx] += buf[dx] * beta;
         }
+
         Store(acc, dst.Slice(currentDy * dw, dw));
     }
 
@@ -172,16 +189,21 @@ internal static class AreaResize
     {
         float scale = 1f / (scaleX * scaleY);
         for (int dy = 0; dy < dh; dy++)
+        {
             for (int dx = 0; dx < dw; dx++)
             {
                 int sum = 0;
                 for (int y = dy * scaleY; y < (dy + 1) * scaleY; y++)
+                {
                     for (int x = dx * scaleX; x < (dx + 1) * scaleX; x++)
                         sum += src[y * sw + x];
+                }
+
                 dst[dy * dw + dx] = scaleX == 2 && scaleY == 2
                     ? (byte)((sum + 2) >> 2)
                     : (byte)Math.Clamp(Math.Round(sum * scale, MidpointRounding.ToEven), 0, 255);
             }
+        }
     }
 
     static void Store(ReadOnlySpan<float> acc, Span<byte> row)
@@ -209,6 +231,7 @@ internal static class AreaResize
             if (fsx2 - sx2 > 1e-3)
                 tab.Add((dx, sx2, (float)(Math.Min(Math.Min(fsx2 - sx2, 1.0), cell) / cell)));
         }
+
         return tab;
     }
 }

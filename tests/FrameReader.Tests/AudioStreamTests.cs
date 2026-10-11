@@ -30,7 +30,9 @@ public class AudioStreamTests
                     f.CopyTo(p.StandardInput.BaseStream);
                 p.StandardInput.Close();
             }
-            catch (IOException) { } // ffmpeg may stop reading early
+            catch (IOException)
+            {
+            } // ffmpeg may stop reading early
         });
         var output = new MemoryStream();
         p.StandardOutput.BaseStream.CopyTo(output);
@@ -44,16 +46,25 @@ public class AudioStreamTests
     sealed class Pipe(string path) : Stream
     {
         readonly FileStream _file = File.OpenRead(path);
+
         public override bool CanRead => true;
         public override bool CanSeek => false;
         public override bool CanWrite => false;
         public override long Length => throw new NotSupportedException();
         public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
         public override int Read(byte[] buffer, int offset, int count) => _file.Read(buffer, offset, count);
-        public override void Flush() { }
+
+        public override void Flush()
+        {
+        }
+
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
         public override void SetLength(long value) => throw new NotSupportedException();
+
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
@@ -80,6 +91,7 @@ public class AudioStreamTests
         try
         {
             string path = Path.Combine(dir, name);
+
             // A tone, then a different one with noise, so filters, statistics and peaks have something to show.
             Ffmpeg(null, ["-v", "error", "-y", "-f", "lavfi", "-i",
                 "aevalsrc='if(lt(t,1.5),0.4*sin(440*2*PI*t),0.3*sin(2500*2*PI*t)+0.1*random(0))':s=48000:d=4", .. encode.Split(' '), path]);
@@ -133,6 +145,7 @@ public class AudioStreamTests
             byte[] samples = Samples(filter);
             return (samples, string.Join(";", filter.Metadata.Select(kv => kv.Key + "=" + kv.Value)));
         }
+
         using var file = new AudioReader(path);
         using var stream = new Pipe(path);
         using var piped = new AudioReader(stream);
@@ -155,6 +168,7 @@ public class AudioStreamTests
                 windows.Add(w.Time.Ticks + ":" + string.Join(",", w.Channels.ToArray().Select(m => $"{m.Mean:R}/{m.Centroid:R}/{m.Flux:R}/{m.Rolloff:R}")));
             return windows;
         }
+
         using var file = new AudioReader(path);
         using var stream = new Pipe(path);
         using var piped = new AudioReader(stream);
@@ -173,6 +187,7 @@ public class AudioStreamTests
             WaveformData.Read(reader).Save(output);
             return output.ToArray();
         }
+
         using var file = new AudioReader(path);
         using var stream = new Pipe(path);
         using var piped = new AudioReader(stream);

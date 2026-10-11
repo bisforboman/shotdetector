@@ -27,23 +27,27 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : I
             stride = s;
             return bgr;
         }
+
         int w = _d.Width, h = _d.Height, ow = _turn == 180 ? w : h, oh = _turn == 180 ? h : w;
         if (_turned.Length != ow * oh * 3)
             _turned = new byte[ow * oh * 3];
         fixed (byte* src = bgr)
-        fixed (byte* dst = _turned)
         {
-            for (int y = 0; y < oh; y++)
+            fixed (byte* dst = _turned)
             {
-                byte* d = dst + (long)y * ow * 3;
-                for (int x = 0; x < ow; x++, d += 3)
+                for (int y = 0; y < oh; y++)
                 {
-                    var (sx, sy) = Source(x, y, w, h);
-                    byte* p = src + (long)sy * s + sx * 3;
-                    (d[0], d[1], d[2]) = (p[0], p[1], p[2]);
+                    byte* d = dst + (long)y * ow * 3;
+                    for (int x = 0; x < ow; x++, d += 3)
+                    {
+                        var (sx, sy) = Source(x, y, w, h);
+                        byte* p = src + (long)sy * s + sx * 3;
+                        (d[0], d[1], d[2]) = (p[0], p[1], p[2]);
+                    }
                 }
             }
         }
+
         stride = ow * 3;
         return _turned;
     }
@@ -65,13 +69,16 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : I
                     plane.Slice(y * stride, pw).CopyTo(dst.AsSpan(o));
                 continue;
             }
+
             int ow = _turn == 180 ? pw : ph, oh = _turn == 180 ? ph : pw;
             for (int y = 0; y < oh; y++)
+            {
                 for (int x = 0; x < ow; x++)
                 {
                     var (sx, sy) = Source(x, y, pw, ph);
                     dst[o++] = plane[sy * stride + sx];
                 }
+            }
         }
     }
 
@@ -120,6 +127,7 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : I
             runs.Add((columns[i], j - i));
             i = j;
         }
+
         return [.. runs];
     }
 
@@ -137,25 +145,42 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : I
         var converted = Converted(out int stride);
         if (_toSize == null)
         {
-            _toSize = ffmpeg.sws_getContext(crop.Width, crop.Height, AVPixelFormat.AV_PIX_FMT_BGR24, width, height,
-                AVPixelFormat.AV_PIX_FMT_BGR24, (int)SwsFlags.SWS_BILINEAR, null, null, null);
+            _toSize = ffmpeg.sws_getContext(crop.Width,
+                crop.Height,
+                AVPixelFormat.AV_PIX_FMT_BGR24,
+                width,
+                height,
+                AVPixelFormat.AV_PIX_FMT_BGR24,
+                (int)SwsFlags.SWS_BILINEAR,
+                null,
+                null,
+                null);
             if (_toSize == null)
                 throw new ShotDetectionException(ShotDetectionError.DecodeFailed, "Can't set up the scaler.");
         }
+
         int[] srcStride = [stride, 0, 0, 0];
         fixed (byte* bgr = converted)
-        fixed (byte* d = dst)
         {
-            byte*[] src = [bgr + crop.Y * stride + crop.X * 3, null, null, null];
-            byte*[] dstPlanes = [d, null, null, null];
-            int[] dstStride = [width * 3, 0, 0, 0];
-            ffmpeg.sws_scale(_toSize, src, srcStride, 0, crop.Height, dstPlanes, dstStride);
+            fixed (byte* d = dst)
+            {
+                byte*[] src = [bgr + crop.Y * stride + crop.X * 3, null, null, null];
+                byte*[] dstPlanes = [d, null, null, null];
+                int[] dstStride = [width * 3, 0, 0, 0];
+                ffmpeg.sws_scale(_toSize, src, srcStride, 0, crop.Height, dstPlanes, dstStride);
+            }
         }
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
-        if (_toSize != null) { ffmpeg.sws_freeContext(_toSize); _toSize = null; }
+        if (_toSize != null)
+        {
+            ffmpeg.sws_freeContext(_toSize);
+            _toSize = null;
+        }
+
         _bgr.Dispose();
     }
 }

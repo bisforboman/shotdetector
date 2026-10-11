@@ -12,7 +12,7 @@ public class RemuxTests
     static void Ffmpeg(params string[] args)
     {
         var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
-            { RedirectStandardOutput = true, RedirectStandardError = true };
+        { RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args)
             psi.ArgumentList.Add(a);
         using var p = Process.Start(psi)!;
@@ -43,6 +43,7 @@ public class RemuxTests
             string input = Path.Combine(dir, source), expected = Path.Combine(dir, "expected-" + output), actual = Path.Combine(dir, output);
             Ffmpeg(["-v", "error", "-y", .. Make.Split(' '), .. make.Split(' '), input]);
             Ffmpeg(["-v", "error", "-y", "-i", input, .. map.Split(' '), "-c", "copy", "-fflags", "+bitexact", expected]);
+
             // "-map 0:a:0" is the first audio stream: by index there.
             var options = map == "-map 0:a:0"
                 ? new RemuxOptions { StreamIndices = [1], Bitexact = true }

@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Pipes;
 using System.Numerics;
-using System.Globalization;
 
 namespace ShotDetector;
 
@@ -11,10 +11,13 @@ public enum FramePipeline
 {
     /// <summary>ffmpeg downscales (bilinear): fastest, but not what PySceneDetect computes.</summary>
     FfmpegScale,
+
     /// <summary>ffmpeg sends full-size BGR frames and <c>cv2.resize</c>'s port downscales them exactly.</summary>
     FullFrameResize,
+
     /// <summary>ffmpeg converts whole frames to BGR as above but sends only the pixels the exact resize reads (its remap filter): same result, a fraction of the bytes.</summary>
     SampledBgr,
+
     /// <summary>ffmpeg sends raw yuv420p; only the pixels the resize reads are converted (needs an <see cref="IYuv420Converter"/>).</summary>
     Yuv420Sampled,
 }
@@ -62,7 +65,10 @@ public readonly record struct Fps(int Num, int Den)
         long bits = BitConverter.DoubleToInt64Bits(x);
         int exponent = (int)((bits >> 52) & 0x7FF) - 1075;
         BigInteger n = (bits & 0xF_FFFF_FFFF_FFFF) | (1L << 52), d = BigInteger.One;
-        if (exponent > 0) n <<= exponent; else d <<= -exponent;
+        if (exponent > 0)
+            n <<= exponent;
+        else
+            d <<= -exponent;
         var g = BigInteger.GreatestCommonDivisor(n, d);
         (n, d) = (n / g, d / g);
         if (d <= maxDen)
@@ -73,12 +79,15 @@ public readonly record struct Fps(int Num, int Den)
         {
             var a = BigInteger.Divide(n, d);
             var q2 = q0 + a * q1;
-            if (q2 > maxDen) break;
+            if (q2 > maxDen)
+                break;
             (p0, q0, p1, q1) = (p1, q1, p0 + a * p1, q2);
             (n, d) = (d, n - a * d);
         }
+
         var k = (maxDen - q0) / q1;
         var (bp, bq) = (p0 + k * p1, q0 + k * q1);
+
         // Pick p1/q1 if it is at least as close to num0/den0 as bp/bq (exact comparison).
         var err2 = BigInteger.Abs(p1 * den0 - num0 * q1) * bq;
         var err1 = BigInteger.Abs(bp * den0 - num0 * bq) * q1;
@@ -98,14 +107,19 @@ public sealed partial class VideoReader
 {
     /// <summary>Width of the video.</summary>
     public int SourceWidth { get; }
+
     /// <summary>Height of the video.</summary>
     public int SourceHeight { get; }
+
     /// <summary>Width of the frames the detectors see (downscaled like PySceneDetect).</summary>
     public int Width { get; }
+
     /// <summary>Height of the frames the detectors see.</summary>
     public int Height { get; }
+
     /// <summary>Frame rate as OpenCV reports it to PySceneDetect (the average rate).</summary>
     public Fps Fps { get; }
+
     /// <summary>Container frame count from ffprobe; may be missing (0) or approximate.</summary>
     internal long FrameCountHint { get; }
 
@@ -127,9 +141,18 @@ public sealed partial class VideoReader
     /// <summary>These properties as a <see cref="VideoInfo"/>.</summary>
     public VideoInfo Info => new()
     {
-        Width = SourceWidth, Height = SourceHeight, FrameRate = Fps, FrameCount = OpenCvFrameCount > 0 ? OpenCvFrameCount : null,
-        Duration = Duration, Codec = Codec, PixelFormat = _pixelFormat, FieldOrder = FieldOrder, Rotation = _rotation,
-        Container = Container, HasAudio = HasAudio, Streams = Streams,
+        Width = SourceWidth,
+        Height = SourceHeight,
+        FrameRate = Fps,
+        FrameCount = OpenCvFrameCount > 0 ? OpenCvFrameCount : null,
+        Duration = Duration,
+        Codec = Codec,
+        PixelFormat = _pixelFormat,
+        FieldOrder = FieldOrder,
+        Rotation = _rotation,
+        Container = Container,
+        HasAudio = HasAudio,
+        Streams = Streams,
     };
 
     /// <summary>FFmpeg's name for the container (its demuxer).</summary>
@@ -143,8 +166,10 @@ public sealed partial class VideoReader
     /// (in-process when the libraries load, else one ffprobe call: for a URL, another request), as detection doesn't
     /// need it.
     /// </summary>
-    public IReadOnlyList<StreamInfo>? Streams => _stream is not null ? null
+    public IReadOnlyList<StreamInfo>? Streams => _stream is not null
+        ? null
         : _streams ??= _probesInProcess ? InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions) : FfprobeStreams();
+
     IReadOnlyList<StreamInfo>? _streams;
 
     /// <summary>The ffprobe entries <see cref="Streams"/> reads.</summary>
@@ -172,8 +197,12 @@ public sealed partial class VideoReader
                 Index = Int("index") ?? result.Count,
                 Type = type switch
                 {
-                    "video" => StreamType.Video, "audio" => StreamType.Audio, "subtitle" => StreamType.Subtitle,
-                    "data" => StreamType.Data, "attachment" => StreamType.Attachment, _ => StreamType.Unknown,
+                    "video" => StreamType.Video,
+                    "audio" => StreamType.Audio,
+                    "subtitle" => StreamType.Subtitle,
+                    "data" => StreamType.Data,
+                    "attachment" => StreamType.Attachment,
+                    _ => StreamType.Unknown,
                 },
                 Codec = Text(s, "codec_name") ?? "unknown",
                 CodecTag = Text(s, "codec_tag_string") ?? "",
@@ -191,12 +220,14 @@ public sealed partial class VideoReader
                 SampleFormat = type == "audio" ? Text(s, "sample_fmt") : null,
             });
         }
+
         return result;
     }
 
     /// <summary>ffprobe's printed seconds (six decimals) as a TimeSpan; null for N/A.</summary>
     internal static TimeSpan? Seconds(string? text) =>
         double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double s) ? TimeSpan.FromSeconds(s) : null;
+
     readonly string _ffprobe;
 
     /// <summary>Which PySceneDetect release's frame rate, downscaling and positions this reader reproduces.</summary>
@@ -237,6 +268,7 @@ public sealed partial class VideoReader
     readonly IYadif? _yadif;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
     readonly List<long> _livePts = []; // the same, as frames arrive, when streaming (from the stream's start)
+
     // For a file in 0.7.1 mode: the packet (index into _pts) of each decoded frame since _liveStart. Normally
     // frame i is packet i, but a decoder drops frames it can't decode (corrupt data), and OpenCV then labels
     // every later frame by its own time, so frame numbers skip. Read from showinfo, as frames arrive.
@@ -254,7 +286,9 @@ public sealed partial class VideoReader
     /// <param name="options">Uses FfmpegResize, DecodeThreads, Yuv420Converter, Compatibility, Crop, FfmpegDirectory, Streaming and ProbeBytes.</param>
     /// <param name="cancellationToken">Cancels the ffprobe run (the process is killed).</param>
     internal VideoReader(string path, DetectionOptions? options = null, CancellationToken cancellationToken = default)
-        : this(path, null, options, cancellationToken) { }
+        : this(path, null, options, cancellationToken)
+    {
+    }
 
     /// <summary>Probes only the headers (no packet timestamps): for <see cref="ShotDetection.Probe(string, DetectionOptions?, CancellationToken)"/>.</summary>
     internal static VideoReader Headers(string path, DetectionOptions? options, CancellationToken cancellationToken) =>
@@ -265,13 +299,21 @@ public sealed partial class VideoReader
     /// <param name="options">See <see cref="VideoReader(string, DetectionOptions?, CancellationToken)"/>.</param>
     /// <param name="cancellationToken">Cancels the ffprobe run (the process is killed).</param>
     internal VideoReader(Stream video, DetectionOptions? options = null, CancellationToken cancellationToken = default)
-        : this("pipe:0", video, options, cancellationToken) { }
+        : this("pipe:0", video, options, cancellationToken)
+    {
+    }
 
     /// <summary>A Stream whose first bytes (<paramref name="prefix"/>) were already read from it.</summary>
     internal VideoReader(Stream video, byte[] prefix, DetectionOptions? options, CancellationToken cancellationToken)
-        : this("pipe:0", video, options, cancellationToken, prefix: prefix) { }
+        : this("pipe:0", video, options, cancellationToken, prefix: prefix)
+    {
+    }
 
-    VideoReader(string path, Stream? video, DetectionOptions? options, CancellationToken cancellationToken, bool headersOnly = false,
+    VideoReader(string path,
+        Stream? video,
+        DetectionOptions? options,
+        CancellationToken cancellationToken,
+        bool headersOnly = false,
         byte[]? prefix = null)
     {
         var o = options ?? new DetectionOptions();
@@ -288,18 +330,22 @@ public sealed partial class VideoReader
         _ffmpegDirectory = o.FfmpegDirectory;
         FfmpegExe = Executable(o.FfmpegDirectory, "ffmpeg");
         Streaming = video is not null || o.Streaming || IsUrl(path);
+
         // scenedetect's frame rate override; an image sequence (no timestamps of its own) is read at that rate.
         Fps? frameRate = o.FrameRate is not { } fr ? null
             : fr <= 0 ? throw new ArgumentException("FrameRate must be positive.")
             : Fps.FromFloat(fr);
         _inputOptions = frameRate is { } r && video is null && path.Contains('%') && !IsUrl(path)
-            ? ["-framerate", $"{r.Num}/{r.Den}"] : [];
+            ? ["-framerate", $"{r.Num}/{r.Den}"]
+            : [];
+
         // One demux-only pass: stream properties, plus every packet's pts for a file (no decoding).
         // A Stream is probed from its first bytes, which are kept to feed ffmpeg later.
         string entries = ProbeEntries + (Streaming || headersOnly ? "" : ":packet=pts");
         string ffprobe = _ffprobe = Executable(o.FfmpegDirectory, "ffprobe");
         string[] probeArgs = ["-v", "error", .. _inputOptions, "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", path];
         string probed;
+
         // A file, with FFmpeg's libraries available (as for decoding in-process): read the same with them, no ffprobe.
         // A Stream too: its first bytes, as ffprobe reads them from stdin.
         _probesInProcess = (video is not null || !Streaming) && _decoder != VideoDecoder.FfmpegProcess
@@ -317,7 +363,9 @@ public sealed partial class VideoReader
             }
         }
         else if (_probesInProcess)
+        {
             probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly, _inputOptions);
+        }
         else if (video is not null)
         {
             _prefix = prefix ?? ReadPrefix(video, o.ProbeBytes, cancellationToken);
@@ -331,27 +379,38 @@ public sealed partial class VideoReader
             }
         }
         else
+        {
             probed = Run(ffprobe, probeArgs, cancellationToken);
+        }
+
         var stream = new Dictionary<string, string>();
         var pts = new List<long>();
         bool missingPts = false;
         foreach (var line in probed.Split('\n', StringSplitOptions.TrimEntries))
         {
             int eq = line.IndexOf('=');
-            if (eq < 0) continue;
+            if (eq < 0)
+                continue;
             string key = line[..eq], value = line[(eq + 1)..];
             if (key == "pts")
             {
-                if (long.TryParse(value, CultureInfo.InvariantCulture, out long p)) pts.Add(p); else missingPts = true;
+                if (long.TryParse(value, CultureInfo.InvariantCulture, out long p))
+                    pts.Add(p);
+                else
+                    missingPts = true;
             }
             else
+            {
                 stream[key] = value;
+            }
         }
+
         if (!stream.ContainsKey("width"))
             throw new ShotDetectionException(ShotDetectionError.InvalidInput, $"The input has no video stream: {path}");
         SourceWidth = int.Parse(stream["width"], CultureInfo.InvariantCulture);
         SourceHeight = int.Parse(stream["height"], CultureInfo.InvariantCulture);
         _codedSize = (SourceWidth, SourceHeight);
+
         // Phone video is often stored sideways with a rotation tag. ffmpeg and OpenCV both rotate it
         // upright when decoding, so for ±90° the frames we get (and OpenCV's reported size) are
         // height x width.
@@ -359,18 +418,22 @@ public sealed partial class VideoReader
             _rotation = (int)Math.Round(rotation) % 360;
         if (Math.Abs(_rotation) % 180 == 90)
             (SourceWidth, SourceHeight) = (SourceHeight, SourceWidth);
+
         // OpenCV's CAP_PROP_FPS is the average frame rate (the nominal one only if that is unknown),
         // which matters for variable frame rate video.
         var avg = Fps.Parse(stream.GetValueOrDefault("avg_frame_rate", "0/0"));
         var rate = avg.Num > 0 && avg.Den > 0 ? avg : Fps.Parse(stream["r_frame_rate"]);
+
         // scenedetect turns it into a clean fraction (framerate_to_fraction).
         Fps = frameRate ?? Fps.FromFloat(rate.Value);
         FrameCountHint = long.TryParse(stream.GetValueOrDefault("nb_frames"), out var n) ? n : 0;
+
         // OpenCV's CAP_PROP_FRAME_COUNT: the stream's frame count, else round(duration * fps), where the
         // duration is the container's (format=duration is printed after the stream's, so it wins here).
         OpenCvFrameCount = FrameCountHint > 0 ? FrameCountHint
             : double.TryParse(stream.GetValueOrDefault("duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out double secs)
                 ? (long)Math.Floor(secs * rate.Value + 0.5) : 0;
+
         // Crop like scenedetect: inclusive corners. The "effective size" its downscale factor comes
         // from is one pixel larger than the crop in both directions (its crop setter adds 1 to the far
         // corner and detect_scenes adds 1 again), while the frame is sliced to the real crop. Reproduced as is.
@@ -386,26 +449,35 @@ public sealed partial class VideoReader
             CropRegion = (minX, minY, Math.Min(maxX + 1, SourceWidth) - minX, Math.Min(maxY + 1, SourceHeight) - minY);
             effective = (CropRegion.Width + 1, CropRegion.Height + 1);
         }
+
         (Width, Height) = o.Downscale is { } d
-            ? d <= 1 ? (CropRegion.Width, CropRegion.Height)
+            ? d <= 1
+                ? (CropRegion.Width, CropRegion.Height)
                 : (Math.Max(1, (int)Math.Round(CropRegion.Width / (double)d)), Math.Max(1, (int)Math.Round(CropRegion.Height / (double)d)))
-            : DownscaledSize(effective.Item1, effective.Item2, CropRegion.Width, CropRegion.Height);
+            : DownscaledSize(effective.SourceWidth, effective.SourceHeight, CropRegion.Width, CropRegion.Height);
         _pixelFormat = stream.GetValueOrDefault("pix_fmt", "");
+
         // Where the chroma samples sit, which OpenCV's converter (sws_scale_frame) takes from the frame; ffmpeg's command
         // line loses it on the way to its filters, so the scale filter is told (scenedetect's 10-bit frames, issue-free
         // for 8-bit 4:2:0, whose unscaled conversion doesn't interpolate chroma).
         _chromaLocation = stream.GetValueOrDefault("chroma_location") is { } loc and not ("unspecified" or "unknown" or "") ? loc : null;
         FieldOrder = stream.GetValueOrDefault("field_order") switch
         {
-            "progressive" => FieldOrder.Progressive, "tt" => FieldOrder.TopFirst, "bb" => FieldOrder.BottomFirst,
-            "tb" => FieldOrder.TopCodedBottomFirst, "bt" => FieldOrder.BottomCodedTopFirst, _ => FieldOrder.Unknown,
+            "progressive" => FieldOrder.Progressive,
+            "tt" => FieldOrder.TopFirst,
+            "bb" => FieldOrder.BottomFirst,
+            "tb" => FieldOrder.TopCodedBottomFirst,
+            "bt" => FieldOrder.BottomCodedTopFirst,
+            _ => FieldOrder.Unknown,
         };
         Codec = stream.GetValueOrDefault("codec_name", "");
         Container = stream.GetValueOrDefault("format_name", "");
         Duration = double.TryParse(stream.GetValueOrDefault("duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out double length)
-            ? TimeSpan.FromSeconds(length) : null;
+            ? TimeSpan.FromSeconds(length)
+            : null;
         _deinterlace = o.Deinterlace == DeinterlaceMode.On
-            || o.Deinterlace == DeinterlaceMode.Auto && FieldOrder is not (FieldOrder.Progressive or FieldOrder.Unknown);
+            || (o.Deinterlace == DeinterlaceMode.Auto && FieldOrder is not (FieldOrder.Progressive or FieldOrder.Unknown));
+
         // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
         bool fullRange = _pixelFormat == "yuvj420p" || stream.GetValueOrDefault("color_range") == "pc";
         _yuv420ForVideo = _yuv420?.ForColor(stream.GetValueOrDefault("color_space", ""), fullRange);
@@ -415,6 +487,7 @@ public sealed partial class VideoReader
         _startPts = long.TryParse(stream.GetValueOrDefault("start_pts"), out var s) ? s : 0;
         _startSeconds = double.TryParse(stream.GetValueOrDefault("start_time"), NumberStyles.Float, CultureInfo.InvariantCulture, out var st) ? st : 0;
         pts.Sort(); // packets come in decode order
+
         // Some containers (MPEG-PS) carry no pts on every packet. OpenCV then takes the frame's
         // dts (its pts when set and non-zero, else pkt_dts), in output order: get exactly that
         // from a decoding pass, which only such files pay for.
@@ -432,13 +505,16 @@ public sealed partial class VideoReader
         foreach (var line in Run(ffprobe, args, ct).Split('\n', StringSplitOptions.TrimEntries))
         {
             if (line.StartsWith("pts="))
+            {
                 framePts = long.TryParse(line[4..], CultureInfo.InvariantCulture, out long p) && p != 0 ? p : null;
+            }
             else if (line.StartsWith("pkt_dts="))
             {
                 result.Add(framePts ?? (long.TryParse(line[8..], CultureInfo.InvariantCulture, out long d) ? d : 0));
                 framePts = null;
             }
         }
+
         return result;
     }
 
@@ -462,15 +538,17 @@ public sealed partial class VideoReader
             if (t > seconds + tolerance)
                 break;
         }
+
         return Math.Min(previous + 1, Math.Max(_pts.Length - 1, 0));
     }
 
     /// <summary>An ffmpeg/ffprobe failure, explained when it is the common streaming one.</summary>
     static ShotDetectionException Failed(ShotDetectionError reason, string message, Exception? inner = null) =>
-        message.Contains("moov atom not found") || message.Contains("mp4,m4a,3gp,3g2,mj2 @") && message.Contains("partial file")
+        message.Contains("moov atom not found") || (message.Contains("mp4,m4a,3gp,3g2,mj2 @") && message.Contains("partial file"))
             ? new ShotDetectionException(ShotDetectionError.InvalidInput,
-                "The stream's container headers aren't at the start (an mp4 without \"faststart\"), so it can't be " +
-                "read as a stream. Use mkv/webm/ts/mov, an mp4 written with -movflags +faststart, or a file path.", inner)
+                "The stream's container headers aren't at the start (an mp4 without \"faststart\"), so it can't be "
+                + "read as a stream. Use mkv/webm/ts/mov, an mp4 written with -movflags +faststart, or a file path.",
+                inner)
             : new ShotDetectionException(reason, message, inner);
 
     static bool IsUrl(string path) =>
@@ -490,7 +568,10 @@ public sealed partial class VideoReader
             var type = box.Slice(4, 4);
             if (pos == 0 && !(type.SequenceEqual("ftyp"u8) || type.SequenceEqual("wide"u8) || type.SequenceEqual("free"u8)
                 || type.SequenceEqual("skip"u8) || type.SequenceEqual("mdat"u8) || type.SequenceEqual("moov"u8)))
+            {
                 return false; // not an ISO media file
+            }
+
             if (type.SequenceEqual("moov"u8))
                 return false;
             if (type.SequenceEqual("mdat"u8))
@@ -501,10 +582,12 @@ public sealed partial class VideoReader
                     return false;
                 size = (long)System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(box[8..]);
             }
+
             if (size < 8)
                 return false; // to the end of the file (0), or not a box
             pos += size;
         }
+
         return false;
     }
 
@@ -526,6 +609,7 @@ public sealed partial class VideoReader
                 cancellationToken.ThrowIfCancellationRequested();
                 output.Write(buffer, 0, n);
             }
+
             return file;
         }
         catch
@@ -543,9 +627,11 @@ public sealed partial class VideoReader
         {
             cancellationToken.ThrowIfCancellationRequested();
             int n = video.Read(buffer, total, bytes - total);
-            if (n == 0) break;
+            if (n == 0)
+                break;
             total += n;
         }
+
         return buffer[..total];
     }
 
@@ -566,6 +652,7 @@ public sealed partial class VideoReader
             if (micros > 0)
                 return FrameTime.Pts(micros, 1_000_000, Fps);
         }
+
         // PySceneDetect's fallback uses frame_number - 1 with frame_number already advanced, i.e. this frame.
         return FrameTime.Pts((long)frame * Fps.Den, Fps.Num, Fps);
     }
@@ -599,8 +686,12 @@ public sealed partial class VideoReader
         while (lo < hi)
         {
             int mid = (lo + hi) / 2;
-            if (Position(mid).Seconds >= target) hi = mid; else lo = mid + 1;
+            if (Position(mid).Seconds >= target)
+                hi = mid;
+            else
+                lo = mid + 1;
         }
+
         return lo;
     }
 
@@ -640,9 +731,10 @@ public sealed partial class VideoReader
 
     /// <summary>How frames get from ffmpeg to the downscaled BGR the detectors see.</summary>
     public FramePipeline Pipeline => !_ffmpegResize && (Width, Height) != (CropRegion.Width, CropRegion.Height)
+
         // swscale's unscaled yuv420p converter (what OpenCV gets) needs an even height.
         ? (_yuv420ForVideo is not null && _pixelFormat is "yuv420p" or "yuvj420p" && SourceHeight % 2 == 0 ? FramePipeline.Yuv420Sampled
-            : _fullFrames || !DecodesInProcess && !SampledPays(CropRegion.Width, CropRegion.Height, Width, Height)
+            : _fullFrames || (!DecodesInProcess && !SampledPays(CropRegion.Width, CropRegion.Height, Width, Height))
                 ? FramePipeline.FullFrameResize : FramePipeline.SampledBgr)
         : FramePipeline.FfmpegScale;
 
@@ -684,6 +776,7 @@ public sealed partial class VideoReader
                 any = true;
                 yield return frame;
             }
+
             // Auto: libraries that can't decode this codec (AV1 needs dav1d, which ShotDetector.Native leaves out)
             // give no frames at all; the ffmpeg executable decodes it instead, from here on.
             // A Stream can't be read twice: what it gave is what there is.
@@ -691,14 +784,21 @@ public sealed partial class VideoReader
                 yield break;
             _inProcessGaveNothing = true;
         }
+
         var pipeline = Pipeline;
         bool resizeHere = pipeline != FramePipeline.FfmpegScale, yuv = pipeline == FramePipeline.Yuv420Sampled;
+
         // On Windows, stdout redirection uses a 4 KB pipe, which makes full-size frames crawl
         // (19 s vs 12 s for 5000 1080p frames), so ffmpeg writes to a named pipe with a big buffer.
         string pipeName = $"shotdetector_{Guid.NewGuid():N}";
         using var server = OperatingSystem.IsWindows()
-            ? new NamedPipeServerStream(pipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous, inBufferSize: 8 << 20, outBufferSize: 0)
+            ? new NamedPipeServerStream(pipeName,
+                PipeDirection.In,
+                1,
+                PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous,
+                inBufferSize: 8 << 20,
+                outBufferSize: 0)
             : null;
 
         var psi = new ProcessStartInfo(FfmpegExe)
@@ -707,6 +807,7 @@ public sealed partial class VideoReader
             RedirectStandardError = true,
             RedirectStandardInput = _stream is not null,
         };
+
         // Emit every decoded frame once, like OpenCV does (no CFR dup/drop).
         // Seeking exactly: which frame ffmpeg's -ss starts on depends on the codec, so seek two
         // frames early (to a keyframe before that), keep the original timestamps, and let a select
@@ -717,16 +818,21 @@ public sealed partial class VideoReader
             int early = Math.Max(startFrame - 2, 0);
             if (early > 0)
                 seek = ["-ss", ((_pts[early] - _startPts) * _timeBase).ToString("R", CultureInfo.InvariantCulture), "-copyts"];
+
             // yadif halves the time base, so after it compare times: halfway between the frame before and the wanted one.
             select = ["-vf", _deinterlace
                 ? $"select=gte(t\\,{((_pts[startFrame - 1] + _pts[startFrame]) / 2.0 * _timeBase).ToString("R", CultureInfo.InvariantCulture)})"
                 : $"select=gte(pts\\,{_pts[startFrame]})"];
         }
+
         string[] limit = count is { } n ? ["-frames:v", n.ToString(CultureInfo.InvariantCulture)] : [];
+
         // The crop (an exact pixel copy) comes after the colour conversion, as OpenCV converts the
         // whole frame and scenedetect slices the result; in the yuv420p pipeline it happens here instead.
         string crop = CropRegion.Width == SourceWidth && CropRegion.Height == SourceHeight
-            ? "" : $",crop={CropRegion.Width}:{CropRegion.Height}:{CropRegion.X}:{CropRegion.Y}";
+            ? ""
+            : $",crop={CropRegion.Width}:{CropRegion.Height}:{CropRegion.X}:{CropRegion.Y}";
+
         // Each frame's timestamp is read from showinfo's log line, so ffmpeg logs at info level and the lines are
         // parsed as they arrive: when streaming there is no packet list, and for a file it says which packet it is.
         // Absolute timestamps for files, so they compare with the packet list as they are (without
@@ -734,21 +840,25 @@ public sealed partial class VideoReader
         if (!Streaming && seek.Length == 0)
             seek = ["-copyts"];
         string[] noStdin = _stream is null ? ["-nostdin"] : [];
+
         // SampledBgr: two 16-bit maps (source column and row of every pixel the resize reads, crop included)
         // that remap uses to keep just those pixels of the converted frame.
         bool sampled = pipeline == FramePipeline.SampledBgr;
         var resizer = resizeHere ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
         string? maps = sampled ? WriteMaps(resizer!) : null;
         string[] mapInputs = maps is null ? [] : ["-loop", "1", "-i", Path.Combine(maps, "x.pgm"), "-loop", "1", "-i", Path.Combine(maps, "y.pgm")];
+
         // Rotated as OpenCV does (Turn), not by ffmpeg's autorotate.
         string[] args = ["-v", "info", "-nostats", .. noStdin, "-y",
             "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount)}", .. seek, .. _inputOptions, "-noautorotate", "-i", _path,
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
         select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
+
         // Deinterlacing first, so the frames a seek decodes early still feed yadif, as in the copy it stands for.
         if (_deinterlace)
             select = ["-vf", "yadif" + (select.Length > 0 ? "," + select[1] : "")];
         string prefix = select.Length > 0 ? select[1] + "," : "";
+
         // The stream's size, explicitly: a frame of another size (a resolution change) is scaled to it in the same
         // conversion, as OpenCV's sws_scale_frame does into its buffer (ffmpeg would convert, then scale at the encoder).
         string toBgr = $"scale={_codedSize.W}:{_codedSize.H}:flags=bicubic" + (_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "") + ",format=bgr24" + TurnFilters;
@@ -756,6 +866,7 @@ public sealed partial class VideoReader
         {
             // The source's own format, so ffmpeg passes the samples through untouched.
             FramePipeline.Yuv420Sampled => [.. args, "-vf", select[1] + TurnFilters, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
+
             // Like OpenCV: SWS_BICUBIC, colour matrix and range from the stream's tags (BT.601 if untagged).
             FramePipeline.FullFrameResize => [.. args, "-vf", prefix + toBgr + crop,
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
@@ -777,7 +888,9 @@ public sealed partial class VideoReader
             _livePackets.Clear();
             _liveStart = startFrame;
         }
+
         var log = new System.Text.StringBuilder();
+
         // stderr: the frames' timestamps come out of it, and anything else is kept for errors.
         var stderr = Task.Run(() =>
             {
@@ -790,6 +903,7 @@ public sealed partial class VideoReader
                         livePts.Add(long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture));
                         continue;
                     }
+
                     var timeBase = TimeBaseLine().Match(line);
                     if (timeBase.Success)
                     {
@@ -799,12 +913,15 @@ public sealed partial class VideoReader
                             _timeBase = liveTimeBase;
                         continue;
                     }
+
                     if (log.Length < 16_000 && !line.StartsWith("  ") && !line.StartsWith("Input #") && !line.StartsWith("Output #") && !line.StartsWith("Stream mapping"))
                         log.AppendLine(line);
                 }
+
                 livePts.CompleteAdding();
                 return log.ToString();
             });
+
         // A Stream is fed to ffmpeg's stdin: the probed prefix first, then the rest.
         var feeder = _stream is null ? Task.CompletedTask : Task.Run(() =>
         {
@@ -815,7 +932,9 @@ public sealed partial class VideoReader
                 _stream.CopyTo(stdin);
                 stdin.Close();
             }
-            catch (Exception e) when (e is IOException or ObjectDisposedException) { } // ffmpeg stopped reading
+            catch (Exception e) when (e is IOException or ObjectDisposedException)
+            {
+            } // ffmpeg stopped reading
         });
         Stream input = server ?? proc.StandardOutput.BaseStream;
         if (server is not null)
@@ -857,11 +976,20 @@ public sealed partial class VideoReader
                     full.Add(buffer);
                 }
             }
+
             // Stopped: cancelled, or (if it ever outlived the grace period below) its buffers were disposed.
-            catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException) { }
+            catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException)
+            {
+            }
             finally
             {
-                try { full.CompleteAdding(); } catch (ObjectDisposedException) { }
+                try
+                {
+                    full.CompleteAdding();
+                }
+                catch (ObjectDisposedException)
+                {
+                }
             }
         });
 
@@ -873,6 +1001,7 @@ public sealed partial class VideoReader
             {
                 if (previous is not null)
                     free.Add(previous);
+
                 // The frame's timestamp precedes it on stderr; without one the frame can't be placed.
                 if (!livePts.TryTake(out long pts, Timeout.Infinite, cancel.Token))
                     throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg gave no timestamp for frame {_livePts.Count + _livePackets.Count}: {stderr.Result}");
@@ -886,6 +1015,7 @@ public sealed partial class VideoReader
                     yield return buffer;
                     continue;
                 }
+
                 if (yuv)
                     resizer.ResizeYuv420(buffer, small, _yuv420ForVideo!, SourceWidth, SourceHeight, CropRegion.X, CropRegion.Y);
                 else if (sampled)
@@ -895,6 +1025,7 @@ public sealed partial class VideoReader
                 free.Add(buffer);
                 yield return small;
             }
+
             reader.Wait(); // rethrows read errors
             proc.WaitForExit();
             if (proc.ExitCode != 0)
@@ -905,10 +1036,32 @@ public sealed partial class VideoReader
             // Caller stopped early (or we failed): stop the reader and ffmpeg before disposing.
             cancel.Cancel();
             Kill(proc);
-            try { reader.Wait(TimeSpan.FromSeconds(5)); } catch (AggregateException) { }
-            try { feeder.Wait(TimeSpan.FromSeconds(5)); } catch (AggregateException) { }
+            try
+            {
+                reader.Wait(TimeSpan.FromSeconds(5));
+            }
+            catch (AggregateException)
+            {
+            }
+
+            try
+            {
+                feeder.Wait(TimeSpan.FromSeconds(5));
+            }
+            catch (AggregateException)
+            {
+            }
+
             if (maps is not null)
-                try { Directory.Delete(maps, recursive: true); } catch (IOException) { }
+            {
+                try
+                {
+                    Directory.Delete(maps, recursive: true);
+                }
+                catch (IOException)
+                {
+                }
+            }
         }
     }
 
@@ -937,6 +1090,7 @@ public sealed partial class VideoReader
                 f.Write(row);
             }
         }
+
         Write("x.pgm", (x, _) => CropRegion.X + resizer.SourceCols[x]);
         Write("y.pgm", (_, y) => CropRegion.Y + resizer.SourceRows[y]);
         return dir;
@@ -951,7 +1105,13 @@ public sealed partial class VideoReader
     /// <summary>Kills a process unless it has already exited (which can happen at any moment, so no check-then-kill).</summary>
     static void Kill(Process proc)
     {
-        try { proc.Kill(); } catch (InvalidOperationException) { }
+        try
+        {
+            proc.Kill();
+        }
+        catch (InvalidOperationException)
+        {
+        }
     }
 
     static Process Start(ProcessStartInfo psi)
@@ -963,8 +1123,9 @@ public sealed partial class VideoReader
         catch (System.ComponentModel.Win32Exception e)
         {
             throw new ShotDetectionException(ShotDetectionError.FfmpegNotFound,
-                $"Could not start {psi.FileName}: {e.Message}. Install ffmpeg (which includes ffprobe) and put it on PATH, " +
-                "or set DetectionOptions.FfmpegDirectory.", e);
+                $"Could not start {psi.FileName}: {e.Message}. Install ffmpeg (which includes ffprobe) and put it on PATH, "
+                + "or set DetectionOptions.FfmpegDirectory.",
+                e);
         }
     }
 
@@ -974,19 +1135,31 @@ public sealed partial class VideoReader
         : Path.Combine(directory, OperatingSystem.IsWindows() ? name + ".exe" : name);
 
     /// <summary>Runs ffmpeg/ffprobe to completion and returns its stdout; cancelling kills it.</summary>
-    internal static string Run(string exe, IEnumerable<string> args, CancellationToken cancellationToken, byte[]? stdin = null,
+    internal static string Run(string exe,
+        IEnumerable<string> args,
+        CancellationToken cancellationToken,
+        byte[]? stdin = null,
         ShotDetectionError failure = ShotDetectionError.InvalidInput)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var psi = new ProcessStartInfo(exe, args) { RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = stdin is not null };
         using var proc = Start(psi);
         if (stdin is not null)
+        {
             _ = Task.Run(() =>
             {
                 // The process may stop reading before the end (ffprobe needs only the headers).
-                try { proc.StandardInput.BaseStream.Write(stdin); proc.StandardInput.Close(); }
-                catch (Exception e) when (e is IOException or ObjectDisposedException) { }
+                try
+                {
+                    proc.StandardInput.BaseStream.Write(stdin);
+                    proc.StandardInput.Close();
+                }
+                catch (Exception e) when (e is IOException or ObjectDisposedException)
+                {
+                }
             });
+        }
+
         using var kill = cancellationToken.Register(() =>
         {
             Kill(proc);
@@ -1006,8 +1179,18 @@ internal sealed class TempFile(string path) : IDisposable
 {
     public string Path { get; } = path;
 
+    /// <inheritdoc/>
     public void Dispose()
     {
-        try { File.Delete(Path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        try
+        {
+            File.Delete(Path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 }

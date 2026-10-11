@@ -18,8 +18,19 @@ public sealed record SpectralStatsOptions
 
 /// <summary>One channel's spectral measures for a window, as aspectralstats computes and prints them.</summary>
 public readonly record struct SpectralMeasures(
-    double Mean, double Variance, double Centroid, double Spread, double Skewness, double Kurtosis, double Entropy,
-    double Flatness, double Crest, double Flux, double Slope, double Decrease, double Rolloff);
+    double Mean,
+    double Variance,
+    double Centroid,
+    double Spread,
+    double Skewness,
+    double Kurtosis,
+    double Entropy,
+    double Flatness,
+    double Crest,
+    double Flux,
+    double Slope,
+    double Decrease,
+    double Rolloff);
 
 /// <summary>A window's measures, valid until the next read from its <see cref="SpectralStats"/>.</summary>
 public readonly ref struct SpectralWindow
@@ -115,18 +126,22 @@ public sealed unsafe class SpectralStats : IDisposable
                 window = new SpectralWindow((_start ?? TimeSpan.Zero) + TimeSpan.FromSeconds(_result->pts / (double)_rate), _measures);
                 return true;
             }
+
             if (got == ffmpeg.AVERROR_EOF || (got == ffmpeg.AVERROR(ffmpeg.EAGAIN) && _flushed))
                 break;
             if (got != ffmpeg.AVERROR(ffmpeg.EAGAIN))
                 Check(got, "aspectralstats");
             if (_audio.TryRead(out var chunk))
+            {
                 Feed(chunk);
+            }
             else
             {
                 Check(ffmpeg.av_buffersrc_add_frame_flags(_in, null, 0), "aspectralstats");
                 _flushed = true;
             }
         }
+
         window = default;
         return false;
     }
@@ -142,6 +157,7 @@ public sealed unsafe class SpectralStats : IDisposable
             frame->sample_rate = _rate;
             frame->nb_samples = chunk.SampleCount;
             ffmpeg.av_channel_layout_default(&frame->ch_layout, _channels);
+
             // Where ffmpeg's aspectralstats would see it: the decoded frame's place (a stream can have gaps, as Ogg
             // Vorbis's first pages do), else right after the last chunk.
             frame->pts = _audio.ChunkPosition is { } p ? p - (_first ??= p) : _fed;
@@ -153,6 +169,7 @@ public sealed unsafe class SpectralStats : IDisposable
                 for (int i = 0; i < chunk.SampleCount; i++)
                     plane[i] = samples[i * _channels + c];
             }
+
             _fed = frame->pts + chunk.SampleCount;
             Check(ffmpeg.av_buffersrc_add_frame_flags(_in, frame, 0), "aspectralstats");
         }
@@ -170,6 +187,7 @@ public sealed unsafe class SpectralStats : IDisposable
             var entry = ffmpeg.av_dict_get(_result->metadata, _keys[channel * Names.Length + i], null, 0);
             v[i] = entry == null ? double.NaN : Parse(System.Runtime.InteropServices.Marshal.PtrToStringAnsi((nint)entry->value)!);
         }
+
         return new(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11], v[12]);
     }
 
@@ -184,8 +202,20 @@ public sealed unsafe class SpectralStats : IDisposable
     /// <summary>Frees the filter graph (not the <see cref="AudioReader"/>).</summary>
     public void Dispose()
     {
-        if (_graph != null) { var g = _graph; ffmpeg.avfilter_graph_free(&g); _graph = null; _in = _out = null; }
-        if (_result != null) { var f = _result; ffmpeg.av_frame_free(&f); _result = null; }
+        if (_graph != null)
+        {
+            var g = _graph;
+            ffmpeg.avfilter_graph_free(&g);
+            _graph = null;
+            _in = _out = null;
+        }
+
+        if (_result != null)
+        {
+            var f = _result;
+            ffmpeg.av_frame_free(&f);
+            _result = null;
+        }
     }
 
     static void Check(int ret, string what)

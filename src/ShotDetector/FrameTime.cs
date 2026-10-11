@@ -28,8 +28,10 @@ public readonly record struct FrameTime
 
     /// <summary>A bare frame number.</summary>
     public static FrameTime Frame(long frame, Fps fps) => new(frame, 0, fps);
+
     /// <summary>A presentation timestamp in units of 1/<paramref name="tbDen"/> seconds.</summary>
     internal static FrameTime Pts(long pts, long tbDen, Fps fps) => new(pts, tbDen, fps);
+
     /// <summary>A time in seconds (FrameTimecode's _Seconds), e.g. "5s" or "00:00:05.000" given by the user.</summary>
     internal static FrameTime FromSeconds(double seconds, Fps fps) => new(BitConverter.DoubleToInt64Bits(seconds), -2, fps);
 
@@ -80,8 +82,13 @@ public readonly record struct FrameTime
         if (ms >= 60_000)
         {
             ms = 0;
-            if (++mins >= 60) { mins = 0; hrs++; }
+            if (++mins >= 60)
+            {
+                mins = 0;
+                hrs++;
+            }
         }
+
         return $"{hrs:00}:{mins:00}:{ms / 1000:00}.{ms % 1000:000}";
     }
 
@@ -122,8 +129,10 @@ public readonly record struct FrameTime
             long b = RoundHalfEven(other.Value * (BigInteger)finer, other.TbDen);
             return this with { Value = Math.Max(0, a - b), TbDen = finer };
         }
+
         if (TbDen > 0) // timestamp - frame number or seconds: in this time base
             return this with { Value = Math.Max(0, Value - (long)Math.Round(other.Seconds / (1.0 / TbDen))) };
+
         // frame number or seconds - timestamp: in the other's time base
         long self = (long)Math.Round(Seconds / (1.0 / other.TbDen));
         return this with { Value = Math.Max(0, self - other.Value), TbDen = other.TbDen };
@@ -141,7 +150,10 @@ public readonly record struct FrameTime
         long bits = BitConverter.DoubleToInt64Bits(x);
         int exponent = (int)((bits >> 52) & 0x7FF);
         long mantissa = bits & 0xF_FFFF_FFFF_FFFF;
-        if (exponent == 0) exponent = 1; else mantissa |= 1L << 52;
+        if (exponent == 0)
+            exponent = 1;
+        else
+            mantissa |= 1L << 52;
         int shift = exponent - 1075; // x = mantissa * 2^shift
         BigInteger num = mantissa * (BigInteger)scale;
         return shift >= 0 ? (long)(num << shift) : RoundHalfEven(num, BigInteger.One << -shift);

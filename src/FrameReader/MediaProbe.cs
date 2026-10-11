@@ -64,11 +64,12 @@ public static unsafe class MediaProbe
         var matrix = ffmpeg.av_packet_side_data_get(par->coded_side_data, par->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_DISPLAYMATRIX);
         if (matrix != null && matrix->size >= 36)
         {
-            var m = new int_array9();
+            var m = default(int_array9);
             for (uint i = 0; i < 9; i++)
                 m[i] = ((int*)matrix->data)[i];
             rotation = ffmpeg.av_display_rotation_get(in m);
         }
+
         return new VideoStreamInfo
         {
             Index = index,
@@ -112,11 +113,13 @@ public static unsafe class MediaProbe
             if (ffmpeg.av_channel_layout_describe(&par->ch_layout, buf, 128) > 0)
                 layout = Marshal.PtrToStringAnsi((IntPtr)buf);
         }
+
         string? Tag(string key)
         {
             var e = ffmpeg.av_dict_get(st->metadata, key, null, 0);
             return e == null ? null : Marshal.PtrToStringUTF8((IntPtr)e->value);
         }
+
         return new StreamInfo
         {
             Index = index,
@@ -164,6 +167,7 @@ public static unsafe class MediaProbe
         {
             ffmpeg.av_packet_free(&pkt);
         }
+
         return result;
     }
 

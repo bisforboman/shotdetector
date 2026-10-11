@@ -22,6 +22,7 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
     /// conversion (bicubic), as OpenCV does into its buffer; false (the default): each frame at its own size.
     /// </summary>
     public bool KeepFirstSize { get; init; }
+
     (int W, int H, int Format, AVColorSpace Space, AVColorRange Range, AVChromaLocation Loc) _rowsFor;
 
     /// <summary>The whole current frame as BGR, its rows <paramref name="stride"/> bytes apart.</summary>
@@ -32,8 +33,15 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
         Prepare();
         _d.EnsureRows(0, _d.Frame->height);
         int flags = AsProgressive();
-        try { Check(ffmpeg.sws_scale_frame(_toBgr, _bgr, _d.Frame), "convert"); }
-        finally { _d.Frame->flags = flags; }
+        try
+        {
+            Check(ffmpeg.sws_scale_frame(_toBgr, _bgr, _d.Frame), "convert");
+        }
+        finally
+        {
+            _d.Frame->flags = flags;
+        }
+
         return Result(out stride);
     }
 
@@ -47,9 +55,11 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
     public ReadOnlySpan<byte> Convert(ReadOnlySpan<int> rows, out int stride)
     {
         Prepare();
+
         // Scaled to the first size: the rows wanted aren't the decoded frame's rows, so the whole frame.
         if (_bgr->width != _d.Frame->width || _bgr->height != _d.Frame->height)
             return Convert(out stride);
+
         // Deinterlacing row by row: only the rows that are read (a slice's other rows come out wrong, and nothing reads them).
         if (_d.RowMode)
         {
@@ -57,6 +67,7 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
                 _d.MarkRows(r, r + 1);
             _d.ComputeRows();
         }
+
         var ctx = RowsContext();
         int flags = AsProgressive();
         try
@@ -72,9 +83,14 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
                     end = Math.Min(rows[i] - rows[i] % align + align, h);
                 Check(ffmpeg.sws_receive_slice(ctx, (uint)start, (uint)(end - start)), "convert");
             }
+
             ffmpeg.sws_frame_end(ctx);
         }
-        finally { _d.Frame->flags = flags; }
+        finally
+        {
+            _d.Frame->flags = flags;
+        }
+
         return Result(out stride);
     }
 
@@ -97,6 +113,7 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
             ffmpeg.av_opt_set_int(_toBgr, "sws_flags", (long)SwsFlags.SWS_BICUBIC, 0);
             _bgr = ffmpeg.av_frame_alloc();
         }
+
         if ((_bgr->width != _d.Frame->width || _bgr->height != _d.Frame->height) && !(KeepFirstSize && _bgr->width > 0))
         {
             ffmpeg.av_frame_unref(_bgr);
@@ -143,8 +160,9 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
             _toRows = null;
             throw new FrameReaderException(FrameReaderError.DecodeFailed, "Can't set up the converter.");
         }
+
         int* coefficients = ffmpeg.sws_getCoefficients((int)key.Item4);
-        var table = new int_array4();
+        var table = default(int_array4);
         for (uint i = 0; i < 4; i++)
             table[i] = coefficients[i];
         var rgb = table; // the output's table is unused for RGB
@@ -172,9 +190,25 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
     /// <summary>Frees the converter's buffers.</summary>
     public void Dispose()
     {
-        if (_toRows != null) { ffmpeg.sws_freeContext(_toRows); _toRows = null; }
-        if (_toBgr != null) { var s = _toBgr; ffmpeg.sws_free_context(&s); _toBgr = null; }
-        if (_bgr != null) { var f = _bgr; ffmpeg.av_frame_free(&f); _bgr = null; }
+        if (_toRows != null)
+        {
+            ffmpeg.sws_freeContext(_toRows);
+            _toRows = null;
+        }
+
+        if (_toBgr != null)
+        {
+            var s = _toBgr;
+            ffmpeg.sws_free_context(&s);
+            _toBgr = null;
+        }
+
+        if (_bgr != null)
+        {
+            var f = _bgr;
+            ffmpeg.av_frame_free(&f);
+            _bgr = null;
+        }
     }
 
     static void Check(int ret, string what)

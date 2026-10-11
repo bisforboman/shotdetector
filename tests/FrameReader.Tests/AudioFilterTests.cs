@@ -16,7 +16,7 @@ public class AudioFilterTests
     static byte[] Ffmpeg(params string[] args)
     {
         var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
-            { RedirectStandardOutput = true, RedirectStandardError = true };
+        { RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args)
             psi.ArgumentList.Add(a);
         using var p = Process.Start(psi)!;
@@ -29,6 +29,7 @@ public class AudioFilterTests
     }
 
     [Theory]
+
     // Integer PCM: volume computes on s16 there, as ffmpeg's graph gets it.
     [InlineData("pcm.wav", "-c:a pcm_s16le", "volume=0.37", null, null, null)]
     [InlineData("pcm.wav", "-c:a pcm_s16le", "highpass=f=300,equalizer=f=1000:t=q:w=1:g=-9:enable='between(t,0.5,1.2)'", null, null, null)]
@@ -83,6 +84,7 @@ public class AudioFilterTests
         {
             string path = Path.Combine(dir, "speech.wav");
             Ffmpeg("-v", "error", "-y", "-f", "lavfi", "-i", "aevalsrc=0.5*sin(300*2*PI*t)*(lt(t\\,1)+gt(t\\,2.2)):s=48000:d=3.5", "-c:a", "pcm_s16le", path);
+
             // Every frame's metadata, in order, from ametadata=print: "frame:N pts:P pts_time:T" then key=value lines.
             var expected = new List<Dictionary<string, string>>();
             foreach (var line in Encoding.ASCII.GetString(Ffmpeg("-v", "error", "-i", path, "-af", $"{graph},ametadata=print:file=-", "-f", "null", "-"))
@@ -98,8 +100,11 @@ public class AudioFilterTests
             using var filter = new AudioFilter(audio, graph);
             var actual = new List<Dictionary<string, string>>();
             while (filter.TryRead(out _))
+            {
                 if (filter.Metadata.Count > 0)
                     actual.Add(new(filter.Metadata));
+            }
+
             Assert.NotEmpty(expected);
             Assert.Equal(expected.Count, actual.Count);
             for (int i = 0; i < expected.Count; i++)

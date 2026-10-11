@@ -19,7 +19,10 @@ internal static unsafe class InProcessProbe
     /// -of default=nw=1</c>'s output (the entries VideoReader reads). With <c>streamPrefix</c>, a Stream's first bytes are
     /// probed instead of the path (no packets).
     /// </summary>
-    public static string Properties(string path, string? libraryDirectory, bool packets = true, string[]? inputOptions = null,
+    public static string Properties(string path,
+        string? libraryDirectory,
+        bool packets = true,
+        string[]? inputOptions = null,
         byte[]? streamPrefix = null)
     {
         var options = new ProbeOptions { PacketTimestamps = packets && streamPrefix is null, InputOptions = Options(inputOptions) };
@@ -29,11 +32,16 @@ internal static unsafe class InProcessProbe
         var sb = new StringBuilder();
         void Line(string key, string value) => sb.Append(key).Append('=').Append(value).Append('\n');
         Line("codec_name", v.Codec);
+
         // ffprobe's names for the field order.
         Line("field_order", v.FieldOrder switch
         {
-            FrameReader.FieldOrder.Progressive => "progressive", FrameReader.FieldOrder.TopFirst => "tt", FrameReader.FieldOrder.BottomFirst => "bb",
-            FrameReader.FieldOrder.TopCodedBottomFirst => "tb", FrameReader.FieldOrder.BottomCodedTopFirst => "bt", _ => "unknown",
+            FrameReader.FieldOrder.Progressive => "progressive",
+            FrameReader.FieldOrder.TopFirst => "tt",
+            FrameReader.FieldOrder.BottomFirst => "bb",
+            FrameReader.FieldOrder.TopCodedBottomFirst => "tb",
+            FrameReader.FieldOrder.BottomCodedTopFirst => "bt",
+            _ => "unknown",
         });
         Line("width", v.Width.ToString(CultureInfo.InvariantCulture));
         Line("height", v.Height.ToString(CultureInfo.InvariantCulture));
@@ -103,6 +111,7 @@ internal static unsafe class InProcessProbe
         {
             throw InProcess.Map(e, libraryDirectory);
         }
+
         return result;
     }
 

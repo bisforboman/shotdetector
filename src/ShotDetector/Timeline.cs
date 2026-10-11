@@ -11,9 +11,7 @@ namespace ShotDetector;
 /// </summary>
 public static class Timeline
 {
-    /// <summary>
-    /// save-edl: a CMX 3600 edit decision list, one cut event per shot.
-    /// </summary>
+    /// <summary>save-edl: a CMX 3600 edit decision list, one cut event per shot.</summary>
     /// <param name="result">The detection result.</param>
     /// <param name="title">The TITLE line ($VIDEO_NAME is the video's name); default the video's name.</param>
     /// <param name="reel">The reel name of every event.</param>
@@ -29,6 +27,7 @@ public static class Timeline
             string a = EdlTimecode(shots[i].Start.PlusFrames(offset)), b = EdlTimecode(shots[i].End.PlusFrames(offset));
             sb.Append(CultureInfo.InvariantCulture, $"{i + 1:000}  {reel} V     C        {a} {b} {a} {b}\n");
         }
+
         return sb.ToString();
     }
 
@@ -38,24 +37,35 @@ public static class Timeline
     public static string Fcpx(DetectionResult result, string? name = null)
     {
         var (shots, video) = (result.Shots, result.Video);
-        if (shots.Count == 0) throw new InvalidOperationException("No shots to export.");
+        if (shots.Count == 0)
+            throw new InvalidOperationException("No shots to export.");
         name = Template(name ?? "$VIDEO_NAME", result);
         var fps = video.Fps;
         string total = Rational(Exact(shots[^1].End.Minus(shots[0].Start)));
         var root = new Xml("fcpxml", ("version", "1.9"));
         var resources = root.Add("resources");
-        resources.Add("format", ("id", "r1"), ("name", $"FFVideoFormat{video.SourceHeight}p{Math.Round(fps.Value * 100):0000}"),
-            ("frameDuration", Rational(Reduce(fps.Den, fps.Num))), ("width", $"{video.SourceWidth}"), ("height", $"{video.SourceHeight}"));
+        resources.Add("format",
+            ("id", "r1"),
+            ("name", $"FFVideoFormat{video.SourceHeight}p{Math.Round(fps.Value * 100):0000}"),
+            ("frameDuration", Rational(Reduce(fps.Den, fps.Num))),
+            ("width", $"{video.SourceWidth}"),
+            ("height", $"{video.SourceHeight}"));
         resources.Add("asset", ("id", "r2"), ("name", name), ("start", "0s"), ("duration", total), ("hasVideo", "1"), ("format", "r1"))
             .Add("media-rep", ("kind", "original-media"), ("src", FileUri(PathOf(result))));
         var spine = root.Add("library").Add("event", ("name", name)).Add("project", ("name", name))
-            .Add("sequence", ("format", "r1"), ("duration", total), ("tcStart", "0s"), ("tcFormat", "NDF")).Add("spine");
+            .Add("sequence", ("format", "r1"), ("duration", total), ("tcStart", "0s"), ("tcFormat", "NDF"))
+            .Add("spine");
         for (int i = 0; i < shots.Count; i++)
         {
             string start = Rational(Exact(shots[i].Start));
-            spine.Add("asset-clip", ("name", $"Shot {i + 1}"), ("ref", "r2"), ("offset", start), ("start", start),
+            spine.Add("asset-clip",
+                ("name", $"Shot {i + 1}"),
+                ("ref", "r2"),
+                ("offset", start),
+                ("start", start),
                 ("duration", Rational(Exact(shots[i].End.Minus(shots[i].Start)))));
         }
+
         return root.Document();
     }
 
@@ -65,7 +75,8 @@ public static class Timeline
     public static string Fcp7(DetectionResult result, string? name = null)
     {
         var (shots, video) = (result.Shots, result.Video);
-        if (shots.Count == 0) throw new InvalidOperationException("No shots to export.");
+        if (shots.Count == 0)
+            throw new InvalidOperationException("No shots to export.");
         name = Template(name ?? "$VIDEO_NAME", result);
         double fps = video.Fps.Value;
         string ntsc = video.Fps.Den != 1 ? "True" : "False", timebase = Int(fps);
@@ -75,6 +86,7 @@ public static class Timeline
             rate.Add("timebase").Text = timebase;
             rate.Add("ntsc").Text = ntsc;
         }
+
         var root = new Xml("xmeml", ("version", "5"));
         var project = root.Add("project");
         project.Add("name").Text = name;
@@ -91,6 +103,7 @@ public static class Timeline
         chars.Add("width").Text = $"{video.SourceWidth}";
         chars.Add("height").Text = $"{video.SourceHeight}";
         var track = videoNode.Add("track");
+
         // The source's duration: OpenCV's frame count from the base timecode (frame-based seconds).
         string sourceFrames = Int(FrameTime.Frame(video.OpenCvFrameCount, video.Fps).Seconds * fps);
         for (int i = 0; i < shots.Count; i++)
@@ -116,10 +129,12 @@ public static class Timeline
                 fileChars.Add("width").Text = $"{video.SourceWidth}";
                 fileChars.Add("height").Text = $"{video.SourceHeight}";
             }
+
             var link = clip.Add("link");
             link.Add("linkclipref").Text = "file1";
             link.Add("mediatype").Text = "video";
         }
+
         return root.Document();
     }
 
@@ -140,6 +155,7 @@ public static class Timeline
             string pad = new(' ', indent);
             return $"{{\n{pad}    \"OTIO_SCHEMA\": \"RationalTime.1\",\n{pad}    \"rate\": {rate},\n{pad}    \"value\": {Stats.PyFloat(value)}\n{pad}}}";
         }
+
         static double Round6(double x) => FrameTime.RoundScaled(x, 1_000_000) / 1e6;  // Python's round(x, 6)
         string Clip(Shot s, string pad) => $$"""
             {
@@ -182,6 +198,7 @@ public static class Timeline
                             }
                 """.Replace("\r\n", "\n");
         }
+
         var tracks = new List<string> { Track("Video 1", "Video") };
         if (audio)
             tracks.Add(Track("Audio 1", "Audio"));
@@ -233,7 +250,8 @@ public static class Timeline
             return "stream";
         string name = Path.GetFileName(path);
         int dot = name.LastIndexOf('.');
-        if (dot > 0) name = name[..dot];
+        if (dot > 0)
+            name = name[..dot];
         int seq = name.IndexOf('%');
         return seq >= 0 ? name[..seq] : name;
     }
@@ -251,7 +269,8 @@ public static class Timeline
     static double PyMod(double a, double b)
     {
         double m = a % b;
-        if (m != 0 && (m < 0) != (b < 0)) m += b;
+        if (m != 0 && (m < 0) != (b < 0))
+            m += b;
         return m;
     }
 
@@ -312,6 +331,7 @@ public static class Timeline
     {
         var sb = new StringBuilder("\"");
         foreach (char c in s)
+        {
             sb.Append(c switch
             {
                 '"' => "\\\"",
@@ -324,6 +344,8 @@ public static class Timeline
                 _ when c < 0x20 || c > 0x7e => $"\\u{(int)c:x4}",
                 _ => c.ToString(),
             });
+        }
+
         return sb.Append('"').ToString();
     }
 
@@ -331,6 +353,7 @@ public static class Timeline
     sealed class Xml(string name, params (string Key, string Value)[] attributes)
     {
         readonly List<Xml> _children = [];
+
         public string? Text { get; set; }
 
         public Xml Add(string child, params (string Key, string Value)[] attrs)
@@ -353,9 +376,13 @@ public static class Timeline
             foreach (var (k, v) in attributes)
                 sb.Append(' ').Append(k).Append("=\"").Append(Escape(v, attribute: true)).Append('"');
             if (Text is not null)
+            {
                 sb.Append('>').Append(Escape(Text, attribute: false)).Append("</").Append(name).Append(">\n");
+            }
             else if (_children.Count == 0)
+            {
                 sb.Append("/>\n");
+            }
             else
             {
                 sb.Append(">\n");

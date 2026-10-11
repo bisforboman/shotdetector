@@ -19,6 +19,7 @@ internal sealed class CvResize
     readonly int _sw, _sh, _dw, _dh;
     readonly int[] _xofs, _yofs;
     readonly short[] _xa0, _xa1, _yb0, _yb1;
+
     // Output rows are independent, so they're split into chunks resized in parallel, each with its
     // own row buffers. Chunks are fixed so buffers can be allocated once.
     readonly Chunk[] _chunks;
@@ -35,12 +36,15 @@ internal sealed class CvResize
 
     /// <summary>The source rows the vertical pass reads, ascending.</summary>
     public int[] SourceRows { get; }
+
     int[]? _rowIndex; // source row -> its index in SourceRows
+
     // For a sampled row (SourceCols only): byte offsets of each output column's two source pixels, and their
     // weights; at the right border the second weight is 0, which gives HResize's s * CoefScale exactly.
     int[]? _sampledX0, _sampledX1;
     short[]? _sampledW0, _sampledW1;
     int[]? _shiftedCols;
+
     // The same for a whole row (Resize, ResizeYuv420).
     readonly int[] _fullX0, _fullX1;
     readonly short[] _fullW0, _fullW1;
@@ -50,6 +54,7 @@ internal sealed class CvResize
         (_sw, _sh, _dw, _dh) = (sw, sh, dw, dh);
         (_xofs, _xa0, _xa1) = Table(dw, sw, clampFraction: true);
         (_yofs, _yb0, _yb1) = Table(dh, sh, clampFraction: false);
+
         // Small outputs (scenedetect's sizes are at most 256 pixels wide) take well under a millisecond;
         // splitting them across threads costs more CPU than it saves, so only large ones go parallel.
         int chunks = dw * dh < ParallelPixels ? 1 : Math.Clamp(Environment.ProcessorCount / 2, 1, Math.Max(1, dh / 8));
@@ -105,6 +110,7 @@ internal sealed class CvResize
             _sampledX1[dx] = edge ? col[sx] * 3 : col[sx + 1] * 3;
             (_sampledW0[dx], _sampledW1[dx]) = edge ? ((short)CoefScale, (short)0) : (_xa0[dx], _xa1[dx]);
         }
+
         var index = new int[_sh];
         for (int i = 0; i < SourceRows.Length; i++)
             index[SourceRows[i]] = i;
@@ -124,17 +130,21 @@ internal sealed class CvResize
         if (x0.Length > 0 && Math.Max(x0[^1], x1[^1]) + 2 >= s.Length)
             throw new ArgumentException("The row is shorter than the resize reads.");
         fixed (byte* sp = s)
-        fixed (int* dp = d, a0 = x0, a1 = x1)
-        fixed (short* v0 = w0, v1 = w1)
         {
-            int* o = dp;
-            for (int dx = 0; dx < x0.Length; dx++, o += 3)
+            fixed (int* dp = d, a0 = x0, a1 = x1)
             {
-                byte* a = sp + a0[dx], b = sp + a1[dx];
-                int wa = v0[dx], wb = v1[dx];
-                o[0] = a[0] * wa + b[0] * wb;
-                o[1] = a[1] * wa + b[1] * wb;
-                o[2] = a[2] * wa + b[2] * wb;
+                fixed (short* v0 = w0, v1 = w1)
+                {
+                    int* o = dp;
+                    for (int dx = 0; dx < x0.Length; dx++, o += 3)
+                    {
+                        byte* a = sp + a0[dx], b = sp + a1[dx];
+                        int wa = v0[dx], wb = v1[dx];
+                        o[0] = a[0] * wa + b[0] * wb;
+                        o[1] = a[1] * wa + b[1] * wb;
+                        o[2] = a[2] * wa + b[2] * wb;
+                    }
+                }
             }
         }
     }
@@ -187,23 +197,27 @@ internal sealed class CvResize
         for (int dy = c.Start; dy < c.End; dy++)
         {
             int r0 = Row0(dy), r1 = Row1(dy);
+
             // Downscaling rarely reuses rows, but upscaling does; skip converting them twice.
             if (r0 != lastRow0)
             {
                 converter.RowToBgr(yuv, fullWidth, fullHeight, r0 + cropY, cols, c.BgrRow0);
                 HResize(c.BgrRow0.AsSpan(cropX * 3), c.Row0);
             }
+
             if (r1 != lastRow1)
             {
                 converter.RowToBgr(yuv, fullWidth, fullHeight, r1 + cropY, cols, c.BgrRow1);
                 HResize(c.BgrRow1.AsSpan(cropX * 3), c.Row1);
             }
+
             (lastRow0, lastRow1) = (r0, r1);
             VResize(dy, c, dst);
         }
     });
 
     int Row0(int dy) => Math.Clamp(_yofs[dy], 0, _sh - 1);
+
     int Row1(int dy) => Math.Clamp(_yofs[dy] + 1, 0, _sh - 1);
 
     void HResize(ReadOnlySpan<byte> s, int[] d) => HResize(s, d, _fullX0, _fullX1, _fullW0, _fullW1);
@@ -226,12 +240,16 @@ internal sealed class CvResize
                 var q = Pass(ref r0, ref r1, (nuint)x + 8, vb0, vb1);
                 var r = Pass(ref r0, ref r1, (nuint)x + 16, vb0, vb1);
                 var t = Pass(ref r0, ref r1, (nuint)x + 24, vb0, vb1);
+
                 // Clamped to 0..255, so narrowing keeps every value.
                 Vector256.Narrow(Vector256.Narrow(p, q), Vector256.Narrow(r, t)).AsByte().StoreUnsafe(ref o, (nuint)x);
             }
         }
         else if (Vector128.IsHardwareAccelerated)
+        {
             x = VResize128(ref r0, ref r1, ref MemoryMarshal.GetReference(d), n, b0, b1);
+        }
+
         for (; x < n; x++)
         {
             int v = (((b0 * (Unsafe.Add(ref r0, x) >> 4)) >> 16) + ((b1 * (Unsafe.Add(ref r1, x) >> 4)) >> 16) + 2) >> 2;
@@ -253,6 +271,7 @@ internal sealed class CvResize
             var t = Pass(ref r0, ref r1, (nuint)x + 12, vb0, vb1);
             Vector128.Narrow(Vector128.Narrow(p, q), Vector128.Narrow(r, t)).AsByte().StoreUnsafe(ref o, (nuint)x);
         }
+
         return x;
     }
 
@@ -282,13 +301,25 @@ internal sealed class CvResize
             float f = (float)((d + 0.5) * scale - 0.5);
             int s = (int)MathF.Floor(f);
             f -= s;
+
             // Horizontally OpenCV pins the borders; vertically it clamps the row index instead.
-            if (clampFraction && s < 0) { f = 0; s = 0; }
-            if (clampFraction && s >= ssize - 1) { f = 0; s = ssize - 1; }
+            if (clampFraction && s < 0)
+            {
+                f = 0;
+                s = 0;
+            }
+
+            if (clampFraction && s >= ssize - 1)
+            {
+                f = 0;
+                s = ssize - 1;
+            }
+
             ofs[d] = s;
             w0[d] = (short)MathF.Round((1f - f) * CoefScale);
             w1[d] = (short)MathF.Round(f * CoefScale);
         }
+
         return (ofs, w0, w1);
     }
 }

@@ -117,7 +117,12 @@ public sealed unsafe class AudioWriter : IDisposable
         _encoder?.Dispose();
         _encoder = null;
         Output.Free(ref _fmt);
-        if (_frame != null) { var f = _frame; ffmpeg.av_frame_free(&f); _frame = null; }
+        if (_frame != null)
+        {
+            var f = _frame;
+            ffmpeg.av_frame_free(&f);
+            _frame = null;
+        }
     }
 }
 

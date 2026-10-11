@@ -14,7 +14,7 @@ public class AudioWriterTests
     static void Ffmpeg(params string[] args)
     {
         var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
-            { RedirectStandardOutput = true, RedirectStandardError = true };
+        { RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args)
             psi.ArgumentList.Add(a);
         using var p = Process.Start(psi)!;
@@ -43,9 +43,14 @@ public class AudioWriterTests
             var samples = new float[n * channels];
             var random = new Random(7);
             for (int i = 0; i < n; i++)
+            {
                 for (int c = 0; c < channels; c++)
+                {
                     samples[i * channels + c] = (float)(1.1 * Math.Sin(2 * Math.PI * (440 + 220 * c) * i / rate) * (i < n / 2 ? 1 : 0.3)
                         + 0.05 * (random.NextDouble() - 0.5));
+                }
+            }
+
             string raw = Path.Combine(dir, "in.raw"), expected = Path.Combine(dir, "expected" + Path.GetExtension(name)), actual = Path.Combine(dir, name);
             File.WriteAllBytes(raw, MemoryMarshal.AsBytes(samples.AsSpan()).ToArray());
             string defaultEncoder = Path.GetExtension(name) switch { ".mp3" => "libmp3lame", ".wav" => "pcm_s16le", _ => "aac" };
@@ -53,12 +58,13 @@ public class AudioWriterTests
                 .. bitRate is { } b ? new[] { "-b:a", $"{b}" } : [], "-fflags", "+bitexact", "-flags:a", "+bitexact", expected]);
 
             using (var writer = new AudioWriter(actual, new AudioWriterOptions
-                   { SampleRate = rate, Channels = channels, BitRate = bitRate, Encoder = encoder, Bitexact = true }))
+            { SampleRate = rate, Channels = channels, BitRate = bitRate, Encoder = encoder, Bitexact = true }))
             {
                 // Uneven chunks, as a reader gives them.
                 for (int at = 0, size = 1000; at < samples.Length; at += size * channels, size = size == 1000 ? 4096 : 1000)
                     writer.Write(samples.AsSpan(at, Math.Min(size * channels, samples.Length - at) / channels * channels));
             }
+
             byte[] want = File.ReadAllBytes(expected), got = File.ReadAllBytes(actual);
             if ((encoder ?? defaultEncoder) == "libmp3lame" && !SameBuild())
             {
@@ -68,6 +74,7 @@ public class AudioWriterTests
                 Assert.Equal(Samples(expected), Samples(actual));
                 return;
             }
+
             int first = 0;
             while (first < Math.Min(want.Length, got.Length) && want[first] == got[first])
                 first++;
@@ -83,7 +90,7 @@ public class AudioWriterTests
     static bool SameBuild()
     {
         var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"), "-hide_banner -version")
-            { RedirectStandardOutput = true };
+        { RedirectStandardOutput = true };
         using var p = Process.Start(psi)!;
         string version = p.StandardOutput.ReadToEnd();
         p.WaitForExit();

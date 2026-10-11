@@ -18,6 +18,7 @@ public sealed class Clips : IDisposable
 
     /// <summary><see cref="ThreeShots"/> as mkv and as an mp4 with its headers first: both can be piped.</summary>
     public string ThreeShotsMkv { get; }
+
     public string ThreeShotsFaststart { get; }
 
     /// <summary><see cref="ThreeShots"/> as MPEG-2 in an MPEG program stream: not every packet has a pts.</summary>
@@ -38,8 +39,8 @@ public sealed class Clips : IDisposable
     public Clips()
     {
         ThreeShots = Make("three.mp4",
-            "-f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 -f lavfi -i mandelbrot=s=320x240:r=25 " +
-            "-filter_complex [2]trim=duration=2,setpts=PTS-STARTPTS[m];[0][1][m]concat=n=3:v=1:a=0,format=yuv420p");
+            "-f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 -f lavfi -i mandelbrot=s=320x240:r=25 "
+            + "-filter_complex [2]trim=duration=2,setpts=PTS-STARTPTS[m];[0][1][m]concat=n=3:v=1:a=0,format=yuv420p");
         Rotated = Path.Combine(_dir, "rotated.mp4");
         Run($"-v error -y -display_rotation 90 -i {ThreeShots} -c copy {Rotated}");
         Long = Make("long.mp4", "-f lavfi -i testsrc2=s=640x360:r=25:d=300 -vf format=yuv420p");
@@ -57,7 +58,9 @@ public sealed class Clips : IDisposable
         ThreeShotsDropped = Path.Combine(_dir, "dropped.mp4");
         var bytes = File.ReadAllBytes(ThreeShots);
         var positions = VideoReader.Run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pos", "-of", "csv=p=0", ThreeShots], default)
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(long.Parse).ToArray();
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(long.Parse)
+            .ToArray();
         foreach (int k in new[] { 60, 61, 120 })
             bytes.AsSpan((int)positions[k], 4).Fill(0xff);
         File.WriteAllBytes(ThreeShotsDropped, bytes);
@@ -66,6 +69,7 @@ public sealed class Clips : IDisposable
     string Make(string name, string input)
     {
         string path = Path.Combine(_dir, name);
+
         // mpeg4 is built into every ffmpeg, unlike libx264.
         Run($"-v error -y {input} -r 25 -c:v mpeg4 -q:v 3 {path}");
         return path;
@@ -113,6 +117,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     sealed class Recorder : IProgress<DetectionProgress>
     {
         public List<DetectionProgress> Reports { get; } = [];
+
         public void Report(DetectionProgress value) => Reports.Add(value);
     }
 
@@ -123,6 +128,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         var result = ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { Progress = recorder });
         Assert.NotEmpty(recorder.Reports);
         Assert.Equal((150, 150), (recorder.Reports[^1].FramesProcessed, recorder.Reports[^1].ExpectedFrames));
+
         // The first report comes before any frame, and every report says how this run decodes.
         Assert.Equal(0, recorder.Reports[0].FramesProcessed);
         Assert.All(recorder.Reports, r => Assert.Equal((result.Video.DecodesInProcess, result.Video.Pipeline), (r.DecodesInProcess, r.Pipeline)));
@@ -165,6 +171,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         var parent = new System.Diagnostics.Activity("test").Start();
         var result = ShotDetection.Detect(clips.ThreeShots);
         parent.Stop();
+
         // Other tests may run detections meanwhile: take this one's span by its parent.
         var span = Assert.Single(spans, a => a.ParentSpanId == parent.SpanId);
         Assert.Equal("ShotDetection.Detect", span.OperationName);
@@ -231,7 +238,9 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
         {
-            await foreach (var _ in ShotDetection.DetectStreamAsync(clips.Long, cancellationToken: cts.Token)) { }
+            await foreach (var _ in ShotDetection.DetectStreamAsync(clips.Long, cancellationToken: cts.Token))
+            {
+            }
         });
     }
 
@@ -240,7 +249,9 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     {
         var e = await Assert.ThrowsAsync<ShotDetectionException>(async () =>
         {
-            await foreach (var _ in ShotDetection.DetectStreamAsync("does-not-exist.mp4")) { }
+            await foreach (var _ in ShotDetection.DetectStreamAsync("does-not-exist.mp4"))
+            {
+            }
         });
         Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
     }
@@ -350,12 +361,17 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     {
         string dir = Directory.CreateTempSubdirectory("shotdetector-url-").FullName;
         File.Copy(clips.ThreeShotsFaststart, Path.Combine(dir, "three.mp4"));
-        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-bsf:v", "dump_extra", "-f", "hls", "-hls_time", "2", "-hls_playlist_type", "vod",
-            "-hls_segment_filename", Path.Combine(dir, "seg%03d.ts"), Path.Combine(dir, "play.m3u8")], default);
-        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-f", "dash", "-seg_duration", "2",
-            // Forward slashes: the dash muxer finds the manifest's folder by '/' only (with '\' it writes the segments
-            // to the working directory).
-            "-init_seg_name", "init.m4s", "-media_seg_name", "chunk$Number%03d$.m4s", Path.Combine(dir, "play.mpd").Replace('\\', '/')], default);
+        VideoReader.Run("ffmpeg",
+            ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-bsf:v", "dump_extra", "-f", "hls", "-hls_time", "2", "-hls_playlist_type", "vod",
+                "-hls_segment_filename", Path.Combine(dir, "seg%03d.ts"), Path.Combine(dir, "play.m3u8")],
+            default);
+        VideoReader.Run("ffmpeg",
+            ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-f", "dash", "-seg_duration", "2",
+
+                // Forward slashes: the dash muxer finds the manifest's folder by '/' only (with '\' it writes the segments
+                // to the working directory).
+                "-init_seg_name", "init.m4s", "-media_seg_name", "chunk$Number%03d$.m4s", Path.Combine(dir, "play.mpd").Replace('\\', '/')],
+            default);
         var (server, port) = Listen();
         using var _ = server;
         var serving = Task.Run(async () =>
@@ -363,22 +379,34 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             while (server.IsListening)
             {
                 System.Net.HttpListenerContext ctx;
-                try { ctx = await server.GetContextAsync(); }
-                catch (Exception e) when (e is System.Net.HttpListenerException or ObjectDisposedException) { return; }
+                try
+                {
+                    ctx = await server.GetContextAsync();
+                }
+                catch (Exception e) when (e is System.Net.HttpListenerException or ObjectDisposedException)
+                {
+                    return;
+                }
+
                 try
                 {
                     string file = Path.Combine(dir, ctx.Request.Url!.AbsolutePath.TrimStart('/'));
                     if (!File.Exists(file))
+                    {
                         ctx.Response.StatusCode = 404;
+                    }
                     else
                     {
                         await using var f = File.OpenRead(file);
                         ctx.Response.ContentLength64 = f.Length;
                         await f.CopyToAsync(ctx.Response.OutputStream);
                     }
+
                     ctx.Response.Close();
                 }
-                catch (System.Net.HttpListenerException) { } // ffprobe hangs up after the headers
+                catch (System.Net.HttpListenerException)
+                {
+                } // ffprobe hangs up after the headers
             }
         });
         try
@@ -388,6 +416,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             Assert.True(r.Video.Streaming);
             Assert.Equal([0L, 50L, 100L], r.Shots.Select(s => s.Start.FrameNum));
             Assert.Equal(expected.Stats!.Csv(expected.Video.Position), r.Stats!.Csv(r.Video.Position));
+
             // Streams over the URL: ffprobe's, as for the file (HLS and DASH: their segments' streams).
             var streams = r.Video.Info.Streams!;
             if (name.EndsWith(".mp4"))
@@ -478,7 +507,10 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             Assert.Equal(4.0, Duration(files[0]), 1);   // 0 .. 4 s instead of 2 .. 4 s
             Assert.Equal(2.0, Duration(files[1]), 1);   // 4 .. 6 s instead of 4 .. 5 s
         }
-        finally { Directory.Delete(dir, recursive: true); }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Fact]
@@ -506,7 +538,10 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             Assert.Equal(file.Shots.Select(s => s.Start.Timecode()), piped.Shots.Select(s => s.Start.Timecode()));
             Assert.Equal("00:00:02.000", piped.Shots[1].Start.Timecode());
         }
-        finally { File.Delete(ts); }
+        finally
+        {
+            File.Delete(ts);
+        }
     }
 
     [Fact]
@@ -558,6 +593,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         });
         Assert.Equal(content.Shots.Select(s => s.Start.FrameNum), both.Shots.Select(s => s.Start.FrameNum));
         Assert.Equal([50L, 100L], both.Cuts.Select(c => c.FrameNum));
+
         // A per-detector threshold too high to cut leaves the other detector's cuts.
         var one = ShotDetection.Detect(clips.ThreeShots, new()
         {
@@ -585,12 +621,16 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             var loaded = ShotDetection.LoadScenes(clips.ThreeShots, csv);
             Assert.Equal(detected.Shots.Select(s => (s.Start.FrameNum, s.End.FrameNum)), loaded.Shots.Select(s => (s.Start.FrameNum, s.End.FrameNum)));
             Assert.Equal([50L, 100L], loaded.Cuts.Select(c => c.FrameNum));
+
             // By time instead, and only from 3 s: the cut at 2 s falls outside.
             var fromThree = ShotDetection.LoadScenes(clips.ThreeShots, csv, "Start Timecode", new() { StartTime = "3s" });
             Assert.Equal([(75L, 100L), (100L, 150L)], fromThree.Shots.Select(s => (s.Start.FrameNum, s.End.FrameNum)));
             Assert.Equal("00:00:03.000", fromThree.Shots[0].Start.Timecode());
         }
-        finally { File.Delete(csv); }
+        finally
+        {
+            File.Delete(csv);
+        }
     }
 
     [Theory]
@@ -629,8 +669,10 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.ThrowsAny<OperationCanceledException>(() =>
         {
             foreach (var _ in new VideoReader(clips.Long).Frames(cts.Token))
+            {
                 if (++read == 10)
                     cts.Cancel();
+            }
         });
         Assert.Equal(10, read);
     }

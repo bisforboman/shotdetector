@@ -39,6 +39,7 @@ public class WaveformDataTests
         try
         {
             string path = Path.Combine(dir, name), expected = Path.Combine(dir, "expected.dat");
+
             // Loud enough to clip at times, two different channels, an odd length (a partial last point).
             Run(Ffmpeg, ["-v", "error", "-y", "-f", "lavfi", "-i", "aevalsrc=1.2*sin(440*2*PI*t)|0.6*sin(97*2*PI*t)+0.3*random(0):s=44100:d=2.0137",
                 .. encode.Split(' '), path]);
@@ -78,13 +79,25 @@ public class WaveformDataTests
             using (var w = new BinaryWriter(File.Create(path)))
             {
                 int bytes = frames.Length * 2;
-                w.Write("RIFF"u8); w.Write(36 + bytes); w.Write("WAVEfmt "u8); w.Write(16); w.Write((short)1); w.Write((short)2);
-                w.Write(8000); w.Write(8000 * 4); w.Write((short)4); w.Write((short)16); w.Write("data"u8); w.Write(bytes);
+                w.Write("RIFF"u8);
+                w.Write(36 + bytes);
+                w.Write("WAVEfmt "u8);
+                w.Write(16);
+                w.Write((short)1);
+                w.Write((short)2);
+                w.Write(8000);
+                w.Write(8000 * 4);
+                w.Write((short)4);
+                w.Write((short)16);
+                w.Write("data"u8);
+                w.Write(bytes);
                 foreach (short s in frames)
                     w.Write(s);
             }
+
             using var audio = new AudioReader(path, new AudioReaderOptions());
             var mixed = WaveformData.Read(audio, new WaveformOptions { SamplesPerPixel = 2 });
+
             // Means, truncated toward zero: 150, -3, 32767, -32768, 0; points of 2 frames, the last one alone.
             Assert.Equal((1, 3, 8000, 2), (mixed.Channels, mixed.Length, mixed.SampleRate, mixed.SamplesPerPixel));
             Assert.Equal([(-3, 150), (-32768, 32767), (0, 0)], Enumerable.Range(0, 3).Select(i => ((int)mixed.Min(0, i), (int)mixed.Max(0, i))));

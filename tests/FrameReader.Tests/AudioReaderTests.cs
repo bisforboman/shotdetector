@@ -14,7 +14,7 @@ public class AudioReaderTests
     static byte[] Ffmpeg(params string[] args)
     {
         var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
-            { RedirectStandardOutput = true, RedirectStandardError = true };
+        { RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var a in args)
             psi.ArgumentList.Add(a);
         using var p = Process.Start(psi)!;
@@ -30,6 +30,7 @@ public class AudioReaderTests
     [InlineData("aac.m4a", "-f lavfi -i sine=f=440:d=3:r=44100 -ac 2 -c:a aac")]
     [InlineData("mp3.mp3", "-f lavfi -i sine=f=330:d=3:r=44100 -c:a libmp3lame")]
     [InlineData("opus.webm", "-f lavfi -i sine=f=550:d=3:r=48000 -ac 2 -c:a libopus")]
+
     // Matroska's millisecond timestamps (a 20 ms Opus frame after the 6.5 ms pre-skip starts at 13.5 ms, read as 13), and
     // video's cues, so a seek lands seconds before the trim point: ffmpeg keeps the frames back to back from there.
     [InlineData("opus_video.mkv", "-f lavfi -i testsrc2=s=160x120:r=25:d=3 -f lavfi -i sine=f=550:d=3:r=48000 -ac 2 -c:v mpeg4 -g 75 -c:a libopus")]
@@ -60,6 +61,7 @@ public class AudioReaderTests
                         Assert.Equal(reader.Channels, chunk.Channels);
                         actual.Write(MemoryMarshal.AsBytes(chunk.Samples));
                     }
+
                     Assert.True(expected.AsSpan().SequenceEqual(actual.ToArray()),
                         $"{name} rate {rate} channels {channels} seek {seek}: {expected.Length} bytes from ffmpeg, {actual.Length} read");
                 }

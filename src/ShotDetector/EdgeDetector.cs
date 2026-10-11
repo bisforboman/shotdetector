@@ -47,8 +47,11 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
     static int Nth(ReadOnlySpan<int> histogram, int index)
     {
         for (int v = 0; v < 256; v++)
+        {
             if ((index -= histogram[v]) < 0)
                 return v;
+        }
+
         throw new ArgumentOutOfRangeException(nameof(index));
     }
 
@@ -56,6 +59,7 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
     internal void Canny(ReadOnlySpan<byte> src, int low, int high, Span<byte> output)
     {
         int w = width, h = height;
+
         // 3x3 Sobel (CV_16S) with BORDER_REPLICATE, and the L1 magnitude.
         for (int y = 0; y < h; y++)
         {
@@ -90,14 +94,19 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
                 int tg22x = ax * tg22;
                 bool isMax;
                 if (ay < tg22x)
+                {
                     isMax = m > Mag(x - 1, y) && m >= Mag(x + 1, y);
+                }
                 else if (ay > tg22x + (ax << (shift + 1)))
+                {
                     isMax = m > Mag(x, y - 1) && m >= Mag(x, y + 1);
+                }
                 else
                 {
                     int s = (xs ^ ys) < 0 ? -1 : 1;
                     isMax = m > Mag(x - s, y - 1) && m > Mag(x + s, y + 1);
                 }
+
                 if (!isMax)
                     continue;
                 if (m > high)
@@ -106,7 +115,9 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
                     _stack.Push(i);
                 }
                 else
+                {
                     _map[i] = 1;
+                }
             }
         }
 
@@ -115,6 +126,7 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
         {
             int x = i % w, y = i / w;
             for (int ny = Math.Max(y - 1, 0); ny <= Math.Min(y + 1, h - 1); ny++)
+            {
                 for (int nx = Math.Max(x - 1, 0); nx <= Math.Min(x + 1, w - 1); nx++)
                 {
                     int j = ny * w + nx;
@@ -124,7 +136,9 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
                         _stack.Push(j);
                     }
                 }
+            }
         }
+
         for (int i = 0; i < output.Length; i++)
             output[i] = _map[i] == 2 ? (byte)255 : (byte)0;
     }
@@ -134,6 +148,7 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
     {
         int w = width, h = height, r = KernelSize / 2;
         for (int y = 0; y < h; y++)
+        {
             for (int x = 0; x < w; x++)
             {
                 byte max = 0;
@@ -141,7 +156,10 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
                     max = Math.Max(max, src[y * w + k]);
                 _rowMax[y * w + x] = max;
             }
+        }
+
         for (int y = 0; y < h; y++)
+        {
             for (int x = 0; x < w; x++)
             {
                 byte max = 0;
@@ -149,5 +167,6 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
                     max = Math.Max(max, _rowMax[k * w + x]);
                 edges[y * w + x] = max;
             }
+        }
     }
 }

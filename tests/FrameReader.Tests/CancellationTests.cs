@@ -19,16 +19,20 @@ public class CancellationTests
         {
             string path = Path.Combine(dir, "clip.mkv");
             var psi = new ProcessStartInfo(Path.Combine(Libs, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
-                { RedirectStandardError = true };
+            { RedirectStandardError = true };
             foreach (var a in new[] { "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=160x90:d=2", "-f", "lavfi", "-i", "sine=d=2",
-                         "-c:v", "mpeg4", "-c:a", "flac", path })
+                         "-c:v", "mpeg4", "-c:a", "flac", path, })
+            {
                 psi.ArgumentList.Add(a);
+            }
+
             using (var p = Process.Start(psi)!)
             {
                 p.StandardError.ReadToEnd();
                 p.WaitForExit();
                 Assert.Equal(0, p.ExitCode);
             }
+
             var cancelled = new CancellationToken(canceled: true);
 
             Assert.ThrowsAny<OperationCanceledException>(() => Remux.Copy(path, Path.Combine(dir, "out.mkv"), null, cancelled));

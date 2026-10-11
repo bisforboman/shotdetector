@@ -11,6 +11,7 @@ public class ReferenceToneTests
     static readonly string? Libs = TestLibraries.Load();
 
     const string Tone = "0.1259*sin(2*PI*1000*t)"; // -18 dBFS, EBU line-up
+
     // Programme stand-in: a chord with harmonics, swelling, over noise.
     const string Content = "(0.2*sin(2*PI*220*t)+0.1*sin(2*PI*440*t)+0.1*sin(2*PI*660*t)+0.08*sin(2*PI*1000*t))*(0.6+0.4*sin(2*PI*0.3*t))+0.05*(random(0)-0.5)";
 
@@ -21,7 +22,7 @@ public class ReferenceToneTests
         {
             string path = Path.Combine(dir, name);
             var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
-                { RedirectStandardError = true };
+            { RedirectStandardError = true };
             foreach (var a in new[] { "-v", "error", "-y", "-f", "lavfi", "-i", $"aevalsrc={channels}:s=48000:d={seconds}", path })
                 psi.ArgumentList.Add(a);
             using (var p = Process.Start(psi)!)
@@ -30,6 +31,7 @@ public class ReferenceToneTests
                 p.WaitForExit();
                 Assert.True(p.ExitCode == 0, stderr);
             }
+
             using var audio = new AudioReader(path, new AudioReaderOptions());
             return [.. ReferenceTone.Find(audio, options)];
         }
@@ -62,6 +64,7 @@ public class ReferenceToneTests
     {
         if (Libs is null)
             return;
+
         // Tone at 0-10 s and again at 20-30 s: a 15 s search finds the first only; a 6 s one cuts it at 6 s.
         string ch = $"'if(lt(t,10),{Tone},if(lt(t,20),{Content},{Tone}))'";
         Assert.Equal(2, Find(ch, 30).Count);
@@ -93,9 +96,11 @@ public class ReferenceToneTests
     {
         if (Libs is null)
             return;
+
         // EBU stereo line-up: the left channel cut for 250 ms every 3 s (from 1 s), the right continuous.
         string left = $"'if(lt(t,20),if(lt(mod(t+2,3),0.25),0,{Tone}),{Content})'", right = $"'if(lt(t,20),{Tone},{Content})'";
         Segment(Assert.Single(Find($"{left}|{right}", 30)), 0, 20);
+
         // Both channels cut (a mono feed of it): the breaks are bridged.
         Segment(Assert.Single(Find($"{left}|{left}", 30)), 0, 20);
     }
