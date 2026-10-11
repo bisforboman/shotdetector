@@ -714,8 +714,11 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
 
                 string untagged = Stats(plain, options);
                 Assert.NotEqual(untagged, Stats(tagged, options));
-                var bt601 = ShotDetection.Detect(tagged, options with { AlwaysBt601 = true, Decoder = VideoDecoder.Auto });
-                Assert.False(bt601.Video.DecodesInProcess); // in-process follows the tags: the executable instead
+                // In-process follows the tags, so even when asked for it the flag decodes with the executable.
+                string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+                var decoder = libs is null ? VideoDecoder.Auto : VideoDecoder.InProcess;
+                var bt601 = ShotDetection.Detect(tagged, options with { AlwaysBt601 = true, Decoder = decoder, FfmpegDirectory = libs });
+                Assert.False(bt601.Video.DecodesInProcess);
                 Assert.Equal(untagged, bt601.Stats!.Csv(bt601.Video.Position));
             }
         }
