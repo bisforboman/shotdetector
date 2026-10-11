@@ -58,9 +58,21 @@ jobs:
         timeout-minutes: 15
         uses: ./.github/actions/btbn-ffmpeg
 
+      # FFmpeg's shared libraries too, so the in-process tests run (they pass without checking otherwise).
+      - name: FFmpeg 8.1, shared
+        id: libs
+        if: needs.changes.outputs.docs_only != 'true'
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          build: gpl-shared
+          add-to-path: 'false'
+
       - name: Mutate the guards
         if: needs.changes.outputs.docs_only != 'true'
         shell: pwsh
+        env:
+          SHOTDETECTOR_FFMPEG_LIBS: ${{ steps.libs.outputs.bin }}
         run: ./tools/mutation/Invoke-Mutations.ps1 -Shard ${{ matrix.shard }} -Shards 3
 
   # The check branch protection requires ("mutation"): every shard passed or was skipped (a light PR skips them).
