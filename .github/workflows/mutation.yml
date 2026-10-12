@@ -15,7 +15,7 @@ jobs:
   # their steps. Decided here, on a runner with git, from the PR's merge commit against its base.
   changes:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
@@ -39,7 +39,7 @@ jobs:
     if: needs.changes.outputs.light != 'true'
     needs: changes
     name: mutate (${{ matrix.shard }}/3)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -79,7 +79,7 @@ jobs:
   mutation:
     needs: [changes, mutate]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Every job passed or was skipped
