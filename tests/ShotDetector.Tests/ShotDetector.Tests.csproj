@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- ShotDetector's own StreamInfo/StreamType/FieldOrder, obsolete until 2.0 (issue #194). -->
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
