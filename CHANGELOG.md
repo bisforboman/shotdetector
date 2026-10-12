@@ -4,6 +4,23 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 What's merged but not released yet is in changes/ (one file per pull request).
 
+## 1.8.0 – 2026-10-12
+
+DASH output: Remux takes muxer options, and the dash muxer writes fMP4 segments and a static MPD as ffmpeg does
+(issue #171); stats values from 1e16 up are written as Python writes them.
+
+### New
+
+- FrameReader: `RemuxOptions.MuxerOptions`, FFmpeg muxer options as ffmpeg's output options (e.g.
+  `movflags=+faststart`). With `Container = "dash"`: MPEG-DASH output, fMP4 segments and a static MPD, the files
+  `ffmpeg -c copy -f dash` writes with the same options (issue #171). ShotDetector.Native has the dash muxer now.
+
+### Fixed
+
+- `Remux.Copy` to an .mpd on Windows wrote the segments into the working directory when the path used `\`
+  (FFmpeg's dash muxer looks for `/`); they now go next to the manifest.
+- Stats files: values from 1e16 to 1e21 are written like Python's `repr` (`1e+16`, not `10000000000000000.0`).
+
 ## 1.7.0 – 2026-10-11
 
 Joined encodes (timestamps starting over, a resolution change) now give scenedetect's results, with its stats
