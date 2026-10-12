@@ -66,6 +66,8 @@ public sealed class Stats
     internal static string PyFloat(double d)
     {
         string s = d.ToString("R", CultureInfo.InvariantCulture);
+        if (Math.Abs(d) >= 1e16 && !s.Contains('E')) // .NET writes these out in full below 1e21; Python from 1e16
+            s = d.ToString("E" + (s.TrimStart('-').TrimEnd('0').Length - 1), CultureInfo.InvariantCulture);
         int e = s.IndexOf('E');
         if (e >= 0)
         {

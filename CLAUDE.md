@@ -81,7 +81,9 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 - `src/ShotDetector.Cli`: `shotdetect` (list-scenes table/CSV/JSON, `--stats`, `--save-images`, `--split-video`,
   time/crop/skip options). `-p:WithFastYuv=true` builds a dev-only LGPL variant for `compare.py --fast-yuv`.
 - `tests/ShotDetector.Tests`: xunit. `Clips` fixture makes mpeg4 clips with ffmpeg (150 frames @ 25 fps, cuts at
-  50/100). RangeTests (time/skip/crop), VideoTests (reader, streaming, cancellation), InProcessTests, HashDetectorTests.
+  50/100). RangeTests (time/skip/crop), VideoTests (reader, streaming, cancellation), InProcessTests, HashDetectorTests,
+  PropertyTests (FrameTime and PyFloat against scenedetect's answers in `Data/oracle.txt`, which `tools/oracle.py` writes:
+  rerun it when the scenedetect pin moves; FsCheck invariants).
 - `tools/compare.py`: runs scenedetect and shotdetect on videos, diffs cuts/CSVs/stats, Markdown report.
   `tools/make-samples.ps1`: synthetic + Blender trailers + VFR/rotation/colour variants. `tools/realworld.py`:
   whole Blender films and codec clips, pinned by SHA-256. `tools/mutation/`: guard mutations.
