@@ -53,4 +53,17 @@ public class FFmpegLibrariesTests
         Assert.False(FFmpegLibraries.HasFilter("nosuchfilter"));
         Assert.False(FFmpegLibraries.HasMuxer("nosuchmuxer"));
     }
+
+    // Issue #195: our build (ShotDetector.Native) and full builds have everything FrameReader's features need, but x264.
+    [Fact]
+    public void SaysWhatAFeatureLacks()
+    {
+        if (Libs is null)
+            return;
+        FFmpegLibraries.Load(Libs);
+        var all = Enum.GetValues<Capability>().Aggregate((a, b) => a | b);
+        Assert.Empty(FFmpegLibraries.Missing(all & ~Capability.H264));
+        Assert.True(FFmpegLibraries.Missing(Capability.H264) is [] or ["encoder libx264"]);
+        Assert.Empty(FFmpegLibraries.Missing(0));
+    }
 }

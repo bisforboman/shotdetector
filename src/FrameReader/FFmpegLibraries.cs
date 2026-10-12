@@ -132,6 +132,56 @@ public static unsafe class FFmpegLibraries
     /// <param name="directory">As for <see cref="Load"/>.</param>
     public static bool HasMuxer(string name, string? directory = null) => Has(directory, () => ffmpeg.av_guess_format(name, null, null) != null);
 
+    /// <summary>
+    /// What these libraries lack for the given features, as <c>"filter yadif"</c>, <c>"encoder libmp3lame"</c>,
+    /// <c>"muxer dash"</c>; empty when they have everything. To check a system FFmpeg at startup without tracking what
+    /// each feature uses. The filters of an <see cref="AudioFilter"/> graph of your own are yours to check
+    /// (<see cref="HasFilter"/>).
+    /// </summary>
+    /// <param name="capabilities">The features, combined with <c>|</c>.</param>
+    /// <param name="directory">As for <see cref="Load"/>.</param>
+    /// <returns>Everything missing, or <c>"libraries"</c> alone when they don't load.</returns>
+    public static IReadOnlyList<string> Missing(Capability capabilities, string? directory = null)
+    {
+        if (!CanLoad(directory))
+            return ["libraries"];
+        var missing = new List<string>();
+        foreach (var (capability, needs) in Needs)
+        {
+            if ((capabilities & capability) == 0)
+                continue;
+            foreach (string need in needs)
+            {
+                string[] kindName = need.Split(' ');
+                bool has = kindName[0] switch
+                {
+                    "encoder" => HasEncoder(kindName[1], directory),
+                    "muxer" => HasMuxer(kindName[1], directory),
+                    _ => HasFilter(kindName[1], directory),
+                };
+                if (!has && !missing.Contains(need))
+                    missing.Add(need);
+            }
+        }
+
+        return missing;
+    }
+
+    // What each feature creates (README's table): the filters of its graphs, its encoder and muxer.
+    static readonly (Capability Capability, string[] Needs)[] Needs =
+    [
+        (Capability.VideoFilters, ["filter buffer", "filter buffersink"]),
+        (Capability.Deinterlace, ["filter buffer", "filter buffersink", "filter yadif"]),
+        (Capability.FrameRate, ["filter buffer", "filter buffersink", "filter fps"]),
+        (Capability.AudioFilter, ["filter abuffer", "filter abuffersink", "filter aformat"]),
+        (Capability.SpectralStats, ["filter abuffer", "filter abuffersink", "filter aspectralstats"]),
+        (Capability.Mp3, ["encoder libmp3lame", "muxer mp3", "filter abuffer", "filter abuffersink", "filter aformat", "filter aresample"]),
+        (Capability.Aac, ["encoder aac", "muxer ipod", "filter abuffer", "filter abuffersink", "filter aformat", "filter aresample"]),
+        (Capability.Wav, ["encoder pcm_s16le", "muxer wav", "filter abuffer", "filter abuffersink", "filter aformat", "filter aresample"]),
+        (Capability.H264, ["encoder libx264", "muxer mp4", "filter buffer", "filter buffersink", "filter format", "filter null", "filter scale"]),
+        (Capability.Dash, ["muxer dash"]),
+    ];
+
     static bool Has(string? directory, Func<bool> lookup)
     {
         if (!CanLoad(directory))
