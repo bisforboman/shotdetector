@@ -42,6 +42,28 @@ jobs:
             echo "v$v is already released" >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # The baseline issue (see `baseline` below) closes itself once Directory.Build.props has that version: on every push
+  # to main, an open "Set ApiBaselineVersion to X" issue is closed when X is the props file's ApiBaselineVersion.
+  baseline-done:
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Close the baseline issue for the props file's version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(grep -oP '(?<=<ApiBaselineVersion>)[^<]+' Directory.Build.props || true)
+          [ -n "$v" ] || exit 0
+          title="Set ApiBaselineVersion to $v"
+          gh issue list --state open --search "\"$title\" in:title" --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | while read -r n; do
+            gh issue close "$n" --reason completed --comment "Directory.Build.props has \`<ApiBaselineVersion>$v</ApiBaselineVersion>\` on main ($GITHUB_SHA)."
+          done
+
   # Our FFmpeg build for every platform (native.yml, cached): the ShotDetector.Native.<rid> packages, and bundled in
   # the CLI tool and binaries.
   native:

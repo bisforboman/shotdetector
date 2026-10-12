@@ -35,6 +35,33 @@ jobs:
           # results can't change): the heavy jobs don't start at all.
           if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$|^\.claude/|^benchmarks/|^tests/FrameReader\.Tests/|^src/FrameReader/(VideoFrameReader|AudioReader)\.cs$'; then echo light=true >> "$GITHUB_OUTPUT"; fi
 
+  # Line endings are per file here (no .gitattributes; most CRLF, some LF). A file whose lines changed only in their
+  # ending was rewritten by an editor or Git Bash's `sed -i`, and blame would show every line as changed (README.md
+  # in #165, restored in #167). A few lines (a mixed file's edited block) pass; more fail the pull request. A
+  # conversion on purpose: label the pull request `line-endings`.
+  line-endings:
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft && !contains(github.event.pull_request.labels.*.name, 'line-endings')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - name: No file's line endings rewritten
+        run: |
+          bad=0
+          while IFS=$'\t' read -r added deleted file; do
+            [ "$added" = "-" ] && continue   # binary
+            ignoring=$(git diff --numstat --ignore-cr-at-eol HEAD^1 HEAD -- "$file" | cut -f1)
+            only=$((added - ${ignoring:-0}))
+            echo "$file: $added lines added, $only only in their line ending"
+            if [ "$only" -gt 20 ]; then
+              echo "::error file=$file::$only lines changed only their line ending (CRLF/LF): keep the file's own"
+              bad=1
+            fi
+          done < <(git diff --numstat HEAD^1 HEAD)
+          exit $bad
+
   # Our FFmpeg build for linux-x64 (native.yml, cached by the build script's hash): the in-process tests and the
   # AOT binary use it.
   native:
@@ -568,7 +595,7 @@ jobs:
   # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
   passed:
     name: CI passed
-    needs: [changes, native, build, aot, native-arm, arm, alpine, samples, parity]
+    needs: [changes, line-endings, native, build, aot, native-arm, arm, alpine, samples, parity]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
