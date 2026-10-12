@@ -67,6 +67,9 @@ internal sealed unsafe class Encoder : IDisposable
 
     internal AVCodecContext* Context => _enc;
 
+    /// <summary>The output stream, once the encoder is open.</summary>
+    internal AVStream* Stream => _st;
+
     /// <summary>The encoder by name, or the container's usual one for the media type, as ffmpeg picks it from the file name.</summary>
     internal static AVCodec* Find(AVFormatContext* fmt, string path, string? name, AVMediaType type, string what)
     {
@@ -95,13 +98,21 @@ internal sealed unsafe class Encoder : IDisposable
             string layoutName = Marshal.PtrToStringAnsi((nint)name)!;
             var formats = Supported<AVSampleFormat>(codec, AVCodecConfig.AV_CODEC_CONFIG_SAMPLE_FORMAT).Select(f => ffmpeg.av_get_sample_fmt_name(f)).ToList();
             var rates = Supported<int>(codec, AVCodecConfig.AV_CODEC_CONFIG_SAMPLE_RATE);
+            var layouts = new List<string>();
+            foreach (var supported in Supported<AVChannelLayout>(codec, AVCodecConfig.AV_CODEC_CONFIG_CHANNEL_LAYOUT))
+            {
+                var l = supported;
+                ffmpeg.av_channel_layout_describe(&l, name, 128);
+                layouts.Add(Marshal.PtrToStringAnsi((nint)name)!);
+            }
 
-            // aformat with the encoder's sample formats and rates (ffmpeg picks the nearest), the samples' layout.
+            // aformat with the encoder's sample formats, rates and channel layouts (ffmpeg picks the nearest: 5.1 into
+            // libmp3lame is downmixed to stereo), else the samples' rate and layout.
             string filter = "aformat=" + string.Join(":", new[]
             {
                 formats.Count > 0 ? "sample_fmts=" + string.Join("|", formats) : null,
                 "sample_rates=" + (rates.Count > 0 ? string.Join("|", rates) : rate.ToString(CultureInfo.InvariantCulture)),
-                "channel_layouts=" + layoutName,
+                "channel_layouts=" + (layouts.Count > 0 ? string.Join("|", layouts) : layoutName),
             }.Where(s => s is not null));
             e.Graph("abuffer",
                 string.Create(CultureInfo.InvariantCulture,
@@ -196,6 +207,72 @@ internal sealed unsafe class Encoder : IDisposable
             e._options = null; // set on the context above
             e._bitexact = bitexact;
             e._filtered = ffmpeg.av_frame_alloc();
+            return e;
+        }
+        catch
+        {
+            e.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Decoded frames (as <paramref name="first"/>: the decoder's own format, timestamps in samples) through
+    /// <paramref name="graph"/> (null: <c>anull</c>) to <paramref name="codec"/>, as ffmpeg's command line sets up an audio
+    /// output: its aformat with the encoder's sample formats, rates and channel layouts (lavfi converts to the nearest,
+    /// inserting aresample), the encoder opened from what the graph gives.
+    /// </summary>
+    internal static Encoder AudioFrom(AVFormatContext* fmt, AVCodec* codec, AVFrame* first, string? graph, long? bitRate, bool bitexact)
+    {
+        var e = new Encoder(fmt);
+        try
+        {
+            byte* name = stackalloc byte[128];
+
+            // An unknown layout (a WAV without a channel mask) gets the default one for its channel count, as ffmpeg guesses.
+            AVChannelLayout input;
+            if (first->ch_layout.order == AVChannelOrder.AV_CHANNEL_ORDER_UNSPEC)
+                ffmpeg.av_channel_layout_default(&input, first->ch_layout.nb_channels);
+            else
+                Check(ffmpeg.av_channel_layout_copy(&input, &first->ch_layout), "channel layout");
+            ffmpeg.av_channel_layout_describe(&input, name, 128);
+            ffmpeg.av_channel_layout_uninit(&input);
+            string args = string.Create(CultureInfo.InvariantCulture,
+                $"time_base=1/{first->sample_rate}:sample_rate={first->sample_rate}:sample_fmt={ffmpeg.av_get_sample_fmt_name((AVSampleFormat)first->format)}:channel_layout={Marshal.PtrToStringAnsi((nint)name)}");
+
+            var formats = Supported<AVSampleFormat>(codec, AVCodecConfig.AV_CODEC_CONFIG_SAMPLE_FORMAT).Select(f => ffmpeg.av_get_sample_fmt_name(f)).ToList();
+            var rates = Supported<int>(codec, AVCodecConfig.AV_CODEC_CONFIG_SAMPLE_RATE);
+            var layouts = new List<string>();
+            foreach (var layout in Supported<AVChannelLayout>(codec, AVCodecConfig.AV_CODEC_CONFIG_CHANNEL_LAYOUT))
+            {
+                var l = layout;
+                ffmpeg.av_channel_layout_describe(&l, name, 128);
+                layouts.Add(Marshal.PtrToStringAnsi((nint)name)!);
+            }
+
+            string[] parts =
+            [
+                .. formats.Count > 0 ? ["sample_fmts=" + string.Join("|", formats)] : Array.Empty<string>(),
+                .. rates.Count > 0 ? ["sample_rates=" + string.Join("|", rates)] : Array.Empty<string>(),
+                .. layouts.Count > 0 ? ["channel_layouts=" + string.Join("|", layouts)] : Array.Empty<string>(),
+            ];
+
+            // Without a graph ffmpeg puts anull (a pass-through) first; ShotDetector.Native has no anull, so aformat starts.
+            string format = parts.Length > 0 ? "aformat=" + string.Join(":", parts) : "aformat";
+            e.Graph("abuffer", args, graph is null ? format : graph + "," + format, "abuffersink");
+
+            e._enc = ffmpeg.avcodec_alloc_context3(codec);
+            e._enc->sample_fmt = (AVSampleFormat)ffmpeg.av_buffersink_get_format(e._out);
+            e._enc->sample_rate = ffmpeg.av_buffersink_get_sample_rate(e._out);
+            AVChannelLayout negotiated;
+            Check(ffmpeg.av_buffersink_get_ch_layout(e._out, &negotiated), "channel layout");
+            e._enc->ch_layout = negotiated;
+            e._enc->time_base = new AVRational { num = 1, den = e._enc->sample_rate };
+            if (bitRate is { } b)
+                e._enc->bit_rate = b;
+            e.Open(codec, bitexact, null);
+            if ((codec->capabilities & ffmpeg.AV_CODEC_CAP_VARIABLE_FRAME_SIZE) == 0)
+                ffmpeg.av_buffersink_set_frame_size(e._out, (uint)e._enc->frame_size);
             return e;
         }
         catch

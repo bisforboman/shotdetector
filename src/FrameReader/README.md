@@ -161,6 +161,16 @@ using (var mp3 = new AudioWriter("talk.mp3", new() { SampleRate = 44100, Channel
         mp3.Write(chunk.Samples);
 ```
 
+As ffmpeg does, what the encoder can't take is converted to its nearest sample format, rate and channel layout (5.1
+into MP3 comes out stereo). For a whole file, `Audio.Convert` is `ffmpeg -i IN -vn [-af G] [-c:a E] [-b:a B] OUT` in one
+call: the decoder's own samples through the graph to the encoder, with the input's metadata, the file the command
+line writes. Including its conversion: a downmix of integer samples (PCM, FLAC) is normalized, of float ones (AAC,
+MP3) it isn't, which the read-filter-write loop above can't do (it works in float):
+
+```csharp
+Audio.Convert("in.mxf", "out.mp3", new() { Filter = "equalizer=f=1000:t=q:w=8:g=-40:enable='between(t,0,60)'" });
+```
+
 Stream copy: `Remux.Copy(input, output, options)` copies streams into another container without re-encoding, the
 file `ffmpeg -i IN -map ... -c copy OUT` writes (timestamps, codec tags, metadata and chapters as ffmpeg copies them):
 
@@ -315,7 +325,7 @@ What each part needs from a build of your own, beyond the decoders and demuxers 
 | `AudioReader`, `WaveformData`, `ReferenceTone` | | | |
 | `AudioFilter` | | `abuffer`, `abuffersink`, `aformat`, and the graph's own (`equalizer`, ...) | |
 | `SpectralStats` | | `abuffer`, `abuffersink`, `aspectralstats` | |
-| `AudioWriter` | the codec's (`libmp3lame`, `aac`, `pcm_s16le`, ...) | `abuffer`, `abuffersink`, `aformat`, `aresample` | the container's (`mp3`, `ipod` for .m4a, `wav`, ...) |
+| `AudioWriter`, `Audio.Convert` | the codec's (`libmp3lame`, `aac`, `pcm_s16le`, ...) | `abuffer`, `abuffersink`, `aformat`, `aresample` | the container's (`mp3`, `ipod` for .m4a, `wav`, ...) |
 | `VideoWriter` | `libx264` (and `aac` for an audio track) | `buffer`, `buffersink`, `format`, `null`, `scale` (and the audio ones) | `mp4`, `matroska` or `mov` |
 | `Remux.Copy` | | | the output's (`dash` for an .mpd) |
 

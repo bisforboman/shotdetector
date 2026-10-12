@@ -26,6 +26,7 @@ public class AudioWriterTests
 
     [Theory]
     [InlineData("out.mp3", 44100, 2, null, null)]
+    [InlineData("out.mp3", 48000, 6, null, null)] // 5.1: downmixed to the stereo libmp3lame takes, as ffmpeg does (issue #192)
     [InlineData("out.mp3", 22050, 1, 64000L, null)]
     [InlineData("out.m4a", 48000, 2, null, null)]
     [InlineData("out.aac", 44100, 2, 96000L, null)]
