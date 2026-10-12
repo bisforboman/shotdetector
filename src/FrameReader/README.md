@@ -258,7 +258,10 @@ foreach (var tone in ReferenceTone.Find(audio))
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio, and `Streams`: every
 stream with its type, codec, codec tag, language, title, flags, bit rate, duration and audio details; optionally
-every packet's timestamp). **The advanced layer:** `FrameDecoder` is the lower level, decoded frames as FFmpeg holds them (`GetPlane`), with
+every packet's timestamp). `MediaProbe.ProbeJson(path)` gives ffprobe's `-print_format json -show_format
+-show_streams` instead: every field ffprobe prints (profile, level, aspect ratios, colour, disposition, tags, side
+data, ...), with ffprobe's keys and value types, unknown values left out as there; it opens each stream's decoder, as
+ffprobe does. **The advanced layer:** `FrameDecoder` is the lower level, decoded frames as FFmpeg holds them (`GetPlane`), with
 seeking. `BgrConverter` turns its current frame into BGR at its own size, the bytes `-vf scale,format=bgr24` gives
 (OpenCV's too); `Convert(rows, out stride)` converts only the slices holding the rows you read, for when you sample a
 few rows of each frame (ShotDetector reads its resize's rows this way).

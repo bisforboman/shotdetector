@@ -28,6 +28,28 @@ public static unsafe class MediaProbe
         return Probe("pipe:0", io, options);
     }
 
+    /// <summary>
+    /// ffprobe's <c>-print_format json -show_format -show_streams</c> for the input: the same keys and values (every
+    /// field ffprobe prints: profile, level, aspect ratios, colour, disposition, tags, side data, ...), leaving out
+    /// unknown values as ffprobe's JSON does. Opens each stream's decoder, as ffprobe does, for its coded size and the like.
+    /// </summary>
+    /// <param name="path">What to open; also the JSON's <c>filename</c>.</param>
+    /// <param name="options">Input options (<see cref="ProbeOptions.InputOptions"/>); the rest is unused.</param>
+    /// <exception cref="FrameReaderException">The libraries didn't load, or FFmpeg can't open the input.</exception>
+    public static string ProbeJson(string path, ProbeOptions? options = null)
+    {
+        FFmpegLibraries.Load();
+        var fmt = Demuxer.Open(path, options?.InputOptions);
+        try
+        {
+            return FfprobeJson.Write(fmt);
+        }
+        finally
+        {
+            ffmpeg.avformat_close_input(&fmt);
+        }
+    }
+
     static MediaInfo Probe(string path, StreamInput? io, ProbeOptions? options)
     {
         FFmpegLibraries.Load();
