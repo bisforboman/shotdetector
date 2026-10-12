@@ -131,6 +131,9 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 - Runners are pinned to an Ubuntu version (ubuntu-26.04 since 2026-10-11, after CI passed there), so the image
   can't change under CI unannounced; move the pin after a do-not-merge PR runs CI on the new one. The native builds
   stay on ubuntu-22.04 on purpose (glibc baseline).
+- VideoWriter vs `ffmpeg -c:v libx264`: on AVX-512 CPUs, x264's AVX-512 code plus .NET's tiered JIT differ ~1 run in 250,
+  so CI's VideoWriter step sets `DOTNET_TieredCompilation=0`. GitHub's runners are a mix of CPUs (EPYC 7763 without
+  AVX-512, Xeons and EPYC 9V45/9V74 with it): log `/proc/cpuinfo` when a failure only shows up on some runners.
 - GitHub Actions queues can stall; re-run rather than diagnose when every job was cancelled at ~15 min.
 - CI downloads: BtbN's FFmpeg only through `.github/actions/btbn-ffmpeg` (retries, checked archive, daily cache with
   fallback), never `curl | tar` (a reset mid-stream left tar a truncated archive); Docker images from

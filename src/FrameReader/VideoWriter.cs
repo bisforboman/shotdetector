@@ -97,6 +97,8 @@ public sealed record VideoWriterOptions
 /// H.264 needs FFmpeg libraries with x264, which ShotDetector.Native doesn't have: a "gpl" FFmpeg 8 build of your own,
 /// loaded with <see cref="FFmpegLibraries.Load"/>. x264 is GPL: an app that ships with it falls under the GPL; and H.264 is
 /// covered by Via LA's AVC patent pool, whoever distributes the encoder. <see cref="Dispose"/> finishes the file.
+/// On CPUs with AVX-512, a file can rarely differ from ffmpeg's (still valid H.264) while .NET's tiered compilation is on:
+/// for byte-exact output there, turn it off (<c>DOTNET_TieredCompilation=0</c>); FrameReader's README has the details.
 /// </remarks>
 public sealed unsafe class VideoWriter : IDisposable
 {

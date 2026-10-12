@@ -178,6 +178,12 @@ of your own (a shared one, such as BtbN's `gpl-shared`), loaded with `FFmpegLibr
 app that ships with them falls under the GPL, and H.264 is covered by Via LA's AVC patent pool either way
 (docs/encoding-package.md).
 
+On CPUs with AVX-512, a file can rarely differ from ffmpeg's while .NET's tiered compilation is on (in CI, about 1
+run in 250 of a five-file test; still valid H.264): x264's AVX-512 code and the runtime's JIT thread in one process.
+Each alone gives ffmpeg's bytes. For byte-exact output there, turn tiered compilation off
+(`<TieredCompilation>false</TieredCompilation>` or `DOTNET_TieredCompilation=0`), as CI does, or keep x264 off AVX-512
+on both sides (its `asm` flags in `X264Params` and `-x264-params`).
+
 ```csharp
 using var reader = new VideoFrameReader("in.mkv", new() { FrameFormat = FrameFormat.Bgr24 });
 using var writer = new VideoWriter("out.mp4", new()
