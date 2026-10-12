@@ -191,6 +191,11 @@ Remux.Copy("film.mkv", "out/manifest.mpd", new()
 });
 ```
 
+Folders in the segment names are created, and `$ContentType$` (`video`, `audio`, `text`) gives Shaka Packager's
+layout, which FFmpeg's muxer has no placeholder for: `["init_seg_name"] = "$ContentType$/init.mp4"` and
+`["media_seg_name"] = "$ContentType$/$Number$.m4s"` write `video/init.mp4`, `video/1.m4s`, `audio/init.mp4`, ...
+with the MPD's templates to match (two streams of one type need `$RepresentationID$` in the name as well).
+
 Segments end at keyframes, so `seg_duration` is a target: for exact 2.4 s segments the video needs a keyframe every
 2.4 s (`VideoWriterOptions.KeyframeEvery`).
 
