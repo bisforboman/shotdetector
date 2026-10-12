@@ -303,7 +303,7 @@ public static unsafe class Remux
     }
 
     /// <summary>The input's global metadata (less what ffmpeg drops) and its chapters, as ffmpeg copies them by default.</summary>
-    static void CopyMetadataAndChapters(AVFormatContext* ic, AVFormatContext* oc)
+    internal static void CopyMetadataAndChapters(AVFormatContext* ic, AVFormatContext* oc)
     {
         long tsOffset = ic->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : -ic->start_time;
         if (ic->nb_chapters > 0)

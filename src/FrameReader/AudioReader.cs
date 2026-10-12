@@ -304,6 +304,11 @@ public sealed unsafe class AudioReader : IDisposable
     /// <summary>The frame <see cref="TryDecode"/> gave.</summary>
     internal AVFrame* Decoded => _frame;
 
+    /// <summary>The input (for its metadata and chapters) and the audio stream's index in it.</summary>
+    internal AVFormatContext* Format => _fmt;
+
+    internal int StreamIndex => _stream;
+
     /// <summary>Where <see cref="TryDecode"/>'s positions count from, on <see cref="AudioChunk.Time"/>'s timeline.</summary>
     internal TimeSpan Origin => TimeSpan.FromTicks((_start - (_fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : _fmt->start_time)) * 10);
 

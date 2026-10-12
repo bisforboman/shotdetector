@@ -26,6 +26,7 @@ public class AudioWriterTests
 
     [Theory]
     [InlineData("out.mp3", 44100, 2, null, null)]
+    [InlineData("out.mp3", 48000, 6, null, null)] // 5.1: downmixed to the stereo libmp3lame takes, as ffmpeg does (issue #192)
     [InlineData("out.mp3", 22050, 1, 64000L, null)]
     [InlineData("out.m4a", 48000, 2, null, null)]
     [InlineData("out.aac", 44100, 2, 96000L, null)]
@@ -87,7 +88,7 @@ public class AudioWriterTests
     }
 
     /// <summary>Whether the ffmpeg executable is the libraries' own build (the same configure line).</summary>
-    static bool SameBuild()
+    internal static bool SameBuild()
     {
         var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"), "-hide_banner -version")
         { RedirectStandardOutput = true };
@@ -98,7 +99,7 @@ public class AudioWriterTests
         return version.Contains("configuration: " + FFmpeg.AutoGen.ffmpeg.avcodec_configuration().Trim());
     }
 
-    static long Samples(string path)
+    internal static long Samples(string path)
     {
         using var reader = new AudioReader(path, new AudioReaderOptions());
         long n = 0;
