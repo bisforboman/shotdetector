@@ -3,6 +3,11 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## The previous scenedetect release in CI (2026-10-12)
+
+With 0.7.2 the default, the parity matrix ran both releases on both paths (8 jobs); all matched. Asked how much
+0.7.1 comparison to keep: **one small job per PR** (core path, the main comparison), over nightly only or none.
+
 ## scenedetect 0.7.2 as the default (2026-10-12, issue #177)
 
 Not asked: README's "Versions" already decides it (the default tracks the newest scenedetect, a minor version; the

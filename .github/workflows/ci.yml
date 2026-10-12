@@ -415,6 +415,11 @@ jobs:
         path: [core, fast-yuv]
         scenedetect: ['0.7.2', '0.7.1']   # the default and the previous release, each in its --compat mode
         part: [compare, more]
+        # The previous release: one job, the core path's main comparison (all its jobs matched when 0.7.2 came in;
+        # this still catches a shared change that moves its results).
+        exclude:
+          - { scenedetect: '0.7.1', path: fast-yuv }
+          - { scenedetect: '0.7.1', part: more }
     env:
       # The latest stable FFmpeg; BtbN's static build. No libraries here, so this is also Auto's fallback to the
       # executable where only FFmpeg 9 is installed (its libavcodec 63 doesn't load in-process).
