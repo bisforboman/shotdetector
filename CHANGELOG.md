@@ -4,6 +4,16 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 What's merged but not released yet is in changes/ (one file per pull request).
 
+## 1.11.0 – 2026-10-12
+
+Widevine pssh data from the caller: EncryptionOptions.WidevinePsshData (issue #185).
+
+### New
+
+- FrameReader: `EncryptionOptions.WidevinePsshData`, the Widevine pssh data as a DRM provider supplies it (with its
+  provider, content ID and so on), written into the pssh box unchanged, the box
+  `pssh-box.py --widevine-system-id --pssh-data` gives (issue #185). Null: built from the key ID as before.
+
 ## 1.10.0 – 2026-10-12
 
 Follows scenedetect 0.7.2 by default (its new detect-hist and detect-hash defaults, frame-count minimum lengths,
