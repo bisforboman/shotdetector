@@ -25,6 +25,14 @@ public sealed record EncryptionOptions
     /// <c>cenc:pssh</c>), as Shaka Packager writes them.
     /// </summary>
     public bool Widevine { get; init; }
+
+    /// <summary>
+    /// With <see cref="Widevine"/>: the WidevinePsshData for the pssh box, as a DRM provider supplies it (with its
+    /// <c>provider</c>, <c>content_id</c> and the like), written unchanged: the box
+    /// <c>pssh-box.py --widevine-system-id --pssh-data</c> gives, as Shaka Packager's <c>--pssh</c> writes it. Null
+    /// (default): built from <see cref="KeyId"/> alone.
+    /// </summary>
+    public byte[]? WidevinePsshData { get; init; }
 }
 
 /// <summary>The parts of <see cref="EncryptionOptions"/> FFmpeg doesn't write: Widevine's pssh box and the MPD's ContentProtection.</summary>
@@ -48,12 +56,13 @@ static class Cenc
     }
 
     /// <summary>
-    /// A version 0 <c>pssh</c> box with Widevine's system ID and WidevinePsshData holding the key ID (field 2, bytes), as
-    /// <c>pssh-box.py --widevine-system-id --key-id</c> writes it.
+    /// A version 0 <c>pssh</c> box with Widevine's system ID and the given WidevinePsshData (<c>pssh-box.py --pssh-data</c>),
+    /// or else WidevinePsshData holding the key ID (field 2, bytes), as <c>pssh-box.py --widevine-system-id --key-id</c>
+    /// writes it.
     /// </summary>
-    internal static byte[] WidevinePssh(byte[] keyId)
+    internal static byte[] WidevinePssh(byte[] keyId, byte[]? psshData = null)
     {
-        byte[] data = [0x12, (byte)keyId.Length, .. keyId];
+        byte[] data = psshData ?? [0x12, (byte)keyId.Length, .. keyId];
         var box = new byte[32 + data.Length];
         BinaryPrimitives.WriteUInt32BigEndian(box, (uint)box.Length);
         "pssh"u8.CopyTo(box.AsSpan(4));
@@ -73,9 +82,9 @@ static class Cenc
     }
 
     /// <summary>Adds Widevine's pssh box to each init segment the MPD names and the ContentProtection elements to the MPD.</summary>
-    internal static void SignalWidevine(string mpd, byte[] keyId)
+    internal static void SignalWidevine(string mpd, byte[] keyId, byte[]? psshData)
     {
-        byte[] pssh = WidevinePssh(keyId);
+        byte[] pssh = WidevinePssh(keyId, psshData);
         string text = File.ReadAllText(mpd);
         string dir = Path.GetDirectoryName(Path.GetFullPath(mpd))!;
 

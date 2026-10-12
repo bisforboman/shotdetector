@@ -138,7 +138,7 @@ public static unsafe class Remux
                 Check(ret, "read", FrameReaderError.InvalidInput);
             Check(ffmpeg.av_write_trailer(oc), "write the trailer");
             if (widevineKeyId is not null)
-                Cenc.SignalWidevine(output, widevineKeyId);
+                Cenc.SignalWidevine(output, widevineKeyId, o.Encryption!.WidevinePsshData);
         }
         finally
         {
@@ -167,6 +167,8 @@ public static unsafe class Remux
             return d;
         byte[] keyId = Cenc.Bytes16(e.KeyId, "The key ID");
         Cenc.Bytes16(e.Key, "The key");
+        if (e.WidevinePsshData is { } data && (data.Length == 0 || !e.Widevine))
+            throw new ArgumentException("WidevinePsshData goes with Widevine = true, and can't be empty.", nameof(o));
         if (dash)
         {
             string cenc = Cenc.MuxerOptions(e);

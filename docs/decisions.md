@@ -3,6 +3,12 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## Widevine pssh data from the caller (2026-10-12, issue #185)
+
+#185's DRM provider supplies the WidevinePsshData itself. Asked how EncryptionOptions should take it: **the data
+as bytes** (`WidevinePsshData`, wrapped in the version 0 Widevine box, checked against `pssh-box.py --pssh-data`), over
+the whole box (Shaka's `--pssh`) or a general list of pssh boxes for any system (PlayReady later).
+
 ## The previous scenedetect release in CI (2026-10-12)
 
 With 0.7.2 the default, the parity matrix ran both releases on both paths (8 jobs); all matched. Asked how much
