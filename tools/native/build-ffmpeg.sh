@@ -29,14 +29,28 @@ deps=$work/deps
 rm -rf "$work" && mkdir -p "$work" "$deps/lib" "$deps/include" && cd "$work"
 jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)
 
-fetch() { # url file sha256
-  curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30 -o "$2" "$1"
-  echo "$3  $2" | sha256sum -c - 2>/dev/null || echo "$3  $2" | shasum -a 256 -c -
+# file sha256 url...: the first source whose download has that sha256. Second sources serve the same archives (checked
+# by hash), so a site that's down (downloads.videolan.org once held up a release) doesn't stop the build.
+fetch() {
+  file=$1 sum=$2
+  shift 2
+  for url in "$@"; do
+    if curl -fsSL --retry 3 --retry-all-errors --retry-delay 10 --connect-timeout 30 -o "$file" "$url" &&
+      { echo "$sum  $file" | sha256sum -c - >/dev/null 2>&1 || echo "$sum  $file" | shasum -a 256 -c - >/dev/null 2>&1; }; then
+      return 0
+    fi
+    echo "fetch: $url failed or didn't match its sha256" >&2
+  done
+  echo "fetch: no source gave $file" >&2
+  return 1
 }
-fetch "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz" ffmpeg.tar.xz "$SHA256"
-fetch "https://zlib.net/fossils/zlib-$ZLIB.tar.gz" zlib.tar.gz "$ZLIB_SHA256"
-fetch "https://downloads.videolan.org/pub/videolan/dav1d/$DAV1D/dav1d-$DAV1D.tar.xz" dav1d.tar.xz "$DAV1D_SHA256"
-fetch "https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz" lame.tar.gz "$LAME_SHA256"
+fetch ffmpeg.tar.xz "$SHA256" "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz"
+fetch zlib.tar.gz "$ZLIB_SHA256" "https://zlib.net/fossils/zlib-$ZLIB.tar.gz" \
+  "https://github.com/madler/zlib/releases/download/v$ZLIB/zlib-$ZLIB.tar.gz"
+fetch dav1d.tar.xz "$DAV1D_SHA256" "https://downloads.videolan.org/pub/videolan/dav1d/$DAV1D/dav1d-$DAV1D.tar.xz" \
+  "https://download.videolan.org/pub/videolan/dav1d/$DAV1D/dav1d-$DAV1D.tar.xz"
+fetch lame.tar.gz "$LAME_SHA256" "https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz" \
+  "https://deb.debian.org/debian/pool/main/l/lame/lame_$LAME.orig.tar.gz"
 tar -xJf ffmpeg.tar.xz && tar -xzf zlib.tar.gz && tar -xJf dav1d.tar.xz && tar -xzf lame.tar.gz
 
 # zlib, static and position-independent (it ends up inside libavcodec/libavformat).
