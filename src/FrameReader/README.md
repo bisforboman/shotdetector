@@ -199,7 +199,9 @@ ffmpeg's `-encryption_scheme cenc-aes-ctr -encryption_key K -encryption_kid I` g
 muxer's `format_options`). With `Widevine = true` on DASH output, each init segment also gets Widevine's `pssh` box
 (the one `pssh-box.py --widevine-system-id --key-id` writes) and each adaptation set in the MPD a `ContentProtection`
 for CENC (`cenc:default_KID`) and one for Widevine (the box as `cenc:pssh`), as Shaka Packager writes them. The
-license service still needs the key.
+license service still needs the key. When your DRM provider supplies the Widevine pssh data (with its provider,
+content ID and so on), pass it as `WidevinePsshData`: it goes into the box unchanged, as
+`pssh-box.py --widevine-system-id --pssh-data` and Shaka's `--pssh` do.
 
 ```csharp
 Remux.Copy("film.mp4", "out/manifest.mpd", new()

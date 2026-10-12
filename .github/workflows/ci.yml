@@ -102,6 +102,10 @@ jobs:
           pssh=$(python3 "$script" --widevine-system-id --key-id a1b2c3d4e5f60718293a4b5c6d7e8f90 --base64)
           echo "pssh-box.py: $pssh"
           echo "SHOTDETECTOR_WIDEVINE_PSSH=$pssh" >> "$GITHUB_ENV"
+          # A DRM provider's own WidevinePsshData (issue #185): key ID, provider "conax", content_id "content-0001".
+          from_data=$(python3 "$script" --widevine-system-id --pssh-data EhChssPU5fYHGCk6S1xtfo+QGgVjb25heCIMY29udGVudC0wMDAx --base64)
+          echo "pssh-box.py --pssh-data: $from_data"
+          echo "SHOTDETECTOR_WIDEVINE_PSSH_FROM_DATA=$from_data" >> "$GITHUB_ENV"
 
       - name: Test
         if: needs.changes.outputs.docs_only != 'true'

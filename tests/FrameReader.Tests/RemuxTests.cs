@@ -217,6 +217,32 @@ public class RemuxTests
                 Assert.Equal(Hashes("-i", input), Hashes("-decryption_key", Key, "-i", joined));
             }
 
+            // Issue #185: the DRM provider's WidevinePsshData (here key ID, provider "conax", content_id "content-0001"),
+            // written unchanged: pssh-box.py --widevine-system-id --pssh-data's box (CI: SHOTDETECTOR_WIDEVINE_PSSH_FROM_DATA).
+            byte[] conax = Convert.FromBase64String("EhChssPU5fYHGCk6S1xtfo+QGgVjb25heCIMY29udGVudC0wMDAx");
+            byte[] conaxBox = Convert.FromBase64String("AAAAR3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAACcSEKGyw9Tl9gcYKTpLXG1+j5AaBWNvbmF4Igxjb250ZW50LTAwMDE=");
+            if (Environment.GetEnvironmentVariable("SHOTDETECTOR_WIDEVINE_PSSH_FROM_DATA") is { Length: > 0 } fromData)
+                Assert.Equal(Convert.FromBase64String(fromData.Trim()), conaxBox);
+            string given = Directory.CreateDirectory(Path.Combine(dir, "given")).FullName;
+            Remux.Copy(input, Path.Combine(given, "manifest.mpd"), new RemuxOptions
+            {
+                Container = "dash",
+                MuxerOptions = dash,
+                Encryption = cenc with { Widevine = true, WidevinePsshData = conax },
+                Bitexact = true,
+            });
+            foreach (string name in names.Where(n => n.StartsWith("init-", StringComparison.Ordinal)))
+            {
+                byte[] ffmpegs = File.ReadAllBytes(Path.Combine(want, name)), ours = File.ReadAllBytes(Path.Combine(given, name));
+                Assert.Equal(ffmpegs.Length + conaxBox.Length, ours.Length);
+                Assert.True(ours.AsSpan().IndexOf(conaxBox) > 0, name);
+                Assert.True(ours.AsSpan().IndexOf(pssh) < 0, name); // not the key-ID box as well
+            }
+
+            Assert.Equal(2, File.ReadAllText(Path.Combine(given, "manifest.mpd")).Split("<cenc:pssh>" + Convert.ToBase64String(conaxBox) + "</cenc:pssh>").Length - 1);
+            Assert.Throws<ArgumentException>(() => Remux.Copy(input, Path.Combine(dir, "x.mpd"), new RemuxOptions { Container = "dash", Encryption = cenc with { WidevinePsshData = conax } }));
+            Assert.Throws<ArgumentException>(() => Remux.Copy(input, Path.Combine(dir, "x.mpd"), new RemuxOptions { Container = "dash", Encryption = cenc with { Widevine = true, WidevinePsshData = [] } }));
+
             string mp4 = Path.Combine(dir, "enc.mp4"), ffmpegMp4 = Path.Combine(dir, "expected-enc.mp4");
             Ffmpeg("-v",
                 "error",
