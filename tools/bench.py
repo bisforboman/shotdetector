@@ -82,7 +82,7 @@ def main():
     sd_cmd = {"hist": "detect-hist", "hash": "detect-hash"}.get(a.detector, f"detect-{a.detector}")
     threads = ["--threads", str(a.threads)] if a.threads else []
     tools = (
-        ("scenedetect 0.7.1", [sys.executable, "-m", "scenedetect", "-q", "-i", "{v}", sd_cmd, "list-scenes", "-n"]),
+        ("scenedetect 0.7.2", [sys.executable, "-m", "scenedetect", "-q", "-i", "{v}", sd_cmd, "list-scenes", "-n"]),
         ("shotdetect", [exe, "-i", "{v}", "-d", a.detector, *threads]),
         ("shotdetect --decoder process", [exe, "-i", "{v}", "-d", a.detector, "--decoder", "process", *threads]),
     )

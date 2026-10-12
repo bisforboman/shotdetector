@@ -560,6 +560,23 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ShotDetection.DetectAsync(clips.Long, cancellationToken: cts.Token));
     }
 
+    // scenedetect 0.7.2's detect-hist and detect-hash defaults (bins 128, size 8) by default; 0.7.1's with Compatibility.
+    [Fact]
+    public void HistogramAndHashDefaultsFollowTheCompatibilityRelease()
+    {
+        string Header(DetectorKind kind, PySceneDetectVersion? v)
+        {
+            var o = new DetectionOptions { Detector = kind, CollectStats = true };
+            var r = ShotDetection.Detect(clips.ThreeShots, v is { } version ? o with { Compatibility = version } : o);
+            return r.Stats!.Csv(r.Video.Position).Split('\n')[0];
+        }
+
+        Assert.Contains("hist_diff [bins=128]", Header(DetectorKind.Histogram, null));
+        Assert.Contains("hist_diff [bins=256]", Header(DetectorKind.Histogram, PySceneDetectVersion.V0_7_1));
+        Assert.Contains("[size=8 ", Header(DetectorKind.Hash, null));
+        Assert.Contains("[size=16 ", Header(DetectorKind.Hash, PySceneDetectVersion.V0_7_1));
+    }
+
     [Fact]
     public void TimelineExportsPlaceTheCuts()
     {
@@ -571,6 +588,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.EndsWith("003  B01 V     C        00:00:04:00 00:00:06:00 00:00:04:00 00:00:06:00\n", edl);
         Assert.Contains("01:00:02:00", Timeline.Edl(r, startTimecode: "01:00:00:00"));
         Assert.Equal("0 I -1\n50 I -1\n100 I -1\n", Timeline.Qp(r));
+        Assert.Equal("# keyframe format v1\nfps 0\n0\n50\n100\n", Timeline.Keyframes(r));
         string fcpx = Timeline.Fcpx(r);
         Assert.Contains("<format id=\"r1\" name=\"FFVideoFormat240p2500\" frameDuration=\"1/25s\" width=\"320\" height=\"240\"/>", fcpx);
         Assert.Contains("<asset-clip name=\"Shot 2\" ref=\"r2\" offset=\"2s\" start=\"2s\" duration=\"2s\"/>", fcpx);

@@ -235,6 +235,18 @@ public static class Timeline
         return sb.ToString();
     }
 
+    /// <summary>
+    /// scenedetect 0.7.2's save-keyframes: Aegisub's keyframe format v1 (<c>fps 0</c>, as Aegisub documents), frame 0 and
+    /// each cut's frame number, one per line.
+    /// </summary>
+    public static string Keyframes(DetectionResult result)
+    {
+        var sb = new StringBuilder("# keyframe format v1\nfps 0\n0\n");
+        foreach (var cut in result.Cuts)
+            sb.Append(CultureInfo.InvariantCulture, $"{cut.FrameNum}\n");
+        return sb.ToString();
+    }
+
     /// <summary>scenedetect's name templates: $VIDEO_NAME is the video's name.</summary>
     static string Template(string text, DetectionResult result) => text.Replace("$VIDEO_NAME", VideoName(result));
 

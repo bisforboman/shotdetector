@@ -151,7 +151,7 @@ def main() -> int:
     ap.add_argument("--tolerance", type=int, default=2)
     ap.add_argument("--ffmpeg-resize", action="store_true", help="pass --ffmpeg-resize to ShotDetector")
     ap.add_argument("--fast-yuv", action="store_true", help="use the ShotDetector.FastYuv path")
-    ap.add_argument("--compat", help="PySceneDetect release ShotDetector reproduces (e.g. 0.7.1)")
+    ap.add_argument("--compat", help="PySceneDetect release ShotDetector reproduces (default: the newest, 0.7.2; e.g. 0.7.1)")
     ap.add_argument("--scenedetect-python", default=sys.executable,
                     help="Python interpreter whose scenedetect is the reference (default: this one)")
     ap.add_argument("--report", help="also write a Markdown summary table to this file")

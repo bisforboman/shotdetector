@@ -1,4 +1,5 @@
-"""Writes the cases PropertyTests.SameAsScenedetect checks, each with scenedetect 0.7.1's or Python's answer:
+"""Writes the cases PropertyTests.SameAsScenedetect checks, each with scenedetect's answer (0.7.1 and 0.7.2 give the
+same file) or Python's:
 
   python tools/oracle.py tests/ShotDetector.Tests/Data/oracle.txt
 

@@ -28,7 +28,8 @@ internal sealed class ContentDetector(
     Fps fps,
     double threshold = 27.0,
     int minSceneLen = 15,
-    bool suppress = false) : IDetector
+    bool suppress = false,
+    bool frameCounts = false) : IDetector
 {
     int? _lastAbove, _mergeStart;
     bool _mergeEnabled, _mergeTriggered;
@@ -37,10 +38,12 @@ internal sealed class ContentDetector(
     /// <inheritdoc/>
     public Stats? Stats { get; set; }
 
-    // FlashFilter compares the time between positions in float seconds against min_scene_len / fps.
+    // 0.7.1's FlashFilter compares the time between positions in float seconds against min_scene_len / fps.
     // Faithful quirk: positions are µs-rounded, so a gap of exactly minSceneLen frames can fall just
-    // short (e.g. 14 frames at 24 fps: 0.583333 < 0.58333333).
-    bool MinLengthMet(int frame, int since) => position(frame).Minus(position(since)).Seconds >= _minSeconds;
+    // short (e.g. 14 frames at 24 fps: 0.583333 < 0.58333333). 0.7.2 compares the gap's frame count (#577).
+    bool MinLengthMet(int frame, int since) => frameCounts
+        ? position(frame).Minus(position(since)).FrameNum >= minSceneLen
+        : position(frame).Minus(position(since)).Seconds >= _minSeconds;
 
     /// <inheritdoc/>
     public FrameTime? ProcessFrame(int frame, byte[] bgr)
@@ -111,7 +114,8 @@ internal sealed class AdaptiveDetector(
     double adaptiveThreshold = 3.0,
     int minSceneLen = 15,
     int windowWidth = 2,
-    double minContentVal = 15.0) : IDetector
+    double minContentVal = 15.0,
+    bool fromTarget = false) : IDetector
 {
     readonly List<(int Frame, double Score)> _buffer = [];
     readonly string _ratioKey = $"adaptive_ratio{(scorer.IsLumaOnly ? "_lum" : "")} (w={windowWidth})";
@@ -156,9 +160,9 @@ internal sealed class AdaptiveDetector(
 
         bool thresholdMet = ratio >= adaptiveThreshold && targetScore >= minContentVal;
 
-        // Faithful quirk: min length is measured from the *current* frame, not the target frame,
-        // as a frame count derived from the time between them (round(seconds * fps)).
-        bool minLengthMet = position(frame).Minus(position(_lastCut.Value)).FrameNum >= minSceneLen;
+        // Faithful quirk (0.7.1): min length is measured from the *current* frame, not the target frame, as a frame
+        // count derived from the time between them (round(seconds * fps)); 0.7.2 measures it from the target (#408).
+        bool minLengthMet = position(fromTarget ? targetFrame : frame).Minus(position(_lastCut.Value)).FrameNum >= minSceneLen;
         if (thresholdMet && minLengthMet)
         {
             _lastCut = targetFrame;
@@ -184,7 +188,8 @@ internal sealed class ThresholdDetector(
     double threshold = 12,
     int minSceneLen = 15,
     double fadeBias = 0,
-    bool addLastScene = true) : IDetector
+    bool addLastScene = true,
+    int minOutLength = 0) : IDetector
 {
     readonly int _threshold = (int)threshold; // PySceneDetect truncates it to an int
     int? _lastSceneCut;
@@ -247,7 +252,9 @@ internal sealed class ThresholdDetector(
         }
         else if (_fadedOut && average >= _threshold)
         {
-            if (position(frame).Minus(position(_lastSceneCut.Value)).FrameNum >= minSceneLen)
+            // 0.7.2's min_out_length: the fade-out lasted long enough (frame counts, as min_scene_len).
+            if (position(frame).Minus(position(_lastSceneCut.Value)).FrameNum >= minSceneLen
+                && position(frame).Minus(position(_lastFadeFrame)).FrameNum >= minOutLength)
             {
                 // The split is computed as a bare frame number from the (time-derived) frame numbers.
                 long fadeOut = position(_lastFadeFrame).FrameNum, fadeIn = position(frame).FrameNum;
@@ -265,6 +272,9 @@ internal sealed class ThresholdDetector(
     /// <inheritdoc/>
     public FrameTime? PostProcess(FrameTime end) =>
         addLastScene && _processed && _fadedOut && end.Minus(position(_lastSceneCut ?? 0)).FrameNum >= minSceneLen
+
+            // the last processed frame counts towards the fade-out
+            && end.PlusFrames(1).Minus(position(_lastFadeFrame)).FrameNum >= minOutLength
             ? position(_lastFadeFrame)
             : null;
 }
