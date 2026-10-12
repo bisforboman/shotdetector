@@ -12,6 +12,20 @@ answers to `tests/ShotDetector.Tests/Data/oracle.txt`; rerun when the scenedetec
 process at test time (shrinking, but needs scenedetect in CI and skips elsewhere) and both (live as an opt-in run).
 The file runs everywhere, ARM and Alpine included, with no Python.
 
+## Ubuntu runners after the 26.04 check (2026-10-11)
+
+CI passed on ubuntu-26.04 in full (36 checks, a do-not-merge PR). Asked: **pin ubuntu-26.04** (over going back to
+ubuntu-latest, or keeping 24.04 for now), so the next image move is announced as this one was.
+
+## The Windows OpenCV wheel's BT.709 difference (2026-10-11)
+
+Probed locally (opencv-python 5.0.0.93 for Windows, FFmpeg 7.1): the wheel converts with BT.601 coefficients
+whatever the colour tags say, and follows the range; ffmpeg with `in_color_matrix=bt601` gives its frames bit
+for bit (0 differing pixels in 120 frames of a BT.709-tagged trailer). Asked: **document it and add a dev flag**
+(over a public `ColorMatrix` option, or documenting only). The CLI's hidden `--always-bt601` (internal
+`DetectionOptions.AlwaysBt601`) converts that way, with the ffmpeg executable; compare.py passes it on Windows,
+so local comparisons there are exact. Linux scenedetect stays the reference, and ShotDetector follows the tags.
+
 ## StyleBro's rules for this code (2026-10-11)
 
 Adopting StyleBro (StyleBro.Analyzers, `stylebro-migrate init` then `format`, checked in CI). Its first format

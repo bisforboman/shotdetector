@@ -359,6 +359,12 @@ public sealed record DetectionOptions
     /// <summary>Tests: pipe whole BGR frames rather than only the pixels the resize reads (same results, slower).</summary>
     internal bool FullFrames { get; init; }
 
+    /// <summary>
+    /// compare.py on Windows (the CLI's hidden <c>--always-bt601</c>): convert with BT.601 coefficients whatever the
+    /// colour tags say, as the Windows OpenCV wheel does (docs/decisions.md); decodes with the ffmpeg executable.
+    /// </summary>
+    internal bool AlwaysBt601 { get; init; }
+
     /// <summary>Let ffmpeg downscale (faster, but results can differ from PySceneDetect).</summary>
     public bool FfmpegResize { get; init; }
 

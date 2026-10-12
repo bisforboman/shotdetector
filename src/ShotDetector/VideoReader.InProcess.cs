@@ -11,7 +11,7 @@ public sealed partial class VideoReader
     /// quarter turns.
     /// </summary>
     public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && (_stream is not null || !Streaming)
-        && !_inProcessGaveNothing
+        && !_inProcessGaveNothing && !_alwaysBt601
         && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory))
         && FrameReader.FrameDecoder.HasDecoder(Codec)
         && _rotation % 90 == 0
