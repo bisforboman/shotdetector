@@ -168,9 +168,33 @@ file `ffmpeg -i IN -map ... -c copy OUT` writes (timestamps, codec tags, metadat
 Remux.Copy("film.mkv", "picture.mp4", new() { Streams = StreamSelection.Video });
 Remux.Copy("film.mkv", "sound.m4a", new() { Streams = StreamSelection.Audio });
 Remux.Copy("film.mkv", "commentary.mka", new() { StreamIndices = [2] });
+Remux.Copy("film.mkv", "web.mp4", new() { MuxerOptions = new Dictionary<string, string> { ["movflags"] = "+faststart" } });
 ```
 
-Our native libraries carry the AAC, MP3 and 16-bit PCM encoders and the mp4, mov, ipod (.m4a), matroska, matroska_audio (.mka), webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass muxers.
+`MuxerOptions` are ffmpeg's output options without the dash. With the `dash` muxer they give MPEG-DASH: fMP4 init and
+media segments and a static MPD, the files `ffmpeg -c copy -f dash` writes with the same options (separate audio and
+video adaptation sets here; segments are written next to the .mpd):
+
+```csharp
+Remux.Copy("film.mkv", "out/manifest.mpd", new()
+{
+    Container = "dash",
+    MuxerOptions = new Dictionary<string, string>
+    {
+        ["seg_duration"] = "2.4",
+        ["use_template"] = "1",
+        ["use_timeline"] = "0",
+        ["init_seg_name"] = "init-$RepresentationID$.mp4",
+        ["media_seg_name"] = "chunk-$RepresentationID$-$Number%05d$.m4s",
+        ["adaptation_sets"] = "id=0,streams=v id=1,streams=a",
+    },
+});
+```
+
+Segments end at keyframes, so `seg_duration` is a target: for exact 2.4 s segments the video needs a keyframe every
+2.4 s (`VideoWriterOptions.KeyframeEvery`). Not covered: encryption (CENC) and DRM signalling (PSSH, ContentProtection).
+
+Our native libraries carry the AAC, MP3 and 16-bit PCM encoders and the mp4, mov, ipod (.m4a), matroska, matroska_audio (.mka), webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass and dash muxers.
 Writing video: `VideoWriter` encodes frames to H.264 (x264) in .mp4/.mkv/.mov, optionally with an AAC track, the
 file `ffmpeg -c:v libx264` writes from the same frames with the same FFmpeg build (byte for byte with `Bitexact` on
 both sides). It needs FFmpeg libraries with libx264, which ShotDetector.Native doesn't have: a "gpl" FFmpeg 8 build
@@ -274,7 +298,7 @@ What each part needs from a build of your own, beyond the decoders and demuxers 
 | `SpectralStats` | | `abuffer`, `abuffersink`, `aspectralstats` | |
 | `AudioWriter` | the codec's (`libmp3lame`, `aac`, `pcm_s16le`, ...) | `abuffer`, `abuffersink`, `aformat`, `aresample` | the container's (`mp3`, `ipod` for .m4a, `wav`, ...) |
 | `VideoWriter` | `libx264` (and `aac` for an audio track) | `buffer`, `buffersink`, `format`, `null`, `scale` (and the audio ones) | `mp4`, `matroska` or `mov` |
-| `Remux.Copy` | | | the output's |
+| `Remux.Copy` | | | the output's (`dash` for an .mpd) |
 
 ```csharp
 if (!FFmpegLibraries.HasEncoder("libmp3lame") || !FFmpegLibraries.HasFilter("equalizer"))

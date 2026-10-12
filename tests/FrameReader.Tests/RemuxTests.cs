@@ -83,4 +83,52 @@ public class RemuxTests
             Directory.Delete(dir, true);
         }
     }
+
+    // DASH (issue #171): fMP4 segments and a static MPD from stream copy, every file ffmpeg's, with muxer options as
+    // ffmpeg's output options. And an .mp4 with movflags=+faststart.
+    [Fact]
+    public void MuxerOptionsAsFfmpegsOutputOptions()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-remux-").FullName;
+        try
+        {
+            string input = Path.Combine(dir, "in.mp4");
+            Ffmpeg(["-v", "error", "-y", .. Make.Split(' '), "-map", "0", "-map", "1", "-c:v", "mpeg4", "-g", "12", "-c:a", "aac", input]);
+
+            var dash = new Dictionary<string, string>
+            {
+                ["seg_duration"] = "1",
+                ["use_template"] = "1",
+                ["use_timeline"] = "0",
+                ["init_seg_name"] = "init-$RepresentationID$.mp4",
+                ["media_seg_name"] = "chunk-$RepresentationID$-$Number%05d$.m4s",
+                ["adaptation_sets"] = "id=0,streams=v id=1,streams=a",
+            };
+            string want = Directory.CreateDirectory(Path.Combine(dir, "ffmpeg")).FullName, got = Directory.CreateDirectory(Path.Combine(dir, "ours")).FullName;
+            Ffmpeg(["-v", "error", "-y", "-i", input, "-map", "0", "-c", "copy", "-fflags", "+bitexact", "-f", "dash",
+                .. dash.SelectMany(o => new[] { "-" + o.Key, o.Value }), Path.Combine(want, "manifest.mpd").Replace('\\', '/')]); // ffmpeg needs '/' (ours: either)
+            Remux.Copy(input, Path.Combine(got, "manifest.mpd"), new RemuxOptions { Container = "dash", MuxerOptions = dash, Bitexact = true });
+            string[] names = [.. Directory.GetFiles(want).Select(f => Path.GetFileName(f)).Order()];
+            Assert.Equal(names, Directory.GetFiles(got).Select(f => Path.GetFileName(f)).Order());
+            Assert.Contains("init-0.mp4", names);
+            Assert.Contains("chunk-1-00003.m4s", names);
+            foreach (string name in names)
+                Assert.True(File.ReadAllBytes(Path.Combine(want, name)).AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(got, name))), name);
+
+            string expected = Path.Combine(dir, "expected-fast.mp4"), actual = Path.Combine(dir, "fast.mp4");
+            Ffmpeg("-v", "error", "-y", "-i", input, "-map", "0", "-c", "copy", "-fflags", "+bitexact", "-movflags", "+faststart", expected);
+            Remux.Copy(input, actual, new RemuxOptions { Bitexact = true, MuxerOptions = new Dictionary<string, string> { ["movflags"] = "+faststart" } });
+            Assert.Equal(File.ReadAllBytes(expected), File.ReadAllBytes(actual));
+
+            Assert.Throws<ArgumentException>(() => Remux.Copy(input,
+                Path.Combine(dir, "x.mp4"),
+                new RemuxOptions { MuxerOptions = new Dictionary<string, string> { ["no_such_option"] = "1" } }));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
