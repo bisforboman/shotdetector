@@ -334,8 +334,9 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   mid-stream (two encodes joined), OpenCV scales the new frames to the stream's first size in its one conversion, and scenedetect
   numbers frames by their time, so where the timestamps start over its frame numbers do too: later frames overwrite
   earlier stats rows metric by metric (except the threshold detector's average, which scenedetect keeps and also
-  detects with) and the cuts are sorted. ShotDetector does the same (checked in CI); with ShotDetector.FastYuv the
-  new size's frames are scaled differently, so their stats differ.
+  detects with) and the cuts are sorted. ShotDetector does the same (checked in CI). With ShotDetector.FastYuv,
+  decoding in-process, the new size's frames take the same exact conversion (only they are slower); with the ffmpeg
+  executable, ffmpeg scales them first, so their stats differ.
 - **Variable frame rate:** handled as PySceneDetect handles it. The fps is the *average* frame rate
   (what OpenCV reports, through PySceneDetect's `framerate_to_fraction`), min-scene-len is measured
   in time between frames, and printed frame numbers are `round(time × average fps)`, not decode

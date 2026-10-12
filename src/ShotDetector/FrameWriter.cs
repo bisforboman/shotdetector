@@ -17,6 +17,25 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : I
     readonly int _turn = turn;
     byte[] _turned = [];
     SwsContext* _toSize;
+    int _firstWidth = -1, _firstHeight;
+
+    /// <summary>Whether the current frame has the first frame's size (the stream's size, to OpenCV).</summary>
+    public bool HasFirstSize
+    {
+        get
+        {
+            if (_firstWidth < 0)
+            {
+                (_firstWidth, _firstHeight) = (_d.Width, _d.Height);
+
+                // The converter takes its size from the first frame it converts; on the YUV path that may be a later
+                // frame of another size, so it sees this one now (no rows converted).
+                _bgr.Convert([], out _);
+            }
+
+            return _d.Width == _firstWidth && _d.Height == _firstHeight;
+        }
+    }
 
     /// <summary>The whole converted frame, turned: its bytes and row stride.</summary>
     ReadOnlySpan<byte> Converted(out int stride)

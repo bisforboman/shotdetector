@@ -29,10 +29,12 @@ public sealed partial class VideoReader
         var resizer = pipeline != FramePipeline.FfmpegScale ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
         _livePackets.Clear();
         _liveStart = startFrame;
+        int sampledBgr = resizer is null ? 0 : resizer.SourceCols.Length * resizer.SourceRows.Length * 3;
         int size = pipeline switch
         {
-            FramePipeline.Yuv420Sampled => IYuv420Converter.FrameSize(SourceWidth, SourceHeight),
-            FramePipeline.SampledBgr => resizer!.SourceCols.Length * resizer.SourceRows.Length * 3,
+            // Frames of a new size come as sampled BGR (below), so room for those too.
+            FramePipeline.Yuv420Sampled => Math.Max(IYuv420Converter.FrameSize(SourceWidth, SourceHeight), sampledBgr),
+            FramePipeline.SampledBgr => sampledBgr,
             FramePipeline.FullFrameResize => CropRegion.Width * CropRegion.Height * 3,
             _ => Width * Height * 3,
         };
@@ -48,7 +50,7 @@ public sealed partial class VideoReader
         // caller's token, or by us when the caller stops iterating.
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var free = new BlockingCollection<byte[]>();
-        using var full = new BlockingCollection<(byte[] Buffer, long Pts)>();
+        using var full = new BlockingCollection<(byte[] Buffer, long Pts, bool Bgr)>();
         for (int i = 0; i < 8; i++)
             free.Add(new byte[size]);
         double timeBase = 0;
@@ -89,7 +91,12 @@ public sealed partial class VideoReader
                     if (from is { } f && pts < f)
                         continue;
                     var buffer = free.Take(cancel.Token);
-                    switch (pipeline)
+
+                    // A frame of another size than the stream's first: OpenCV scales it to that size inside its one
+                    // conversion to BGR, which FastYuv's conversion at the stream's size can't reproduce. The core
+                    // path's sampled BGR for those frames instead (exact; only they are slower).
+                    bool bgr = pipeline == FramePipeline.Yuv420Sampled && !writer.HasFirstSize;
+                    switch (bgr ? FramePipeline.SampledBgr : pipeline)
                     {
                         case FramePipeline.Yuv420Sampled:
                             writer.WriteYuv420(buffer);
@@ -105,7 +112,7 @@ public sealed partial class VideoReader
                             break;
                     }
 
-                    full.Add((buffer, pts + offset), cancel.Token);
+                    full.Add((buffer, pts + offset, bgr), cancel.Token);
                     emitted++;
                 }
 
@@ -128,7 +135,7 @@ public sealed partial class VideoReader
         try
         {
             byte[]? previous = null;
-            foreach (var (buffer, pts) in full.GetConsumingEnumerable(cancel.Token))
+            foreach (var (buffer, pts, bgr) in full.GetConsumingEnumerable(cancel.Token))
             {
                 if (previous is not null)
                     free.Add(previous);
@@ -143,7 +150,7 @@ public sealed partial class VideoReader
                     _livePackets.Add(PacketOf(pts * timeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
                 }
 
-                switch (pipeline)
+                switch (bgr ? FramePipeline.SampledBgr : pipeline)
                 {
                     case FramePipeline.Yuv420Sampled:
                         resizer!.ResizeYuv420(buffer, small, _yuv420ForVideo!, SourceWidth, SourceHeight, CropRegion.X, CropRegion.Y);
