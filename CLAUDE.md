@@ -126,8 +126,9 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 - NuGet trusted publishing: the policy's workflow must be `release.yml`, package glob `ShotDetector*`.
 - FFmpeg.AutoGen lays structs out for 8-byte `long`: on Windows every AVIOContext field from `checksum` (an `unsigned
   long`) on is 8 bytes off, so don't write `seekable` and the like through it (StreamInput passes callbacks instead).
-- Runners are pinned to ubuntu-24.04 (ubuntu-latest moves to Ubuntu 26 from 2026-10-19): unpin once the PPA tools
-  (audiowaveform) and the parity jobs are checked there (backlog).
+- Runners are pinned to an Ubuntu version (ubuntu-26.04 since 2026-10-11, after CI passed there), so the image
+  can't change under CI unannounced; move the pin after a do-not-merge PR runs CI on the new one. The native builds
+  stay on ubuntu-22.04 on purpose (glibc baseline).
 - GitHub Actions queues can stall; re-run rather than diagnose when every job was cancelled at ~15 min.
 - CI downloads: BtbN's FFmpeg only through `.github/actions/btbn-ffmpeg` (retries, checked archive, daily cache with
   fallback), never `curl | tar` (a reset mid-stream left tar a truncated archive); Docker images from
