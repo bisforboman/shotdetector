@@ -55,6 +55,7 @@ public enum DeinterlaceMode
 }
 
 /// <summary>A video stream's field order, as its container or codec reports it (ffprobe's field_order).</summary>
+[Obsolete("Becomes FrameReader.FieldOrder in ShotDetector 2.0 (both packages define it, so using both is ambiguous, issue #194). FrameReader.MediaProbe.Probe(path) gives FrameReader's field order now.")]
 public enum FieldOrder
 {
     /// <summary>Not reported.</summary>
@@ -128,6 +129,7 @@ public sealed record VideoInfo
 }
 
 /// <summary>What a stream carries.</summary>
+[Obsolete("Becomes FrameReader.StreamType in ShotDetector 2.0 (both packages define it, so using both is ambiguous, issue #194). FrameReader.MediaProbe.Probe(path) gives FrameReader's streams now.")]
 public enum StreamType
 {
     /// <summary>Not known.</summary>
@@ -150,6 +152,7 @@ public enum StreamType
 }
 
 /// <summary>One stream of a file, as ffprobe's <c>-show_streams</c> describes it (<see cref="VideoInfo.Streams"/>).</summary>
+[Obsolete("Becomes FrameReader.StreamInfo in ShotDetector 2.0 (both packages define it, so using both is ambiguous, issue #194). FrameReader.MediaProbe.Probe(path) gives FrameReader's streams now.")]
 public sealed record StreamInfo
 {
     internal StreamInfo()

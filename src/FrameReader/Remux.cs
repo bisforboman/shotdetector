@@ -40,7 +40,9 @@ public sealed record RemuxOptions
     /// <summary>
     /// FFmpeg muxer options, as ffmpeg's output options without the dash: e.g. <c>movflags=+faststart</c> for an .mp4, or
     /// the dash muxer's (<see cref="Container"/> <c>dash</c>, output the .mpd) <c>seg_duration</c>, <c>init_seg_name</c>,
-    /// <c>media_seg_name</c>, <c>use_template</c>, <c>use_timeline</c> and <c>adaptation_sets</c>.
+    /// <c>media_seg_name</c>, <c>use_template</c>, <c>use_timeline</c> and <c>adaptation_sets</c>. In the segment names,
+    /// folders are created, and <c>$ContentType$</c> is the stream's <c>video</c>, <c>audio</c> or <c>text</c> (Shaka
+    /// Packager's layout: <c>$ContentType$/init.mp4</c>, <c>$ContentType$/$Number$.m4s</c>), which FFmpeg's muxer lacks.
     /// </summary>
     public IReadOnlyDictionary<string, string>? MuxerOptions { get; init; }
 
@@ -82,6 +84,12 @@ public static unsafe class Remux
                 throw new FrameReaderException(FrameReaderError.InvalidInput, $"\"{input}\" has no stream of the kinds asked for.");
 
             string url = OperatingSystem.IsWindows() && dash ? output.Replace('\\', '/') : output;
+
+            // DASH: folders in the segment names created, $ContentType$ resolved around the muxer (DashNames).
+            var types = new List<string>();
+            foreach (int i in map)
+                types.Add(DashNames.ContentType(ic->streams[i]->codecpar->codec_type));
+            bool contentTypeNames = dash && DashNames.Prepare(muxerOptions, output, types);
             int ret = ffmpeg.avformat_alloc_output_context2(&oc, null, o.Container, url);
             if (ret < 0 || oc == null)
             {
@@ -137,6 +145,8 @@ public static unsafe class Remux
             if (ret != ffmpeg.AVERROR_EOF)
                 Check(ret, "read", FrameReaderError.InvalidInput);
             Check(ffmpeg.av_write_trailer(oc), "write the trailer");
+            if (contentTypeNames)
+                DashNames.Finish(output, types);
             if (widevineKeyId is not null)
                 Cenc.SignalWidevine(output, widevineKeyId, o.Encryption!.WidevinePsshData);
         }

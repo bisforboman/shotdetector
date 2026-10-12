@@ -274,4 +274,66 @@ public class RemuxTests
             Directory.Delete(dir, true);
         }
     }
+
+    // Issue #191: Shaka Packager's layout, $ContentType$ in the segment names (video/, audio/), folders created. The files
+    // are ffmpeg's with $RepresentationID$ names (0/, 1/) and the MPD ffmpeg's with those template paths.
+    [Fact]
+    public void DashSegmentsNamedByContentType()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-remux-").FullName;
+        try
+        {
+            string input = Path.Combine(dir, "in.mkv");
+            Ffmpeg(["-v", "error", "-y", .. Make.Split(' '), "-map", "0", "-map", "1", "-map", "2", "-c:v", "mpeg4", "-g", "12", "-c:a", "aac", input]);
+            Dictionary<string, string> Names(string folder) => new()
+            {
+                ["seg_duration"] = "1",
+                ["use_template"] = "1",
+                ["use_timeline"] = "0",
+                ["init_seg_name"] = folder + "/init.mp4",
+                ["media_seg_name"] = folder + "/$Number$.m4s",
+                ["adaptation_sets"] = "id=0,streams=v id=1,streams=a",
+            };
+
+            string want = Directory.CreateDirectory(Path.Combine(dir, "ffmpeg")).FullName;
+            Directory.CreateDirectory(Path.Combine(want, "0"));
+            Directory.CreateDirectory(Path.Combine(want, "1"));
+            Ffmpeg(["-v", "error", "-y", "-i", input, "-map", "0:0", "-map", "0:1", "-c", "copy", "-fflags", "+bitexact", "-f", "dash",
+                .. Names("$RepresentationID$").SelectMany(o => new[] { "-" + o.Key, o.Value }), Path.Combine(want, "stream.mpd").Replace('\\', '/')]);
+            string got = Directory.CreateDirectory(Path.Combine(dir, "ours")).FullName;
+            Remux.Copy(input, Path.Combine(got, "stream.mpd"), new RemuxOptions
+            {
+                Container = "dash",
+                StreamIndices = [0, 1],
+                MuxerOptions = Names("$ContentType$"),
+                Bitexact = true,
+            });
+
+            foreach (var (id, type) in new[] { ("0", "video"), ("1", "audio") })
+            {
+                string[] files = [.. Directory.GetFiles(Path.Combine(want, id)).Select(f => Path.GetFileName(f)).Order()];
+                Assert.Contains("init.mp4", files);
+                Assert.Equal(files, Directory.GetFiles(Path.Combine(got, type)).Select(f => Path.GetFileName(f)).Order());
+                foreach (string f in files)
+                    Assert.True(File.ReadAllBytes(Path.Combine(want, id, f)).AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(got, type, f))), $"{type}/{f}");
+            }
+
+            Assert.Equal(["stream.mpd"], Directory.GetFiles(got).Select(f => Path.GetFileName(f)));
+            string mpd = File.ReadAllText(Path.Combine(got, "stream.mpd"));
+            Assert.Contains("initialization=\"video/init.mp4\" media=\"video/$Number$.m4s\"", mpd);
+            Assert.Contains("initialization=\"audio/init.mp4\" media=\"audio/$Number$.m4s\"", mpd);
+            Assert.Equal(File.ReadAllText(Path.Combine(want, "stream.mpd")), System.Text.RegularExpressions.Regex.Replace(mpd, "(initialization|media)=\"(video|audio)/", "$1=\"$$RepresentationID$$/"));
+
+            // Two audio streams named alike: $RepresentationID$ has to tell them apart.
+            Assert.Throws<ArgumentException>(() => Remux.Copy(input,
+                Path.Combine(dir, "x", "x.mpd"),
+                new RemuxOptions { Container = "dash", MuxerOptions = Names("$ContentType$") }));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
