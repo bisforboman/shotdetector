@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds FFmpeg's shared libraries for ShotDetector.Native.<rid>: decoding (libavcodec decoders, libavformat
 # demuxers), plus the AAC, MP3 (LAME) and 16-bit PCM encoders and the muxers FrameReader's AudioWriter and Remux
-# write with, libswscale, libavutil; libswresample too, which FFmpeg.AutoGen loads with libavcodec), plus libavfilter
+# write with (dash for fMP4 segments and an MPD, issue #171), libswscale, libavutil; libswresample too, which FFmpeg.AutoGen loads with libavcodec), plus libavfilter
 # with only yadif (deinterlacing), fps (FrameReader's FrameRate), aspectralstats (its SpectralStats), the audio
 # filters its AudioFilter offers (EQ and level, dynamics, loudness, detection; aformat/aresample to convert) and a
 # graph's buffer/buffersink and abuffer/abuffersink ends. LGPL; linked in statically: zlib (PNG, compressed
@@ -81,7 +81,7 @@ set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
   --enable-filter=volume,equalizer,bass,treble,highpass,lowpass,bandpass,bandreject,afade,pan,acompressor,alimiter,dynaudnorm,agate,ebur128,loudnorm,silencedetect,astats,aformat,aresample \
   --disable-network --disable-encoders --disable-muxers --disable-autodetect \
   --enable-libmp3lame --enable-encoder=aac,libmp3lame,pcm_s16le \
-  --enable-muxer=mp4,mov,ipod,matroska,matroska_audio,webm,adts,mp3,wav,flac,ogg,opus,mpegts,srt,webvtt,ass \
+  --enable-muxer=mp4,mov,ipod,matroska,matroska_audio,webm,adts,mp3,wav,flac,ogg,opus,mpegts,srt,webvtt,ass,dash \
   --enable-zlib --enable-libdav1d --pkg-config=pkg-config --pkg-config-flags=--static \
   --extra-cflags=-I"$deps/include" --extra-ldflags=-L"$deps/lib" \
   --disable-debug --enable-stripping --enable-optimizations

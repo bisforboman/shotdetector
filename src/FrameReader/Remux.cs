@@ -36,6 +36,13 @@ public sealed record RemuxOptions
 
     /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
+
+    /// <summary>
+    /// FFmpeg muxer options, as ffmpeg's output options without the dash: e.g. <c>movflags=+faststart</c> for an .mp4, or
+    /// the dash muxer's (<see cref="Container"/> <c>dash</c>, output the .mpd) <c>seg_duration</c>, <c>init_seg_name</c>,
+    /// <c>media_seg_name</c>, <c>use_template</c>, <c>use_timeline</c> and <c>adaptation_sets</c>.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? MuxerOptions { get; init; }
 }
 
 /// <summary>
@@ -51,6 +58,7 @@ public static unsafe class Remux
     /// <param name="cancellationToken">Stops between packets (<see cref="OperationCanceledException"/>; the output is left unfinished).</param>
     /// <exception cref="FrameReaderException">The input can't be read, nothing is selected, or the container can't hold a
     /// selected stream (<see cref="FrameReaderError.InvalidInput"/>), or writing failed.</exception>
+    /// <exception cref="ArgumentException">The muxer has no option of a <see cref="RemuxOptions.MuxerOptions"/> name.</exception>
     public static void Copy(string input, string output, RemuxOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new RemuxOptions();
@@ -63,7 +71,12 @@ public static unsafe class Remux
             var map = Select(ic, o); // output stream i comes from input stream map[i]
             if (map.Count == 0)
                 throw new FrameReaderException(FrameReaderError.InvalidInput, $"\"{input}\" has no stream of the kinds asked for.");
-            int ret = ffmpeg.avformat_alloc_output_context2(&oc, null, o.Container, output);
+
+            // The dash muxer finds the manifest's folder (where the segments go) by its last '/', so on Windows a path with
+            // '\' put them in the working directory; ffmpeg needs '/' there too.
+            bool dash = o.Container == "dash" || (o.Container is null && output.EndsWith(".mpd", StringComparison.OrdinalIgnoreCase));
+            string url = OperatingSystem.IsWindows() && dash ? output.Replace('\\', '/') : output;
+            int ret = ffmpeg.avformat_alloc_output_context2(&oc, null, o.Container, url);
             if (ret < 0 || oc == null)
             {
                 throw new FrameReaderException(FrameReaderError.InvalidInput,
@@ -86,12 +99,7 @@ public static unsafe class Remux
 
             if ((oc->oformat->flags & ffmpeg.AVFMT_NOFILE) == 0)
                 Check(ffmpeg.avio_open(&oc->pb, output, ffmpeg.AVIO_FLAG_WRITE), $"create \"{output}\"");
-            ret = ffmpeg.avformat_write_header(oc, null);
-            if (ret < 0)
-            {
-                throw new FrameReaderException(FrameReaderError.InvalidInput,
-                    $"The {new string((sbyte*)oc->oformat->name)} container can't take these streams: {FFmpegLibraries.ErrorMessage(ret)}");
-            }
+            WriteHeader(oc, o.MuxerOptions);
 
             // ffmpeg shifts every timestamp by the input's start time (no -copyts), drops each stream's packets before
             // its first keyframe, and fixes up what the muxer would reject.
@@ -136,6 +144,34 @@ public static unsafe class Remux
             }
 
             ffmpeg.avformat_close_input(&ic);
+        }
+    }
+
+    /// <summary>The header, with the muxer options as ffmpeg passes its output options; an option the muxer lacks fails.</summary>
+    static void WriteHeader(AVFormatContext* oc, IReadOnlyDictionary<string, string>? options)
+    {
+        AVDictionary* dict = null;
+        foreach (var (key, value) in options ?? new Dictionary<string, string>())
+            ffmpeg.av_dict_set(&dict, key, value, 0);
+        try
+        {
+            int ret = ffmpeg.avformat_write_header(oc, &dict);
+            if (ret < 0)
+            {
+                throw new FrameReaderException(FrameReaderError.InvalidInput,
+                    $"The {new string((sbyte*)oc->oformat->name)} container can't take these streams: {FFmpegLibraries.ErrorMessage(ret)}");
+            }
+
+            AVDictionaryEntry* unused = ffmpeg.av_dict_get(dict, "", null, ffmpeg.AV_DICT_IGNORE_SUFFIX);
+            if (unused != null)
+            {
+                throw new ArgumentException(
+                    $"The {new string((sbyte*)oc->oformat->name)} muxer has no option \"{new string((sbyte*)unused->key)}\".", nameof(options));
+            }
+        }
+        finally
+        {
+            ffmpeg.av_dict_free(&dict);
         }
     }
 

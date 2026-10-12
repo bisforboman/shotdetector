@@ -129,6 +129,8 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | A line-ending guard: CI fails when a pull request flips a file's line endings wholesale (or a `.gitattributes` that pins them) | #165 turned README.md from CRLF to LF unnoticed (a Git Bash `sed -i`), so blame showed every line changed; #167 restored it. Line endings are per file here, with no `.gitattributes` | Open |
 | Close release.yml's "Set ApiBaselineVersion" issue automatically: the baseline PR says `Closes #N`, or release.yml closes it once Directory.Build.props has the version | #162 stayed open after #163 set 1.7.0 | Open |
 | Generated images against cv2: FsCheck sizes, crops and pixels for CvResize (INTER_AREA/INTER_LINEAR), Hsv and ContentScorer, compared with cv2 in one Python process per test class, as #168 does for FrameTime | Today's pixel tests are fixed fixtures and whole videos; #168's property tests found a PyFloat divergence hand-picked cases missed | Maybe |
+| DASH output (issue #171): stream copy into fMP4 segments and a static MPD through `Remux` | The issue's service packages with Shaka only for this; FFmpeg's dash muxer (LGPL) does it | Done (2026-10-12): `RemuxOptions.MuxerOptions` (ffmpeg's output options) and the dash muxer in ShotDetector.Native; every file byte for byte `ffmpeg -c copy -f dash`'s (RemuxTests) |
+| CENC and Widevine for DASH (issue #171, items 2-3): AES-CTR with a caller's key ID and key (FFmpeg's `encryption_scheme cenc-aes-ctr`), a `pssh` box in the init segments and `ContentProtection` in the MPD, a Widevine PSSH builder | FFmpeg encrypts but writes no pssh or ContentProtection, so this is ours on top, checked against Shaka's output only | Maybe |
 
 ## Done
 
