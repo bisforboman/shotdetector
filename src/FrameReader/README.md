@@ -192,7 +192,23 @@ Remux.Copy("film.mkv", "out/manifest.mpd", new()
 ```
 
 Segments end at keyframes, so `seg_duration` is a target: for exact 2.4 s segments the video needs a keyframe every
-2.4 s (`VideoWriterOptions.KeyframeEvery`). Not covered: encryption (CENC) and DRM signalling (PSSH, ContentProtection).
+2.4 s (`VideoWriterOptions.KeyframeEvery`).
+
+`Encryption` adds Common Encryption (CENC, AES-CTR with your key ID and key): FFmpeg's mp4 muxer encrypts, the files
+ffmpeg's `-encryption_scheme cenc-aes-ctr -encryption_key K -encryption_kid I` gives (for DASH, through the dash
+muxer's `format_options`). With `Widevine = true` on DASH output, each init segment also gets Widevine's `pssh` box
+(the one `pssh-box.py --widevine-system-id --key-id` writes) and each adaptation set in the MPD a `ContentProtection`
+for CENC (`cenc:default_KID`) and one for Widevine (the box as `cenc:pssh`), as Shaka Packager writes them. The
+license service still needs the key.
+
+```csharp
+Remux.Copy("film.mp4", "out/manifest.mpd", new()
+{
+    Container = "dash",
+    MuxerOptions = dashOptions, // as above
+    Encryption = new() { KeyId = "a1b2c3d4e5f60718293a4b5c6d7e8f90", Key = "00112233445566778899aabbccddeeff", Widevine = true },
+});
+```
 
 Our native libraries carry the AAC, MP3 and 16-bit PCM encoders and the mp4, mov, ipod (.m4a), matroska, matroska_audio (.mka), webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass and dash muxers.
 Writing video: `VideoWriter` encodes frames to H.264 (x264) in .mp4/.mkv/.mov, optionally with an AAC track, the
