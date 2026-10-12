@@ -6,7 +6,7 @@
 [![NuGet](https://img.shields.io/nuget/v/ShotDetector.Cli.svg?label=ShotDetector.Cli)](https://www.nuget.org/packages/ShotDetector.Cli)
 
 Shot/cut detection for video in C#: a faithful port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s
-detectors (scenedetect 0.7.1: adaptive, content, threshold, histogram and hash) that gives identical
+detectors (scenedetect 0.7.2: adaptive, content, threshold, histogram and hash) that gives identical
 results, about 1.5x faster than scenedetect at 1080p with the optional fast path. Video is decoded by [ffmpeg](https://ffmpeg.org), which must be
 installed and on `PATH`; all detection logic is plain C#.
 
@@ -140,9 +140,11 @@ Each detection is an OpenTelemetry-ready span: `.AddSource(ShotDetection.Activit
 
 Runs wherever .NET 10 and ffmpeg do, including Alpine (`apk add ffmpeg`), which CI tests.
 
-ShotDetector reproduces scenedetect 0.7.1 (`Compatibility = PySceneDetectVersion.V0_7_1`, the default). When
-the default moves to a newer scenedetect, the previous release stays available there (see "Versions"). The
-scenedetect 0.6.4 mode was dropped in 0.9.0; use ShotDetector 0.8 for it.
+ShotDetector reproduces scenedetect 0.7.2 (`Compatibility = PySceneDetectVersion.V0_7_2`, the default) and 0.7.1
+(`V0_7_1`, `--compat 0.7.1`): 0.7.2 changed detect-hist's and detect-hash's defaults, compares a minimum length in
+frames as a frame count, measures AdaptiveDetector's from the frame it cuts at, and ignores fade-outs shorter than
+0.1 s in detect-threshold (`MinOutLength`). When the default moves to a newer scenedetect, the previous release stays
+available there (see "Versions"). The scenedetect 0.6.4 mode was dropped in 0.9.0; use ShotDetector 0.8 for it.
 
 `Shot.Start`/`End` are `FrameTime`s: `FrameNum` (0-based; `End` is exclusive), `Seconds`,
 `Timecode()` (also what `ToString()` gives). They print exactly as scenedetect prints them.
@@ -210,7 +212,8 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
 
 ## Verifying against PySceneDetect
 
-CI (`.github/workflows/ci.yml`) checks every pull request on Linux against scenedetect 0.7.1, for the core path
+CI (`.github/workflows/ci.yml`) checks every pull request on Linux against scenedetect 0.7.2 and 0.7.1 (each in its
+compatibility mode), for the core path
 and the FastYuv path, with the latest stable
 ffmpeg. On every sample clip and every detector:
 - the cuts are the same frames;

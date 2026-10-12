@@ -79,7 +79,7 @@ jobs:
 
       - name: Install scenedetect
         if: needs.changes.outputs.docs_only != 'true'
-        run: pip install scenedetect==0.7.1 opencv-python-headless==5.0.0.93
+        run: pip install scenedetect==0.7.2 opencv-python-headless==5.0.0.93
 
       - name: Build
         if: needs.changes.outputs.docs_only != 'true'

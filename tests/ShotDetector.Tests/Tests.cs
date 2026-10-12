@@ -172,15 +172,15 @@ static class Positions
 
 public class DetectorTests
 {
-    static List<int> RunContent(double[] scores, int minSceneLen = 15, int fps = 25)
+    static List<int> RunContent(double[] scores, int minSceneLen = 15, int fps = 25, bool frameCounts = false)
     {
-        var d = new ContentDetector(new ContentScorer(), Positions.Cfr(fps), new Fps(fps, 1), 27, minSceneLen);
+        var d = new ContentDetector(new ContentScorer(), Positions.Cfr(fps), new Fps(fps, 1), 27, minSceneLen, frameCounts: frameCounts);
         return scores.Select((s, i) => d.ProcessScore(i, s)).OfType<int>().ToList();
     }
 
-    static List<int> RunAdaptive(double[] scores, int minSceneLen = 15, Func<int, FrameTime>? position = null)
+    static List<int> RunAdaptive(double[] scores, int minSceneLen = 15, Func<int, FrameTime>? position = null, bool fromTarget = false)
     {
-        var d = new AdaptiveDetector(new ContentScorer(), position ?? Positions.Cfr(25), minSceneLen: minSceneLen);
+        var d = new AdaptiveDetector(new ContentScorer(), position ?? Positions.Cfr(25), minSceneLen: minSceneLen, fromTarget: fromTarget);
         return scores.Select((s, i) => d.ProcessScore(i, s)).OfType<int>().ToList();
     }
 
@@ -224,6 +224,14 @@ public class DetectorTests
     }
 
     [Fact]
+    public void ContentMinLengthInFramesComparesFrameCountsFrom072()
+    {
+        // scenedetect 0.7.2 (#577): the gap's frame count against min_scene_len, so 672 - 658 = 14 frames counts.
+        Assert.Equal([658, 672], RunContent(Scores(700, 2, (658, 40), (672, 40)), minSceneLen: 14, fps: 24, frameCounts: true));
+        Assert.Equal([658], RunContent(Scores(700, 2, (658, 40), (671, 40)), minSceneLen: 14, fps: 24, frameCounts: true));
+    }
+
+    [Fact]
     public void ContentWithoutMinLengthCutsEveryFrameAbove() =>
         Assert.Equal([20, 21], RunContent(Scores(40, 2, (20, 40), (21, 40)), minSceneLen: 0));
 
@@ -249,6 +257,16 @@ public class DetectorTests
         // After a cut, the next must come >= 15 frames after it (minus the window lag).
         Assert.Equal([20], RunAdaptive(Scores(60, 1, (20, 40), (32, 40))));
         Assert.Equal([20, 33], RunAdaptive(Scores(60, 1, (20, 40), (33, 40))));
+    }
+
+    [Fact]
+    public void AdaptiveMinLengthIsMeasuredFromTheTargetFrameFrom072()
+    {
+        // scenedetect 0.7.2 (#408): from the frame it would cut at, so a spike needs 15 frames before it itself.
+        Assert.Empty(RunAdaptive(Scores(40, 1, (13, 40)), fromTarget: true));
+        Assert.Equal([15], RunAdaptive(Scores(40, 1, (15, 40)), fromTarget: true));
+        Assert.Equal([20], RunAdaptive(Scores(60, 1, (20, 40), (33, 40)), fromTarget: true));
+        Assert.Equal([20, 35], RunAdaptive(Scores(60, 1, (20, 40), (35, 40)), fromTarget: true));
     }
 
     [Fact]
@@ -288,6 +306,36 @@ public class DetectorTests
 
 public class ThresholdDetectorTests
 {
+    [Fact]
+    public void FadeOutsShorterThanMinOutLengthMakeNoCutFrom072()
+    {
+        // scenedetect 0.7.2's min_out_length: dark for 2 frames (20-21) is too short for 3; 3 frames (20-22) cut.
+        static List<long> Cuts(double[] levels, int minOut)
+        {
+            var d = new ThresholdDetector(Positions.Cfr(25), Fps25, 12, minSceneLen: 0, minOutLength: minOut);
+            var cuts = levels.Select((v, i) => d.ProcessAverage(i, v)).OfType<FrameTime>().Select(c => c.FrameNum).ToList();
+            if (d.PostProcess(FrameTime.Pts(levels.Length - 1, 25, Fps25)) is { } last)
+                cuts.Add(last.FrameNum);
+            return cuts;
+        }
+
+        Assert.Empty(Cuts(Fade(60, 20, 22), 3));
+        Assert.Equal([22], Cuts(Fade(60, 20, 23), 3)); // midway: 20 + round(3 / 2) = 22
+
+        // Ending faded out: the last frame counts, so 57-59 (3 frames) is long enough and 58-59 isn't.
+        Assert.Equal([57], Cuts(Fade(60, 57, 60), 3));
+        Assert.Empty(Cuts(Fade(60, 58, 60), 3));
+    }
+
+    [Theory]
+    [InlineData(null, true, 25, 2)]   // the CLI's 0.1 s: round(2.5) = 2, half to even
+    [InlineData(null, true, 30, 3)]
+    [InlineData(null, false, 25, 0)]  // 0.7.1 had none
+    [InlineData("5", true, 25, 5)]
+    [InlineData("0.2s", false, 25, 5)]
+    public void MinOutLengthDefaultsToTheClisFrom072(string? value, bool v072, int fps, int expected) =>
+        Assert.Equal(expected, ShotDetection.MinOutLengthFrames(value, v072, new Fps(fps, 1)));
+
     // Mean pixel level per frame: bright, then dark for frames [from, to), then bright again.
     static double[] Fade(int count, int from, int to) =>
         Enumerable.Range(0, count).Select(i => i >= from && i < to ? 3.0 : 100.0).ToArray();

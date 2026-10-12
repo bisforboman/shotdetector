@@ -19,9 +19,10 @@ differ is documented in README.md and in `docs/decisions.md`.
 Releases, newest first, and what each brought: CHANGELOG.md.
 InProcessTests need `SHOTDETECTOR_FFMPEG_LIBS` (an FFmpeg 8.1 shared build's folder) or they pass without checking. The release notes are the version's
 CHANGELOG section (release.yml extracts it), so keep sections grouped: breaking changes, new, faster, fixed.
-All five detectors, scenedetect 0.7.1 (`PySceneDetectVersion.V0_7_1`; the 0.6.4 mode was dropped in 0.9.0), exports
+All five detectors, scenedetect 0.7.2 (`PySceneDetectVersion.V0_7_2`, default) and 0.7.1 (`V0_7_1`; the 0.6.4 mode was
+dropped in 0.9.0), exports
 (save-images, save-html, split-video), stats, streaming out (`DetectStreamAsync`) and in (`Detect(Stream)`, URLs,
-CLI `-i -`). CI compares every sample clip against scenedetect 0.7.1 on Linux for the core and FastYuv
+CLI `-i -`). CI compares every sample clip against scenedetect 0.7.2 and 0.7.1 on Linux for the core and FastYuv
 paths (10-bit h264 too); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
 weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what the user decided and why.
 
@@ -56,7 +57,8 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
   (the mutation job breaks the guard and needs a test to fail).
 - Before pushing: `dotnet test ShotDetector.slnx` (needs ffmpeg on PATH; ~3 min, the video tests make clips),
   and for detector changes `python tools/compare.py samples/*.mp4 ... --detector all --stats` (`tools/make-samples.ps1`
-  creates `samples/`; `pip install scenedetect==0.7.1 opencv-python-headless`).
+  creates `samples/`; `pip install scenedetect==0.7.2 opencv-python-headless`; `--compat 0.7.1` with 0.7.1 installed
+  for the previous release).
 - Code style: StyleBro (analyzers on build; rules chosen in `.editorconfig`, docs/decisions.md). Before pushing,
   `stylebro-migrate format ShotDetector.slnx` (`dotnet tool install StyleBro.Migrate --version 0.5.0-alpha.1
   --tool-path <dir>`); CI checks it with `--verify-no-changes`. Feedback on StyleBro goes to its GitHub issues.

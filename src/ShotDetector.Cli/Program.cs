@@ -26,11 +26,12 @@ const string Usage = """
       -k, --kernel-size <n>              content/adaptive: odd size >= 3 to widen edges by
                                          (default: from the resolution)
       -l, --luma-only                    Only use the V (brightness) channel (overrides --weights)
-      -b, --bins <n>                     hist: number of luma histogram bins (default 256)
-          --hash-size <n>                hash: hash is n x n bits (default 16)
+      -b, --bins <n>                     hist: number of luma histogram bins (default 128; 256 with --compat 0.7.1)
+          --hash-size <n>                hash: hash is n x n bits (default 8; 16 with --compat 0.7.1)
           --hash-lowpass <n>             hash: shrink frames to size*n pixels per side first (default 2)
       -f, --fade-bias <-1..1>            threshold: cut position between fade-out (-1) and fade-in (+1)
-          --compat <0.7.1>               Which PySceneDetect release to reproduce (default and only: 0.7.1)
+          --min-out-length <time>        threshold: ignore fade-outs shorter than this (default 0.1s; none with --compat 0.7.1)
+          --compat <0.7.2|0.7.1>         Which PySceneDetect release to reproduce (default 0.7.2)
           --frame-rate <fps>             Override the detected frame rate (scenedetect -f); also the
                                          rate of an image sequence such as frames/%04d.png (default 25)
           --ffmpeg-dir <dir>             Folder containing ffmpeg and ffprobe (default: found on PATH)
@@ -65,6 +66,7 @@ const string Usage = """
                                          --edl-start-timecode <HH:MM:SS:FF>
           --save-fcp <file>              Final Cut Pro XML (save-fcp); --fcp-format <fcpx|fcp7> (default fcpx)
           --save-otio <file>             OpenTimelineIO timeline (save-otio); --otio-name <n>, --otio-no-audio
+          --save-keyframes <file>        Aegisub keyframes file, a line per cut (save-keyframes)
           --save-qp <file>               x264 QP file with a keyframe at each cut (save-qp); --qp-disable-shift
           --split-video <dir>            Cut the video into one mp4 per shot (like scenedetect split-video)
           --image-filename <template>    save-images name, no extension (default $VIDEO_NAME-Scene-$SCENE_NUMBER-$IMAGE_NUMBER)
@@ -105,7 +107,7 @@ var waveformBits = FrameReader.WaveformBits.Sixteen;
 int? htmlWidth = null, htmlHeight = null;
 string? htmlPath = null;
 string? edlPath = null, edlTitle = null, edlReel = "AX", edlStart = null, fcpPath = null, fcpFormat = "fcpx";
-string? otioPath = null, otioName = null, qpPath = null;
+string? otioPath = null, otioName = null, qpPath = null, keyframesPath = null;
 bool otioAudio = true, qpShift = true;
 string? outputDir = null, loadScenes = null, loadColumn = "Start Frame";
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
@@ -201,6 +203,9 @@ try
             case "-f" or "--fade-bias":
                 options = options with { FadeBias = NextDouble() };
                 break;
+            case "--min-out-length":
+                options = options with { MinOutLength = Next() };
+                break;
             case "-l" or "--luma-only":
                 options = options with { LumaOnly = true };
                 break;
@@ -236,8 +241,9 @@ try
                 {
                     Compatibility = Next() switch
                     {
+                        "0.7.2" => PySceneDetectVersion.V0_7_2,
                         "0.7.1" => PySceneDetectVersion.V0_7_1,
-                        var v => throw new ArgumentException($"Unknown --compat version '{v}' (0.7.1; 0.6.4 was dropped in 0.9.0)"),
+                        var v => throw new ArgumentException($"Unknown --compat version '{v}' (0.7.2 or 0.7.1; 0.6.4 was dropped in 0.9.0)"),
                     },
                 };
                 break;
@@ -284,6 +290,9 @@ try
                 break;
             case "--save-qp":
                 qpPath = Next();
+                break;
+            case "--save-keyframes":
+                keyframesPath = Next();
                 break;
             case "--qp-disable-shift":
                 qpShift = false;
@@ -578,8 +587,8 @@ try
         ? null
         : Path.Combine(outputDir ?? "", path.Replace("$VIDEO_NAME", videoName).Replace("${VIDEO_NAME}", videoName));
     (csvPath, jsonPath, statsPath, imagesDir, htmlPath, splitDir) = (Out(csvPath), Out(jsonPath), Out(statsPath), Out(imagesDir), Out(htmlPath), Out(splitDir));
-    (edlPath, fcpPath, otioPath, qpPath) = (Out(edlPath), Out(fcpPath), Out(otioPath), Out(qpPath));
-    foreach (var file in new[] { csvPath, jsonPath, statsPath, htmlPath, edlPath, fcpPath, otioPath, qpPath })
+    (edlPath, fcpPath, otioPath, qpPath, keyframesPath) = (Out(edlPath), Out(fcpPath), Out(otioPath), Out(qpPath), Out(keyframesPath));
+    foreach (var file in new[] { csvPath, jsonPath, statsPath, htmlPath, edlPath, fcpPath, otioPath, qpPath, keyframesPath })
     {
         if (file is not null && Path.GetDirectoryName(Path.GetFullPath(file)) is { } dir)
             Directory.CreateDirectory(dir);
@@ -636,6 +645,8 @@ try
         File.WriteAllText(otioPath, Timeline.Otio(result, otioName, otioAudio));
     if (qpPath is not null)
         File.WriteAllText(qpPath, Timeline.Qp(result, qpShift));
+    if (keyframesPath is not null)
+        File.WriteAllText(keyframesPath, Timeline.Keyframes(result));
     if (splitDir is not null)
         Console.Error.WriteLine($"Wrote {Export.SplitVideo(result, splitDir, split).Count} clips to {splitDir}");
     return 0;
@@ -792,6 +803,7 @@ DetectorSettings FromConfig(Config c, DetectorSettings d)
         HashSize = Free("--hash-size") ? c.Int(section, "size") : null,
         HashLowpass = Free("--hash-lowpass") ? c.Int(section, "lowpass") : null,
         FadeBias = Free("-f", "--fade-bias") ? c.Double(section, "fade-bias") : null,
+        MinOutLength = Free("--min-out-length") ? c.Get(section, "min-out-length") : null,
         AddLastScene = c.Bool(section, "add-last-scene"),
     };
 }

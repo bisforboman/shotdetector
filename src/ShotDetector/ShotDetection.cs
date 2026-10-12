@@ -12,6 +12,14 @@ public enum PySceneDetectVersion
 {
     /// <summary>scenedetect 0.7.1: real frame timestamps (handles variable frame rate), fractional downscale.</summary>
     V0_7_1,
+
+    /// <summary>
+    /// scenedetect 0.7.2 (the default): detect-hist's defaults are threshold 0.20 and 128 bins, detect-hash's 0.35 and
+    /// size 8; a minimum length given in frames is compared as a frame count in ContentDetector's flash filter (#577);
+    /// AdaptiveDetector measures it from the frame it cuts at (#408); detect-threshold ignores fade-outs shorter than
+    /// <see cref="DetectionOptions.MinOutLength"/> (0.1 s by default).
+    /// </summary>
+    V0_7_2,
 }
 
 /// <summary>Which PySceneDetect detector to run.</summary>
@@ -274,13 +282,16 @@ public sealed record DetectorSettings(DetectorKind Kind)
 
     /// <summary>Threshold: see <see cref="DetectionOptions.AddLastScene"/>.</summary>
     public bool? AddLastScene { get; init; }
+
+    /// <summary>Threshold: see <see cref="DetectionOptions.MinOutLength"/>.</summary>
+    public string? MinOutLength { get; init; }
 }
 
 /// <summary>Detection settings. Defaults match the scenedetect CLI.</summary>
 public sealed record DetectionOptions
 {
-    /// <summary>Which PySceneDetect release to reproduce (default 0.7.1).</summary>
-    public PySceneDetectVersion Compatibility { get; init; } = PySceneDetectVersion.V0_7_1;
+    /// <summary>Which PySceneDetect release to reproduce (default 0.7.2, the newest).</summary>
+    public PySceneDetectVersion Compatibility { get; init; } = PySceneDetectVersion.V0_7_2;
 
     /// <summary>Which detector to run (default adaptive).</summary>
     public DetectorKind Detector { get; init; } = DetectorKind.Adaptive;
@@ -310,17 +321,23 @@ public sealed record DetectionOptions
     /// <summary>Content/adaptive: odd size >= 3 to widen edges by; null picks it from the resolution.</summary>
     public int? KernelSize { get; init; }
 
-    /// <summary>Histogram: number of luma histogram bins (1..256).</summary>
-    public int Bins { get; init; } = 256;
+    /// <summary>Histogram: number of luma histogram bins (1..256); 0 (default): scenedetect's for <see cref="Compatibility"/> (128 in 0.7.2, 256 in 0.7.1).</summary>
+    public int Bins { get; init; }
 
-    /// <summary>Hash: the hash is HashSize×HashSize bits.</summary>
-    public int HashSize { get; init; } = 16;
+    /// <summary>Hash: the hash is HashSize×HashSize bits; 0 (default): scenedetect's for <see cref="Compatibility"/> (8 in 0.7.2, 16 in 0.7.1).</summary>
+    public int HashSize { get; init; }
 
     /// <summary>Hash: frames are shrunk to HashSize×HashLowpass pixels on each side before hashing.</summary>
     public int HashLowpass { get; init; } = 2;
 
     /// <summary>Threshold: cut position between fade-out (-1) and fade-in (+1).</summary>
     public double FadeBias { get; init; }
+
+    /// <summary>
+    /// Threshold: a fade-out shorter than this makes no cut (scenedetect 0.7.2's <c>--min-out-length</c>; same formats as
+    /// <see cref="MinSceneLength"/>). Null (default): the CLI's, 0.1 s with 0.7.2 and none with 0.7.1.
+    /// </summary>
+    public string? MinOutLength { get; init; }
 
     /// <summary>
     /// Where to start, like scenedetect's `time -s`: "HH:MM:SS[.mmm]", seconds ("12.5s" or "12.5")
@@ -1016,7 +1033,10 @@ public static class ShotDetection
 
     static IDetector Build(DetectorSettings st, DetectionOptions o, VideoReader video, int minSceneLen, Stats? stats)
     {
-        int frameWindow = st.FrameWindow ?? o.FrameWindow, bins = st.Bins ?? o.Bins, hashSize = st.HashSize ?? o.HashSize,
+        bool v072 = o.Compatibility >= PySceneDetectVersion.V0_7_2;
+        int frameWindow = st.FrameWindow ?? o.FrameWindow,
+            bins = st.Bins ?? (o.Bins > 0 ? o.Bins : v072 ? 128 : 256),
+            hashSize = st.HashSize ?? (o.HashSize > 0 ? o.HashSize : v072 ? 8 : 16),
             hashLowpass = st.HashLowpass ?? o.HashLowpass;
         int? kernelSize = st.KernelSize ?? o.KernelSize;
         if (frameWindow < 1)
@@ -1030,6 +1050,8 @@ public static class ShotDetection
 
         // --drop-short-scenes: detectors cut freely; the short shots are dropped afterwards.
         int min = o.DropShortScenes ? 0 : st.MinSceneLength is { } m ? MinSceneLengthInFrames(m, video.Fps) : minSceneLen;
+
+        int minOut = MinOutLengthFrames(st.MinOutLength ?? o.MinOutLength, v072, video.Fps);
         ContentScorer Scorer()
         {
             var w = st.Weights ?? o.Weights;
@@ -1048,16 +1070,24 @@ public static class ShotDetection
                 video.Fps,
                 st.Threshold ?? 27.0,
                 min,
-                (st.FilterMode ?? o.FilterMode) == FlashFilterMode.Suppress),
+                (st.FilterMode ?? o.FilterMode) == FlashFilterMode.Suppress,
+                frameCounts: v072),
             DetectorKind.Threshold => new ThresholdDetector(video.Position,
                 video.Fps,
                 st.Threshold ?? 12.0,
                 min,
                 st.FadeBias ?? o.FadeBias,
-                st.AddLastScene ?? o.AddLastScene),
-            DetectorKind.Histogram => new HistogramDetector(video.Position, st.Threshold ?? 0.05, bins, min),
-            DetectorKind.Hash => new HashDetector(video.Position, st.Threshold ?? 0.395, hashSize, hashLowpass, min),
-            _ => new AdaptiveDetector(Scorer(), video.Position, st.Threshold ?? 3.0, min, frameWindow, st.MinContentVal ?? o.MinContentVal),
+                st.AddLastScene ?? o.AddLastScene,
+                minOut),
+            DetectorKind.Histogram => new HistogramDetector(video.Position, st.Threshold ?? (v072 ? 0.20 : 0.05), bins, min),
+            DetectorKind.Hash => new HashDetector(video.Position, st.Threshold ?? (v072 ? 0.35 : 0.395), hashSize, hashLowpass, min),
+            _ => new AdaptiveDetector(Scorer(),
+                video.Position,
+                st.Threshold ?? 3.0,
+                min,
+                frameWindow,
+                st.MinContentVal ?? o.MinContentVal,
+                fromTarget: v072),
         };
         detector.Stats = stats;
         if (detector is HashDetector hash)
@@ -1112,6 +1142,10 @@ public static class ShotDetection
     }
 
     /// <summary>"0.6s" → frames with Python's round-half-to-even, like FrameTimecode._seconds_to_frames; "15" → 15.</summary>
+    /// <summary>detect-threshold's --min-out-length in frames: the CLI's 0.1 s from 0.7.2 when not given, none before.</summary>
+    internal static int MinOutLengthFrames(string? value, bool v072, Fps fps) =>
+        (value ?? (v072 ? "0.1s" : null)) is { } v ? MinSceneLengthInFrames(v, fps) : 0;
+
     internal static int MinSceneLengthInFrames(string value, Fps fps) => value.Trim().All(char.IsDigit)
         ? int.Parse(value, CultureInfo.InvariantCulture)
         : (int)Math.Round(TimecodeSeconds(value, fps) * fps.Value);
