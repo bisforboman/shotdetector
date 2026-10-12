@@ -3,6 +3,13 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## Issues #191-#195 (2026-10-12)
+
+Five suggestions from #81's team. Asked which to take on: **all four feature requests, in this order: #195
+(`FFmpegLibraries.Missing`), #191 (DASH names per content type), #192 (audio like the ffmpeg command line), #193
+(ffprobe JSON)**. And for #194 (duplicate `StreamInfo`/`StreamType`/`FieldOrder`): **`[Obsolete]` now, FrameReader's
+types in 2.0** (over a 2.0 now, or leaving it to aliases).
+
 ## Widevine pssh data from the caller (2026-10-12, issue #185)
 
 #185's DRM provider supplies the WidevinePsshData itself. Asked how EncryptionOptions should take it: **the data
