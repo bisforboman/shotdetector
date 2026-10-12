@@ -99,6 +99,8 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
   Line endings are per file (most CRLF, some LF; no .gitattributes): keep each file's own. Python's write_text
   writes CRLF on Windows and Git Bash's `sed -i` writes LF, so check `git diff --stat` for whole-file rewrites.
   Never `git checkout -- <file>` to undo an experiment on a file with uncommitted work: copy it aside first.
+  CI's `line-endings` job fails a PR in which more than 20 of a file's lines changed only their ending; for a
+  conversion on purpose, label the PR `line-endings` before pushing (CI reads labels when a run starts).
 - ffmpeg `-ss` lands on different frames per codec; only the `-copyts` + `select` seek is exact (VideoReader).
 - Crop: ffmpeg must crop *after* `scale,format=bgr24`; scenedetect's downscale factor uses crop size + 1 (both dims).
 - End of a time range is compared as frame numbers (`Position(i).PlusFrames(1).FrameNum >= end`), with
