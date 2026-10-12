@@ -131,4 +131,121 @@ public class RemuxTests
             Directory.Delete(dir, true);
         }
     }
+
+    // CENC (issue #171): FFmpeg's mp4 muxer encrypts, byte for byte ffmpeg's -encryption_* output, for DASH segments and a
+    // plain .mp4. Widevine adds the pssh box (pssh-box.py's; CI checks against it with SHOTDETECTOR_WIDEVINE_PSSH) to each
+    // init segment, which is otherwise ffmpeg's, and ContentProtection to the MPD; ffmpeg decrypts it back to the input.
+    [Fact]
+    public void EncryptedAsFfmpegWithWidevineSignalling()
+    {
+        if (Libs is null)
+            return;
+        const string Key = "00112233445566778899aabbccddeeff", KeyId = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
+        string dir = Directory.CreateTempSubdirectory("framereader-remux-").FullName;
+        try
+        {
+            string input = Path.Combine(dir, "in.mp4");
+            Ffmpeg(["-v", "error", "-y", .. Make.Split(' '), "-map", "0", "-map", "1", "-c:v", "libx264", "-g", "25", "-pix_fmt", "yuv420p", "-c:a", "aac", input]);
+            var dash = new Dictionary<string, string>
+            {
+                ["seg_duration"] = "1",
+                ["use_template"] = "1",
+                ["use_timeline"] = "0",
+                ["init_seg_name"] = "init-$RepresentationID$.mp4",
+                ["media_seg_name"] = "chunk-$RepresentationID$-$Number%05d$.m4s",
+                ["adaptation_sets"] = "id=0,streams=v id=1,streams=a",
+            };
+            var cenc = new EncryptionOptions { KeyId = KeyId, Key = Key };
+            string want = Directory.CreateDirectory(Path.Combine(dir, "ffmpeg")).FullName;
+            Ffmpeg(["-v", "error", "-y", "-i", input, "-map", "0", "-c", "copy", "-fflags", "+bitexact", "-f", "dash",
+                .. dash.SelectMany(o => new[] { "-" + o.Key, o.Value }),
+                "-format_options", $"encryption_scheme=cenc-aes-ctr:encryption_key={Key}:encryption_kid={KeyId}",
+                Path.Combine(want, "manifest.mpd").Replace('\\', '/')]);
+            string[] names = [.. Directory.GetFiles(want).Select(f => Path.GetFileName(f)).Order()];
+
+            string plain = Directory.CreateDirectory(Path.Combine(dir, "plain")).FullName;
+            Remux.Copy(input, Path.Combine(plain, "manifest.mpd"), new RemuxOptions { Container = "dash", MuxerOptions = dash, Encryption = cenc, Bitexact = true });
+            foreach (string name in names)
+                Assert.True(File.ReadAllBytes(Path.Combine(want, name)).AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(plain, name))), name);
+
+            string wv = Directory.CreateDirectory(Path.Combine(dir, "widevine")).FullName;
+            Remux.Copy(input, Path.Combine(wv, "manifest.mpd"), new RemuxOptions { Container = "dash", MuxerOptions = dash, Encryption = cenc with { Widevine = true }, Bitexact = true });
+            Assert.Equal(names, Directory.GetFiles(wv).Select(f => Path.GetFileName(f)).Order());
+
+            // pssh: version 0, Widevine's system ID, WidevinePsshData with the key ID (field 2)
+            byte[] pssh = Convert.FromHexString("000000327073736800000000edef8ba979d64acea3c827dcd51d21ed000000121210" + KeyId);
+            if (Environment.GetEnvironmentVariable("SHOTDETECTOR_WIDEVINE_PSSH") is { Length: > 0 } fromPsshBox)
+                Assert.Equal(Convert.FromBase64String(fromPsshBox.Trim()), pssh);
+            foreach (string name in names.Where(n => n.StartsWith("init-", StringComparison.Ordinal)))
+            {
+                byte[] ffmpegs = File.ReadAllBytes(Path.Combine(want, name)), ours = File.ReadAllBytes(Path.Combine(wv, name));
+                int moov = ffmpegs.AsSpan().IndexOf("moov"u8) - 4, moovEnd = moov + System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(ffmpegs.AsSpan(moov));
+                byte[] expected = [.. ffmpegs.AsSpan(0, moovEnd), .. pssh, .. ffmpegs.AsSpan(moovEnd)];
+                System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(expected.AsSpan(moov), moovEnd - moov + pssh.Length);
+                Assert.True(expected.AsSpan().SequenceEqual(ours), name);
+            }
+
+            foreach (string name in names.Where(n => n.EndsWith(".m4s", StringComparison.Ordinal)))
+                Assert.True(File.ReadAllBytes(Path.Combine(want, name)).AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(wv, name))), name);
+
+            var mpd = System.Xml.Linq.XDocument.Load(Path.Combine(wv, "manifest.mpd"));
+            System.Xml.Linq.XNamespace ns = "urn:mpeg:dash:schema:mpd:2011", cencNs = "urn:mpeg:cenc:2013";
+            var sets = mpd.Descendants(ns + "AdaptationSet").ToList();
+            Assert.Equal(2, sets.Count);
+            foreach (var set in sets)
+            {
+                var protections = set.Elements(ns + "ContentProtection").ToList();
+                Assert.Equal("urn:mpeg:dash:mp4protection:2011", protections[0].Attribute("schemeIdUri")?.Value);
+                Assert.Equal("a1b2c3d4-e5f6-0718-293a-4b5c6d7e8f90", protections[0].Attribute(cencNs + "default_KID")?.Value);
+                Assert.Equal("urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed", protections[1].Attribute("schemeIdUri")?.Value);
+                Assert.Equal(Convert.ToBase64String(pssh), protections[1].Element(cencNs + "pssh")?.Value);
+            }
+
+            // ffmpeg reads the Widevine stream with the key: the input's video and audio, frame for frame.
+            foreach (var (id, kind) in new[] { ("0", "v"), ("1", "a") })
+            {
+                string joined = Path.Combine(dir, $"joined-{id}.mp4");
+                File.WriteAllBytes(joined, [.. new[] { $"init-{id}.mp4" }.Concat(names.Where(n => n.StartsWith($"chunk-{id}-", StringComparison.Ordinal)))
+                    .SelectMany(n => File.ReadAllBytes(Path.Combine(wv, n)))]);
+                string Hashes(params string[] args)
+                {
+                    string md5 = Path.Combine(dir, "frames.md5");
+                    Ffmpeg(["-v", "error", "-y", .. args, "-map", "0:" + kind, "-f", "framemd5", md5]);
+                    return string.Join("\n", File.ReadAllLines(md5).Where(l => !l.StartsWith('#')).Select(l => l.Split(',')[^1]));
+                }
+
+                Assert.Equal(Hashes("-i", input), Hashes("-decryption_key", Key, "-i", joined));
+            }
+
+            string mp4 = Path.Combine(dir, "enc.mp4"), ffmpegMp4 = Path.Combine(dir, "expected-enc.mp4");
+            Ffmpeg("-v",
+                "error",
+                "-y",
+                "-i",
+                input,
+                "-map",
+                "0",
+                "-c",
+                "copy",
+                "-fflags",
+                "+bitexact",
+                "-encryption_scheme",
+                "cenc-aes-ctr",
+                "-encryption_key",
+                Key,
+                "-encryption_kid",
+                KeyId,
+                ffmpegMp4);
+            Remux.Copy(input, mp4, new RemuxOptions { Encryption = cenc, Bitexact = true });
+            Assert.Equal(File.ReadAllBytes(ffmpegMp4), File.ReadAllBytes(mp4));
+
+            Assert.Throws<ArgumentException>(() => Remux.Copy(input, Path.Combine(dir, "x.mp4"), new RemuxOptions { Encryption = cenc with { Widevine = true } }));
+            Assert.Throws<ArgumentException>(() => Remux.Copy(input, Path.Combine(dir, "x.mp4"), new RemuxOptions { Encryption = cenc with { Key = "0011" } }));
+            Assert.Throws<ArgumentException>(() => Remux.Copy(input, Path.Combine(dir, "x.mp4"), new RemuxOptions { Encryption = cenc with { KeyId = new string('g', 32) } }));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }

@@ -90,6 +90,19 @@ jobs:
             echo "::warning::audiowaveform didn't install: WaveformData's comparison with it is skipped"
           fi
 
+      # Widevine's pssh box from Shaka Packager's pssh-box.py (what issue #171's service used), for
+      # RemuxTests.EncryptedAsFfmpegWithWidevineSignalling to compare ours with, byte for byte.
+      - name: pssh-box.py's Widevine pssh
+        if: needs.changes.outputs.docs_only != 'true'
+        run: |
+          curl -fsSL --retry 5 --retry-all-errors -o pssh-box.tar.gz https://github.com/shaka-project/shaka-packager/releases/download/v3.9.3/pssh-box.py.tar.gz
+          echo "277f88fc3a1bcf295f7dbe9c98cc88fbf98308c9adce48256fa74af872326932  pssh-box.tar.gz" | sha256sum -c
+          mkdir pssh-box && tar xzf pssh-box.tar.gz -C pssh-box
+          script=$(find pssh-box -name pssh-box.py | head -1)
+          pssh=$(python3 "$script" --widevine-system-id --key-id a1b2c3d4e5f60718293a4b5c6d7e8f90 --base64)
+          echo "pssh-box.py: $pssh"
+          echo "SHOTDETECTOR_WIDEVINE_PSSH=$pssh" >> "$GITHUB_ENV"
+
       - name: Test
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx
