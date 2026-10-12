@@ -60,6 +60,14 @@ public class AudioConvertTests
             Audio.Convert(input, actual, new AudioConvertOptions { Filter = filter, Encoder = encoder, BitRate = bitRate, Bitexact = true });
 
             byte[] want = File.ReadAllBytes(expected), got = File.ReadAllBytes(actual);
+            if (output.EndsWith(".mp3", StringComparison.Ordinal) && !AudioWriterTests.SameBuild())
+            {
+                // LAME's bits depend on how it was compiled (AudioWriterTests): the same layout, not the same bits.
+                Assert.Equal(want.Length, got.Length);
+                Assert.Equal(AudioWriterTests.Samples(expected), AudioWriterTests.Samples(actual));
+                return;
+            }
+
             int first = 0;
             while (first < Math.Min(want.Length, got.Length) && want[first] == got[first])
                 first++;
