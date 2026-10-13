@@ -154,7 +154,8 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
   fallback), never `curl | tar` (a reset mid-stream left tar a truncated archive); Docker images from
   `public.ecr.aws/docker/library/` (Docker Hub's anonymous rate limit stopped a release).
 - CI load: a PR whose files are all docs, `.claude/`, `benchmarks/`, `tests/FrameReader.Tests/` or the FrameReader
-  classes ShotDetector doesn't use (VideoFrameReader, AudioReader) is "light": AOT, ARM, Alpine, parity, real-world
+  classes ShotDetector doesn't use (VideoFrameReader, AudioReader), or workflows CI never runs (release, benchmarks,
+  upstream, Dependabot's), is "light": AOT, ARM, Alpine, parity, real-world
   and mutation don't start (skipped jobs pass the required checks). Add a FrameReader file to that list in the three
   `changes` jobs only if ShotDetector really doesn't use it. The FrameReader benchmark runs on demand and weekly only.
   Every push reruns everything: docs go in before `gh pr create`, not as follow-up pushes.
