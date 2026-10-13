@@ -8,7 +8,7 @@ dotnet add package ShotDetector.Native.linux-x64
 ```
 
 With the package referenced, ShotDetector finds the libraries next to your app and decodes in-process by default
-(`VideoDecoder.Auto`): faster, with about half the memory of running the ffmpeg executable, and the same results.
+(`VideoDecoder.Auto`): faster and with less memory than running the ffmpeg executable, and the same results.
 Files are probed in-process too, so ffmpeg only needs to be installed for streams, URLs and exports (split-video,
 save-images).
 
