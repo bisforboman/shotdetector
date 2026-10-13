@@ -399,6 +399,9 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             // FastYuv: the second half's frames (another size) take the exact conversion, as OpenCV scales them in it.
             var fast = ShotDetection.Detect(joined, options with { Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() });
             Assert.Equal(pipe.Stats.Csv(pipe.Video.Position), fast.Stats!.Csv(fast.Video.Position));
+            var halfCore = ShotDetection.Detect(joined, options with { Downscale = 2 });
+            var halfFast = ShotDetection.Detect(joined, options with { Downscale = 2, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() });
+            Assert.Equal(halfCore.Stats!.Csv(halfCore.Video.Position), halfFast.Stats!.Csv(halfFast.Video.Position));
 
             // Cuts from both halves by their time labels, sorted (scenedetect's res_change.ts result is checked in CI).
             Assert.Equal([50L, 75L, 100L], pipe.Cuts.Select(c => c.FrameNum));

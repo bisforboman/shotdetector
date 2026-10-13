@@ -150,7 +150,16 @@ public sealed partial class VideoReader
                     _livePackets.Add(PacketOf(pts * timeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
                 }
 
-                switch (bgr ? FramePipeline.SampledBgr : pipeline)
+                // Resized already, in a buffer sized for yuv420p: the frame's own bytes (scores count its pixels).
+                if (bgr)
+                {
+                    buffer.AsSpan(0, small.Length).CopyTo(small);
+                    free.Add(buffer);
+                    yield return small;
+                    continue;
+                }
+
+                switch (pipeline)
                 {
                     case FramePipeline.Yuv420Sampled:
                         resizer!.ResizeYuv420(buffer, small, _yuv420ForVideo!, SourceWidth, SourceHeight, CropRegion.X, CropRegion.Y);
