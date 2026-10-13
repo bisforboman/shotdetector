@@ -3,6 +3,12 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## 2.0 on a branch (2026-10-13)
+
+Asked what comes after 1.13.0: **2.0 on a long-lived `v2` branch** (backlog section 5 plus #194, each piece a PR
+into `v2` with full CI; a `v2.0.0-preview.N` tag publishes a prerelease when it hangs together), so 1.x fixes keep
+shipping from main; over picking from the Maybes or pausing. `v2`'s branch protection is the user's to set.
+
 ## What 2.0 holds (2026-10-13)
 
 Only #194 was planned. An API review (ShotDetector's public API against FrameReader's) found no other name clashes
