@@ -50,7 +50,7 @@ jobs:
         run: pip install scenedetect==0.7.2 opencv-python-headless==5.0.0.93 psutil
 
       # Our FFmpeg libraries in native/: the CLI bundles them, so its default decodes in-process, as users get it.
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: native-${{ matrix.rid }}
           path: native/${{ matrix.rid }}
