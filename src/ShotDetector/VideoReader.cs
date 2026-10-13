@@ -112,7 +112,7 @@ public readonly record struct Fps(int Num, int Den)
 /// swscale's bilinear scale instead: faster, but it averages over the whole footprint, so content_val is lower on fine
 /// detail and cuts can differ from PySceneDetect's.
 /// </summary>
-public sealed partial class VideoReader
+internal sealed partial class VideoReader
 {
     /// <summary>Width of the video.</summary>
     public int SourceWidth { get; }
@@ -166,6 +166,12 @@ public sealed partial class VideoReader
 
     /// <summary>FFmpeg's name for the container (its demuxer).</summary>
     public string Container { get; }
+
+    /// <summary>The decoded pixel format's FFmpeg name; empty when unknown.</summary>
+    internal string PixelFormat => _pixelFormat;
+
+    /// <summary>The display rotation in degrees, counterclockwise (0 when none).</summary>
+    internal int Rotation => _rotation;
 
     /// <summary>Whether the file has an audio stream (<see cref="Streams"/>); null for a <see cref="Stream"/>.</summary>
     public bool? HasAudio => Streams?.Any(s => s.Type == StreamType.Audio);

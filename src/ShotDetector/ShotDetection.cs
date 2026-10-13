@@ -420,7 +420,7 @@ public sealed record DetectionResult
     public string? VideoPath { get; init; }
 
     /// <summary>Its properties (size, frame rate, ...).</summary>
-    public VideoReader Video { get; init; } = null!;
+    public DetectedVideo Video { get; init; } = null!;
 
     /// <summary>The shots, in order, covering the whole video.</summary>
     public IReadOnlyList<Shot> Shots { get; init; } = [];
@@ -594,7 +594,7 @@ public static class ShotDetection
         return new()
         {
             VideoPath = videoPath,
-            Video = video,
+            Video = new DetectedVideo(video),
             Shots = shots,
             FrameCount = (int)video.OpenCvFrameCount,
             MinSceneLengthFrames = minSceneLen,
@@ -724,7 +724,7 @@ public static class ShotDetection
             var result = RunTraced(videoPath, videoStream, options, onShot, cancellationToken);
             if (activity is not null)
             {
-                var v = result.Video;
+                var v = result.Video.Reader;
                 activity.SetTag("shotdetector.video.width", v.SourceWidth);
                 activity.SetTag("shotdetector.video.height", v.SourceHeight);
                 activity.SetTag("shotdetector.video.fps", v.Fps.Value);
@@ -904,7 +904,7 @@ public static class ShotDetection
         return new()
         {
             VideoPath = videoPath,
-            Video = video,
+            Video = new DetectedVideo(video),
             Shots = shots,
             FrameCount = frameCount,
             MinSceneLengthFrames = minSceneLen,

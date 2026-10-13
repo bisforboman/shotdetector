@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 namespace ShotDetector;
 
-public sealed partial class VideoReader
+internal sealed partial class VideoReader
 {
     /// <summary>
     /// Whether frames are decoded in this process (<see cref="VideoDecoder.InProcess"/>, or <see cref="VideoDecoder.Auto"/>

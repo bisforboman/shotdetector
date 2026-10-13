@@ -53,7 +53,7 @@ public class DeinterlaceTests(Clips clips) : IClassFixture<Clips>
         string Stats(string path, DeinterlaceMode mode)
         {
             var r = ShotDetection.Detect(path, options with { Deinterlace = mode });
-            Assert.Equal(mode == DeinterlaceMode.On || (mode == DeinterlaceMode.Auto && path == clips.Interlaced), r.Video.Deinterlaces);
+            Assert.Equal(mode == DeinterlaceMode.On || (mode == DeinterlaceMode.Auto && path == clips.Interlaced), r.Video.Deinterlaced);
             return r.Stats!.Csv(r.Video.Position);
         }
 

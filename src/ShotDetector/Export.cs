@@ -127,7 +127,7 @@ public static partial class Export
             throw new ArgumentException("NumImages must be at least 1 and FrameMargin at least 0.");
         if (io.Format is not ("jpg" or "png" or "webp"))
             throw new ArgumentException("Format must be jpg, png or webp.");
-        var (videoPath, video, shots, frameCount) = (result.VideoPath!, result.Video, result.Shots, result.FrameCount);
+        var (videoPath, video, shots, frameCount) = (result.VideoPath!, result.Video.Reader, result.Shots, result.FrameCount);
         if (shots.Count == 0)
             return [];
         Directory.CreateDirectory(outputDir);
@@ -225,7 +225,7 @@ public static partial class Export
             throw new InvalidOperationException("Splitting needs the video as a file path or URL; the input was a Stream.");
         var so = options ?? new SplitOptions();
         string[] codecArgs = so.FfmpegArgs();
-        var (videoPath, video) = (result.VideoPath, result.Video);
+        var (videoPath, video) = (result.VideoPath, result.Video.Reader);
         var clips = result.Shots.Select(s => (s.Start, s.End)).ToList();
         if (so.Expand && clips.Count > 0)
         {
