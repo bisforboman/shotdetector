@@ -4,6 +4,40 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 What's merged but not released yet is in changes/ (one file per pull request).
 
+## 2.0.0 – 2026-10-13
+
+ShotDetector and FrameReader share their types: one StreamInfo, StreamType and FieldOrder (issue #194), IRowDeinterlacer and ToneSegment; DetectionResult.Video is a DetectedVideo; names that meant two things renamed. Detection results are unchanged; the breaking changes below say what to change.
+
+### Breaking changes
+
+- `DetectionResult.Video` is a `DetectedVideo`: the video as the detection read it, immutable, with no hidden
+  probing. `VideoReader` is internal. Renamed on the way: `Width`/`Height` (the analysed size) are
+  `ProcessedWidth`/`ProcessedHeight`, and `SourceWidth`/`SourceHeight` are `Width`/`Height`, so `Width` always means
+  the video's own; `Fps` is `FrameRate`; `Deinterlaces`, `DecodesInProcess` and `Streaming` are `Deinterlaced`,
+  `DecodedInProcess` and `Streamed`. `Info`, `Streams`, `HasAudio` and `Pipeline` are gone: `ShotDetection.Probe` (or
+  FrameReader's `MediaProbe.Probe`) gives the streams.
+- `FramePipeline` is internal, and `DetectionProgress.Pipeline` is gone: how frames reach the detectors is internal
+  plumbing (the `shotdetector.pipeline` ActivitySource tag still records it). `DetectionProgress.DecodesInProcess` stays.
+- `IYadif` is gone: `DetectionOptions.Yadif` takes FrameReader's `IRowDeinterlacer`, which ShotDetector.FastYuv's
+  `Yadif` implements (so a FrameReader `FrameDecoder` takes it too). `Yadif = new Yadif()` reads as before.
+- `ReferenceToneSegment` is gone: `FindReferenceTone` and `DetectionResult.ReferenceTone` give FrameReader's
+  `ToneSegment` (the same fields). `ReferenceToneMinDuration` and `ReferenceToneSearchDuration` are
+  `DetectionOptions.ReferenceTone`, FrameReader's `ReferenceToneOptions` (the same defaults, with `Frequency` and
+  `MaxGap` too): `ReferenceTone = new() { SearchDuration = TimeSpan.FromMinutes(3) }`.
+- Renamed where one name meant two things: `VideoInfo.FrameCount` and `DetectedVideo.FrameCount` (OpenCV's
+  CAP_PROP_FRAME_COUNT) are `OpenCvFrameCount`, apart from FrameReader's container count; `DetectionOptions.Duration`
+  (a scenedetect time, "30s" or frames) is `RangeDuration`, apart from `VideoInfo.Duration`; and
+  `ShotDetectionError.FfmpegLibrariesNotFound` is `LibrariesNotFound`, as FrameReader's. The CLI's options and output
+  are unchanged.
+- ShotDetector's `StreamInfo`, `StreamType` and `FieldOrder` are gone: `VideoInfo` and `VideoReader` use
+  FrameReader's types of the same names, so code using both packages is no longer ambiguous (CS0104, issue #194).
+  `StreamInfo.Duration` is FrameReader's exact value (`DurationPts` in `TimeBase`), no longer rounded to ffprobe's
+  six decimals.
+
+### New
+
+- FrameReader: `StreamInfo` has a public constructor, for filling one from another source.
+
 ## 1.13.1 – 2026-10-13
 
 Audio.Convert and AudioFilter downmix AC-3, E-AC-3 and DTS with the stream's own levels, as ffmpeg (issue #211).
