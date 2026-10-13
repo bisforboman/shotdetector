@@ -4,6 +4,46 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 What's merged but not released yet is in changes/ (one file per pull request).
 
+## 2.1.0 – 2026-10-13
+
+FrameReader: TestMedia, Video.Transcode, Remux.CanCopy, MissingFilters, progress and async overloads for the whole-file jobs, a ShotDetector.Native meta-package; ShotDetector: ProgressStep; a frame-count fix for deinterlaced frame-rate reading (issues #236-#244).
+
+### New
+
+- FrameReader: `FFmpegLibraries.MissingFilters(filterGraph)`, the filters a graph of your own uses that the libraries
+  lack, in `Missing`'s format (`"filter equalizer"`), so a startup check concatenates the two lists instead of keeping
+  a hand list; `"filter graph"` when the graph doesn't parse. The graph is only parsed, nothing is created
+  (issue #236).
+- `ShotDetector.Native`: a meta-package depending on every platform's `ShotDetector.Native.<rid>` at its version, so
+  one reference covers Windows, Linux (x64, ARM64, musl) and macOS; a publish for one runtime still copies only its
+  libraries (issue #244).
+- `DetectionOptions.ProgressStep` (e.g. `0.1`): progress is reported only when the fraction done crosses a step, besides
+  the first report and the last, so a service log gets one line per 10 % without a throttle of its own (issue #238).
+- FrameReader: `Remux.CanCopy(input, output, options)`, whether `Remux.Copy` can stream-copy the selected streams into
+  that container (DASH included) and why not, per stream: FFmpeg's own answer from the muxer, nothing written, instead
+  of a list of rules that drifts from FFmpeg (issue #241).
+- FrameReader: `TestMedia.Write(path, options)` writes synthetic test media in-process from FFmpeg's own sources
+  (test patterns, colour bars, tones) and encoders: video sources concatenated in order (cuts at known frames),
+  progressive or interlaced, an audio source, mpeg2video/mpeg4/aac/PCM. Tests of media code no longer need the
+  ffmpeg executable to make their clips (issue #237).
+- ShotDetector.Native: the source filters (testsrc2, smptebars, mandelbrot, color, sine, anullsrc), concat, setfield,
+  setsar, setparams, trim and atrim; the mpeg2video, mpeg4, pcm_s24le, pcm_s32le and pcm_f32le encoders; the avi muxer.
+- FrameReader: `Video.Transcode(input, output, options)` (and `TranscodeAsync`), a whole file re-encoded in one call
+  as `ffmpeg -i IN [-vf yadif] -c:v E -pix_fmt yuv420p -g G -force_key_frames ... OUT`: deinterlaced when the stream
+  is flagged interlaced, frames upright, the first audio stream re-encoded and interleaved, keyframes every
+  `KeyframeEvery`. With whatever video encoder your libraries have (`libx264`, `libopenh264`) (issue #240).
+- FrameReader: progress for the whole-file jobs, through `AudioConvertOptions`, `RemuxOptions`, `WaveformOptions`
+  and `ReferenceToneOptions`'s new `Progress`: one `MediaProgress` (position, duration, fraction) for all, about 10
+  times a second and once at the end (issue #242).
+- FrameReader: async overloads `Audio.ConvertAsync`, `Remux.CopyAsync`, `WaveformData.ReadAsync`,
+  `ReferenceTone.FindAsync` and `MediaProbe.ProbeJsonAsync`, off the calling thread and cancellable (issue #243).
+
+### Fixed
+
+- FrameReader: `VideoFrameReader` with both deinterlacing and `FrameRate` gave one frame more at the end than ffmpeg's
+  `-vf yadif,fps=R`: yadif's frames carry their duration in its doubled time base, which the fps filter read as twice
+  as long. It now gets the duration in the stream's time base, and the frames equal ffmpeg's, byte for byte.
+
 ## 2.0.0 – 2026-10-13
 
 ShotDetector and FrameReader share their types: one StreamInfo, StreamType and FieldOrder (issue #194), IRowDeinterlacer and ToneSegment; DetectionResult.Video is a DetectedVideo; names that meant two things renamed. Detection results are unchanged; the breaking changes below say what to change.
