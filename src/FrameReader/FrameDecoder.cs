@@ -71,6 +71,14 @@ public sealed unsafe class FrameDecoder : IDisposable
     public long Pts => _rowMode == true ? _rPts : _sink == null ? _frame->best_effort_timestamp
         : ffmpeg.av_rescale_q(_frame->pts, _sink->inputs[0]->time_base, _timeBase); // yadif doubles the time base: exact
 
+    /// <summary>
+    /// The current frame's duration in the stream's time base, as <see cref="Pts"/>: yadif's frames carry theirs in its
+    /// doubled time base, which a filter fed this frame (fps) would read as twice as long.
+    /// </summary>
+    internal long Duration => _sink == null || _rowMode == true
+        ? _frame->duration
+        : ffmpeg.av_rescale_q(_frame->duration, _sink->inputs[0]->time_base, _timeBase);
+
     /// <summary>The current frame's own pts, if set (ffprobe's frame pts).</summary>
     public long? FramePts => _frame->pts == ffmpeg.AV_NOPTS_VALUE ? null : _frame->pts;
 
