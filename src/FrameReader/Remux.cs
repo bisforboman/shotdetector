@@ -48,6 +48,9 @@ public sealed record RemuxOptions
 
     /// <summary>Common Encryption (CENC) of an .mp4 or DASH output, optionally with Widevine signalling for DASH; null: none.</summary>
     public EncryptionOptions? Encryption { get; init; }
+
+    /// <summary>Receives progress (<see cref="MediaProgress"/>): about 10 times a second, and once at the end.</summary>
+    public IProgress<MediaProgress>? Progress { get; init; }
 }
 
 /// <summary>
@@ -123,6 +126,8 @@ public static unsafe class Remux
             Array.Fill(lastDts, ffmpeg.AV_NOPTS_VALUE);
             var rescaleLast = new long[map.Count]; // av_rescale_delta's state, from 0 as in ffmpeg
             pkt = ffmpeg.av_packet_alloc();
+            var progress = new ProgressReporter(o.Progress, ic->duration > 0 ? TimeSpan.FromTicks(ic->duration * 10) : null);
+            double start = ic->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : ic->start_time / (double)ffmpeg.AV_TIME_BASE;
             while ((ret = ffmpeg.av_read_frame(ic, pkt)) >= 0)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -130,6 +135,9 @@ public static unsafe class Remux
                     ffmpeg.av_packet_unref(pkt);
                     cancellationToken.ThrowIfCancellationRequested();
                 }
+
+                if (pkt->pts != ffmpeg.AV_NOPTS_VALUE)
+                    progress.Report(TimeSpan.FromSeconds(Math.Max(0, (pkt->pts * ffmpeg.av_q2d(ic->streams[pkt->stream_index]->time_base)) - start)));
 
                 int to = pkt->stream_index < outOf.Length ? outOf[pkt->stream_index] : -1;
                 if (to < 0 || (!started[to] && (pkt->flags & ffmpeg.AV_PKT_FLAG_KEY) == 0))
@@ -145,6 +153,7 @@ public static unsafe class Remux
             if (ret != ffmpeg.AVERROR_EOF)
                 Check(ret, "read", FrameReaderError.InvalidInput);
             Check(ffmpeg.av_write_trailer(oc), "write the trailer");
+            progress.Done();
             if (contentTypeNames)
                 DashNames.Finish(output, types);
             if (widevineKeyId is not null)
@@ -164,6 +173,10 @@ public static unsafe class Remux
             ffmpeg.avformat_close_input(&ic);
         }
     }
+
+    /// <summary>As <see cref="Copy"/>, off the calling thread.</summary>
+    public static Task CopyAsync(string input, string output, RemuxOptions? options = null, CancellationToken cancellationToken = default) =>
+        Task.Run(() => Copy(input, output, options, cancellationToken), cancellationToken);
 
     /// <summary>
     /// The caller's muxer options plus CENC's: for DASH through the dash muxer's <c>format_options</c> (its mp4 segments

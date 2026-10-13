@@ -307,6 +307,9 @@ public sealed unsafe class AudioReader : IDisposable
     /// <summary>The input (for its metadata and chapters) and the audio stream's index in it.</summary>
     internal AVFormatContext* Format => _fmt;
 
+    /// <summary>The container's duration; null when unknown.</summary>
+    internal TimeSpan? Duration => _fmt->duration > 0 ? TimeSpan.FromTicks(_fmt->duration * 10) : null;
+
     internal int StreamIndex => _stream;
 
     /// <summary>Where <see cref="TryDecode"/>'s positions count from, on <see cref="AudioChunk.Time"/>'s timeline.</summary>

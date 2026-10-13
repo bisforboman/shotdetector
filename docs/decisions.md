@@ -3,6 +3,14 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## Issues #240-#244 (2026-10-13)
+
+Five more suggestions from #81's team. Asked which to take on: **#243 (async overloads), #242 (progress for the
+whole-file jobs), #241 (Remux.CanCopy) and #244 (a Native meta-package)**, all four. For #240: **Video.Transcode
+only**, with whatever H.264 encoder the caller's libraries have, over also shipping OpenH264 downloaded at
+runtime (Cisco's patent licence covers its binary only as the user downloads it from Cisco) or a backlog row.
+#242 and #243 go in one PR (the same five methods); one MediaProgress type serves every job.
+
 ## Issues #236-#239 (2026-10-13)
 
 Four suggestions from #81's team. Asked which to take on: **all four, in this order: #236 (MissingFilters for a

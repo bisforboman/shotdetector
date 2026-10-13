@@ -147,6 +147,11 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | Throttled progress (issue #238): `DetectionOptions.ProgressStep`, reports when the fraction crosses a step, plus a first and a final one | Every consumer that logs progress writes the same throttle | Open |
 | Synthetic test media without the ffmpeg executable (issue #237): lavfi sources (testsrc2, smptebars, sine, ...), concatenation for known cuts, interlaced flags, native encoders (mpeg2video, mpeg4, aac, pcm) | Their media tests skip without ffmpeg on PATH though the code needs only the libraries; our CI could use it too. Needs the source filters in our native build | Done (2026-10-13): `TestMedia.Write(path, options)`; ShotDetector.Native gets the sources, concat, trim, setfield/setsar/setparams, mpeg2video, mpeg4, more PCM and avi. Moving our own Clips fixture to it: later, separately (the user's choice) |
 | Exceptions (issue #239): document which exception each method throws now; a shared base for ShotDetectionException and FrameReaderException in a 3.0 (a base-class change is breaking) | Two catch blocks where both packages are used; unclear which surfaces from detection | Open (docs); Maybe (3.0) |
+| Async overloads for FrameReader's whole-file jobs (issue #243): ConvertAsync, CopyAsync, ReadAsync, FindAsync, ProbeJsonAsync | Async workers wrapped each in Task.Run | Done (2026-10-13) |
+| Progress for the whole-file jobs (issue #242): one MediaProgress through each options' Progress | Long films left their logs quiet for minutes | Done (2026-10-13) |
+| Remux.CanCopy (issue #241): whether streams can be stream-copied into a container (DASH) and why not, from FFmpeg (avformat_query_codec) | They keep ~80 lines of rules from Shaka Packager that drift from FFmpeg | Open |
+| ShotDetector.Native meta-package (issue #244): depends on every ShotDetector.Native.<rid> | One reference instead of one per platform; a forgotten one only shows at runtime | Open |
+| Video.Transcode (issue #240): a one-call transcode with deinterlacing, with whatever H.264 encoder the caller's libraries have; no OpenH264 in our package (Cisco's patent licence covers its binary only as users download it from Cisco) | Their last use of the ffmpeg executable: making inputs DASH-ready | Open |
 
 ## 5. 2.0 (breaking; picked 2026-10-13)
 

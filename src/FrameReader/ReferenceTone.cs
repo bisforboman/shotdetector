@@ -20,6 +20,9 @@ public sealed record ReferenceToneOptions
     /// a feature film's search cheap); null: to the end. A segment still running there ends there.
     /// </summary>
     public TimeSpan? SearchDuration { get; init; }
+
+    /// <summary>Receives progress (<see cref="MediaProgress"/>): about 10 times a second, and once at the end.</summary>
+    public IProgress<MediaProgress>? Progress { get; init; }
 }
 
 /// <summary>A run of reference tone.</summary>
@@ -90,10 +93,12 @@ public static class ReferenceTone
             start = -1;
         }
 
+        var progress = new ProgressReporter(o.Progress, o.SearchDuration ?? audio.Duration);
         while (window < maxWindows && audio.TryRead(out var chunk))
         {
             cancellationToken.ThrowIfCancellationRequested();
             origin ??= chunk.Time;
+            progress.Report(chunk.Time - origin.Value);
             var samples = chunk.Samples;
             for (int i = 0; i < chunk.SampleCount && window < maxWindows; i++)
             {
@@ -146,6 +151,11 @@ public static class ReferenceTone
         }
 
         Close();
+        progress.Done();
         return segments;
     }
+
+    /// <summary>As <see cref="Find"/>, off the calling thread.</summary>
+    public static Task<IReadOnlyList<ToneSegment>> FindAsync(AudioReader audio, ReferenceToneOptions? options = null, CancellationToken cancellationToken = default) =>
+        Task.Run(() => Find(audio, options, cancellationToken), cancellationToken);
 }
