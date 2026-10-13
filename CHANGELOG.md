@@ -4,6 +4,39 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 What's merged but not released yet is in changes/ (one file per pull request).
 
+## 1.12.0 – 2026-10-13
+
+FrameReader: ffmpeg's audio conversion and ffprobe's JSON in one call, DASH names per content type, a check for what FFmpeg builds lack; FastYuv exact on resolution changes in-process (issues #191-#195).
+
+### New
+
+- ShotDetector's `StreamInfo`, `StreamType` and `FieldOrder` are `[Obsolete]`: ShotDetector 2.0 uses FrameReader's
+  types of the same names instead, since both packages defining them makes code using both ambiguous (CS0104,
+  issue #194). Until then, `FrameReader.MediaProbe.Probe(path)` gives FrameReader's, or alias them
+  (`using StreamInfo = FrameReader.StreamInfo;`).
+- FrameReader: `Audio.Convert(input, output, options)`, the file `ffmpeg -i IN -vn [-af G] [-c:a E] [-b:a B] OUT`
+  writes, byte for byte: the decoder's own samples through the filter graph to the encoder, converted to its nearest
+  format, rate and channel layout as the command line does (a downmix of integer samples normalized, of float ones
+  not), with the input's metadata and chapters (issue #192).
+- FrameReader: DASH segment names with `$ContentType$` (`video`, `audio`, `text`) and folders, for Shaka Packager's
+  `video/` and `audio/` layout: `Remux.Copy` creates the folders and puts the content type into the files' names and
+  the MPD's templates, which FFmpeg's dash muxer can't (issue #191). The files are otherwise ffmpeg's, byte for byte.
+- FrameReader: `FFmpegLibraries.Missing(Capability...)` lists what loaded FFmpeg libraries lack for FrameReader's
+  features (`"filter yadif"`, `"encoder libmp3lame"`, `"muxer dash"`), empty when they have everything: a startup
+  check that needn't track what each feature uses (issue #195).
+- FrameReader: `MediaProbe.ProbeJson(path)`, ffprobe's `-print_format json -show_format -show_streams` (ported from
+  ffprobe 8.1): the same keys and values, value types included, with every field ffprobe prints (profile, level,
+  aspect ratios, colour, field order, disposition, tags, side data, decoder options, ...) and unknown values left out
+  as ffprobe's JSON does (issue #193).
+
+### Fixed
+
+- `AudioWriter` converts to the encoder's channel layouts too, as ffmpeg does: 5.1 into MP3 is downmixed to stereo
+  instead of failing.
+- ShotDetector.FastYuv on video that changes resolution mid-stream (two encodes joined), decoding in-process: the
+  new size's frames are now converted as OpenCV converts them (scaled to the first size in the one conversion to
+  BGR), so the results equal the core path's and scenedetect's. Only those frames are slower.
+
 ## 1.11.0 – 2026-10-12
 
 Widevine pssh data from the caller: EncryptionOptions.WidevinePsshData (issue #185).
