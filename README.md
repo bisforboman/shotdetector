@@ -102,7 +102,7 @@ counting there). `Export.SaveImages` takes an `ImageOptions` (count, margin, wid
 jpg/png/webp).
 
 `DetectionOptions.Progress` (an `IProgress<DetectionProgress>`) reports frames done out of the
-expected total about 10 times a second. ffmpeg and ffprobe are found on `PATH`, or in
+expected total about 10 times a second (`ProgressStep = 0.1`: once per 10 %, for a log). ffmpeg and ffprobe are found on `PATH`, or in
 `DetectionOptions.FfmpegDirectory` (CLI: `--ffmpeg-dir`).
 
 Interlaced sources (1080i broadcast): `Deinterlace = DeinterlaceMode.On` (CLI `--deinterlace`) runs ffmpeg's yadif
