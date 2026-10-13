@@ -3,6 +3,14 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## Workflow changes CI never runs are light (2026-10-13)
+
+The user, seeing #256 (a new workflow) run every test: redundant? Changes under .github/ were all heavy. Asked: **a
+small PR now** making release.yml, benchmark.yml, frame-reader-bench.yml, upstream.yml, dependabot-auto-merge.yml
+and dependabot.yml light in the three changes jobs (CI doesn't run them, so a full run proves nothing about them);
+ci.yml, realworld.yml, mutation.yml, native.yml and .github/actions/ stay heavy. Over waiting for the FrameReader
+plan's CI step or leaving it.
+
 ## FrameReader as its own product (2026-10-13)
 
 The user, looking at the pipelines: FrameReader is starting to look like its own project. Most new requests are
