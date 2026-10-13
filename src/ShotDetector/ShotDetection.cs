@@ -359,10 +359,19 @@ public sealed record DetectionOptions
     public double? FrameRate { get; init; }
 
     /// <summary>
-    /// Receives progress while frames are decoded (about 10 times a second, and once at the end).
-    /// With <see cref="System.Progress{T}"/>, reports arrive on the thread that created it.
+    /// Receives progress while frames are decoded: a first report before any frame, then about 10 times a second (or
+    /// per <see cref="ProgressStep"/>), and once at the end. With <see cref="System.Progress{T}"/>, reports arrive on the
+    /// thread that created it.
     /// </summary>
     public IProgress<DetectionProgress>? Progress { get; init; }
+
+    /// <summary>
+    /// Report <see cref="Progress"/> only when the fraction done crosses a multiple of this (0.1: at 10 %, 20 %, ...),
+    /// besides the first report and the last: one line per step for a service log, with no throttling of your own.
+    /// When the frame count is unknown (streamed input), just the first and the last. Above 0 and at most 1; null (the
+    /// default): about 10 times a second.
+    /// </summary>
+    public double? ProgressStep { get; init; }
 
     /// <summary>Record per-frame metrics in <see cref="DetectionResult.Stats"/> (like scenedetect -s).</summary>
     public bool CollectStats { get; init; }
@@ -755,6 +764,8 @@ public static class ShotDetection
             throw new ArgumentException("TrimReferenceTone sets the time range itself; leave StartTime, EndTime and RangeDuration unset.");
         if (o.FrameSkip < 0)
             throw new ArgumentException("FrameSkip must be at least 0.");
+        if (o.ProgressStep is { } step && !(step > 0 && step <= 1))
+            throw new ArgumentException("ProgressStep must be above 0 and at most 1.");
         if (o.FrameSkip > 0 && o.CollectStats)
             throw new ArgumentException("FrameSkip must be 0 when collecting stats (as in scenedetect).");
         if (o.EndTime is not null && o.RangeDuration is not null)
@@ -835,6 +846,7 @@ public static class ShotDetection
         int frameCount = 0, stride = o.FrameSkip + 1;
         bool readToEnd = true;
         long lastReport = 0;
+        int lastStep = 0; // with ProgressStep: the last multiple of it reported
         DetectionProgress Progress(int done, int expected) =>
             new() { FramesProcessed = done, ExpectedFrames = expected, DecodesInProcess = video.DecodesInProcess };
 
@@ -853,10 +865,24 @@ public static class ShotDetection
             }
 
             frameCount++;
-            if (o.Progress is not null && Environment.TickCount64 - lastReport >= 100)
+            if (o.Progress is not null)
             {
-                o.Progress.Report(Progress(frameCount, Math.Max(0, video.ExpectedFrames - startFrame)));
-                lastReport = Environment.TickCount64;
+                int expected = Math.Max(0, video.ExpectedFrames - startFrame);
+                if (o.ProgressStep is { } progressStep)
+                {
+                    // The steps crossed below 100 % (the last report is that); none when the count is unknown.
+                    int reached = expected > 0 ? (int)Math.Floor(Math.Min(1.0, frameCount / (double)expected) / progressStep + 1e-9) : 0;
+                    if (reached > lastStep && reached * progressStep < 1 - 1e-9)
+                    {
+                        o.Progress.Report(Progress(frameCount, expected));
+                        lastStep = reached;
+                    }
+                }
+                else if (Environment.TickCount64 - lastReport >= 100)
+                {
+                    o.Progress.Report(Progress(frameCount, expected));
+                    lastReport = Environment.TickCount64;
+                }
             }
 
             // scenedetect analyses a frame, skips the next FrameSkip frames, then stops if the last
