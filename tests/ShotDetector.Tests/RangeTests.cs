@@ -40,7 +40,7 @@ public class RangeTests(Clips clips) : IClassFixture<Clips>
     [Fact]
     public void DurationCountsFromTheStart()
     {
-        var r = ShotDetection.Detect(clips.ThreeShots, Content(new() { StartTime = "1s", Duration = "4s" }));
+        var r = ShotDetection.Detect(clips.ThreeShots, Content(new() { StartTime = "1s", RangeDuration = "4s" }));
         Assert.Equal(100, r.FrameCount); // 25 .. 124
         Assert.Equal([(25L, 50L), (50L, 100L), (100L, 125L)], r.Shots.Select(s => (s.Start.FrameNum, s.End.FrameNum)));
     }

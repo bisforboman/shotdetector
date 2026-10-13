@@ -344,7 +344,7 @@ try
                 options = options with { EndTime = Next() };
                 break;
             case "--duration":
-                options = options with { Duration = Next() };
+                options = options with { RangeDuration = Next() };
                 break;
             case "--frame-skip":
                 options = options with { FrameSkip = NextInt() };
@@ -673,7 +673,7 @@ static IEnumerable<string> ProbeLines(VideoInfo v)
     yield return $"Container  {v.Container}";
     if (v.Duration is { } d)
         yield return string.Create(c, $"Duration   {d:hh\\:mm\\:ss\\.fff}");
-    string frames = v.FrameCount is { } n ? $", {n} frames" : "", rotated = v.Rotation != 0 ? $", rotated {v.Rotation}" : "";
+    string frames = v.OpenCvFrameCount is { } n ? $", {n} frames" : "", rotated = v.Rotation != 0 ? $", rotated {v.Rotation}" : "";
     yield return string.Create(c, $"Video      {v.Codec} {v.Width}x{v.Height}, {v.FrameRate.Value:0.###} fps ({v.FrameRate.Num}/{v.FrameRate.Den}), {v.PixelFormat}, {v.FieldOrder.ToString().ToLowerInvariant()}{frames}{rotated}");
     if (v.Streams is not { } streams)
         yield break;
@@ -733,7 +733,7 @@ static string ProbeJson(VideoInfo v)
         j.WriteNumber("width", v.Width);
         j.WriteNumber("height", v.Height);
         j.WriteString("frameRate", $"{v.FrameRate.Num}/{v.FrameRate.Den}");
-        Int(j, "frameCount", v.FrameCount);
+        Int(j, "frameCount", v.OpenCvFrameCount);
         j.WriteString("pixelFormat", v.PixelFormat);
         j.WriteString("fieldOrder", char.ToLowerInvariant(v.FieldOrder.ToString()[0]) + v.FieldOrder.ToString()[1..]); // progressive, topFirst, ...
         j.WriteNumber("rotation", v.Rotation);
