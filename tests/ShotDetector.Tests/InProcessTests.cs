@@ -1,5 +1,7 @@
 using ShotDetector;
 using ShotDetector.FastYuv;
+using FieldOrder = FrameReader.FieldOrder;
+using StreamType = FrameReader.StreamType;
 
 /// <summary>
 /// In-process decoding gives the same per-frame stats, labels and shots as the ffmpeg executable. Needs FFmpeg 8.1's

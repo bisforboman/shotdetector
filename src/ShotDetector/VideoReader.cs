@@ -3,6 +3,9 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO.Pipes;
 using System.Numerics;
+using FieldOrder = FrameReader.FieldOrder;
+using StreamInfo = FrameReader.StreamInfo;
+using StreamType = FrameReader.StreamType;
 
 namespace ShotDetector;
 
@@ -180,7 +183,7 @@ public sealed partial class VideoReader
 
     /// <summary>The ffprobe entries <see cref="Streams"/> reads.</summary>
     internal const string StreamEntries = "stream=index,codec_type,codec_name,codec_tag_string,width,height,sample_rate,channels,channel_layout,"
-        + "sample_fmt,bit_rate,duration:stream_disposition=default,forced:stream_tags=language,title";
+        + "sample_fmt,bit_rate,duration_ts,time_base:stream_disposition=default,forced:stream_tags=language,title";
 
     IReadOnlyList<StreamInfo> FfprobeStreams()
     {
@@ -217,7 +220,10 @@ public sealed partial class VideoReader
                 IsDefault = Flag("default"),
                 IsForced = Flag("forced"),
                 BitRate = Long("bit_rate"),
-                Duration = Seconds(Text(s, "duration")),
+                DurationPts = Long("duration_ts"),
+                TimeBase = Text(s, "time_base") is { } tb && tb.Split('/') is [var tbNum, var tbDen]
+                    && int.TryParse(tbNum, NumberStyles.Integer, CultureInfo.InvariantCulture, out int tbn)
+                    && int.TryParse(tbDen, NumberStyles.Integer, CultureInfo.InvariantCulture, out int tbd) ? new(tbn, tbd) : default,
                 Width = type == "video" ? Int("width") : null,
                 Height = type == "video" ? Int("height") : null,
                 SampleRate = type == "audio" ? Int("sample_rate") : null,

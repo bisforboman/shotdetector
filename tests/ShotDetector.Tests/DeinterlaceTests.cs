@@ -1,5 +1,7 @@
 using ShotDetector;
 using ShotDetector.FastYuv;
+using FieldOrder = FrameReader.FieldOrder;
+using StreamType = FrameReader.StreamType;
 
 /// <summary>Deinterlace gives what detection on a lossless <c>ffmpeg -vf yadif</c> copy gives (issue #16).</summary>
 public class DeinterlaceTests(Clips clips) : IClassFixture<Clips>
