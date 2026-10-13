@@ -599,11 +599,69 @@ jobs:
           python tools/compare.py samples/informational/*.mov samples/informational/*.mxf --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### Interlaced 10-bit, AVC-Intra and ProRes (informational), ${{ matrix.path }} path"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
 
+  # The main comparison on Windows and macOS (informational: Linux is the reference). The Windows OpenCV wheel bundles
+  # FFmpeg 7.1, which converts with BT.601 whatever the colour tags say; compare.py passes --always-bt601 there, as
+  # README says users must. Platform differences show up in the summary before users report them.
+  parity-os:
+    needs: [changes, samples]
+    if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        if: needs.changes.outputs.docs_only != 'true'
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-python@v6
+        if: needs.changes.outputs.docs_only != 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Install ffmpeg
+        if: needs.changes.outputs.docs_only != 'true'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then choco install ffmpeg -y --no-progress > /dev/null; else brew install ffmpeg > /dev/null; fi
+          ffmpeg -hide_banner -version | head -1
+
+      - name: Install scenedetect
+        if: needs.changes.outputs.docs_only != 'true'
+        run: pip install scenedetect==0.7.2 opencv-python-headless==5.0.0.93
+
+      # The samples job's clips (made on Linux), else made here.
+      - id: samples
+        if: needs.changes.outputs.docs_only != 'true'
+        uses: actions/cache/restore@v5
+        with:
+          path: samples
+          key: samples-${{ hashFiles('tools/make-samples.ps1') }}-ffmpeg9.0
+          enableCrossOsArchive: true
+
+      - name: Make sample clips
+        if: needs.changes.outputs.docs_only != 'true' && steps.samples.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./tools/make-samples.ps1
+
+      - name: Compare with scenedetect (informational)
+        if: needs.changes.outputs.docs_only != 'true'
+        shell: bash
+        run: |
+          python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
+            --detector all --stats --report parity.md || true
+          { echo "### scenedetect 0.7.2 on ${{ matrix.os }} (informational)"; cat parity.md 2>/dev/null || echo "No report."; } >> "$GITHUB_STEP_SUMMARY"
+
   # The one check branch protection requires from this workflow: every job above passed or was skipped (a light PR
   # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
   passed:
     name: CI passed
-    needs: [changes, line-endings, native, build, aot, native-arm, arm, alpine, samples, parity]
+    needs: [changes, line-endings, native, build, aot, native-arm, arm, alpine, samples, parity, parity-os]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
