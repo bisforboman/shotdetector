@@ -265,6 +265,27 @@ foreach (var tone in ReferenceTone.Find(audio))
     Console.WriteLine($"tone {tone.Start}-{tone.End} at {tone.Level:0.0} dBFS");
 ```
 
+Test media without the ffmpeg executable: `TestMedia.Write(path, options)` makes a synthetic clip from FFmpeg's own
+sources and encoders, in-process, for tests that need real media without committing any. Video sources are
+concatenated in order, so the cuts fall at known frames; interlaced output is flagged and coded as such.
+
+```csharp
+TestMedia.Write("clip.ts", new()
+{
+    Video = ["testsrc2=d=4", "smptebars=d=3", "mandelbrot,trim=duration=2"], // cuts at frames 100 and 175
+    Size = (320, 240),
+    FrameRate = new(25, 1),
+    FieldOrder = FieldOrder.TopFirst,                                        // mpeg2video with +ilme+ildct, flagged tt
+    Audio = "sine=frequency=1000:duration=9",
+    VideoEncoder = "mpeg2video",
+    AudioEncoder = "aac",
+});
+```
+
+The ShotDetector.Native libraries have the sources (testsrc2, smptebars, mandelbrot, color, sine, anullsrc), concat,
+trim and the encoders (mpeg2video, mpeg4, aac, PCM); a system FFmpeg has them too. It's ffmpeg's `-f lavfi` inputs
+and a concat, not byte for byte.
+
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio, and `Streams`: every
 stream with its type, codec, codec tag, language, title, flags, bit rate, duration and audio details; optionally
