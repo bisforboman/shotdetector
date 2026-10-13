@@ -128,11 +128,13 @@ public class SeekTests
         }
     }
 
-    // FrameRate: the frames of ffmpeg's -vf fps=R (its rounding, duplicates and drops), byte for byte.
+    // FrameRate: the frames of ffmpeg's -vf fps=R (its rounding, duplicates and drops), byte for byte; deinterlaced,
+    // -vf yadif,fps=R (yadif's halved time base must not stretch the last frame: one frame too many before).
     [Theory]
-    [InlineData("bframes.mp4", "-c:v mpeg4 -bf 2 -g 12")]
-    [InlineData("late.ts", "-c:v mpeg2video -bf 2 -g 12 -output_ts_offset 10")]
-    public void FrameRateIsFfmpegsFpsFilter(string name, string encode)
+    [InlineData("bframes.mp4", "-c:v mpeg4 -bf 2 -g 12", false)]
+    [InlineData("late.ts", "-c:v mpeg2video -bf 2 -g 12 -output_ts_offset 10", false)]
+    [InlineData("interlaced.ts", "-c:v mpeg2video -flags +ilme+ildct -top 1", true)]
+    public void FrameRateIsFfmpegsFpsFilter(string name, string encode, bool deinterlace)
     {
         if (Libs is null || !FFmpegLibraries.CanLoad(Libs))
             return;
@@ -143,9 +145,9 @@ public class SeekTests
             Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=3", .. encode.Split(' '), path]);
             foreach (var (rate, text) in new[] { (new Rational(1, 1), "1"), (new Rational(1, 2), "1/2"), (new Rational(10, 1), "10"), (new Rational(30, 1), "30") })
             {
-                byte[] expected = Ffmpeg("-v", "error", "-i", path, "-vf", $"fps={text},scale=160:90:flags=bicubic,format=gray", "-f", "rawvideo", "-");
+                byte[] expected = Ffmpeg("-v", "error", "-i", path, "-vf", $"{(deinterlace ? "yadif," : "")}fps={text},scale=160:90:flags=bicubic,format=gray", "-f", "rawvideo", "-");
                 using var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
-                { Width = 160, Height = 90, FrameFormat = FrameFormat.Gray8, FrameRate = rate, Decoder = new FrameDecoderOptions() });
+                { Width = 160, Height = 90, FrameFormat = FrameFormat.Gray8, FrameRate = rate, Decoder = new FrameDecoderOptions { Deinterlace = deinterlace } });
                 var actual = new MemoryStream();
                 int n = 0;
                 while (reader.TryRead(out var frame))

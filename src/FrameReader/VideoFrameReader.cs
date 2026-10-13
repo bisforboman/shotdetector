@@ -365,6 +365,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
             {
                 Check(ffmpeg.av_frame_ref(feed, src), "fps");
                 feed->pts = _decoder.Pts + _decoder.StartOffset; // ffmpeg's command line shifts by the start time (no -copyts)
+                feed->duration = _decoder.Duration; // in the stream's time base, as the pts: fps ends the stream by the last one
                 Check(ffmpeg.av_buffersrc_add_frame_flags(_fpsIn, feed, 0), "fps");
             }
             finally
