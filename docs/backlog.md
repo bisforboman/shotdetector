@@ -165,6 +165,19 @@ package validation baseline and empties CompatibilitySuppressions.xml.
 | `FramePipeline` internal; `DetectionProgress` without `Pipeline`/`DecodesInProcess` (the ActivitySource tags keep the diagnostics) | Plumbing of the ffmpeg-pipe design in the public API and in progress reports | Done on v2 (2026-10-13): FramePipeline internal; DetectionProgress drops Pipeline but keeps DecodesInProcess (issue #42 asked for the decoder in progress reports, which streaming callers see before any frame; user's choice); the ActivitySource tag keeps the pipeline |
 | Renames where one name means different things: analysed `Width`/`Height` vs source/displayed ones; OpenCV's `FrameCount` vs the container's; `FfmpegLibrariesNotFound` -> `LibrariesNotFound`; `DetectionOptions.Duration` (a string) vs `VideoInfo.Duration` (a TimeSpan) | Mistakes waiting to happen when using both packages (API review, 2026-10-13) | Done on v2 (2026-10-13): analysed size ProcessedWidth/Height (with DetectedVideo, #222); OpenCvFrameCount on VideoInfo and DetectedVideo; LibrariesNotFound; DetectionOptions.RangeDuration (the user's names) |
 
+## 6. FrameReader as its own product (after 2.1.0)
+
+The plan, with why and what stays: docs/frame-reader-product.md. One repository; its own versions, releases, native packages and CI.
+
+| Item | Why | Status |
+|---|---|---|
+| Versions: FrameReader's own Version and ApiBaselineVersion; ShotDetector depends on it as [2.1.0, 3.0.0) | Lockstep moved each package's number for the other's changes | Open |
+| Changelog per package: changes/framereader/ and changes/shotdetector/, src/FrameReader/CHANGELOG.md, changelog.py --package | Each product's release notes say only what changed in it | Open |
+| Releases per product: framereader-vX.Y.Z tags and GitHub releases next to vX.Y.Z; a baseline issue each | Release FrameReader without ShotDetector and the other way round | Open |
+| FrameReader.Native.<rid> (and the meta-package) as the real native packages; ShotDetector.Native.<rid> as aliases | FrameReader users shouldn't need a ShotDetector-named package | Open |
+| CI by what a change touches: FrameReader-only parts run FrameReader's tests; shared code still runs the scenedetect comparison | FrameReader-only PRs ran the whole parity matrix | Open |
+| Docs: FrameReader's README as its package's front page, the root README introducing both; a framereader issue label | FrameReader read as a part of ShotDetector | Open |
+
 ## Done
 
 | Item | Landed |

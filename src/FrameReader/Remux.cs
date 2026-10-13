@@ -19,6 +19,11 @@ public enum StreamSelection
     All = 0x7fffffff,
 }
 
+/// <summary>What <see cref="Remux.CanCopy"/> found.</summary>
+/// <param name="CanCopy">Whether every selected stream can be stream-copied into the container.</param>
+/// <param name="Reasons">Why not, one line per stream that can't; empty when all can.</param>
+public sealed record RemuxCheck(bool CanCopy, IReadOnlyList<string> Reasons);
+
 /// <summary>What <see cref="Remux.Copy"/> copies and how it writes.</summary>
 public sealed record RemuxOptions
 {
@@ -209,6 +214,76 @@ public static unsafe class Remux
     }
 
     /// <summary>The header, with the muxer options as ffmpeg passes its output options; an option the muxer lacks fails.</summary>
+    /// <summary>
+    /// Whether <see cref="Copy"/> could stream-copy the selected streams of <paramref name="input"/> into
+    /// <paramref name="output"/>'s container, and why not, from FFmpeg itself rather than a list of rules: each stream
+    /// is set up as Copy sets it up, alone, and the muxer asked whether it takes the codec and initialised (in memory:
+    /// nothing is written). DASH is checked against the mp4 muxer that writes its segments. Player policy (pixel format,
+    /// interlacing) is yours: FFmpeg copies what the container can carry.
+    /// </summary>
+    /// <param name="input">The input file.</param>
+    /// <param name="output">The output's name: its extension picks the container, as for Copy (or <see cref="RemuxOptions.Container"/>).</param>
+    /// <param name="options">The streams (<see cref="RemuxOptions.Streams"/>, <see cref="RemuxOptions.StreamIndices"/>), container and input options.</param>
+    /// <returns>Whether all can be copied, and a reason per stream that can't (<c>"stream 0 (mpeg2video): ..."</c>).</returns>
+    public static RemuxCheck CanCopy(string input, string output, RemuxOptions? options = null)
+    {
+        var o = options ?? new RemuxOptions();
+        bool dash = o.Container == "dash" || (o.Container is null && output.EndsWith(".mpd", StringComparison.OrdinalIgnoreCase));
+        string? container = dash ? "mp4" : o.Container;
+        FFmpegLibraries.Load();
+        AVFormatContext* ic = Demuxer.Open(input, o.InputOptions);
+        try
+        {
+            var map = Select(ic, o);
+            if (map.Count == 0)
+                return new RemuxCheck(false, ["no stream of the kinds asked for"]);
+            var reasons = new List<string>();
+            foreach (int i in map)
+            {
+                var ist = ic->streams[i];
+                string codec = ffmpeg.avcodec_get_name(ist->codecpar->codec_id);
+                AVFormatContext* oc = null;
+                int ret = ffmpeg.avformat_alloc_output_context2(&oc, null, container, dash ? "check.mp4" : output);
+                if (ret < 0 || oc == null)
+                    return new RemuxCheck(false, [$"no muxer for \"{output}\"{(o.Container is null ? "" : $" ({o.Container})")} in these FFmpeg libraries"]);
+                try
+                {
+                    string muxer = new((sbyte*)oc->oformat->name);
+                    if (ffmpeg.avformat_query_codec(oc->oformat, ist->codecpar->codec_id, ffmpeg.FF_COMPLIANCE_NORMAL) == 0)
+                    {
+                        reasons.Add($"stream {i} ({codec}): the {muxer} muxer doesn't take {codec}");
+                        continue;
+                    }
+
+                    AddStream(oc, ist);
+                    if ((oc->oformat->flags & ffmpeg.AVFMT_NOFILE) == 0)
+                        Check(ffmpeg.avio_open_dyn_buf(&oc->pb), "memory output");
+                    ret = ffmpeg.avformat_init_output(oc, null);
+                    if (ret < 0)
+                        reasons.Add($"stream {i} ({codec}): the {muxer} muxer rejects it: {FFmpegLibraries.ErrorMessage(ret)}");
+                }
+                finally
+                {
+                    if (oc->pb != null)
+                    {
+                        byte* buffer;
+                        ffmpeg.avio_close_dyn_buf(oc->pb, &buffer);
+                        ffmpeg.av_free(buffer);
+                        oc->pb = null;
+                    }
+
+                    ffmpeg.avformat_free_context(oc);
+                }
+            }
+
+            return new RemuxCheck(reasons.Count == 0, reasons);
+        }
+        finally
+        {
+            ffmpeg.avformat_close_input(&ic);
+        }
+    }
+
     static void WriteHeader(AVFormatContext* oc, IReadOnlyDictionary<string, string>? options)
     {
         AVDictionary* dict = null;

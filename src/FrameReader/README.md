@@ -171,6 +171,10 @@ MP3) it isn't, which the read-filter-write loop above can't do (it works in floa
 Audio.Convert("in.mxf", "out.mp3", new() { Filter = "equalizer=f=1000:t=q:w=8:g=-40:enable='between(t,0,60)'" });
 ```
 
+Before copying, `Remux.CanCopy(input, output, options)` says whether the streams can go into that container, and why
+not, per stream (`"stream 0 (mpeg2video): the webm muxer doesn't take mpeg2video"`): FFmpeg's own answer, from the muxer,
+with nothing written; DASH is checked against the mp4 muxer that writes its segments.
+
 Stream copy: `Remux.Copy(input, output, options)` copies streams into another container without re-encoding, the
 file `ffmpeg -i IN -map ... -c copy OUT` writes (timestamps, codec tags, metadata and chapters as ffmpeg copies them):
 
