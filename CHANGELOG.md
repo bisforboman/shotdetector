@@ -4,6 +4,16 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 What's merged but not released yet is in changes/ (one file per pull request).
 
+## 1.13.1 – 2026-10-13
+
+Audio.Convert and AudioFilter downmix AC-3, E-AC-3 and DTS with the stream's own levels, as ffmpeg (issue #211).
+
+### Fixed
+
+- FrameReader: `Audio.Convert` and `AudioFilter` downmix AC-3, E-AC-3 and DTS with the stream's own centre,
+  surround and LFE levels, as the ffmpeg command line does: 5.1 AC-3 to MP3 was louder than ffmpeg's and is now the
+  same, byte for byte (issue #211).
+
 ## 1.13.0 – 2026-10-13
 
 FastYuv exact on resolution changes through the ffmpeg executable too, in-process decoding about 16% lighter on SD video, Fps converting to and from FrameReader's Rational.
