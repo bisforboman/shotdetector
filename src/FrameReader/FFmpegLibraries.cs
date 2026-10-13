@@ -135,8 +135,8 @@ public static unsafe class FFmpegLibraries
     /// <summary>
     /// What these libraries lack for the given features, as <c>"filter yadif"</c>, <c>"encoder libmp3lame"</c>,
     /// <c>"muxer dash"</c>; empty when they have everything. To check a system FFmpeg at startup without tracking what
-    /// each feature uses. The filters of an <see cref="AudioFilter"/> graph of your own are yours to check
-    /// (<see cref="HasFilter"/>).
+    /// each feature uses. A filter graph of your own (an <see cref="AudioFilter"/>'s, Audio.Convert's): add
+    /// <see cref="MissingFilters"/>.
     /// </summary>
     /// <param name="capabilities">The features, combined with <c>|</c>.</param>
     /// <param name="directory">As for <see cref="Load"/>.</param>
@@ -165,6 +165,51 @@ public static unsafe class FFmpegLibraries
         }
 
         return missing;
+    }
+
+    /// <summary>
+    /// The filters a filter graph of your own uses that these libraries lack (an <see cref="AudioFilter"/>'s, Audio.Convert's
+    /// <c>Filter</c>, ...), as <c>"filter equalizer"</c>: <see cref="Missing"/>'s format, so the two lists concatenate.
+    /// <c>"filter graph"</c> when the graph doesn't parse (a typo is caught at startup too); empty when they have
+    /// everything. The graph is only parsed (avfilter_graph_segment_parse), nothing is created or run.
+    /// </summary>
+    /// <param name="filterGraph">The graph, as ffmpeg's <c>-af</c> or <c>-filter_complex</c> takes it.</param>
+    /// <param name="directory">As for <see cref="Load"/>.</param>
+    /// <returns>Every missing filter once, in the graph's order, or <c>"libraries"</c> alone when they don't load.</returns>
+    public static IReadOnlyList<string> MissingFilters(string filterGraph, string? directory = null)
+    {
+        ArgumentNullException.ThrowIfNull(filterGraph);
+        if (!CanLoad(directory))
+            return ["libraries"];
+        var missing = new List<string>();
+        bool parsed = Has(directory, () =>
+        {
+            var graph = ffmpeg.avfilter_graph_alloc();
+            AVFilterGraphSegment* segment = null;
+            try
+            {
+                if (ffmpeg.avfilter_graph_segment_parse(graph, filterGraph, 0, &segment) < 0)
+                    return false;
+                for (ulong c = 0; c < (ulong)segment->nb_chains; c++)
+                {
+                    var chain = segment->chains[c];
+                    for (ulong f = 0; f < (ulong)chain->nb_filters; f++)
+                    {
+                        string name = Marshal.PtrToStringUTF8((nint)chain->filters[f]->filter_name) ?? "";
+                        if (ffmpeg.avfilter_get_by_name(name) == null && !missing.Contains("filter " + name))
+                            missing.Add("filter " + name);
+                    }
+                }
+
+                return true;
+            }
+            finally
+            {
+                ffmpeg.avfilter_graph_segment_free(&segment);
+                ffmpeg.avfilter_graph_free(&graph);
+            }
+        });
+        return parsed ? missing : ["filter graph"];
     }
 
     // What each feature creates (README's table): the filters of its graphs, its encoder and muxer.

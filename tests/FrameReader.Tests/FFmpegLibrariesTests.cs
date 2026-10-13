@@ -66,4 +66,16 @@ public class FFmpegLibrariesTests
         Assert.True(FFmpegLibraries.Missing(Capability.H264) is [] or ["encoder libx264"]);
         Assert.Empty(FFmpegLibraries.Missing(0));
     }
+
+    // A graph of the caller's own (issue #236): its filters by name, without creating any; each missing one once.
+    [Fact]
+    public void SaysWhatAGraphLacks()
+    {
+        if (Libs is null)
+            return;
+        FFmpegLibraries.Load(Libs);
+        Assert.Empty(FFmpegLibraries.MissingFilters("aformat=sample_fmts=flt,aformat=channel_layouts=stereo"));
+        Assert.Equal(["filter nosuchfilter"], FFmpegLibraries.MissingFilters("aformat=sample_fmts=flt,nosuchfilter=x=1;[in2]nosuchfilter[out2]"));
+        Assert.Equal(["filter graph"], FFmpegLibraries.MissingFilters("aformat=sample_fmts=flt[unclosed"));
+    }
 }
