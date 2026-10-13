@@ -45,7 +45,7 @@ jobs:
 
       - run: echo "BENCH_FFMPEG=${{ steps.ffmpeg.outputs.bin }}" >> "$GITHUB_ENV"
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: native-${{ matrix.rid }}
           path: native/${{ matrix.rid }}
