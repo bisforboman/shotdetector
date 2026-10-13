@@ -10,6 +10,20 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ShotDetector.IYadif</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ShotDetector.ReferenceToneSegment</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ShotDetector.StreamInfo</Target>
     <Left>lib/net10.0/ShotDetector.dll</Left>
     <Right>lib/net10.0/ShotDetector.dll</Right>
@@ -31,7 +45,56 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.DetectionOptions.get_ReferenceToneMinDuration</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.DetectionOptions.get_ReferenceToneSearchDuration</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.DetectionOptions.get_Yadif</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.DetectionOptions.set_ReferenceToneMinDuration(System.TimeSpan)</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.DetectionOptions.set_ReferenceToneSearchDuration(System.Nullable{System.TimeSpan})</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.DetectionResult.get_ReferenceTone</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ShotDetector.DetectionResult.get_Video</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.ShotDetection.FindReferenceTone(System.String,ShotDetector.DetectionOptions,System.Threading.CancellationToken)</Target>
     <Left>lib/net10.0/ShotDetector.dll</Left>
     <Right>lib/net10.0/ShotDetector.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>

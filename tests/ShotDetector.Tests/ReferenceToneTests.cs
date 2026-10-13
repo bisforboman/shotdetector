@@ -117,7 +117,7 @@ public sealed class ReferenceToneTests : IDisposable
     [Fact]
     public void OnlyTheEndsAreTrimmed()
     {
-        static ReferenceToneSegment S(double start, double end) => new(TimeSpan.FromSeconds(start), TimeSpan.FromSeconds(end), -18);
+        static FrameReader.ToneSegment S(double start, double end) => new(TimeSpan.FromSeconds(start), TimeSpan.FromSeconds(end), -18);
         var o = new DetectionOptions();
         var t = ShotDetection.TrimmedToTone(o, [S(1, 31.5), S(100, 110), S(596, 600)], TimeSpan.FromSeconds(600));
         Assert.Equal(("31.5s", "596s"), (t.StartTime, t.EndTime));

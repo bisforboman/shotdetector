@@ -57,11 +57,3 @@ internal static class InProcess
             e);
     }
 }
-
-/// <summary>ShotDetector's <see cref="IYadif"/> as FrameReader's row deinterlacer.</summary>
-internal sealed class RowDeinterlacer(IYadif yadif) : IRowDeinterlacer
-{
-    /// <inheritdoc/>
-    public void FilterRow(nint dst, nint prev, nint cur, nint next, int srcStride, int dstStride, int width, int height, int y, int bytesPerSample) =>
-        yadif.FilterRow(dst, prev, cur, next, srcStride, dstStride, width, height, y, bytesPerSample);
-}

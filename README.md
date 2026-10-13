@@ -123,7 +123,7 @@ Reference tone (line-up tone, a steady 1 kHz sine, often with colour bars, befor
 audio, and `TrimReferenceTone = true` leaves it out of detection: detection starts after a run that begins in the first
 5 s and stops before one that ends in the last 5 s; the runs found are in `DetectionResult.ReferenceTone`. Line-up
 that cuts one channel now and then (EBU, GLITS) is one run; beeps, music and runs shorter than
-`ReferenceToneMinDuration` (5 s) don't count. Not in scenedetect, and off by default. It reads the audio in-process,
+`ReferenceTone.MinDuration` (5 s; `DetectionOptions.ReferenceTone` is FrameReader's `ReferenceToneOptions`) don't count. Not in scenedetect, and off by default. It reads the audio in-process,
 so FFmpeg's libraries are needed, and a file path (not a Stream or URL).
 
 Which decoder a run uses is in every `DetectionProgress` report (`DecodesInProcess`, `Pipeline`), from a first report
