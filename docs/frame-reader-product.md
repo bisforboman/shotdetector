@@ -32,7 +32,8 @@ FrameDecoder's timestamps), and splitting the repository would make each such ch
 4. **Native packages.** `FrameReader.Native.<rid>` (and the `FrameReader.Native` meta-package) are the real ones;
    `ShotDetector.Native.<rid>` and `ShotDetector.Native` become aliases depending on them at the matching version,
    so existing references keep working. Released with FrameReader; the aliases with ShotDetector.
-5. **CI by what a change touches**, not by package: a FrameReader change in code ShotDetector uses still runs the
+5. **CI by what a change touches**, not by package (the runners are the limit: GitHub's concurrent jobs count per
+   account, 20 on the Free plan with 5 macOS, so a separate repository wouldn't add any; running less per PR does): a FrameReader change in code ShotDetector uses still runs the
    scenedetect comparison (it can move ShotDetector's results); FrameReader-only parts (the writers, Remux, Audio,
    MediaProbe's JSON, TestMedia, ...) run FrameReader's tests and builds only. The `changes` jobs' light list grows
    into that classification.
