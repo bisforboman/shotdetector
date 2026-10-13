@@ -8,6 +8,12 @@ Newest first. Add an entry whenever a design question is put to the user.
 Asked for the last 2.0 renames: **OpenCvFrameCount** (over keeping FrameCount and documenting it), **RangeDuration** for
 DetectionOptions.Duration (over keeping scenedetect's name), and **LibrariesNotFound** as FrameReader's error.
 
+## DetectionProgress's diagnostics in 2.0 (2026-10-13)
+
+Hiding FramePipeline was planned with both of DetectionProgress's diagnostic fields going, but issue #42 had asked for
+the decoder in progress reports (streaming callers see it before any frame). Asked: **keep DecodesInProcess, drop
+Pipeline** (the ActivitySource tag keeps the pipeline for tracing), over dropping both.
+
 ## DetectionResult.Video's new shape (2026-10-13)
 
 For the 2.0 result record, asked: the name **DetectedVideo** (over AnalyzedVideo, VideoDetails); streams **dropped

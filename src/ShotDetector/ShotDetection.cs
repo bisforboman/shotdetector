@@ -397,9 +397,6 @@ public readonly record struct DetectionProgress
     /// <summary>Whether frames are decoded in-process (FFmpeg's libraries) rather than by the ffmpeg executable.</summary>
     public bool DecodesInProcess { get; init; }
 
-    /// <summary>How frames get to the detectors (<see cref="VideoReader.Pipeline"/>).</summary>
-    public FramePipeline Pipeline { get; init; }
-
     /// <summary>0..1, or null when the frame count is unknown.</summary>
     public double? Fraction => ExpectedFrames > 0 ? Math.Min(1.0, FramesProcessed / (double)ExpectedFrames) : null;
 }
@@ -832,7 +829,7 @@ public static class ShotDetection
         bool readToEnd = true;
         long lastReport = 0;
         DetectionProgress Progress(int done, int expected) =>
-            new() { FramesProcessed = done, ExpectedFrames = expected, DecodesInProcess = video.DecodesInProcess, Pipeline = video.Pipeline };
+            new() { FramesProcessed = done, ExpectedFrames = expected, DecodesInProcess = video.DecodesInProcess };
 
         // A first report before any frame: which decoder and pipeline this run uses.
         o.Progress?.Report(Progress(0, Math.Max(0, video.ExpectedFrames - startFrame)));

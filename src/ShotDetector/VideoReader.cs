@@ -10,7 +10,7 @@ using StreamType = FrameReader.StreamType;
 namespace ShotDetector;
 
 /// <summary>How <see cref="VideoReader"/> gets downscaled BGR frames out of ffmpeg.</summary>
-public enum FramePipeline
+internal enum FramePipeline
 {
     /// <summary>ffmpeg downscales (bilinear): fastest, but not what PySceneDetect computes.</summary>
     FfmpegScale,

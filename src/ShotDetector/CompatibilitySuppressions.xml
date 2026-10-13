@@ -10,6 +10,13 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ShotDetector.FramePipeline</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:ShotDetector.IYadif</Target>
     <Left>lib/net10.0/ShotDetector.dll</Left>
     <Right>lib/net10.0/ShotDetector.dll</Right>
@@ -95,6 +102,20 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ShotDetector.DetectionOptions.set_ReferenceToneSearchDuration(System.Nullable{System.TimeSpan})</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.DetectionProgress.get_Pipeline</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.DetectionProgress.set_Pipeline(ShotDetector.FramePipeline)</Target>
     <Left>lib/net10.0/ShotDetector.dll</Left>
     <Right>lib/net10.0/ShotDetector.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
