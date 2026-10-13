@@ -59,7 +59,7 @@ jobs:
         run: dotnet build src/ShotDetector.Cli -c Release
 
       - name: Cache the videos
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: samples/realworld
           key: realworld-films-${{ hashFiles('tools/realworld.py') }}
