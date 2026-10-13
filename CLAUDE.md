@@ -63,6 +63,8 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 - Code style: StyleBro (analyzers on build; rules chosen in `.editorconfig`, docs/decisions.md). Before pushing,
   `stylebro-migrate format ShotDetector.slnx` (`dotnet tool install StyleBro.Migrate --version 0.5.0-alpha.1
   --tool-path <dir>`); CI checks it with `--verify-no-changes`. Feedback on StyleBro goes to its GitHub issues.
+- Docs don't copy benchmark numbers: speed and memory figures go stale with every change. READMEs link the weekly
+  runs (`benchmark.yml`, `frame-reader-bench.yml`; their summaries have the tables) and keep only claims that hold.
 - Commit messages: what and why, like the history. Small commits.
 
 ## Layout
