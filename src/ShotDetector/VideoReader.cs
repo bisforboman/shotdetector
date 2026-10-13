@@ -153,7 +153,7 @@ internal sealed partial class VideoReader
         Width = SourceWidth,
         Height = SourceHeight,
         FrameRate = Fps,
-        FrameCount = OpenCvFrameCount > 0 ? OpenCvFrameCount : null,
+        OpenCvFrameCount = OpenCvFrameCount > 0 ? OpenCvFrameCount : null,
         Duration = Duration,
         Codec = Codec,
         PixelFormat = _pixelFormat,

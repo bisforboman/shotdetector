@@ -52,6 +52,20 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:ShotDetector.ShotDetectionError.FfmpegLibrariesNotFound</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.DetectionOptions.get_Duration</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ShotDetector.DetectionOptions.get_ReferenceToneMinDuration</Target>
     <Left>lib/net10.0/ShotDetector.dll</Left>
     <Right>lib/net10.0/ShotDetector.dll</Right>
@@ -67,6 +81,13 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ShotDetector.DetectionOptions.get_Yadif</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.DetectionOptions.set_Duration(System.String)</Target>
     <Left>lib/net10.0/ShotDetector.dll</Left>
     <Right>lib/net10.0/ShotDetector.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -129,7 +150,21 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.VideoInfo.get_FrameCount</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ShotDetector.VideoInfo.get_Streams</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.VideoInfo.set_FrameCount(System.Nullable{System.Int64})</Target>
     <Left>lib/net10.0/ShotDetector.dll</Left>
     <Right>lib/net10.0/ShotDetector.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>

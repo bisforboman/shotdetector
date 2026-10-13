@@ -3,6 +3,11 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## 2.0's renames (2026-10-13)
+
+Asked for the last 2.0 renames: **OpenCvFrameCount** (over keeping FrameCount and documenting it), **RangeDuration** for
+DetectionOptions.Duration (over keeping scenedetect's name), and **LibrariesNotFound** as FrameReader's error.
+
 ## DetectionProgress's diagnostics in 2.0 (2026-10-13)
 
 Hiding FramePipeline was planned with both of DetectionProgress's diagnostic fields going, but issue #42 had asked for

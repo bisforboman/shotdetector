@@ -77,7 +77,7 @@ public sealed record VideoInfo
     public Fps FrameRate { get; init; }
 
     /// <summary>The frame count scenedetect takes as the video's length; null if the headers don't say.</summary>
-    public long? FrameCount { get; init; }
+    public long? OpenCvFrameCount { get; init; }
 
     /// <summary>The container's duration; null if unknown.</summary>
     public TimeSpan? Duration { get; init; }
@@ -252,7 +252,7 @@ public sealed record DetectionOptions
     public string? EndTime { get; init; }
 
     /// <summary>How much to analyse from the start, like `time -d`; same formats. Not with <see cref="EndTime"/>.</summary>
-    public string? Duration { get; init; }
+    public string? RangeDuration { get; init; }
 
     /// <summary>
     /// Analyse every (FrameSkip + 1)th frame, like scenedetect's --frame-skip: faster on very
@@ -372,7 +372,7 @@ public sealed record DetectionOptions
     /// end: detection starts after a segment that begins in the first 5 s, and stops before one that ends in the last
     /// 5 s; the segments found are in <see cref="DetectionResult.ReferenceTone"/>. Not in scenedetect. Needs a file
     /// path and FFmpeg's libraries (the audio is read in-process), and sets the time range itself: not with
-    /// <see cref="StartTime"/>, <see cref="EndTime"/> or <see cref="Duration"/>.
+    /// <see cref="StartTime"/>, <see cref="EndTime"/> or <see cref="RangeDuration"/>.
     /// </summary>
     public bool TrimReferenceTone { get; init; }
 
@@ -577,7 +577,7 @@ public static class ShotDetection
         var duration = FrameTime.Frame(video.OpenCvFrameCount, fps);
         FrameTime Min(FrameTime x) => duration.FrameNum < x.FrameNum ? duration : x;
         var end = o.EndTime is { } e ? Min(Time(e.Trim()))
-            : o.Duration is { } d ? Min(start.Plus(Time(d.Trim())))
+            : o.RangeDuration is { } d ? Min(start.Plus(Time(d.Trim())))
             : duration;
         cuts = [.. cuts.Where(c => c.FrameNum < end.FrameNum)];
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, fps);
@@ -744,13 +744,13 @@ public static class ShotDetection
         var o = options ?? new DetectionOptions();
         if (o.TrimReferenceTone && videoPath is null)
             throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately).");
-        if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.Duration is not null))
-            throw new ArgumentException("TrimReferenceTone sets the time range itself; leave StartTime, EndTime and Duration unset.");
+        if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null))
+            throw new ArgumentException("TrimReferenceTone sets the time range itself; leave StartTime, EndTime and RangeDuration unset.");
         if (o.FrameSkip < 0)
             throw new ArgumentException("FrameSkip must be at least 0.");
         if (o.FrameSkip > 0 && o.CollectStats)
             throw new ArgumentException("FrameSkip must be 0 when collecting stats (as in scenedetect).");
-        if (o.EndTime is not null && o.Duration is not null)
+        if (o.EndTime is not null && o.RangeDuration is not null)
             throw new ArgumentException("EndTime and Duration cannot both be set.");
         if (o.Downscale is < 1)
             throw new ArgumentException("Downscale must be at least 1.");
@@ -821,7 +821,7 @@ public static class ShotDetection
         int startFrame = o.StartTime is null ? 0 : video.SeekFrame(TimecodeSeconds(o.StartTime, video.Fps, oneBasedFrames: true));
         static long Frames(string value, Fps fps) => (long)Math.Round(TimecodeSeconds(value, fps) * fps.Value);
         long? endFrame = o.EndTime is not null ? Frames(o.EndTime, video.Fps)
-            : o.Duration is not null ? Frames(o.Duration, video.Fps) + startFrame
+            : o.RangeDuration is not null ? Frames(o.RangeDuration, video.Fps) + startFrame
             : null;
         start = video.Position(startFrame);
         var first = start;

@@ -93,7 +93,7 @@ scenedetect: `DropShortScenes`, `MergeLastScene`, `FilterMode = FlashFilterMode.
 `Downscale` (CLI `--drop-short-scenes`, `--merge-last-scene`, `--filter-mode`, `--downscale`).
 `DetectionResult.Cuts` is scenedetect's cut list, which keeps the cuts of dropped or merged shots.
 
-Like scenedetect's `time`, `--frame-skip` and `--crop`: `StartTime`, `EndTime` and `Duration`
+Like scenedetect's `time`, `--frame-skip` and `--crop`: `StartTime`, `EndTime` and `RangeDuration`
 ("HH:MM:SS.mmm", "12.5s", or a frame number; CLI `-s`, `-e`, `--duration`), `FrameSkip` (analyse
 every (n+1)th frame; CLI `--frame-skip`) and `Crop` (inclusive pixel corners; CLI `--crop x0 y0 x1 y1`)
 give the same shots as scenedetect with those options. On variable frame rate video a start time
@@ -129,10 +129,10 @@ so FFmpeg's libraries are needed, and a file path (not a Stream or URL).
 Which decoder a run uses is in every `DetectionProgress` report (`DecodesInProcess`), from a first report
 sent before any frame, so `DetectStreamAsync` callers see it too. `ShotDetection.CanDecodeInProcess()` tells a worker at
 startup whether FFmpeg's libraries load; `VideoDecoder.InProcess` without them throws `ShotDetectionException` with
-`Reason = FfmpegLibrariesNotFound`, where `Auto` falls back to the executable.
+`Reason = LibrariesNotFound`, where `Auto` falls back to the executable.
 
 Failures from ffmpeg, ffprobe or the input throw `ShotDetectionException` (an `InvalidOperationException`) whose
-`Reason` tells a deployment problem (`FfmpegNotFound`, `FfmpegLibrariesNotFound`) from bad input (`InvalidInput`), a
+`Reason` tells a deployment problem (`FfmpegNotFound`, `LibrariesNotFound`) from bad input (`InvalidInput`), a
 decode failure (`DecodeFailed`) or a failed export (`ExportFailed`).
 
 Each detection is an OpenTelemetry-ready span: `.AddSource(ShotDetection.ActivitySourceName)` shows

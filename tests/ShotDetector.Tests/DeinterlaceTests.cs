@@ -37,7 +37,7 @@ public class DeinterlaceTests(Clips clips) : IClassFixture<Clips>
         var progressive = ShotDetection.Probe(clips.ThreeShots);
         Assert.False(progressive.IsInterlaced);
         Assert.Equal((320, 240, 25.0, 150L, "mpeg4", "yuv420p", 0), (progressive.Width, progressive.Height,
-            progressive.FrameRate.Value, progressive.FrameCount, progressive.Codec, progressive.PixelFormat, progressive.Rotation));
+            progressive.FrameRate.Value, progressive.OpenCvFrameCount, progressive.Codec, progressive.PixelFormat, progressive.Rotation));
         Assert.Equal(6.0, progressive.Duration!.Value.TotalSeconds, 2);
 
         // A 90-degree rotation tag swaps the size, as decoding does.

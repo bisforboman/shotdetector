@@ -27,7 +27,7 @@ public sealed class DetectedVideo
     public Fps FrameRate => Reader.Fps;
 
     /// <summary>The frame count OpenCV reports (CAP_PROP_FRAME_COUNT), which scenedetect takes as the video's end; null if unknown.</summary>
-    public long? FrameCount => Reader.OpenCvFrameCount > 0 ? Reader.OpenCvFrameCount : null;
+    public long? OpenCvFrameCount => Reader.OpenCvFrameCount > 0 ? Reader.OpenCvFrameCount : null;
 
     /// <summary>The container's duration; null if unknown.</summary>
     public TimeSpan? Duration => Reader.Duration;
