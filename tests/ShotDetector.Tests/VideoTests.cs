@@ -139,6 +139,16 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(150, result.FrameCount);
     }
 
+    // ProgressStep (issue #238): the first report, one per step crossed, the last; nothing in between.
+    [Fact]
+    public void ReportsProgressPerStep()
+    {
+        var recorder = new Recorder();
+        ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { Progress = recorder, ProgressStep = 0.25 });
+        Assert.Equal([0, 38, 75, 113, 150], recorder.Reports.Select(r => r.FramesProcessed));
+        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { ProgressStep = 0 }));
+    }
+
     [Fact]
     public void FindsFfmpegInTheGivenDirectory()
     {
