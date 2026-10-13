@@ -24,6 +24,9 @@ public sealed record WaveformOptions
 
     /// <summary>One waveform per channel (<c>--split-channels</c>); false: the channels averaged into one.</summary>
     public bool SplitChannels { get; init; }
+
+    /// <summary>Receives progress (<see cref="MediaProgress"/>): about 10 times a second, and once at the end.</summary>
+    public IProgress<MediaProgress>? Progress { get; init; }
 }
 
 /// <summary>
@@ -90,9 +93,11 @@ public sealed class WaveformData
         Array.Fill(max, short.MinValue);
         int count = 0;
         Span<int> frame = stackalloc int[inChannels];
+        var progress = new ProgressReporter(o.Progress, audio.Duration);
         while (audio.TryRead(out var chunk))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            progress.Report(chunk.Time);
             var samples = chunk.Samples;
             for (int i = 0; i < chunk.SampleCount; i++)
             {
@@ -124,6 +129,7 @@ public sealed class WaveformData
 
         if (count > 0)
             Flush(); // the last, partial point
+        progress.Done();
         return new WaveformData(rate, perPixel, channels, [.. data]);
 
         void Flush()
@@ -139,6 +145,10 @@ public sealed class WaveformData
             count = 0;
         }
     }
+
+    /// <summary>As <see cref="Read"/>, off the calling thread.</summary>
+    public static Task<WaveformData> ReadAsync(AudioReader audio, WaveformOptions? options = null, CancellationToken cancellationToken = default) =>
+        Task.Run(() => Read(audio, options, cancellationToken), cancellationToken);
 
     /// <summary>
     /// A float sample as the 16-bit one audiowaveform reads through libsndfile: integer sources (exact in float for up to

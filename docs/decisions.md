@@ -36,6 +36,14 @@ a durable summary** (claims without exact figures, the link to the weekly runs' 
 refreshing the tables in each release PR; and **the same for the other figures** (README intro and FastYuv line,
 FrameReader's Speed table, FastYuv's and Native's READMEs), keeping one-off measurements that explain a trade-off.
 
+## Issues #240-#244 (2026-10-13)
+
+Five more suggestions from #81's team. Asked which to take on: **#243 (async overloads), #242 (progress for the
+whole-file jobs), #241 (Remux.CanCopy) and #244 (a Native meta-package)**, all four. For #240: **Video.Transcode
+only**, with whatever H.264 encoder the caller's libraries have, over also shipping OpenH264 downloaded at
+runtime (Cisco's patent licence covers its binary only as the user downloads it from Cisco) or a backlog row.
+#242 and #243 go in one PR (the same five methods); one MediaProgress type serves every job.
+
 ## Issues #236-#239 (2026-10-13)
 
 Four suggestions from #81's team. Asked which to take on: **all four, in this order: #236 (MissingFilters for a

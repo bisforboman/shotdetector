@@ -50,6 +50,10 @@ public static unsafe class MediaProbe
         }
     }
 
+    /// <summary>As <see cref="ProbeJson"/>, off the calling thread.</summary>
+    public static Task<string> ProbeJsonAsync(string path, ProbeOptions? options = null, CancellationToken cancellationToken = default) =>
+        Task.Run(() => ProbeJson(path, options), cancellationToken);
+
     static MediaInfo Probe(string path, StreamInput? io, ProbeOptions? options)
     {
         FFmpegLibraries.Load();

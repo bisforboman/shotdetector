@@ -336,7 +336,11 @@ nothing per frame (frames are views of FFmpeg's buffers); the pipe readers alloc
 Errors: what you pass wrong (sizes, rates, unknown option names) is an `ArgumentException`; what the media or the
 libraries do is a `FrameReaderException` with a `Reason` (`LibrariesNotFound`, `InvalidInput`, `DecodeFailed`,
 `WriteFailed`). The one-call operations (`Remux.Copy`, `WaveformData.Read`, `VideoFrameReader.ReadAt`) take a
-`CancellationToken`; the pull loops stop when you stop reading.
+`CancellationToken`; the pull loops stop when you stop reading. The whole-file jobs (`Audio.Convert`, `Remux.Copy`,
+`WaveformData.Read`, `ReferenceTone.Find`) report progress through their options' `Progress`, one `MediaProgress`
+(position, duration, fraction) for all of them, about 10 times a second and once at the end; each has an async overload
+(`ConvertAsync`, `CopyAsync`, `ReadAsync`, `FindAsync`, and `MediaProbe.ProbeJsonAsync`) that runs it off the calling
+thread.
 
 ## FFmpeg's libraries
 

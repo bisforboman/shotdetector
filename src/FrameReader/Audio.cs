@@ -22,6 +22,9 @@ public sealed record AudioConvertOptions
 
     /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
+
+    /// <summary>Receives progress (<see cref="MediaProgress"/>): about 10 times a second, and once at the end.</summary>
+    public IProgress<MediaProgress>? Progress { get; init; }
 }
 
 /// <summary>Whole-file audio jobs, as ffmpeg's command line does them.</summary>
@@ -46,12 +49,14 @@ public static unsafe class Audio
         AVFormatContext* fmt = null;
         Encoder? encoder = null;
         AVFrame* feed = ffmpeg.av_frame_alloc();
+        var progress = new ProgressReporter(o.Progress, reader.Duration);
         try
         {
             while (reader.TryDecode(out int skip, out long position))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var frame = reader.Decoded;
+                progress.Report(TimeSpan.FromSeconds(position / (double)frame->sample_rate));
                 if (skip >= frame->nb_samples)
                     continue;
                 if (encoder is null)
@@ -74,6 +79,7 @@ public static unsafe class Audio
                 throw new FrameReaderException(FrameReaderError.InvalidInput, $"\"{input}\" has no audio to convert.");
             encoder.Send(null);
             FrameReader.Encoder.Check(ffmpeg.av_write_trailer(fmt), "write the trailer");
+            progress.Done();
         }
         finally
         {
@@ -83,6 +89,10 @@ public static unsafe class Audio
             ffmpeg.av_frame_free(&feed);
         }
     }
+
+    /// <summary>As <see cref="Convert"/>, off the calling thread.</summary>
+    public static Task ConvertAsync(string input, string output, AudioConvertOptions? options = null, CancellationToken cancellationToken = default) =>
+        Task.Run(() => Convert(input, output, options, cancellationToken), cancellationToken);
 
     /// <summary>A decoded frame without its first <paramref name="skip"/> samples, at its position (as <see cref="AudioFilter"/> feeds it).</summary>
     static void Prepare(AVFrame* feed, AVFrame* frame, int skip, long position)
