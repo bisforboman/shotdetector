@@ -1,0 +1,28 @@
+name: Dependabot auto-merge
+
+# Dependabot's patch and minor updates merge on their own once the required checks pass (auto-merge, as every PR
+# here); majors wait for someone to look (FFmpeg.AutoGen 9 must wait for opencv-python's FFmpeg, a new actions major
+# can change behaviour). CI decides either way. The user's choice, 2026-10-13 (docs/decisions.md).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v2
+
+      - name: Enable auto-merge for patch and minor updates
+        if: steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr merge --auto --squash "$PR"
+        env:
+          PR: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
