@@ -11,6 +11,15 @@ test SDK one rerun (Chocolatey's ffmpeg install failed), FFmpeg.AutoGen 9 closed
 and minor updates when green** (dependabot-auto-merge.yml), majors after a look, over handling them first each
 sitting or leaving them.
 
+## FrameReader as its own product (2026-10-13)
+
+The user, looking at the pipelines: FrameReader is starting to look like its own project. Most new requests are
+FrameReader features, lockstep versions move each package's number for the other's changes, and the FFmpeg build
+ships as ShotDetector.Native. Asked: **its own product in the same repository** (own versions, releases, native
+packages, CI by what a change touches; cross-cutting changes stay one PR), over a separate repository or keeping
+the lockstep; **after 2.1.0**; the native packages as **FrameReader.Native.<rid>** with ShotDetector.Native.<rid>
+kept as aliases; changelog fragments in **a folder per package**. Plan: docs/frame-reader-product.md.
+
 ## Issues #236-#239 (2026-10-13)
 
 Four suggestions from #81's team. Asked which to take on: **all four, in this order: #236 (MissingFilters for a
