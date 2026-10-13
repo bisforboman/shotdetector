@@ -433,7 +433,12 @@ public sealed record DetectionResult
     public IReadOnlyList<FrameReader.ToneSegment>? ReferenceTone { get; init; }
 }
 
-/// <summary>Runs shot detection on a video file.</summary>
+/// <summary>
+/// Runs shot detection on a video file. Failures of the input, ffmpeg or FFmpeg's libraries are a
+/// <see cref="ShotDetectionException"/> from every method here (and from <see cref="Export"/>), never a FrameReader
+/// exception: one that happens inside (decoding in-process, reading the audio) is its InnerException, with the same
+/// message. Invalid options are an <see cref="ArgumentException"/>; cancelling, <see cref="OperationCanceledException"/>.
+/// </summary>
 public static class ShotDetection
 {
     /// <summary>
@@ -507,7 +512,8 @@ public static class ShotDetection
     /// `scenedetect -i video detect-... list-scenes` would.
     /// </summary>
     /// <exception cref="ArgumentException">Invalid options.</exception>
-    /// <exception cref="InvalidOperationException">ffprobe or ffmpeg failed (e.g. missing file).</exception>
+    /// <exception cref="ShotDetectionException">The input, ffmpeg or FFmpeg's libraries failed; <see cref="ShotDetectionException.Reason"/>
+    /// says which (a FrameReader failure is its InnerException).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; ffmpeg is stopped.</exception>
     public static DetectionResult Detect(string videoPath, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
         Run(videoPath, null, options, onShot: null, cancellationToken);
@@ -659,7 +665,8 @@ public static class ShotDetection
     /// Stopping the enumeration early, or cancelling, stops ffmpeg.
     /// </summary>
     /// <exception cref="ArgumentException">Invalid options.</exception>
-    /// <exception cref="InvalidOperationException">ffprobe or ffmpeg failed (e.g. missing file).</exception>
+    /// <exception cref="ShotDetectionException">The input, ffmpeg or FFmpeg's libraries failed; <see cref="ShotDetectionException.Reason"/>
+    /// says which (a FrameReader failure is its InnerException).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; ffmpeg is stopped.</exception>
     public static IAsyncEnumerable<Shot> DetectStreamAsync(string videoPath,
         DetectionOptions? options = null,
