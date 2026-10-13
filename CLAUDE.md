@@ -23,7 +23,8 @@ All five detectors, scenedetect 0.7.2 (`PySceneDetectVersion.V0_7_2`, default) a
 dropped in 0.9.0), exports
 (save-images, save-html, split-video), stats, streaming out (`DetectStreamAsync`) and in (`Detect(Stream)`, URLs,
 CLI `-i -`). CI compares every sample clip against scenedetect 0.7.2 and 0.7.1 on Linux for the core and FastYuv
-paths (10-bit h264 too); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
+paths (10-bit h264 too), 0.7.2 both through the ffmpeg executable and in-process (our FFmpeg build; `compare.py`
+adds `SHOTDETECTOR_OURS_ARGS` to every run, CI sets `--decoder`); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
 weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what the user decided and why.
 
 **Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Open a release

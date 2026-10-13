@@ -8,6 +8,7 @@ Usage: python tools/compare.py <video>... [--detector adaptive|content|threshold
 
 import argparse
 import csv
+import os
 import subprocess
 import sys
 import tempfile
@@ -158,7 +159,9 @@ def main() -> int:
     ap.add_argument("--weights", help='content/adaptive weights for both tools, e.g. "1 1 1 1"')
     ap.add_argument("--kernel-size", help="edge kernel size for both tools")
     ap.add_argument("--scenedetect-args", default="", help='extra scenedetect options/commands, e.g. "-fs 2 -c 0 0 400 300 time -s 10s -e 20s"')
-    ap.add_argument("--ours-args", default="", help='extra shotdetect options, e.g. "--frame-skip 2 --crop 0 0 400 300 -s 10s -e 20s"')
+    ap.add_argument("--ours-args", default="",
+                    help='extra shotdetect options, e.g. "--frame-skip 2 --crop 0 0 400 300 -s 10s -e 20s"; '
+                         'SHOTDETECTOR_OURS_ARGS adds to them (CI: the decoder)')
     ap.add_argument("--scenedetect-on", default="",
                     help='give scenedetect <video><suffix> instead of the video, e.g. ".yadif.mkv" for a deinterlaced copy')
     ap.add_argument("--stats", action="store_true",
@@ -168,7 +171,7 @@ def main() -> int:
     global EXE, SCENEDETECT_PYTHON, REF_EXTRA, OUR_EXTRA, REF_SUFFIX
     SCENEDETECT_PYTHON = a.scenedetect_python
     REF_SUFFIX = a.scenedetect_on
-    REF_EXTRA, OUR_EXTRA = a.scenedetect_args.split(), a.ours_args.split()
+    REF_EXTRA, OUR_EXTRA = a.scenedetect_args.split(), a.ours_args.split() + os.environ.get("SHOTDETECTOR_OURS_ARGS", "").split()
     if a.fast_yuv:
         subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", "-p:WithFastYuv=true", "-o", str(FAST_DIR),
                         str(ROOT / "src" / "ShotDetector.Cli")], check=True, stdout=subprocess.DEVNULL)

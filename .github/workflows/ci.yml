@@ -436,7 +436,7 @@ jobs:
   # bundles FFmpeg 8 and so follows colour tags (the Windows wheel's FFmpeg 7.1 doesn't). Each path in two jobs
   # (part): the main comparison, and the rest; one job ran them all in 8 minutes.
   parity:
-    needs: [changes, samples]
+    needs: [changes, native, samples]
     if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 45
@@ -446,15 +446,22 @@ jobs:
         path: [core, fast-yuv]
         scenedetect: ['0.7.2', '0.7.1']   # the default and the previous release, each in its --compat mode
         part: [compare, more]
-        # The previous release: one job, the core path's main comparison (all its jobs matched when 0.7.2 came in;
-        # this still catches a shared change that moves its results).
+        # The ffmpeg executable, and in-process with our FFmpeg build (what the CLI release and the Native packages
+        # use by default).
+        decoder: [process, inprocess]
+        # The previous release: one job, the core path's main comparison through the executable (all its jobs matched
+        # when 0.7.2 came in; this still catches a shared change that moves its results).
         exclude:
           - { scenedetect: '0.7.1', path: fast-yuv }
           - { scenedetect: '0.7.1', part: more }
+          - { scenedetect: '0.7.1', decoder: inprocess }
     env:
       # The latest stable FFmpeg; BtbN's static build. No libraries here, so this is also Auto's fallback to the
       # executable where only FFmpeg 9 is installed (its libavcodec 63 doesn't load in-process).
       FFMPEG: '9.0'
+      # Every shotdetect run compare.py makes, explicitly on this job's decoder (inprocess fails if the libraries
+      # don't load, rather than falling back).
+      SHOTDETECTOR_OURS_ARGS: --decoder ${{ matrix.decoder }}
     steps:
       - uses: actions/checkout@v7
 
@@ -478,6 +485,13 @@ jobs:
       - name: ffmpeg version
         if: needs.changes.outputs.docs_only != 'true'
         run: ffmpeg -hide_banner -version | head -1
+
+      # In-process: our FFmpeg build at native/linux-x64, which the CLI's build bundles (ShotDetector.Cli.csproj).
+      - uses: actions/download-artifact@v7
+        if: needs.changes.outputs.docs_only != 'true' && matrix.decoder == 'inprocess'
+        with:
+          name: native-linux-x64
+          path: native/linux-x64
 
       - name: Install scenedetect
         if: needs.changes.outputs.docs_only != 'true'
@@ -510,7 +524,7 @@ jobs:
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
             --detector all --stats --report parity.md --compat ${{ matrix.scenedetect }} \
             ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || status=$?
-          { echo "### scenedetect ${{ matrix.scenedetect }}, ${{ matrix.path }} path"; cat parity.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### scenedetect ${{ matrix.scenedetect }}, ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat parity.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
       # Time range, frame skip and crop must give scenedetect's results too (constant frame rate clips).
@@ -520,7 +534,7 @@ jobs:
           status=0
           python tools/compare.py samples/sintel_trailer-480p.mp4 samples/bbb_trailer_400p.ogg samples/sintel_rotated.mp4             --detector both --stats --report options.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }}             --scenedetect-args "--crop 100 50 700 400 time -s 2s -e 00:00:20.000" --ours-args "--crop 100 50 700 400 -s 2s -e 00:00:20.000" || status=$?
           python tools/compare.py samples/sintel_trailer-480p.mp4 samples/synthetic.mp4             --detector both --report skip.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }}             --scenedetect-args "-fs 2 time -s 241 -d 300" --ours-args "--frame-skip 2 -s 241 --duration 300" || status=$?
-          { echo "### time/crop and frame-skip options, ${{ matrix.path }} path"; cat options.md skip.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### time/crop and frame-skip options, ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat options.md skip.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
       # The CLI the next three steps run (compare.py builds it, but this part doesn't run compare.py first).
@@ -551,7 +565,7 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.2' && matrix.part == 'more')
         run: |
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg             --detector hash --stats --report hash.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
-          { echo "### detect-hash (informational), ${{ matrix.path }} path"; cat hash.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### detect-hash (informational), ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat hash.md; } >> "$GITHUB_STEP_SUMMARY"
 
       # Interlaced broadcast video (issue #42): with --deinterlace auto, exact against scenedetect on a lossless yadif
       # copy (FFV1, progressive), which is what deinterlacing stands for. With deinterlacing off it's informational:
@@ -566,8 +580,8 @@ jobs:
           python tools/compare.py samples/broadcast/*.mxf --detector all --stats --report off.md $fast || true
           python tools/compare.py samples/broadcast/*.mxf --detector all --stats --report auto.md $fast \
             --ours-args "--deinterlace auto" --scenedetect-on .yadif.mkv || status=$?
-          { echo "### Interlaced broadcast, deinterlacing off (informational: OpenCV can't read interlaced frames), ${{ matrix.path }} path"; cat off.md
-            echo "### Interlaced broadcast, --deinterlace auto vs a yadif copy, ${{ matrix.path }} path"; cat auto.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Interlaced broadcast, deinterlacing off (informational: OpenCV can't read interlaced frames), ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat off.md
+            echo "### Interlaced broadcast, --deinterlace auto vs a yadif copy, ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat auto.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
       # Damaged files (tools/make-broken.py): concealment as OpenCV's decoder threads give it (the default thread count),
@@ -579,15 +593,17 @@ jobs:
         run: |
           python tools/make-broken.py > /dev/null
           fast=${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }}
-          # Exact. res_change.ts only on the core path: here (the executable) ffmpeg scales a new size's frames before
-          # FastYuv converts them. In-process, FastYuv gives them the exact conversion (InProcessTests.JoinedEncodes...).
+          # Exact. res_change.ts not with FastYuv through the executable: there ffmpeg scales a new size's frames
+          # before FastYuv converts them (in-process, FastYuv gives them the exact conversion).
+          exact=samples/broken/res_change.ts info=
+          if [ "${{ matrix.path }}/${{ matrix.decoder }}" = fast-yuv/process ]; then info=$exact exact=; fi
           status=0
           python tools/compare.py samples/broken/base.mp4 samples/broken/truncated.mp4 samples/broken/truncated.ts \
-            samples/broken/dup_pts.mkv ${fast:-samples/broken/res_change.ts} --detector all --stats --report broken.md $fast || status=$?
+            samples/broken/dup_pts.mkv $exact --detector all --stats --report broken.md $fast || status=$?
           # Informational: scenedetect's own results on corrupt.ts vary from run to run (its threaded error concealment).
-          python tools/compare.py samples/broken/corrupt.ts ${fast:+samples/broken/res_change.ts} --detector all --stats \
+          python tools/compare.py samples/broken/corrupt.ts $info --detector all --stats \
             --report broken-info.md $fast || true
-          { echo "### Damaged files, ${{ matrix.path }} path"; cat broken.md
+          { echo "### Damaged files, ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat broken.md
             echo "#### Informational"; cat broken-info.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
@@ -597,7 +613,7 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.2' && matrix.part == 'more')
         run: |
           python tools/compare.py samples/informational/*.mov samples/informational/*.mxf --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
-          { echo "### Interlaced 10-bit, AVC-Intra and ProRes (informational), ${{ matrix.path }} path"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Interlaced 10-bit, AVC-Intra and ProRes (informational), ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
 
   # The main comparison on Windows and macOS (informational: Linux is the reference). The Windows OpenCV wheel bundles
   # FFmpeg 7.1, which converts with BT.601 whatever the colour tags say; compare.py passes --always-bt601 there, as

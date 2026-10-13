@@ -10,6 +10,13 @@ size change on the executable path and SIMD in resize/HSV/score** (all four, in 
 (missing CLI options, FFmpeg 9's libraries, URLs in-process, Linux/macOS hardware decoding): each waits on a
 request or an upstream change.
 
+## scenedetect parity in-process (2026-10-13)
+
+CI compared shotdetect with scenedetect only through the ffmpeg executable, while in-process decoding is the default
+wherever our FFmpeg build is present. Asked how to cover it: **a decoder axis** (the 0.7.2 jobs, core and FastYuv,
+both parts, on the executable and in-process: 4 more jobs of 3-7 min) over switching the 0.7.2 jobs to in-process
+(losing the executable's FastYuv and extra comparisons) or one in-process core job.
+
 ## FastYuv on a resolution change (2026-10-12)
 
 FastYuv converted a new size's frames at the stream's size after scaling the YUV, where OpenCV scales them inside its
