@@ -65,6 +65,9 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
   --tool-path <dir>`); CI checks it with `--verify-no-changes`. Feedback on StyleBro goes to its GitHub issues.
 - Docs don't copy benchmark numbers: speed and memory figures go stale with every change. READMEs link the weekly
   runs (`benchmark.yml`, `frame-reader-bench.yml`; their summaries have the tables) and keep only claims that hold.
+- Dependabot: its patch and minor PRs auto-merge once green (`dependabot-auto-merge.yml`); majors wait for a look.
+  FFmpeg.AutoGen stays on 8.x until the native build moves to FFmpeg 9 (with opencv-python's wheels): Dependabot is
+  told to ignore 9.
 - Commit messages: what and why, like the history. Small commits.
 
 ## Layout

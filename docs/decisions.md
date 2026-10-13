@@ -11,6 +11,14 @@ and dependabot.yml light in the three changes jobs (CI doesn't run them, so a fu
 ci.yml, realworld.yml, mutation.yml, native.yml and .github/actions/ stay heavy. Over waiting for the FrameReader
 plan's CI step or leaving it.
 
+## Dependabot's PRs (2026-10-13)
+
+Seven Dependabot PRs were waiting. The user: shouldn't those be merged first? The five green ones were merged, the
+test SDK one rerun (Chocolatey's ffmpeg install failed), FFmpeg.AutoGen 9 closed with Dependabot told to skip 9.x
+(our libraries are FFmpeg 8.1 until opencv-python moves). Asked how to handle them from now on: **auto-merge patch
+and minor updates when green** (dependabot-auto-merge.yml), majors after a look, over handling them first each
+sitting or leaving them.
+
 ## FrameReader as its own product (2026-10-13)
 
 The user, looking at the pipelines: FrameReader is starting to look like its own project. Most new requests are
