@@ -232,6 +232,16 @@ Remux.Copy("film.mp4", "out/manifest.mpd", new()
 ```
 
 Our native libraries carry the AAC, MP3 and 16-bit PCM encoders and the mp4, mov, ipod (.m4a), matroska, matroska_audio (.mka), webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass and dash muxers.
+A whole file re-encoded in one call: `Video.Transcode(input, output, options)` is `ffmpeg -i IN [-vf yadif] -c:v E
+-pix_fmt yuv420p -g G -force_key_frames ... OUT`, for making a source that isn't ready for DASH ready for `Remux.Copy`:
+deinterlaced when the stream is flagged interlaced (`Deinterlace`: null by default; true or false to force), frames
+upright, the first audio stream re-encoded, keyframes every `KeyframeEvery`. H.264 needs an encoder your libraries have
+(`libx264`, or `libopenh264` with Cisco's binary); ShotDetector.Native has none, for licensing (`mpeg4` works for tests).
+
+```csharp
+await Video.TranscodeAsync("in.mxf", "out.mp4", new() { Encoder = "libx264", Gop = 72, KeyframeEvery = TimeSpan.FromSeconds(2.4), AudioEncoder = "aac" });
+```
+
 Writing video: `VideoWriter` encodes frames to H.264 (x264) in .mp4/.mkv/.mov, optionally with an AAC track, the
 file `ffmpeg -c:v libx264` writes from the same frames with the same FFmpeg build (byte for byte with `Bitexact` on
 both sides). It needs FFmpeg libraries with libx264, which ShotDetector.Native doesn't have: a "gpl" FFmpeg 8 build
@@ -303,22 +313,11 @@ few rows of each frame (ShotDetector reads its resize's rows this way).
 
 ## Speed
 
-Reading the first 500 frames (benchmarks/FrameReader.Benchmarks, BenchmarkDotNet; GitHub runners, 2026-10-09; the
-three give the same bytes). FFMpegCore and the executable run ffmpeg as a process and read rawvideo from its stdout.
-
-| Video | Output | FrameReader | ffmpeg executable | FFMpegCore pipe |
-|---|---|---|---|---|
-| Big Buck Bunny 640x360 | whole frames, Bgr24 | x64 157 ms, ARM 127 ms | 251 / 193 ms | 455 / 324 ms |
-| Tears of Steel 1280x534 | whole frames, Bgr24 | x64 426 ms, ARM 347 ms | 673 / 540 ms | 1,199 / 858 ms |
-| Sintel trailer 1920x1080 | whole frames, Bgr24 | x64 1,228 ms, ARM 969 ms | 1,883 / 1,477 ms | 3,647 / 2,380 ms |
-| Big Buck Bunny 640x360 | 160x90 Gray8 | x64 161 ms, ARM 127 ms | 210 / 164 ms | 236 / 184 ms |
-| Tears of Steel 1280x534 | 160x90 Gray8 | x64 427 ms, ARM 332 ms | 469 / 384 ms | 502 / 393 ms |
-| Sintel trailer 1920x1080 | 160x90 Gray8 | x64 1,206 ms, ARM 933 ms | 1,249 / 931 ms | 1,306 / 963 ms |
-
-Whole frames: 1.5-1.6x faster than reading the executable's pipe, 2.5-3x faster than FFMpegCore. Small frames:
-ahead or equal (decoding is the cost then; ffmpeg scales before the pipe). Allocations: FrameReader 592 bytes in all
-for 500 frames; the executable path 1.1 MB (its process and buffers); FFMpegCore 0.4 MB for small frames and 10-86 MB
-for whole ones.
+Reading frames against the ffmpeg executable's pipe and FFMpegCore (benchmarks/FrameReader.Benchmarks,
+BenchmarkDotNet, the first 500 frames of three films at whole size and at 160x90, weekly on GitHub's x64 and ARM
+runners): the current numbers are in the [latest runs](https://github.com/bisforboman/shotdetector/actions/workflows/frame-reader-bench.yml). Whole frames come out well ahead of both
+(no process, no pipe); small frames, where decoding is the cost, ahead or equal. FrameReader allocates next to
+nothing per frame (frames are views of FFmpeg's buffers); the pipe readers allocate per frame.
 
 ## Frame lifetime
 

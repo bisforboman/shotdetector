@@ -2,8 +2,8 @@
 
 Optional fast path for [ShotDetector](https://www.nuget.org/packages/ShotDetector): with it, ffmpeg
 sends raw yuv420p and ShotDetector converts only the ~7% of pixels its resize reads, instead of
-ffmpeg converting every full frame to BGR. Results are identical; on 1080p video detection takes
-about 10 s instead of 17 s for 5000 frames.
+ffmpeg converting every full frame to BGR. Results are identical, and large video is faster (the current
+numbers: ShotDetector's [weekly benchmarks](https://github.com/bisforboman/shotdetector/actions/workflows/benchmark.yml)).
 
 ```csharp
 using ShotDetector;
@@ -13,8 +13,8 @@ var result = ShotDetection.Detect("video.mp4", new DetectionOptions { Yuv420Conv
 ```
 
 It also has `Yadif`, a port of FFmpeg's yadif deinterlacer, row by row: with in-process decoding and
-deinterlacing on, only the rows the resize reads are deinterlaced (identical results; on 1080i25 MPEG-2 with
-2 CPUs, 7.5 s instead of 11.6 s for 2000 frames). It is a FrameReader `IRowDeinterlacer`, so a `FrameDecoder` takes
+deinterlacing on, only the rows the resize reads are deinterlaced (identical results, and only those rows'
+work). It is a FrameReader `IRowDeinterlacer`, so a `FrameDecoder` takes
 it too (`FrameDecoderOptions.RowDeinterlacer`).
 
 ```csharp

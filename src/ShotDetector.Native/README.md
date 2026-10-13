@@ -12,7 +12,7 @@ one platform and run on another (a publish for one runtime, `-r linux-x64`, stil
 libraries). A single platform's package keeps a build smaller.
 
 With the package referenced, ShotDetector finds the libraries next to your app and decodes in-process by default
-(`VideoDecoder.Auto`): faster, with about half the memory of running the ffmpeg executable, and the same results.
+(`VideoDecoder.Auto`): faster and with less memory than running the ffmpeg executable, and the same results.
 Files are probed in-process too, so ffmpeg only needs to be installed for streams, URLs and exports (split-video,
 save-images).
 
