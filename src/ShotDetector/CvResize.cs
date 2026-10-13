@@ -95,6 +95,29 @@ internal sealed class CvResize
         });
     }
 
+    /// <summary>
+    /// Resizes straight from a converted frame's rows (only <see cref="SourceRows"/> need be converted), the source
+    /// being its crop at (<paramref name="x"/>, <paramref name="y"/>): what <see cref="Resize"/> gives that crop, with
+    /// no copy of it or of the sampled pixels. On the calling thread.
+    /// </summary>
+    public void ResizeRows(ReadOnlySpan<byte> frame, int stride, int x, int y, byte[] dst)
+    {
+        foreach (var c in _chunks)
+        {
+            int lastRow0 = -1, lastRow1 = -1;
+            for (int dy = c.Start; dy < c.End; dy++)
+            {
+                int r0 = Row0(dy), r1 = Row1(dy);
+                if (r0 != lastRow0)
+                    HResize(frame.Slice((y + r0) * stride + x * 3, _sw * 3), c.Row0);
+                if (r1 != lastRow1)
+                    HResize(frame.Slice((y + r1) * stride + x * 3, _sw * 3), c.Row1);
+                (lastRow0, lastRow1) = (r0, r1);
+                VResize(dy, c, dst);
+            }
+        }
+    }
+
     void PrepareSampled()
     {
         var col = new Dictionary<int, int>();
