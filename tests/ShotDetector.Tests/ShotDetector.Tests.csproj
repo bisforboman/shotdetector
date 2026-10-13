@@ -18,7 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Data/*.html;Data/oracle.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Data/*.html;Data/oracle.txt;Data/pixels.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
