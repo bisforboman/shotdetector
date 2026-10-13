@@ -126,6 +126,9 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 - The core path's frames: ffmpeg converts to BGR, then `remap` (two looping 16-bit PGM maps, x and y) keeps only
   `CvResize.SourceCols` x `SourceRows`; `ResizeSampled` resizes from that. Equivalent to the full frames by test
   (`SampledFramesAreTheFullFramesResized`); `DetectionOptions.FullFrames` (internal) brings the old path back.
+- scenedetect on ARM isn't scenedetect on x86: opencv-python's ARM wheels use KleidiCV/Carotene for `cv2.resize`
+  (downscales under 3x) and BGR2HSV, off by 1-2 on some pixels (user's choice: x86 stays the reference). macOS Intel
+  wheels have no FFmpeg. `getBuildInformation()`'s "Custom HAL" line names the library.
 - Benchmarks on this desktop: pin CPUs with `cmd /c start /affinity 3 ...` (children inherit), compare CPU time
   (more stable than wall time here), and interleave runs.
 - Streamed input needs the container headers first (mkv/webm/ts/mov or faststart mp4); ffmpeg reports a non-faststart
