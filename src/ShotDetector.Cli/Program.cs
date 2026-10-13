@@ -436,10 +436,10 @@ try
                 options = options with { TrimReferenceTone = true };
                 break;
             case "--tone-min-duration":
-                options = options with { ReferenceToneMinDuration = TimeSpan.FromSeconds(NextDouble()) };
+                options = options with { ReferenceTone = options.ReferenceTone with { MinDuration = TimeSpan.FromSeconds(NextDouble()) } };
                 break;
             case "--tone-search":
-                options = options with { ReferenceToneSearchDuration = TimeSpan.FromSeconds(NextDouble()) };
+                options = options with { ReferenceTone = options.ReferenceTone with { SearchDuration = TimeSpan.FromSeconds(NextDouble()) } };
                 break;
             case "--config":
                 i++;
@@ -662,7 +662,7 @@ catch (InvalidOperationException e)
     return 1;
 }
 
-static IEnumerable<string> ToneLines(IReadOnlyList<ReferenceToneSegment> tone) => tone.Count == 0
+static IEnumerable<string> ToneLines(IReadOnlyList<FrameReader.ToneSegment> tone) => tone.Count == 0
     ? ["No reference tone"]
     : tone.Select(t => string.Create(CultureInfo.InvariantCulture,
         $"Reference tone: {t.Start:hh\\:mm\\:ss\\.fff} - {t.End:hh\\:mm\\:ss\\.fff} ({(t.End - t.Start).TotalSeconds:0.00} s) at {t.Level:0.0} dBFS"));
