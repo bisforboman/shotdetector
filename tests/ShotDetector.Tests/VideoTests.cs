@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using ShotDetector;
 using ShotDetector.FastYuv;
+using FieldOrder = FrameReader.FieldOrder;
+using StreamType = FrameReader.StreamType;
 
 /// <summary>Synthetic clips made with ffmpeg (which must be on PATH, as for the library itself).</summary>
 public sealed class Clips : IDisposable

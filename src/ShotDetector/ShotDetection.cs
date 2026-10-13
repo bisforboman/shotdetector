@@ -1,6 +1,9 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using FieldOrder = FrameReader.FieldOrder;
+using StreamInfo = FrameReader.StreamInfo;
+using StreamType = FrameReader.StreamType;
 
 namespace ShotDetector;
 
@@ -54,29 +57,6 @@ public enum DeinterlaceMode
     Auto,
 }
 
-/// <summary>A video stream's field order, as its container or codec reports it (ffprobe's field_order).</summary>
-[Obsolete("Becomes FrameReader.FieldOrder in ShotDetector 2.0 (both packages define it, so using both is ambiguous, issue #194). FrameReader.MediaProbe.Probe(path) gives FrameReader's field order now.")]
-public enum FieldOrder
-{
-    /// <summary>Not reported.</summary>
-    Unknown,
-
-    /// <summary>Progressive frames.</summary>
-    Progressive,
-
-    /// <summary>Interlaced, top field coded and shown first (ffprobe: tt).</summary>
-    TopFirst,
-
-    /// <summary>Interlaced, bottom field coded and shown first (bb).</summary>
-    BottomFirst,
-
-    /// <summary>Interlaced, top field coded first, bottom shown first (tb).</summary>
-    TopCodedBottomFirst,
-
-    /// <summary>Interlaced, bottom field coded first, top shown first (bt).</summary>
-    BottomCodedTopFirst,
-}
-
 /// <summary>
 /// A video's properties from its headers (<see cref="ShotDetection.Probe(string, DetectionOptions?, CancellationToken)"/>):
 /// fast, without reading the packets.
@@ -126,86 +106,6 @@ public sealed record VideoInfo
     /// <summary>Whether the stream is flagged interlaced (what <see cref="DeinterlaceMode.Auto"/> goes by).</summary>
     public bool IsInterlaced => FieldOrder is FieldOrder.TopFirst or FieldOrder.BottomFirst
         or FieldOrder.TopCodedBottomFirst or FieldOrder.BottomCodedTopFirst;
-}
-
-/// <summary>What a stream carries.</summary>
-[Obsolete("Becomes FrameReader.StreamType in ShotDetector 2.0 (both packages define it, so using both is ambiguous, issue #194). FrameReader.MediaProbe.Probe(path) gives FrameReader's streams now.")]
-public enum StreamType
-{
-    /// <summary>Not known.</summary>
-    Unknown,
-
-    /// <summary>Video.</summary>
-    Video,
-
-    /// <summary>Audio.</summary>
-    Audio,
-
-    /// <summary>Subtitles.</summary>
-    Subtitle,
-
-    /// <summary>Data (timecode tracks, metadata, ...).</summary>
-    Data,
-
-    /// <summary>An attachment (fonts in mkv, ...).</summary>
-    Attachment,
-}
-
-/// <summary>One stream of a file, as ffprobe's <c>-show_streams</c> describes it (<see cref="VideoInfo.Streams"/>).</summary>
-[Obsolete("Becomes FrameReader.StreamInfo in ShotDetector 2.0 (both packages define it, so using both is ambiguous, issue #194). FrameReader.MediaProbe.Probe(path) gives FrameReader's streams now.")]
-public sealed record StreamInfo
-{
-    internal StreamInfo()
-    {
-    }
-
-    /// <summary>The stream's index in the container.</summary>
-    public int Index { get; init; }
-
-    /// <summary>Video, audio, subtitle, data or attachment.</summary>
-    public StreamType Type { get; init; }
-
-    /// <summary>The codec's FFmpeg name (h264, aac, subrip, ...); "unknown" when FFmpeg doesn't know it.</summary>
-    public string Codec { get; init; } = "";
-
-    /// <summary>The codec tag as text, as ffprobe's codec_tag_string (hvc1 or hev1 for HEVC in mp4; [0][0][0][0] when none).</summary>
-    public string CodecTag { get; init; } = "";
-
-    /// <summary>The language tag (eng, swe, ...); null when there's none.</summary>
-    public string? Language { get; init; }
-
-    /// <summary>The title tag; null when there's none.</summary>
-    public string? Title { get; init; }
-
-    /// <summary>Flagged as the default track of its type.</summary>
-    public bool IsDefault { get; init; }
-
-    /// <summary>Flagged as forced (subtitles shown even when subtitles are off).</summary>
-    public bool IsForced { get; init; }
-
-    /// <summary>The bit rate in bits per second, when the container says; null otherwise.</summary>
-    public long? BitRate { get; init; }
-
-    /// <summary>The stream's duration (to the microsecond, as ffprobe prints it); null if unknown.</summary>
-    public TimeSpan? Duration { get; init; }
-
-    /// <summary>Video: width in pixels (as coded, before rotation); otherwise null.</summary>
-    public int? Width { get; init; }
-
-    /// <summary>Video: height in pixels; otherwise null.</summary>
-    public int? Height { get; init; }
-
-    /// <summary>Audio: samples per second; otherwise null.</summary>
-    public int? SampleRate { get; init; }
-
-    /// <summary>Audio: channels; otherwise null.</summary>
-    public int? Channels { get; init; }
-
-    /// <summary>Audio: FFmpeg's channel layout name (mono, stereo, 5.1(side), ...); null when unspecified or not audio.</summary>
-    public string? ChannelLayout { get; init; }
-
-    /// <summary>Audio: FFmpeg's sample format name (fltp, s16, ...); otherwise null.</summary>
-    public string? SampleFormat { get; init; }
 }
 
 /// <summary>How frames are decoded.</summary>

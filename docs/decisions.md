@@ -3,6 +3,13 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## #194 on v2: streams without the libraries (2026-10-13)
+
+FrameReader.StreamInfo's constructor was internal, and ShotDetector lists streams from ffprobe when it runs the
+executable (no libraries, or URLs). Asked: **a public StreamInfo constructor** (additive; ShotDetector fills it
+from ffprobe, duration_ts and time_base included), so Streams works on every path, over no streams without the
+libraries.
+
 ## 2.0 on a branch (2026-10-13)
 
 Asked what comes after 1.13.0: **2.0 on a long-lived `v2` branch** (backlog section 5 plus #194, each piece a PR

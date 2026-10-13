@@ -3,6 +3,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using FFmpeg.AutoGen;
 using FrameReader;
+using FieldOrder = FrameReader.FieldOrder;
+using StreamInfo = FrameReader.StreamInfo;
+using StreamType = FrameReader.StreamType;
 
 namespace ShotDetector;
 
@@ -66,31 +69,13 @@ internal static unsafe class InProcessProbe
     }
 
     /// <summary>
-    /// Every stream, as <see cref="VideoReader"/> reads them from ffprobe's <c>-show_entries</c> (VideoReader.StreamEntries):
-    /// the same values, durations through ffprobe's six-decimal print.
+    /// Every stream: FrameReader's, as <see cref="VideoReader"/> fills them from ffprobe's <c>-show_entries</c>
+    /// (VideoReader.StreamEntries) without the libraries.
     /// </summary>
     public static IReadOnlyList<StreamInfo> Streams(string path, string? libraryDirectory, string[]? inputOptions = null)
     {
         var info = Probe(() => MediaProbe.Probe(path, new ProbeOptions { InputOptions = Options(inputOptions) }), libraryDirectory);
-        return info.Streams.Select(s => new StreamInfo
-        {
-            Index = s.Index,
-            Type = (StreamType)(int)s.Type,
-            Codec = s.Codec,
-            CodecTag = s.CodecTag,
-            Language = s.Language,
-            Title = s.Title,
-            IsDefault = s.IsDefault,
-            IsForced = s.IsForced,
-            BitRate = s.BitRate,
-            Duration = VideoReader.Seconds(Time(s.DurationPts, s.TimeBase)),
-            Width = s.Width,
-            Height = s.Height,
-            SampleRate = s.SampleRate,
-            Channels = s.Channels,
-            ChannelLayout = s.ChannelLayout,
-            SampleFormat = s.SampleFormat,
-        }).ToList();
+        return info.Streams;
     }
 
     /// <summary>
