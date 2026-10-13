@@ -17,7 +17,7 @@ namespace ShotDetector.FastYuv;
 /// FFmpeg's yadif (mode 0, send_frame) for single rows: bit-exact with the filter, so ShotDetector's in-process
 /// deinterlacing computes only the rows its resize reads. Pass an instance as <see cref="DetectionOptions.Yadif"/>.
 /// </summary>
-public sealed unsafe class Yadif : IYadif
+public sealed unsafe class Yadif : FrameReader.IRowDeinterlacer
 {
     /// <inheritdoc/>
     public void FilterRow(nint dst, nint prev, nint cur, nint next, int srcStride, int dstStride, int width, int height, int y, int bytesPerSample)

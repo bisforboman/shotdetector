@@ -19,7 +19,7 @@ public static class Timeline
     public static string Edl(DetectionResult result, string? title = null, string reel = "AX", string? startTimecode = null)
     {
         var shots = result.Shots;
-        int offset = startTimecode is { } tc && tc.Trim().Length > 0 && shots.Count > 0 ? ParseSmpte(tc, result.Video.Fps) : 0;
+        int offset = startTimecode is { } tc && tc.Trim().Length > 0 && shots.Count > 0 ? ParseSmpte(tc, result.Video.Reader.Fps) : 0;
         var sb = new StringBuilder($"* CREATED WITH SHOTDETECTOR {Version}\n");
         sb.Append($"TITLE: {Template(title ?? "$VIDEO_NAME", result)}\nFCM: NON-DROP FRAME\n\n");
         for (int i = 0; i < shots.Count; i++)
@@ -36,7 +36,7 @@ public static class Timeline
     /// <param name="name">Name of the asset, event and project; default the video's name.</param>
     public static string Fcpx(DetectionResult result, string? name = null)
     {
-        var (shots, video) = (result.Shots, result.Video);
+        var (shots, video) = (result.Shots, result.Video.Reader);
         if (shots.Count == 0)
             throw new InvalidOperationException("No shots to export.");
         name = Template(name ?? "$VIDEO_NAME", result);
@@ -74,7 +74,7 @@ public static class Timeline
     /// <param name="name">Name of the project and sequence; default the video's name.</param>
     public static string Fcp7(DetectionResult result, string? name = null)
     {
-        var (shots, video) = (result.Shots, result.Video);
+        var (shots, video) = (result.Shots, result.Video.Reader);
         if (shots.Count == 0)
             throw new InvalidOperationException("No shots to export.");
         name = Template(name ?? "$VIDEO_NAME", result);
@@ -148,7 +148,7 @@ public static class Timeline
     public static string Otio(DetectionResult result, string? name = null, bool audio = true)
     {
         string path = Path.GetFullPath(PathOf(result)), file = Path.GetFileName(path);
-        double fps = result.Video.Fps.Value;
+        double fps = result.Video.Reader.Fps.Value;
         string rate = Stats.PyFloat(fps);
         string Time(double value, int indent)
         {

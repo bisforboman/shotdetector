@@ -33,7 +33,7 @@ File.WriteAllText(Path.ChangeExtension(video, ".shots.csv"), Shots.Csv(result.Sh
 // 3. Reference tone (1 kHz line-up tone), searched in the first three minutes only.
 if (info.HasAudio == true)
 {
-    var tone = ShotDetection.FindReferenceTone(video, new DetectionOptions { ReferenceToneSearchDuration = TimeSpan.FromMinutes(3) });
+    var tone = ShotDetection.FindReferenceTone(video, new DetectionOptions { ReferenceTone = new() { SearchDuration = TimeSpan.FromMinutes(3) } });
     Console.WriteLine(tone.Count == 0 ? "No reference tone" : $"Reference tone at {tone[0].Start} - {tone[0].End}, {tone[0].Level:0.0} dBFS");
 
     // 4. FrameReader directly: the audio's waveform as BBC audiowaveform's .dat, 50 points a second.

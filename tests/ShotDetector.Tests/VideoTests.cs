@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using ShotDetector;
 using ShotDetector.FastYuv;
+using FieldOrder = FrameReader.FieldOrder;
+using StreamType = FrameReader.StreamType;
 
 /// <summary>Synthetic clips made with ffmpeg (which must be on PATH, as for the library itself).</summary>
 public sealed class Clips : IDisposable
@@ -101,7 +103,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     public void RotatedVideoIsReadUpright()
     {
         var result = ShotDetection.Detect(clips.Rotated, new DetectionOptions { Detector = DetectorKind.Content });
-        Assert.Equal((240, 320), (result.Video.SourceWidth, result.Video.SourceHeight));
+        Assert.Equal((240, 320), (result.Video.Width, result.Video.Height));
         Assert.Equal([0L, 50L, 100L], result.Shots.Select(s => s.Start.FrameNum));
     }
 
@@ -110,7 +112,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     {
         var core = ShotDetection.Detect(clips.ThreeShots);
         var fast = ShotDetection.Detect(clips.ThreeShots, new DetectionOptions { Yuv420Converter = new SwscaleYuv420() });
-        Assert.Equal(FramePipeline.Yuv420Sampled, fast.Video.Pipeline);
+        Assert.Equal(FramePipeline.Yuv420Sampled, fast.Video.Reader.Pipeline);
         Assert.Equal(Shots.Csv(core.Shots), Shots.Csv(fast.Shots));
     }
 
@@ -131,7 +133,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
 
         // The first report comes before any frame, and every report says how this run decodes.
         Assert.Equal(0, recorder.Reports[0].FramesProcessed);
-        Assert.All(recorder.Reports, r => Assert.Equal((result.Video.DecodesInProcess, result.Video.Pipeline), (r.DecodesInProcess, r.Pipeline)));
+        Assert.All(recorder.Reports, r => Assert.Equal(result.Video.DecodedInProcess, r.DecodesInProcess));
         Assert.Equal(1.0, recorder.Reports[^1].Fraction);
         Assert.True(recorder.Reports.Zip(recorder.Reports.Skip(1)).All(p => p.First.FramesProcessed <= p.Second.FramesProcessed));
         Assert.Equal(150, result.FrameCount);
@@ -178,7 +180,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(150, span.GetTagItem("shotdetector.frames"));
         Assert.Equal(3, span.GetTagItem("shotdetector.shots"));
         Assert.Equal(320, span.GetTagItem("shotdetector.video.width"));
-        Assert.Equal(result.Video.DecodesInProcess ? "inprocess" : "process", span.GetTagItem("shotdetector.decoder"));
+        Assert.Equal(result.Video.DecodedInProcess ? "inprocess" : "process", span.GetTagItem("shotdetector.decoder"));
     }
 
     [Fact]
@@ -279,7 +281,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
                 VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-bsf:v", "dump_extra", "-f", "mpegts", path], default);
             using var file = File.OpenRead(path);
             var piped = ShotDetection.Detect(file, new() { CollectStats = true });
-            Assert.True(piped.Video.Streaming);
+            Assert.True(piped.Video.Streamed);
             Assert.Null(piped.VideoPath);
             Assert.Equal(expected.Shots.Select(s => (s.Start.Timecode(), s.End.Timecode())), piped.Shots.Select(s => (s.Start.Timecode(), s.End.Timecode())));
             Assert.Equal(expected.FrameCount, piped.FrameCount);
@@ -331,7 +333,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         var expected = ShotDetection.Detect(clips.ThreeShots, new() { CollectStats = true });
         using var file = File.OpenRead(clips.ThreeShots);
         var piped = ShotDetection.Detect(file, new() { CollectStats = true, ProbeBytes = probeBytes });
-        Assert.False(piped.Video.Streaming);
+        Assert.False(piped.Video.Streamed);
         Assert.Null(piped.VideoPath); // exports need a path of the caller's
         Assert.Equal(expected.Stats!.Csv(expected.Video.Position), piped.Stats!.Csv(piped.Video.Position));
         Assert.Equal(Shots.Csv(expected.Shots), Shots.Csv(piped.Shots));
@@ -413,17 +415,17 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         {
             var expected = ShotDetection.Detect(clips.ThreeShots, new() { CollectStats = true });
             var r = ShotDetection.Detect($"http://localhost:{port}/{name}", new() { CollectStats = true });
-            Assert.True(r.Video.Streaming);
+            Assert.True(r.Video.Streamed);
             Assert.Equal([0L, 50L, 100L], r.Shots.Select(s => s.Start.FrameNum));
             Assert.Equal(expected.Stats!.Csv(expected.Video.Position), r.Stats!.Csv(r.Video.Position));
 
             // Streams over the URL: ffprobe's, as for the file (HLS and DASH: their segments' streams).
-            var streams = r.Video.Info.Streams!;
+            var streams = r.Video.Reader.Info.Streams!;
             if (name.EndsWith(".mp4"))
                 Assert.Equal(ShotDetection.Probe(Path.Combine(dir, name), new() { Decoder = VideoDecoder.FfmpegProcess }).Streams, streams);
             else
                 Assert.Equal(StreamType.Video, Assert.Single(streams).Type);
-            Assert.False(r.Video.Info.HasAudio);
+            Assert.False(r.Video.Reader.Info.HasAudio);
         }
         finally
         {
@@ -477,7 +479,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     {
         // 25 fps video read as 50 fps: the cut at 2 s is frame 100, not 50.
         var r = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content, FrameRate = 50 });
-        Assert.Equal(new Fps(50, 1), r.Video.Fps);
+        Assert.Equal(new Fps(50, 1), r.Video.FrameRate);
         Assert.Equal([(0L, "00:00:00.000"), (100L, "00:00:02.000"), (200L, "00:00:04.000")],
             r.Shots.Select(s => (s.Start.FrameNum, s.Start.Timecode())));
     }
@@ -623,9 +625,9 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     [Fact]
     public void DownscaleSetsTheProcessingSize()
     {
-        Assert.Equal((320, 240), (ShotDetection.Detect(clips.ThreeShots, new() { Downscale = 1 }).Video.Width, 240));
+        Assert.Equal((320, 240), (ShotDetection.Detect(clips.ThreeShots, new() { Downscale = 1 }).Video.ProcessedWidth, 240));
         var r = ShotDetection.Detect(clips.ThreeShots, new() { Downscale = 3 });
-        Assert.Equal((107, 80), (r.Video.Width, r.Video.Height));
+        Assert.Equal((107, 80), (r.Video.ProcessedWidth, r.Video.ProcessedHeight));
     }
 
     [Fact]
@@ -737,7 +739,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
                 string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
                 var decoder = libs is null ? VideoDecoder.Auto : VideoDecoder.InProcess;
                 var bt601 = ShotDetection.Detect(tagged, options with { AlwaysBt601 = true, Decoder = decoder, FfmpegDirectory = libs });
-                Assert.False(bt601.Video.DecodesInProcess);
+                Assert.False(bt601.Video.DecodedInProcess);
                 Assert.Equal(untagged, bt601.Stats!.Csv(bt601.Video.Position));
             }
         }

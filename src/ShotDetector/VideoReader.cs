@@ -3,11 +3,14 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO.Pipes;
 using System.Numerics;
+using FieldOrder = FrameReader.FieldOrder;
+using StreamInfo = FrameReader.StreamInfo;
+using StreamType = FrameReader.StreamType;
 
 namespace ShotDetector;
 
 /// <summary>How <see cref="VideoReader"/> gets downscaled BGR frames out of ffmpeg.</summary>
-public enum FramePipeline
+internal enum FramePipeline
 {
     /// <summary>ffmpeg downscales (bilinear): fastest, but not what PySceneDetect computes.</summary>
     FfmpegScale,
@@ -109,7 +112,7 @@ public readonly record struct Fps(int Num, int Den)
 /// swscale's bilinear scale instead: faster, but it averages over the whole footprint, so content_val is lower on fine
 /// detail and cuts can differ from PySceneDetect's.
 /// </summary>
-public sealed partial class VideoReader
+internal sealed partial class VideoReader
 {
     /// <summary>Width of the video.</summary>
     public int SourceWidth { get; }
@@ -150,7 +153,7 @@ public sealed partial class VideoReader
         Width = SourceWidth,
         Height = SourceHeight,
         FrameRate = Fps,
-        FrameCount = OpenCvFrameCount > 0 ? OpenCvFrameCount : null,
+        OpenCvFrameCount = OpenCvFrameCount > 0 ? OpenCvFrameCount : null,
         Duration = Duration,
         Codec = Codec,
         PixelFormat = _pixelFormat,
@@ -163,6 +166,12 @@ public sealed partial class VideoReader
 
     /// <summary>FFmpeg's name for the container (its demuxer).</summary>
     public string Container { get; }
+
+    /// <summary>The decoded pixel format's FFmpeg name; empty when unknown.</summary>
+    internal string PixelFormat => _pixelFormat;
+
+    /// <summary>The display rotation in degrees, counterclockwise (0 when none).</summary>
+    internal int Rotation => _rotation;
 
     /// <summary>Whether the file has an audio stream (<see cref="Streams"/>); null for a <see cref="Stream"/>.</summary>
     public bool? HasAudio => Streams?.Any(s => s.Type == StreamType.Audio);
@@ -180,7 +189,7 @@ public sealed partial class VideoReader
 
     /// <summary>The ffprobe entries <see cref="Streams"/> reads.</summary>
     internal const string StreamEntries = "stream=index,codec_type,codec_name,codec_tag_string,width,height,sample_rate,channels,channel_layout,"
-        + "sample_fmt,bit_rate,duration:stream_disposition=default,forced:stream_tags=language,title";
+        + "sample_fmt,bit_rate,duration_ts,time_base:stream_disposition=default,forced:stream_tags=language,title";
 
     IReadOnlyList<StreamInfo> FfprobeStreams()
     {
@@ -217,7 +226,10 @@ public sealed partial class VideoReader
                 IsDefault = Flag("default"),
                 IsForced = Flag("forced"),
                 BitRate = Long("bit_rate"),
-                Duration = Seconds(Text(s, "duration")),
+                DurationPts = Long("duration_ts"),
+                TimeBase = Text(s, "time_base") is { } tb && tb.Split('/') is [var tbNum, var tbDen]
+                    && int.TryParse(tbNum, NumberStyles.Integer, CultureInfo.InvariantCulture, out int tbn)
+                    && int.TryParse(tbDen, NumberStyles.Integer, CultureInfo.InvariantCulture, out int tbd) ? new(tbn, tbd) : default,
                 Width = type == "video" ? Int("width") : null,
                 Height = type == "video" ? Int("height") : null,
                 SampleRate = type == "audio" ? Int("sample_rate") : null,
@@ -272,7 +284,7 @@ public sealed partial class VideoReader
     /// <summary>The stream entries read from ffprobe (or the same in-process, <see cref="InProcessProbe"/>); files add :packet=pts.</summary>
     internal const string ProbeEntries = "stream=codec_name,field_order,width,height,pix_fmt,color_space,color_range,chroma_location,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration,format_name";
     readonly IYuv420Converter? _yuv420;
-    readonly IYadif? _yadif;
+    readonly FrameReader.IRowDeinterlacer? _yadif;
     readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
     readonly List<long> _livePts = []; // the same, as frames arrive, when streaming (from the stream's start)
 

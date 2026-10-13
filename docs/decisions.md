@@ -3,6 +3,32 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## 2.0's renames (2026-10-13)
+
+Asked for the last 2.0 renames: **OpenCvFrameCount** (over keeping FrameCount and documenting it), **RangeDuration** for
+DetectionOptions.Duration (over keeping scenedetect's name), and **LibrariesNotFound** as FrameReader's error.
+
+## DetectionProgress's diagnostics in 2.0 (2026-10-13)
+
+Hiding FramePipeline was planned with both of DetectionProgress's diagnostic fields going, but issue #42 had asked for
+the decoder in progress reports (streaming callers see it before any frame). Asked: **keep DecodesInProcess, drop
+Pipeline** (the ActivitySource tag keeps the pipeline for tracing), over dropping both.
+
+## DetectionResult.Video's new shape (2026-10-13)
+
+For the 2.0 result record, asked: the name **DetectedVideo** (over AnalyzedVideo, VideoDetails); streams **dropped
+from the result** (over probing eagerly: detection doesn't need them, and the old property getter probed or ran
+ffprobe on first use); the analysed size as **ProcessedWidth/ProcessedHeight** (the CLI's "processed at"; Width and
+Height now only ever mean the source). Members follow VideoInfo's names (FrameRate, not Fps; Deinterlaced,
+DecodedInProcess, Streamed as past facts); FramePipeline isn't on it (the next 2.0 item hides it).
+
+## #194 on v2: streams without the libraries (2026-10-13)
+
+FrameReader.StreamInfo's constructor was internal, and ShotDetector lists streams from ffprobe when it runs the
+executable (no libraries, or URLs). Asked: **a public StreamInfo constructor** (additive; ShotDetector fills it
+from ffprobe, duration_ts and time_base included), so Streams works on every path, over no streams without the
+libraries.
+
 ## 2.0 on a branch (2026-10-13)
 
 Asked what comes after 1.13.0: **2.0 on a long-lived `v2` branch** (backlog section 5 plus #194, each piece a PR

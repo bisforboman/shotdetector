@@ -14,7 +14,8 @@ var result = ShotDetection.Detect("video.mp4", new DetectionOptions { Yuv420Conv
 
 It also has `Yadif`, a port of FFmpeg's yadif deinterlacer, row by row: with in-process decoding and
 deinterlacing on, only the rows the resize reads are deinterlaced (identical results; on 1080i25 MPEG-2 with
-2 CPUs, 7.5 s instead of 11.6 s for 2000 frames).
+2 CPUs, 7.5 s instead of 11.6 s for 2000 frames). It is a FrameReader `IRowDeinterlacer`, so a `FrameDecoder` takes
+it too (`FrameDecoderOptions.RowDeinterlacer`).
 
 ```csharp
 var result = ShotDetection.Detect("broadcast.mxf", new DetectionOptions { Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() });

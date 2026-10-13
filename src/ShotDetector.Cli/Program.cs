@@ -344,7 +344,7 @@ try
                 options = options with { EndTime = Next() };
                 break;
             case "--duration":
-                options = options with { Duration = Next() };
+                options = options with { RangeDuration = Next() };
                 break;
             case "--frame-skip":
                 options = options with { FrameSkip = NextInt() };
@@ -436,10 +436,10 @@ try
                 options = options with { TrimReferenceTone = true };
                 break;
             case "--tone-min-duration":
-                options = options with { ReferenceToneMinDuration = TimeSpan.FromSeconds(NextDouble()) };
+                options = options with { ReferenceTone = options.ReferenceTone with { MinDuration = TimeSpan.FromSeconds(NextDouble()) } };
                 break;
             case "--tone-search":
-                options = options with { ReferenceToneSearchDuration = TimeSpan.FromSeconds(NextDouble()) };
+                options = options with { ReferenceTone = options.ReferenceTone with { SearchDuration = TimeSpan.FromSeconds(NextDouble()) } };
                 break;
             case "--config":
                 i++;
@@ -595,10 +595,10 @@ try
     }
 
     Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
-        $"{(input == "-" ? "stdin" : Path.GetFileName(input))}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, "
-        + $"{result.FrameCount} frames, processed at {video.Width}x{video.Height}, "
+        $"{(input == "-" ? "stdin" : Path.GetFileName(input))}: {video.Width}x{video.Height} @ {video.FrameRate.Value:0.###} fps, "
+        + $"{result.FrameCount} frames, processed at {video.ProcessedWidth}x{video.ProcessedHeight}, "
         + $"detector={string.Join('+', (options.Detectors?.Select(d => d.Kind) ?? [options.Detector]).Select(k => k.ToString().ToLowerInvariant()))}, "
-        + $"min-scene-len={result.MinSceneLengthFrames} frames, decoded {(video.DecodesInProcess ? "in-process" : "by ffmpeg")}"));
+        + $"min-scene-len={result.MinSceneLengthFrames} frames, decoded {(video.DecodedInProcess ? "in-process" : "by ffmpeg")}"));
 
     if (result.ReferenceTone is { } tone)
     {
@@ -662,7 +662,7 @@ catch (InvalidOperationException e)
     return 1;
 }
 
-static IEnumerable<string> ToneLines(IReadOnlyList<ReferenceToneSegment> tone) => tone.Count == 0
+static IEnumerable<string> ToneLines(IReadOnlyList<FrameReader.ToneSegment> tone) => tone.Count == 0
     ? ["No reference tone"]
     : tone.Select(t => string.Create(CultureInfo.InvariantCulture,
         $"Reference tone: {t.Start:hh\\:mm\\:ss\\.fff} - {t.End:hh\\:mm\\:ss\\.fff} ({(t.End - t.Start).TotalSeconds:0.00} s) at {t.Level:0.0} dBFS"));
@@ -673,7 +673,7 @@ static IEnumerable<string> ProbeLines(VideoInfo v)
     yield return $"Container  {v.Container}";
     if (v.Duration is { } d)
         yield return string.Create(c, $"Duration   {d:hh\\:mm\\:ss\\.fff}");
-    string frames = v.FrameCount is { } n ? $", {n} frames" : "", rotated = v.Rotation != 0 ? $", rotated {v.Rotation}" : "";
+    string frames = v.OpenCvFrameCount is { } n ? $", {n} frames" : "", rotated = v.Rotation != 0 ? $", rotated {v.Rotation}" : "";
     yield return string.Create(c, $"Video      {v.Codec} {v.Width}x{v.Height}, {v.FrameRate.Value:0.###} fps ({v.FrameRate.Num}/{v.FrameRate.Den}), {v.PixelFormat}, {v.FieldOrder.ToString().ToLowerInvariant()}{frames}{rotated}");
     if (v.Streams is not { } streams)
         yield break;
@@ -733,7 +733,7 @@ static string ProbeJson(VideoInfo v)
         j.WriteNumber("width", v.Width);
         j.WriteNumber("height", v.Height);
         j.WriteString("frameRate", $"{v.FrameRate.Num}/{v.FrameRate.Den}");
-        Int(j, "frameCount", v.FrameCount);
+        Int(j, "frameCount", v.OpenCvFrameCount);
         j.WriteString("pixelFormat", v.PixelFormat);
         j.WriteString("fieldOrder", char.ToLowerInvariant(v.FieldOrder.ToString()[0]) + v.FieldOrder.ToString()[1..]); // progressive, topFirst, ...
         j.WriteNumber("rotation", v.Rotation);

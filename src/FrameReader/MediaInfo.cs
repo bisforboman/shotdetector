@@ -129,7 +129,8 @@ public enum StreamType
 /// </summary>
 public sealed record StreamInfo
 {
-    internal StreamInfo()
+    /// <summary>An empty description, to fill from another source (ShotDetector does from ffprobe, without the libraries).</summary>
+    public StreamInfo()
     {
     }
 

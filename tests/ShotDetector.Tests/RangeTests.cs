@@ -40,7 +40,7 @@ public class RangeTests(Clips clips) : IClassFixture<Clips>
     [Fact]
     public void DurationCountsFromTheStart()
     {
-        var r = ShotDetection.Detect(clips.ThreeShots, Content(new() { StartTime = "1s", Duration = "4s" }));
+        var r = ShotDetection.Detect(clips.ThreeShots, Content(new() { StartTime = "1s", RangeDuration = "4s" }));
         Assert.Equal(100, r.FrameCount); // 25 .. 124
         Assert.Equal([(25L, 50L), (50L, 100L), (100L, 125L)], r.Shots.Select(s => (s.Start.FrameNum, s.End.FrameNum)));
     }
@@ -80,7 +80,7 @@ public class RangeTests(Clips clips) : IClassFixture<Clips>
     {
         var r = ShotDetection.Detect(clips.ThreeShots, Content(new() { Crop = (0, 0, 159, 239) }));
         Assert.Equal((0, 0, 160, 240), r.Video.CropRegion);
-        Assert.Equal((160, 240), (r.Video.Width, r.Video.Height)); // smaller than 256: no downscale
+        Assert.Equal((160, 240), (r.Video.ProcessedWidth, r.Video.ProcessedHeight)); // smaller than 256: no downscale
         Assert.Equal([0L, 50L, 100L], r.Shots.Select(s => s.Start.FrameNum));
     }
 
@@ -89,7 +89,7 @@ public class RangeTests(Clips clips) : IClassFixture<Clips>
     {
         // A 300x240 crop: scenedetect's factor comes from 301x241 (255x204), not 300x240 (256x205).
         var r = ShotDetection.Detect(clips.ThreeShots, Content(new() { Crop = (0, 0, 299, 239) }));
-        Assert.Equal((255, 204), (r.Video.Width, r.Video.Height));
+        Assert.Equal((255, 204), (r.Video.ProcessedWidth, r.Video.ProcessedHeight));
     }
 
     [Theory]

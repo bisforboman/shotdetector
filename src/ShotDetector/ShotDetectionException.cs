@@ -19,7 +19,7 @@ public enum ShotDetectionError
     /// <see cref="VideoDecoder.InProcess"/> was asked for, but FFmpeg 8's shared libraries couldn't be loaded (missing,
     /// or another FFmpeg version): a deployment problem. <see cref="VideoDecoder.Auto"/> uses the executable instead.
     /// </summary>
-    FfmpegLibrariesNotFound,
+    LibrariesNotFound,
 }
 
 /// <summary>

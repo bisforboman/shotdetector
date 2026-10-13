@@ -1,5 +1,7 @@
 using ShotDetector;
 using ShotDetector.FastYuv;
+using FieldOrder = FrameReader.FieldOrder;
+using StreamType = FrameReader.StreamType;
 
 /// <summary>Deinterlace gives what detection on a lossless <c>ffmpeg -vf yadif</c> copy gives (issue #16).</summary>
 public class DeinterlaceTests(Clips clips) : IClassFixture<Clips>
@@ -35,7 +37,7 @@ public class DeinterlaceTests(Clips clips) : IClassFixture<Clips>
         var progressive = ShotDetection.Probe(clips.ThreeShots);
         Assert.False(progressive.IsInterlaced);
         Assert.Equal((320, 240, 25.0, 150L, "mpeg4", "yuv420p", 0), (progressive.Width, progressive.Height,
-            progressive.FrameRate.Value, progressive.FrameCount, progressive.Codec, progressive.PixelFormat, progressive.Rotation));
+            progressive.FrameRate.Value, progressive.OpenCvFrameCount, progressive.Codec, progressive.PixelFormat, progressive.Rotation));
         Assert.Equal(6.0, progressive.Duration!.Value.TotalSeconds, 2);
 
         // A 90-degree rotation tag swaps the size, as decoding does.
@@ -51,7 +53,7 @@ public class DeinterlaceTests(Clips clips) : IClassFixture<Clips>
         string Stats(string path, DeinterlaceMode mode)
         {
             var r = ShotDetection.Detect(path, options with { Deinterlace = mode });
-            Assert.Equal(mode == DeinterlaceMode.On || (mode == DeinterlaceMode.Auto && path == clips.Interlaced), r.Video.Deinterlaces);
+            Assert.Equal(mode == DeinterlaceMode.On || (mode == DeinterlaceMode.Auto && path == clips.Interlaced), r.Video.Deinterlaced);
             return r.Stats!.Csv(r.Video.Position);
         }
 

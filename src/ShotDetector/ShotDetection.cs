@@ -1,6 +1,9 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using FieldOrder = FrameReader.FieldOrder;
+using StreamInfo = FrameReader.StreamInfo;
+using StreamType = FrameReader.StreamType;
 
 namespace ShotDetector;
 
@@ -54,29 +57,6 @@ public enum DeinterlaceMode
     Auto,
 }
 
-/// <summary>A video stream's field order, as its container or codec reports it (ffprobe's field_order).</summary>
-[Obsolete("Becomes FrameReader.FieldOrder in ShotDetector 2.0 (both packages define it, so using both is ambiguous, issue #194). FrameReader.MediaProbe.Probe(path) gives FrameReader's field order now.")]
-public enum FieldOrder
-{
-    /// <summary>Not reported.</summary>
-    Unknown,
-
-    /// <summary>Progressive frames.</summary>
-    Progressive,
-
-    /// <summary>Interlaced, top field coded and shown first (ffprobe: tt).</summary>
-    TopFirst,
-
-    /// <summary>Interlaced, bottom field coded and shown first (bb).</summary>
-    BottomFirst,
-
-    /// <summary>Interlaced, top field coded first, bottom shown first (tb).</summary>
-    TopCodedBottomFirst,
-
-    /// <summary>Interlaced, bottom field coded first, top shown first (bt).</summary>
-    BottomCodedTopFirst,
-}
-
 /// <summary>
 /// A video's properties from its headers (<see cref="ShotDetection.Probe(string, DetectionOptions?, CancellationToken)"/>):
 /// fast, without reading the packets.
@@ -97,7 +77,7 @@ public sealed record VideoInfo
     public Fps FrameRate { get; init; }
 
     /// <summary>The frame count scenedetect takes as the video's length; null if the headers don't say.</summary>
-    public long? FrameCount { get; init; }
+    public long? OpenCvFrameCount { get; init; }
 
     /// <summary>The container's duration; null if unknown.</summary>
     public TimeSpan? Duration { get; init; }
@@ -126,86 +106,6 @@ public sealed record VideoInfo
     /// <summary>Whether the stream is flagged interlaced (what <see cref="DeinterlaceMode.Auto"/> goes by).</summary>
     public bool IsInterlaced => FieldOrder is FieldOrder.TopFirst or FieldOrder.BottomFirst
         or FieldOrder.TopCodedBottomFirst or FieldOrder.BottomCodedTopFirst;
-}
-
-/// <summary>What a stream carries.</summary>
-[Obsolete("Becomes FrameReader.StreamType in ShotDetector 2.0 (both packages define it, so using both is ambiguous, issue #194). FrameReader.MediaProbe.Probe(path) gives FrameReader's streams now.")]
-public enum StreamType
-{
-    /// <summary>Not known.</summary>
-    Unknown,
-
-    /// <summary>Video.</summary>
-    Video,
-
-    /// <summary>Audio.</summary>
-    Audio,
-
-    /// <summary>Subtitles.</summary>
-    Subtitle,
-
-    /// <summary>Data (timecode tracks, metadata, ...).</summary>
-    Data,
-
-    /// <summary>An attachment (fonts in mkv, ...).</summary>
-    Attachment,
-}
-
-/// <summary>One stream of a file, as ffprobe's <c>-show_streams</c> describes it (<see cref="VideoInfo.Streams"/>).</summary>
-[Obsolete("Becomes FrameReader.StreamInfo in ShotDetector 2.0 (both packages define it, so using both is ambiguous, issue #194). FrameReader.MediaProbe.Probe(path) gives FrameReader's streams now.")]
-public sealed record StreamInfo
-{
-    internal StreamInfo()
-    {
-    }
-
-    /// <summary>The stream's index in the container.</summary>
-    public int Index { get; init; }
-
-    /// <summary>Video, audio, subtitle, data or attachment.</summary>
-    public StreamType Type { get; init; }
-
-    /// <summary>The codec's FFmpeg name (h264, aac, subrip, ...); "unknown" when FFmpeg doesn't know it.</summary>
-    public string Codec { get; init; } = "";
-
-    /// <summary>The codec tag as text, as ffprobe's codec_tag_string (hvc1 or hev1 for HEVC in mp4; [0][0][0][0] when none).</summary>
-    public string CodecTag { get; init; } = "";
-
-    /// <summary>The language tag (eng, swe, ...); null when there's none.</summary>
-    public string? Language { get; init; }
-
-    /// <summary>The title tag; null when there's none.</summary>
-    public string? Title { get; init; }
-
-    /// <summary>Flagged as the default track of its type.</summary>
-    public bool IsDefault { get; init; }
-
-    /// <summary>Flagged as forced (subtitles shown even when subtitles are off).</summary>
-    public bool IsForced { get; init; }
-
-    /// <summary>The bit rate in bits per second, when the container says; null otherwise.</summary>
-    public long? BitRate { get; init; }
-
-    /// <summary>The stream's duration (to the microsecond, as ffprobe prints it); null if unknown.</summary>
-    public TimeSpan? Duration { get; init; }
-
-    /// <summary>Video: width in pixels (as coded, before rotation); otherwise null.</summary>
-    public int? Width { get; init; }
-
-    /// <summary>Video: height in pixels; otherwise null.</summary>
-    public int? Height { get; init; }
-
-    /// <summary>Audio: samples per second; otherwise null.</summary>
-    public int? SampleRate { get; init; }
-
-    /// <summary>Audio: channels; otherwise null.</summary>
-    public int? Channels { get; init; }
-
-    /// <summary>Audio: FFmpeg's channel layout name (mono, stereo, 5.1(side), ...); null when unspecified or not audio.</summary>
-    public string? ChannelLayout { get; init; }
-
-    /// <summary>Audio: FFmpeg's sample format name (fltp, s16, ...); otherwise null.</summary>
-    public string? SampleFormat { get; init; }
 }
 
 /// <summary>How frames are decoded.</summary>
@@ -352,7 +252,7 @@ public sealed record DetectionOptions
     public string? EndTime { get; init; }
 
     /// <summary>How much to analyse from the start, like `time -d`; same formats. Not with <see cref="EndTime"/>.</summary>
-    public string? Duration { get; init; }
+    public string? RangeDuration { get; init; }
 
     /// <summary>
     /// Analyse every (FrameSkip + 1)th frame, like scenedetect's --frame-skip: faster on very
@@ -410,10 +310,13 @@ public sealed record DetectionOptions
     public IYuv420Converter? Yuv420Converter { get; init; }
 
     /// <summary>
-    /// yadif for single rows (the ShotDetector.FastYuv package's <c>Yadif</c>): in-process deinterlacing then computes
-    /// only the rows the resize reads, instead of FFmpeg's yadif on whole frames. Same results.
+    /// yadif for single rows (the ShotDetector.FastYuv package's <c>Yadif</c>, or any FrameReader
+    /// <see cref="FrameReader.IRowDeinterlacer"/>): in-process deinterlacing then computes only the rows the resize reads,
+    /// instead of FFmpeg's yadif on whole frames. 8-bit results are identical either way. For 9 to 16 bits, FFmpeg 8.1's
+    /// x86 SIMD yadif gives a different result on every run (its C code doesn't); FastYuv's follows the C code, so it is
+    /// deterministic and equal to FFmpeg's yadif with SIMD off (-cpuflags 0).
     /// </summary>
-    public IYadif? Yadif { get; init; }
+    public FrameReader.IRowDeinterlacer? Yadif { get; init; }
 
     /// <summary>Folder containing ffmpeg and ffprobe; null (default) finds them on PATH. With <see cref="VideoDecoder.InProcess"/>, also where FFmpeg's shared libraries are.</summary>
     public string? FfmpegDirectory { get; init; }
@@ -469,26 +372,18 @@ public sealed record DetectionOptions
     /// end: detection starts after a segment that begins in the first 5 s, and stops before one that ends in the last
     /// 5 s; the segments found are in <see cref="DetectionResult.ReferenceTone"/>. Not in scenedetect. Needs a file
     /// path and FFmpeg's libraries (the audio is read in-process), and sets the time range itself: not with
-    /// <see cref="StartTime"/>, <see cref="EndTime"/> or <see cref="Duration"/>.
+    /// <see cref="StartTime"/>, <see cref="EndTime"/> or <see cref="RangeDuration"/>.
     /// </summary>
     public bool TrimReferenceTone { get; init; }
 
-    /// <summary>The shortest run of tone that counts as reference tone (<see cref="ShotDetection.FindReferenceTone"/>).</summary>
-    public TimeSpan ReferenceToneMinDuration { get; init; } = TimeSpan.FromSeconds(5);
-
     /// <summary>
-    /// How much audio from the start <see cref="ShotDetection.FindReferenceTone"/> searches, then stops decoding (e.g.
-    /// 180 s: line-up tone is at the start, and a feature film's whole soundtrack takes a while); null: all of it. With
-    /// <see cref="TrimReferenceTone"/>, tone at the end is then not found.
+    /// What counts as reference tone (<see cref="ShotDetection.FindReferenceTone"/>): frequency, shortest run (5 s),
+    /// longest break, and how much audio from the start is searched (e.g. 180 s: line-up tone is at the start, and a
+    /// feature film's whole soundtrack takes a while; with <see cref="TrimReferenceTone"/>, tone at the end is then not
+    /// found).
     /// </summary>
-    public TimeSpan? ReferenceToneSearchDuration { get; init; }
+    public FrameReader.ReferenceToneOptions ReferenceTone { get; init; } = new();
 }
-
-/// <summary>A run of reference tone (<see cref="ShotDetection.FindReferenceTone"/>).</summary>
-/// <param name="Start">Its start, to 20 ms.</param>
-/// <param name="End">Its end, to 20 ms.</param>
-/// <param name="Level">Its level in dBFS, a full-scale sine being 0 (EBU line-up is -18, SMPTE -20).</param>
-public readonly record struct ReferenceToneSegment(TimeSpan Start, TimeSpan End, double Level);
 
 /// <summary>How far <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/> has got.</summary>
 public readonly record struct DetectionProgress
@@ -501,9 +396,6 @@ public readonly record struct DetectionProgress
 
     /// <summary>Whether frames are decoded in-process (FFmpeg's libraries) rather than by the ffmpeg executable.</summary>
     public bool DecodesInProcess { get; init; }
-
-    /// <summary>How frames get to the detectors (<see cref="VideoReader.Pipeline"/>).</summary>
-    public FramePipeline Pipeline { get; init; }
 
     /// <summary>0..1, or null when the frame count is unknown.</summary>
     public double? Fraction => ExpectedFrames > 0 ? Math.Min(1.0, FramesProcessed / (double)ExpectedFrames) : null;
@@ -520,7 +412,7 @@ public sealed record DetectionResult
     public string? VideoPath { get; init; }
 
     /// <summary>Its properties (size, frame rate, ...).</summary>
-    public VideoReader Video { get; init; } = null!;
+    public DetectedVideo Video { get; init; } = null!;
 
     /// <summary>The shots, in order, covering the whole video.</summary>
     public IReadOnlyList<Shot> Shots { get; init; } = [];
@@ -538,7 +430,7 @@ public sealed record DetectionResult
     public IReadOnlyList<FrameTime> Cuts { get; init; } = [];
 
     /// <summary>The reference tone found with <see cref="DetectionOptions.TrimReferenceTone"/>, else null.</summary>
-    public IReadOnlyList<ReferenceToneSegment>? ReferenceTone { get; init; }
+    public IReadOnlyList<FrameReader.ToneSegment>? ReferenceTone { get; init; }
 }
 
 /// <summary>Runs shot detection on a video file.</summary>
@@ -585,25 +477,24 @@ public static class ShotDetection
     /// <summary>
     /// Finds reference tone (line-up or alignment tone: a steady 1 kHz sine, often with colour bars, before or after
     /// the programme) in a file's audio, a video's or an audio-only file's. A run counts when it is mostly 1 kHz
-    /// (about ±15 Hz) at a steady level for at least <see cref="DetectionOptions.ReferenceToneMinDuration"/>; breaks up
+    /// (about ±15 Hz) at a steady level for at least the options' <see cref="FrameReader.ReferenceToneOptions.MinDuration"/>; breaks up
     /// to 1 s (line-up conventions that cut one channel now and then) don't split it. Music, beeps and held notes don't
     /// count. Not in scenedetect: nothing here changes detection unless <see cref="DetectionOptions.TrimReferenceTone"/>
     /// is set. Reads the audio in-process with FFmpeg's libraries.
     /// </summary>
     /// <param name="path">A video or audio file.</param>
-    /// <param name="options">Uses <see cref="DetectionOptions.ReferenceToneMinDuration"/>, <see cref="DetectionOptions.ReferenceToneSearchDuration"/> and <see cref="DetectionOptions.FfmpegDirectory"/>.</param>
+    /// <param name="options">Uses <see cref="DetectionOptions.ReferenceTone"/> and <see cref="DetectionOptions.FfmpegDirectory"/>.</param>
     /// <param name="cancellationToken">Stops reading.</param>
     /// <returns>The segments, in order; empty when there's none.</returns>
     /// <exception cref="ShotDetectionException">FFmpeg's libraries didn't load, or the file can't be read or has no audio.</exception>
-    public static IReadOnlyList<ReferenceToneSegment> FindReferenceTone(string path, DetectionOptions? options = null, CancellationToken cancellationToken = default)
+    public static IReadOnlyList<FrameReader.ToneSegment> FindReferenceTone(string path, DetectionOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new DetectionOptions();
         try
         {
             InProcess.Load(o.FfmpegDirectory);
             using var audio = new FrameReader.AudioReader(path);
-            return [.. FrameReader.ReferenceTone.Find(audio, new FrameReader.ReferenceToneOptions { MinDuration = o.ReferenceToneMinDuration, SearchDuration = o.ReferenceToneSearchDuration }, cancellationToken)
-                .Select(s => new ReferenceToneSegment(s.Start, s.End, s.Level))];
+            return FrameReader.ReferenceTone.Find(audio, o.ReferenceTone, cancellationToken);
         }
         catch (FrameReader.FrameReaderException e)
         {
@@ -686,7 +577,7 @@ public static class ShotDetection
         var duration = FrameTime.Frame(video.OpenCvFrameCount, fps);
         FrameTime Min(FrameTime x) => duration.FrameNum < x.FrameNum ? duration : x;
         var end = o.EndTime is { } e ? Min(Time(e.Trim()))
-            : o.Duration is { } d ? Min(start.Plus(Time(d.Trim())))
+            : o.RangeDuration is { } d ? Min(start.Plus(Time(d.Trim())))
             : duration;
         cuts = [.. cuts.Where(c => c.FrameNum < end.FrameNum)];
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, fps);
@@ -694,7 +585,7 @@ public static class ShotDetection
         return new()
         {
             VideoPath = videoPath,
-            Video = video,
+            Video = new DetectedVideo(video),
             Shots = shots,
             FrameCount = (int)video.OpenCvFrameCount,
             MinSceneLengthFrames = minSceneLen,
@@ -824,7 +715,7 @@ public static class ShotDetection
             var result = RunTraced(videoPath, videoStream, options, onShot, cancellationToken);
             if (activity is not null)
             {
-                var v = result.Video;
+                var v = result.Video.Reader;
                 activity.SetTag("shotdetector.video.width", v.SourceWidth);
                 activity.SetTag("shotdetector.video.height", v.SourceHeight);
                 activity.SetTag("shotdetector.video.fps", v.Fps.Value);
@@ -853,13 +744,13 @@ public static class ShotDetection
         var o = options ?? new DetectionOptions();
         if (o.TrimReferenceTone && videoPath is null)
             throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately).");
-        if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.Duration is not null))
-            throw new ArgumentException("TrimReferenceTone sets the time range itself; leave StartTime, EndTime and Duration unset.");
+        if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null))
+            throw new ArgumentException("TrimReferenceTone sets the time range itself; leave StartTime, EndTime and RangeDuration unset.");
         if (o.FrameSkip < 0)
             throw new ArgumentException("FrameSkip must be at least 0.");
         if (o.FrameSkip > 0 && o.CollectStats)
             throw new ArgumentException("FrameSkip must be 0 when collecting stats (as in scenedetect).");
-        if (o.EndTime is not null && o.Duration is not null)
+        if (o.EndTime is not null && o.RangeDuration is not null)
             throw new ArgumentException("EndTime and Duration cannot both be set.");
         if (o.Downscale is < 1)
             throw new ArgumentException("Downscale must be at least 1.");
@@ -871,7 +762,7 @@ public static class ShotDetection
         var video = spilled is not null ? new VideoReader(spilled.Path, o, cancellationToken)
             : videoStream is not null ? new VideoReader(videoStream, prefix!, o, cancellationToken)
             : new VideoReader(videoPath!, o, cancellationToken);
-        IReadOnlyList<ReferenceToneSegment>? tone = null;
+        IReadOnlyList<FrameReader.ToneSegment>? tone = null;
         if (o.TrimReferenceTone)
         {
             if (video.Streaming)
@@ -930,7 +821,7 @@ public static class ShotDetection
         int startFrame = o.StartTime is null ? 0 : video.SeekFrame(TimecodeSeconds(o.StartTime, video.Fps, oneBasedFrames: true));
         static long Frames(string value, Fps fps) => (long)Math.Round(TimecodeSeconds(value, fps) * fps.Value);
         long? endFrame = o.EndTime is not null ? Frames(o.EndTime, video.Fps)
-            : o.Duration is not null ? Frames(o.Duration, video.Fps) + startFrame
+            : o.RangeDuration is not null ? Frames(o.RangeDuration, video.Fps) + startFrame
             : null;
         start = video.Position(startFrame);
         var first = start;
@@ -938,7 +829,7 @@ public static class ShotDetection
         bool readToEnd = true;
         long lastReport = 0;
         DetectionProgress Progress(int done, int expected) =>
-            new() { FramesProcessed = done, ExpectedFrames = expected, DecodesInProcess = video.DecodesInProcess, Pipeline = video.Pipeline };
+            new() { FramesProcessed = done, ExpectedFrames = expected, DecodesInProcess = video.DecodesInProcess };
 
         // A first report before any frame: which decoder and pipeline this run uses.
         o.Progress?.Report(Progress(0, Math.Max(0, video.ExpectedFrames - startFrame)));
@@ -1004,7 +895,7 @@ public static class ShotDetection
         return new()
         {
             VideoPath = videoPath,
-            Video = video,
+            Video = new DetectedVideo(video),
             Shots = shots,
             FrameCount = frameCount,
             MinSceneLengthFrames = minSceneLen,
@@ -1018,7 +909,7 @@ public static class ShotDetection
     /// The time range without a leading tone segment (starting in the first 5 s, nearer the start than the end) and a
     /// trailing one (ending in the last 5 s).
     /// </summary>
-    internal static DetectionOptions TrimmedToTone(DetectionOptions o, IReadOnlyList<ReferenceToneSegment> tone, TimeSpan? duration)
+    internal static DetectionOptions TrimmedToTone(DetectionOptions o, IReadOnlyList<FrameReader.ToneSegment> tone, TimeSpan? duration)
     {
         var ends = TimeSpan.FromSeconds(5);
         static string Seconds(TimeSpan t) => t.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture) + "s";

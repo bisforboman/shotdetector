@@ -23,7 +23,7 @@ internal static class InProcess
         }
         catch (FrameReaderException e) when (e.Reason == FrameReaderError.LibrariesNotFound)
         {
-            throw new ShotDetectionException(ShotDetectionError.FfmpegLibrariesNotFound,
+            throw new ShotDetectionException(ShotDetectionError.LibrariesNotFound,
                 "In-process decoding needs FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, "
                 + "libavutil 60): add the ShotDetector.Native.<rid> package for your platform, or install them (Alpine: "
                 + "`apk add ffmpeg-libs`; Windows: a \"shared\" FFmpeg 8 build, with FfmpegDirectory set to its bin folder). "
@@ -50,18 +50,10 @@ internal static class InProcess
         return new ShotDetectionException(e.Reason switch
         {
             FrameReaderError.InvalidInput => ShotDetectionError.InvalidInput,
-            FrameReaderError.LibrariesNotFound => ShotDetectionError.FfmpegLibrariesNotFound,
+            FrameReaderError.LibrariesNotFound => ShotDetectionError.LibrariesNotFound,
             _ => ShotDetectionError.DecodeFailed,
         },
             e.Message,
             e);
     }
-}
-
-/// <summary>ShotDetector's <see cref="IYadif"/> as FrameReader's row deinterlacer.</summary>
-internal sealed class RowDeinterlacer(IYadif yadif) : IRowDeinterlacer
-{
-    /// <inheritdoc/>
-    public void FilterRow(nint dst, nint prev, nint cur, nint next, int srcStride, int dstStride, int width, int height, int y, int bytesPerSample) =>
-        yadif.FilterRow(dst, prev, cur, next, srcStride, dstStride, width, height, y, bytesPerSample);
 }

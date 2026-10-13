@@ -1,5 +1,7 @@
 using ShotDetector;
 using ShotDetector.FastYuv;
+using FieldOrder = FrameReader.FieldOrder;
+using StreamType = FrameReader.StreamType;
 
 /// <summary>
 /// In-process decoding gives the same per-frame stats, labels and shots as the ffmpeg executable. Needs FFmpeg 8.1's
@@ -36,8 +38,8 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         };
         var pipe = ShotDetection.Detect(path, options);
         var inProcess = ShotDetection.Detect(path, options with { Decoder = VideoDecoder.InProcess });
-        Assert.True(inProcess.Video.DecodesInProcess);
-        Assert.False(pipe.Video.DecodesInProcess);
+        Assert.True(inProcess.Video.DecodedInProcess);
+        Assert.False(pipe.Video.DecodedInProcess);
         Assert.Equal(pipe.Stats?.Csv(pipe.Video.Position), inProcess.Stats?.Csv(inProcess.Video.Position));
         Assert.Equal(Shots.Csv(pipe.Shots), Shots.Csv(inProcess.Shots));
     }
@@ -68,7 +70,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess };
             var pipe = ShotDetection.Detect(copy, options);
             var inProcess = ShotDetection.Detect(copy, options with { Decoder = VideoDecoder.InProcess });
-            Assert.True(inProcess.Video.DecodesInProcess);
+            Assert.True(inProcess.Video.DecodedInProcess);
             Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
 
             // The colour tags, pixel format and the rest, read in-process as ffprobe reads them.
@@ -250,7 +252,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             var ffmpegs = deep ? ShotDetection.Detect(reference, options with { Deinterlace = DeinterlaceMode.Off }) : ShotDetection.Detect(clip, options);
             var ours = ShotDetection.Detect(clip, options with { Yadif = new Yadif() });
             File.Delete(reference);
-            Assert.True(ours.Video.DecodesInProcess);
+            Assert.True(ours.Video.DecodedInProcess);
             Assert.Equal(ffmpegs.Stats!.Csv(ffmpegs.Video.Position), ours.Stats!.Csv(ours.Video.Position));
         }
         finally
@@ -304,9 +306,9 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             };
             var pipe = ShotDetection.Detect(path, options);
             var inProcess = ShotDetection.Detect(path, options with { Decoder = VideoDecoder.InProcess });
-            Assert.True(inProcess.Video.DecodesInProcess);
+            Assert.True(inProcess.Video.DecodedInProcess);
             Assert.Equal(pipe.FrameCount, inProcess.FrameCount);
-            Assert.Equal((pipe.Video.Fps, pipe.Video.Codec), (inProcess.Video.Fps, inProcess.Video.Codec));
+            Assert.Equal((pipe.Video.FrameRate, pipe.Video.Codec), (inProcess.Video.FrameRate, inProcess.Video.Codec));
             Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
             Assert.Equal(Shots.Csv(pipe.Shots), Shots.Csv(inProcess.Shots));
         }
@@ -355,11 +357,11 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
 
             var pipe = Piped(options);
             var inProcess = Piped(options with { Decoder = VideoDecoder.InProcess });
-            Assert.False(pipe.Video.DecodesInProcess);
-            Assert.True(inProcess.Video.DecodesInProcess);
-            Assert.True(inProcess.Video.Streaming);
+            Assert.False(pipe.Video.DecodedInProcess);
+            Assert.True(inProcess.Video.DecodedInProcess);
+            Assert.True(inProcess.Video.Streamed);
             Assert.Equal(pipe.FrameCount, inProcess.FrameCount);
-            Assert.Equal((pipe.Video.Width, pipe.Video.Height, pipe.Video.Fps), (inProcess.Video.Width, inProcess.Video.Height, inProcess.Video.Fps));
+            Assert.Equal((pipe.Video.ProcessedWidth, pipe.Video.ProcessedHeight, pipe.Video.FrameRate), (inProcess.Video.ProcessedWidth, inProcess.Video.ProcessedHeight, inProcess.Video.FrameRate));
             Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
             Assert.Equal(Shots.Csv(pipe.Shots), Shots.Csv(inProcess.Shots));
         }
@@ -392,7 +394,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess };
             var pipe = ShotDetection.Detect(joined, options);
             var inProcess = ShotDetection.Detect(joined, options with { Decoder = VideoDecoder.InProcess });
-            Assert.True(inProcess.Video.DecodesInProcess);
+            Assert.True(inProcess.Video.DecodedInProcess);
             Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
             Assert.Equal(Shots.Csv(pipe.Shots), Shots.Csv(inProcess.Shots));
 
@@ -465,8 +467,8 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             };
             var pipe = ShotDetection.Detect(rotated, options);
             var inProcess = ShotDetection.Detect(rotated, options with { Decoder = VideoDecoder.InProcess });
-            Assert.True(inProcess.Video.DecodesInProcess);
-            Assert.Equal((pipe.Video.Width, pipe.Video.Height), (inProcess.Video.Width, inProcess.Video.Height));
+            Assert.True(inProcess.Video.DecodedInProcess);
+            Assert.Equal((pipe.Video.ProcessedWidth, pipe.Video.ProcessedHeight), (inProcess.Video.ProcessedWidth, inProcess.Video.ProcessedHeight));
             Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
         }
         finally

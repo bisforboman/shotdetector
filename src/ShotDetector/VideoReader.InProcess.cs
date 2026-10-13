@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 namespace ShotDetector;
 
-public sealed partial class VideoReader
+internal sealed partial class VideoReader
 {
     /// <summary>
     /// Whether frames are decoded in this process (<see cref="VideoDecoder.InProcess"/>, or <see cref="VideoDecoder.Auto"/>
@@ -63,7 +63,7 @@ public sealed partial class VideoReader
                 {
                     Threads = _decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount),
                     Deinterlace = _deinterlace,
-                    RowDeinterlacer = _yadif is null ? null : new RowDeinterlacer(_yadif),
+                    RowDeinterlacer = _yadif,
                     InputOptions = InProcessProbe.Options(_inputOptions),
 
                     // Rotated as OpenCV rotates (FrameWriter): by the display matrix's angle alone, after converting.
