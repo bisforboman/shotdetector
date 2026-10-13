@@ -3,6 +3,14 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## Dependabot's PRs (2026-10-13)
+
+Seven Dependabot PRs were waiting. The user: shouldn't those be merged first? The five green ones were merged, the
+test SDK one rerun (Chocolatey's ffmpeg install failed), FFmpeg.AutoGen 9 closed with Dependabot told to skip 9.x
+(our libraries are FFmpeg 8.1 until opencv-python moves). Asked how to handle them from now on: **auto-merge patch
+and minor updates when green** (dependabot-auto-merge.yml), majors after a look, over handling them first each
+sitting or leaving them.
+
 ## Issues #236-#239 (2026-10-13)
 
 Four suggestions from #81's team. Asked which to take on: **all four, in this order: #236 (MissingFilters for a

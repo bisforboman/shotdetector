@@ -63,6 +63,9 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 - Code style: StyleBro (analyzers on build; rules chosen in `.editorconfig`, docs/decisions.md). Before pushing,
   `stylebro-migrate format ShotDetector.slnx` (`dotnet tool install StyleBro.Migrate --version 0.5.0-alpha.1
   --tool-path <dir>`); CI checks it with `--verify-no-changes`. Feedback on StyleBro goes to its GitHub issues.
+- Dependabot: its patch and minor PRs auto-merge once green (`dependabot-auto-merge.yml`); majors wait for a look.
+  FFmpeg.AutoGen stays on 8.x until the native build moves to FFmpeg 9 (with opencv-python's wheels): Dependabot is
+  told to ignore 9.
 - Commit messages: what and why, like the history. Small commits.
 
 ## Layout
