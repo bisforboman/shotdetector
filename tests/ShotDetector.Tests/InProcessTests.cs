@@ -396,9 +396,17 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
             Assert.Equal(Shots.Csv(pipe.Shots), Shots.Csv(inProcess.Shots));
 
-            // FastYuv: the second half's frames (another size) take the exact conversion, as OpenCV scales them in it.
+            // FastYuv: the second half's frames (another size) take the exact conversion, as OpenCV scales them in it;
+            // in-process, and through the executable (which reads again on a BGR pipeline), from the start and from
+            // inside the second half.
             var fast = ShotDetection.Detect(joined, options with { Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() });
             Assert.Equal(pipe.Stats.Csv(pipe.Video.Position), fast.Stats!.Csv(fast.Video.Position));
+            var fastPipe = ShotDetection.Detect(joined, options with { Yuv420Converter = new SwscaleYuv420() });
+            Assert.Equal(pipe.Stats.Csv(pipe.Video.Position), fastPipe.Stats!.Csv(fastPipe.Video.Position));
+            var late = options with { StartTime = "3s" };
+            var lateCore = ShotDetection.Detect(joined, late);
+            var lateFast = ShotDetection.Detect(joined, late with { Yuv420Converter = new SwscaleYuv420() });
+            Assert.Equal(lateCore.Stats!.Csv(lateCore.Video.Position), lateFast.Stats!.Csv(lateFast.Video.Position));
 
             // Cuts from both halves by their time labels, sorted (scenedetect's res_change.ts result is checked in CI).
             Assert.Equal([50L, 75L, 100L], pipe.Cuts.Select(c => c.FrameNum));

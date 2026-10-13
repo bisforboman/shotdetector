@@ -735,7 +735,7 @@ public sealed partial class VideoReader
     public FramePipeline Pipeline => !_ffmpegResize && (Width, Height) != (CropRegion.Width, CropRegion.Height)
 
         // swscale's unscaled yuv420p converter (what OpenCV gets) needs an even height.
-        ? (_yuv420ForVideo is not null && _pixelFormat is "yuv420p" or "yuvj420p" && SourceHeight % 2 == 0 ? FramePipeline.Yuv420Sampled
+        ? (_yuv420ForVideo is not null && !_sizeChanges && _pixelFormat is "yuv420p" or "yuvj420p" && SourceHeight % 2 == 0 ? FramePipeline.Yuv420Sampled
             : _fullFrames || (!DecodesInProcess && !SampledPays(CropRegion.Width, CropRegion.Height, Width, Height))
                 ? FramePipeline.FullFrameResize : FramePipeline.SampledBgr)
         : FramePipeline.FfmpegScale;
@@ -758,6 +758,11 @@ public sealed partial class VideoReader
     /// "ffmpeg-scale" has ffmpeg downscale (--ffmpeg-resize, or when no resize is needed).
     /// </summary>
     internal IEnumerable<byte[]> Frames(CancellationToken cancellationToken = default) => Frames(0, null, cancellationToken);
+
+    // The executable's yuv420p pipeline met a frame of another size than the stream's: ffmpeg scales such frames in YUV
+    // before the converter sees them, where OpenCV scales them inside its one conversion to BGR. From then on this
+    // video takes the BGR pipelines, which convert them as OpenCV does.
+    bool _sizeChanges;
 
     /// <summary>
     /// Yields frames <paramref name="startFrame"/> .. <paramref name="startFrame"/> + <paramref name="count"/> - 1
@@ -884,7 +889,8 @@ public sealed partial class VideoReader
         psi.ArgumentList.Add(server is null ? "-" : $@"\\.\pipe\{pipeName}");
 
         using var proc = Start(psi);
-        using var livePts = new BlockingCollection<long>();
+        using var livePts = new BlockingCollection<(long Pts, bool NewSize)>();
+        string streamSize = $"{_codedSize.W}x{_codedSize.H}"; // OpenCV's buffer, as scale= in the BGR pipelines
         double liveTimeBase = _timeBase;
         if (!Streaming)
         {
@@ -903,7 +909,7 @@ public sealed partial class VideoReader
                     var frame = ShowInfoLine().Match(line);
                     if (frame.Success)
                     {
-                        livePts.Add(long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture));
+                        livePts.Add((long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture), frame.Groups[2].Value != streamSize));
                         continue;
                     }
 
@@ -996,6 +1002,8 @@ public sealed partial class VideoReader
             }
         });
 
+        int emitted = 0;
+        bool again = false;
         try
         {
             var small = new byte[Width * Height * 3];
@@ -1006,8 +1014,18 @@ public sealed partial class VideoReader
                     free.Add(previous);
 
                 // The frame's timestamp precedes it on stderr; without one the frame can't be placed.
-                if (!livePts.TryTake(out long pts, Timeout.Infinite, cancel.Token))
+                if (!livePts.TryTake(out var info, Timeout.Infinite, cancel.Token))
                     throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg gave no timestamp for frame {_livePts.Count + _livePackets.Count}: {stderr.Result}");
+                long pts = info.Pts;
+
+                // A new size on the yuv420p pipeline: read again on a BGR pipeline (after the finally below). Files
+                // only: a stream can't be read twice.
+                if (yuv && info.NewSize && _stream is null && !Streaming)
+                {
+                    _sizeChanges = again = true;
+                    break;
+                }
+
                 if (Streaming)
                     _livePts.Add(pts); // from the start already: ffmpeg shifts input timestamps to start at 0
                 else
@@ -1015,6 +1033,7 @@ public sealed partial class VideoReader
                 if (resizer is null)
                 {
                     previous = buffer;
+                    emitted++;
                     yield return buffer;
                     continue;
                 }
@@ -1026,13 +1045,17 @@ public sealed partial class VideoReader
                 else
                     resizer.Resize(buffer, small);
                 free.Add(buffer);
+                emitted++;
                 yield return small;
             }
 
-            reader.Wait(); // rethrows read errors
-            proc.WaitForExit();
-            if (proc.ExitCode != 0)
-                throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
+            if (!again)
+            {
+                reader.Wait(); // rethrows read errors
+                proc.WaitForExit();
+                if (proc.ExitCode != 0)
+                    throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
+            }
         }
         finally
         {
@@ -1065,6 +1088,14 @@ public sealed partial class VideoReader
                 {
                 }
             }
+        }
+
+        // From the same start (a seek by time could land in the other encode: joined encodes' times start over),
+        // without the frames already given.
+        if (again)
+        {
+            foreach (var frame in Frames(startFrame, count, cancellationToken).Skip(emitted))
+                yield return frame;
         }
     }
 
@@ -1099,7 +1130,7 @@ public sealed partial class VideoReader
         return dir;
     }
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"\] n:\s*\d+ pts:\s*(-?\d+) ")]
+    [System.Text.RegularExpressions.GeneratedRegex(@"\] n:\s*\d+ pts:\s*(-?\d+) .* s:(\d+x\d+) ")]
     private static partial System.Text.RegularExpressions.Regex ShowInfoLine();
 
     [System.Text.RegularExpressions.GeneratedRegex(@"config in time_base: (\d+)/(\d+)")]
