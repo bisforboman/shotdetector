@@ -142,6 +142,18 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | DASH output (issue #171): stream copy into fMP4 segments and a static MPD through `Remux` | The issue's service packages with Shaka only for this; FFmpeg's dash muxer (LGPL) does it | Done (2026-10-12): `RemuxOptions.MuxerOptions` (ffmpeg's output options) and the dash muxer in ShotDetector.Native; every file byte for byte `ffmpeg -c copy -f dash`'s (RemuxTests) |
 | CENC and Widevine for DASH (issue #171, items 2-3): AES-CTR with a caller's key ID and key (FFmpeg's `encryption_scheme cenc-aes-ctr`), a `pssh` box in the init segments and `ContentProtection` in the MPD, a Widevine PSSH builder | FFmpeg encrypts but writes no pssh or ContentProtection, so this is ours on top, checked against Shaka's output only | Done (2026-10-12): `RemuxOptions.Encryption` (the user chose an option over a PSSH builder only, or docs only); encrypted files byte for byte ffmpeg's, the Widevine pssh box `pssh-box.py`'s (CI), ffmpeg decrypts the result back to the input frame for frame |
 
+## 5. 2.0 (breaking; picked 2026-10-13)
+
+Nothing here changes detection results: types, names and visibility only. With #194 (section 1). A 2.0 moves the
+package validation baseline and empties CompatibilitySuppressions.xml.
+
+| Item | Why | Status |
+|---|---|---|
+| `DetectionResult.Video` as a plain record (source and analysed sizes, rate, crop, compatibility, how it was decoded), `VideoReader` internal; stream data as FrameReader's `MediaInfo` | `VideoReader` is a result view with a decoder's name; `VideoInfo` and `MediaInfo` are parallel probes; `VideoReader.Streams`/`HasAudio` run ffprobe from a property getter | Open (2.0) |
+| One type per concept with FrameReader: `DetectionOptions.Yadif` takes `IRowDeinterlacer` (IYadif goes; FastYuv's `Yadif` implements it, so FastYuv 2.0 too), `ReferenceToneSegment` -> `ToneSegment` (and the reference-tone options as `ReferenceToneOptions`) | Identical shapes copied by adapters; FastYuv's yadif would then work with FrameDecoder directly | Open (2.0) |
+| `FramePipeline` internal; `DetectionProgress` without `Pipeline`/`DecodesInProcess` (the ActivitySource tags keep the diagnostics) | Plumbing of the ffmpeg-pipe design in the public API and in progress reports | Open (2.0) |
+| Renames where one name means different things: analysed `Width`/`Height` vs source/displayed ones; OpenCV's `FrameCount` vs the container's; `FfmpegLibrariesNotFound` -> `LibrariesNotFound`; `DetectionOptions.Duration` (a string) vs `VideoInfo.Duration` (a TimeSpan) | Mistakes waiting to happen when using both packages (API review, 2026-10-13) | Open (2.0) |
+
 ## Done
 
 | Item | Landed |

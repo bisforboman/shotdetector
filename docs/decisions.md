@@ -3,6 +3,15 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## What 2.0 holds (2026-10-13)
+
+Only #194 was planned. An API review (ShotDetector's public API against FrameReader's) found no other name clashes
+but duplicates and leftovers of the split. Asked which go into 2.0: **all four groups**: a plain result record
+for `DetectionResult.Video` (VideoReader internal, FrameReader's MediaInfo for streams); one type per concept
+(IRowDeinterlacer, ToneSegment); FramePipeline internal; renames where one name means different things. And now,
+in 1.x: **the stale docs** (VideoDecoder, VideoReader, package descriptions) and **implicit conversions between Fps
+and Rational**. Backlog section 5.
+
 ## scenedetect on ARM (2026-10-13)
 
 parity-os showed scenedetect on macOS differing on most frames of 5 clips. Investigated (debug runs on Linux x64,

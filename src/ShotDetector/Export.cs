@@ -110,7 +110,7 @@ public static partial class Export
     /// the shot is split into equal segments; the first image is FrameMargin
     /// frames in, the last that far from the end, the others mid-segment. Images are full size,
     /// stretched to square pixels if needed.
-    /// Same frames as scenedetect (see <see cref="VideoReader.FrameAt"/>), but encoded by ffmpeg at
+    /// Same frames as scenedetect (by its frame positions), but encoded by ffmpeg at
     /// -q:v 2 rather than OpenCV at JPEG quality 95, so files are similar, not byte-identical.
     /// </summary>
     public static IReadOnlyList<string> SaveImages(DetectionResult result,
