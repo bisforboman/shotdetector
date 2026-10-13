@@ -112,42 +112,15 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : I
         _ => (w - 1 - x, h - 1 - y),
     };
 
-    /// <summary>Only the pixels the resize reads, at columns × rows of the converted frame (what the remap filter sends).</summary>
-    public void WriteSampledBgr(byte[] dst, int[] columns, int[] rows)
+    /// <summary>
+    /// The converted frame resized by <paramref name="resizer"/> (its source the crop at <paramref name="crop"/>), read
+    /// straight from the converter's rows: only <paramref name="rows"/> (the crop's, offset) are converted.
+    /// </summary>
+    public void WriteResized(byte[] dst, CvResize resizer, int[] rows, (int X, int Y) crop)
     {
-        // Turned, the sampled rows are columns of the decoded frame: the whole frame then.
+        // Turned, the rows read are columns of the decoded frame: the whole frame then.
         var bgr = _turn == 0 ? _bgr.Convert(rows, out int stride) : Converted(out stride);
-        if (!ReferenceEquals(columns, _runsFor))
-            (_runs, _runsFor) = (Runs(columns), columns);
-        int o = 0;
-        foreach (int r in rows)
-        {
-            var row = bgr.Slice(r * stride);
-            foreach (var (start, length) in _runs!)
-            {
-                row.Slice(3 * start, 3 * length).CopyTo(dst.AsSpan(o));
-                o += 3 * length;
-            }
-        }
-    }
-
-    (int Start, int Length)[]? _runs;
-    int[]? _runsFor;
-
-    /// <summary>Ascending columns as runs of consecutive ones, copied a run at a time.</summary>
-    static (int Start, int Length)[] Runs(int[] columns)
-    {
-        var runs = new List<(int, int)>();
-        for (int i = 0; i < columns.Length;)
-        {
-            int j = i + 1;
-            while (j < columns.Length && columns[j] == columns[j - 1] + 1)
-                j++;
-            runs.Add((columns[i], j - i));
-            i = j;
-        }
-
-        return [.. runs];
+        resizer.ResizeRows(bgr, stride, crop.X, crop.Y, dst);
     }
 
     /// <summary>The converted frame's crop region, packed BGR (scale,format=bgr24,crop).</summary>

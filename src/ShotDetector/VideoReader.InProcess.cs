@@ -29,19 +29,19 @@ public sealed partial class VideoReader
         var resizer = pipeline != FramePipeline.FfmpegScale ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
         _livePackets.Clear();
         _liveStart = startFrame;
-        int sampledBgr = resizer is null ? 0 : resizer.SourceCols.Length * resizer.SourceRows.Length * 3;
         int size = pipeline switch
         {
-            // Frames of a new size come as sampled BGR (below), so room for those too.
-            FramePipeline.Yuv420Sampled => Math.Max(IYuv420Converter.FrameSize(SourceWidth, SourceHeight), sampledBgr),
-            FramePipeline.SampledBgr => sampledBgr,
+            // Frames of a new size come resized already (below), so room for those too.
+            FramePipeline.Yuv420Sampled => Math.Max(IYuv420Converter.FrameSize(SourceWidth, SourceHeight), Width * Height * 3),
             FramePipeline.FullFrameResize => CropRegion.Width * CropRegion.Height * 3,
             _ => Width * Height * 3,
         };
 
-        // The sampled pixels, with the crop's offset, as the remap maps hold them.
-        int[]? cols = resizer?.SourceCols.Select(c => c + CropRegion.X).ToArray();
+        // The rows the resize reads, with the crop's offset: the only ones converted. The decoding thread resizes those
+        // frames itself (straight from the converter's rows, no copy), with its own CvResize: the caller's resizes the
+        // FastYuv frames meanwhile, and each keeps row buffers.
         int[]? rows = resizer?.SourceRows.Select(r => r + CropRegion.Y).ToArray();
+        var decoderResizer = resizer is null ? null : new CvResize(CropRegion.Width, CropRegion.Height, Width, Height);
         var small = new byte[Width * Height * 3];
 
         // Decoding and converting run on their own thread and the resize and scoring on the caller's, overlapped as
@@ -94,7 +94,7 @@ public sealed partial class VideoReader
 
                     // A frame of another size than the stream's first: OpenCV scales it to that size inside its one
                     // conversion to BGR, which FastYuv's conversion at the stream's size can't reproduce. The core
-                    // path's sampled BGR for those frames instead (exact; only they are slower).
+                    // path's conversion for those frames instead (exact; only they are slower).
                     bool bgr = pipeline == FramePipeline.Yuv420Sampled && !writer.HasFirstSize;
                     switch (bgr ? FramePipeline.SampledBgr : pipeline)
                     {
@@ -102,7 +102,7 @@ public sealed partial class VideoReader
                             writer.WriteYuv420(buffer);
                             break;
                         case FramePipeline.SampledBgr:
-                            writer.WriteSampledBgr(buffer, cols!, rows!);
+                            writer.WriteResized(buffer, decoderResizer!, rows!, (CropRegion.X, CropRegion.Y));
                             break;
                         case FramePipeline.FullFrameResize:
                             writer.WriteBgr(buffer, CropRegion);
@@ -150,18 +150,24 @@ public sealed partial class VideoReader
                     _livePackets.Add(PacketOf(pts * timeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
                 }
 
-                switch (bgr ? FramePipeline.SampledBgr : pipeline)
+                // Resized already, in a buffer sized for yuv420p: the frame's own bytes (scores count its pixels).
+                if (bgr)
+                {
+                    buffer.AsSpan(0, small.Length).CopyTo(small);
+                    free.Add(buffer);
+                    yield return small;
+                    continue;
+                }
+
+                switch (pipeline)
                 {
                     case FramePipeline.Yuv420Sampled:
                         resizer!.ResizeYuv420(buffer, small, _yuv420ForVideo!, SourceWidth, SourceHeight, CropRegion.X, CropRegion.Y);
                         break;
-                    case FramePipeline.SampledBgr:
-                        resizer!.ResizeSampled(buffer, small);
-                        break;
                     case FramePipeline.FullFrameResize:
                         resizer!.Resize(buffer, small);
                         break;
-                    default:
+                    default: // resized already (SampledBgr) or by ffmpeg's scale
                         previous = buffer; // the frame itself: back to the pool once the caller is done with it
                         yield return buffer;
                         continue;

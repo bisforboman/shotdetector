@@ -63,7 +63,8 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 | In-process decoding (FFmpeg.AutoGen / Sdcb.FFmpeg, the C# counterparts of PyAV) instead of the ffmpeg pipe | Removes the pipe (~15% on HD, core path) and the separate ffmpeg executable; costs native FFmpeg libraries per platform (AOT, Alpine) and their LGPL/GPL terms | Done (opt-in, next row) |
 | In-process decoding as an opt-in backend (FFmpeg.AutoGen, FFmpeg 8.1 libraries): prototype exact and 40% less CPU than the ffmpeg command line on 2 CPUs (decisions.md) | Issue #12: the command line is two thirds of the gap to scenedetect on Linux | Done |
 | Big Buck Bunny (720p h264) in-process: ~1.7x scenedetect's wall time and 1.4x its CPU on 2 CPUs, where the other films are within 4-13%; find out why (decoder settings, audio packets, the conversion) | Issue #12; the outlier in the 0.6.0 measurements. Cause: our exact resize cost more than decoding at that size (0.38 ms/frame); vectorised, now 1.2x scenedetect | Partly done (2026-10-07) |
-| SIMD in the resize/HSV/score loops | ~4% of the time; not worth it until the above are done | Open |
+| SIMD in the resize/HSV/score loops | ~4% of the time; not worth it until the above are done | Maybe (measured 2026-10-13, in-process, content: resize 4% of the CPU on 1080p and 12% on 480p, HSV and score 2-5% and already vectorized (AVX2 HSV, 128-bit diffs), FFmpeg's decoding most of the rest; the sampled-pixel copy, 5-13%, went first: see the next row) |
+| In-process: resize straight from the converter's rows, no copy of the sampled pixels (the decoding thread resizes, with its own CvResize) | The copy was 5-13% of the CPU (profiled with dotnet-trace); pinned to 2 CPUs, CPU -16% on 480p and -5% on 1080p; byte-identical on all samples | Done (2026-10-13) |
 
 ## 3. Toward 1.0
 
