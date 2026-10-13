@@ -483,6 +483,13 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: pip install scenedetect==${{ matrix.scenedetect }} opencv-python-headless==5.0.0.93
 
+      # PixelTests' answers (Data/pixels.txt) are cv2's and scenedetect's: Linux's wheel must give the same file.
+      - name: Pixel oracle unchanged on Linux
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.2' && matrix.path == 'core' && matrix.part == 'compare')
+        run: |
+          python tools/pixel_oracle.py pixels.txt
+          diff tests/ShotDetector.Tests/Data/pixels.txt pixels.txt
+
       # The clips, from the samples job's cache; made here only if that somehow missed.
       - id: samples
         if: needs.changes.outputs.docs_only != 'true'
