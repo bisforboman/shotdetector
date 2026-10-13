@@ -259,7 +259,7 @@ internal sealed unsafe class Encoder : IDisposable
 
             // Without a graph ffmpeg puts anull (a pass-through) first; ShotDetector.Native has no anull, so aformat starts.
             string format = parts.Length > 0 ? "aformat=" + string.Join(":", parts) : "aformat";
-            e.Graph("abuffer", args, graph is null ? format : graph + "," + format, "abuffersink");
+            e.Graph("abuffer", args, graph is null ? format : graph + "," + format, "abuffersink", first);
 
             e._enc = ffmpeg.avcodec_alloc_context3(codec);
             e._enc->sample_fmt = (AVSampleFormat)ffmpeg.av_buffersink_get_format(e._out);
@@ -297,7 +297,7 @@ internal sealed unsafe class Encoder : IDisposable
         return result;
     }
 
-    void Graph(string source, string args, string filter, string sink)
+    void Graph(string source, string args, string filter, string sink, AVFrame* downmixFrom = null)
     {
         _graph = ffmpeg.avfilter_graph_alloc();
 
@@ -307,6 +307,8 @@ internal sealed unsafe class Encoder : IDisposable
         AVFilterContext* src, snk;
         Check(ffmpeg.avfilter_graph_create_filter(&src, ffmpeg.avfilter_get_by_name(source), "in", args, null, _graph), source);
         Check(ffmpeg.avfilter_graph_create_filter(&snk, ffmpeg.avfilter_get_by_name(sink), "out", null, null, _graph), sink);
+        if (downmixFrom != null)
+            DownmixInfo(src, downmixFrom);
         var outputs = ffmpeg.avfilter_inout_alloc();
         var inputs = ffmpeg.avfilter_inout_alloc();
         try
@@ -521,6 +523,29 @@ internal sealed unsafe class Encoder : IDisposable
             var p = _pkt;
             ffmpeg.av_packet_free(&p);
             _pkt = null;
+        }
+    }
+
+    /// <summary>
+    /// The frame's downmix levels (AV_FRAME_DATA_DOWNMIX_INFO, from AC-3, E-AC-3 and DTS decoders) on the abuffer
+    /// source, as ffmpeg's command line passes them (ifilter_parameters_from_frame): the aresample that downmixes then
+    /// uses the stream's centre, surround and LFE levels instead of swresample's defaults (issue #211).
+    /// </summary>
+    internal static void DownmixInfo(AVFilterContext* source, AVFrame* frame)
+    {
+        var sd = ffmpeg.av_frame_get_side_data(frame, AVFrameSideDataType.AV_FRAME_DATA_DOWNMIX_INFO);
+        if (sd == null)
+            return;
+        var par = ffmpeg.av_buffersrc_parameters_alloc();
+        try
+        {
+            Check(ffmpeg.av_frame_side_data_clone(&par->side_data, &par->nb_side_data, sd, 0), "downmix info");
+            Check(ffmpeg.av_buffersrc_parameters_set(source, par), "downmix info");
+        }
+        finally
+        {
+            ffmpeg.av_frame_side_data_free(&par->side_data, &par->nb_side_data);
+            ffmpeg.av_free(par);
         }
     }
 

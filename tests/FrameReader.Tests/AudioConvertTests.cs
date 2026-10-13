@@ -36,6 +36,8 @@ public class AudioConvertTests
     [InlineData("aac51.mkv", "-c:a aac", "out.m4a", "equalizer=f=1000:t=q:w=8:g=-20", null, null)]
     [InlineData("pcm51.wav", "-c:a pcm_s16le", "out.wav", "volume=0.5", null, null)]
     [InlineData("hi96.mkv", "-c:a flac", "out.mp3", null, "libmp3lame", null)]       // 96 kHz: the nearest rate MP3 takes
+    [InlineData("ac351.mkv", "-c:a ac3", "out.mp3", null, null, null)]                // AC-3: its own downmix levels (issue #211)
+    [InlineData("ac351.mkv", "-c:a ac3", "out.wav", "aformat=channel_layouts=stereo", null, null)] // the same without LAME: bits on every build
     public void FileIsFfmpegs(string source, string codec, string output, string? filter, string? encoder, long? bitRate)
     {
         if (Libs is null)

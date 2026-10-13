@@ -129,6 +129,7 @@ public sealed unsafe class AudioFilter : IDisposable
         AVFilterContext* source, sink;
         Check(ffmpeg.avfilter_graph_create_filter(&source, ffmpeg.avfilter_get_by_name("abuffer"), "in", args, null, _graph), "abuffer");
         Check(ffmpeg.avfilter_graph_create_filter(&sink, ffmpeg.avfilter_get_by_name("abuffersink"), "out", null, null, _graph), "abuffersink");
+        Encoder.DownmixInfo(source, first);
         var outputs = ffmpeg.avfilter_inout_alloc();
         var inputs = ffmpeg.avfilter_inout_alloc();
         try
