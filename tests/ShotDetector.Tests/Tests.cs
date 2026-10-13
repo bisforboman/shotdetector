@@ -632,6 +632,15 @@ public class FrameTimeTests
     public void FpsFromFloatMatchesFramerateToFraction(double fps, int num, int den) =>
         Assert.Equal(new Fps(num, den), Fps.FromFloat(fps));
 
+    [Fact]
+    public void FpsAndFrameReadersRationalConvert()
+    {
+        Fps fps = new FrameReader.Rational(30000, 1001);
+        FrameReader.Rational rate = fps;
+        Assert.Equal(new Fps(30000, 1001), fps);
+        Assert.Equal(new FrameReader.Rational(30000, 1001), rate);
+    }
+
     [Theory]
     [InlineData(1.0, "1.0")]
     [InlineData(0.00001, "1e-05")]

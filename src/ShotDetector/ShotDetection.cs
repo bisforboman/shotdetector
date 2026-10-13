@@ -216,8 +216,8 @@ public enum VideoDecoder
 
     /// <summary>
     /// FFmpeg's libraries in this process (they must be FFmpeg 8's shared libraries, else an error): the same frames,
-    /// faster and with less memory, without a second process. Streams, URLs, image sequences, rotated video and
-    /// deinterlacing still use the executable.
+    /// faster and with less memory, without a second process. URLs, codecs the libraries have no decoder for and
+    /// rotations other than quarter turns still use the executable.
     /// </summary>
     InProcess,
 

@@ -28,6 +28,12 @@ public readonly record struct Fps(int Num, int Den)
     /// <summary>The frame rate as a double, i.e. Python's float(frame_rate).</summary>
     public double Value => (double)Num / Den;
 
+    /// <summary>The same fraction as FrameReader's <see cref="FrameReader.Rational"/> (e.g. a stream's rate from MediaProbe).</summary>
+    public static implicit operator Fps(FrameReader.Rational rate) => new(rate.Num, rate.Den);
+
+    /// <summary>The same fraction as FrameReader's <see cref="FrameReader.Rational"/>.</summary>
+    public static implicit operator FrameReader.Rational(Fps fps) => new(fps.Num, fps.Den);
+
     /// <summary>Parses "num/den" or a whole number, as ffprobe prints rates.</summary>
     public static Fps Parse(string s)
     {
@@ -96,12 +102,12 @@ public readonly record struct Fps(int Num, int Den)
 }
 
 /// <summary>
-/// Reads frames by piping ffmpeg's rawvideo bgr24 output. Frames are downscaled the same way
-/// PySceneDetect does it by default: factor = max(width, height) / 256 when that side is >= 256.
-/// By default ffmpeg sends full-size frames and <see cref="CvResize"/> replicates cv2.resize exactly
-/// (a 1080p frame is 6 MB through the pipe). With ffmpegResize, ffmpeg's swscale bilinear downscales
-/// instead: faster, but it averages over the whole footprint, so content_val is lower on fine detail
-/// and cuts can differ from PySceneDetect's.
+/// The video a detection read (<see cref="DetectionResult.Video"/>): its source and analysed sizes, frame rate, frame
+/// positions and how it was decoded. Frames come from FFmpeg's libraries in this process or from the ffmpeg
+/// executable (<see cref="VideoDecoder"/>), downscaled as PySceneDetect does by default (factor = max(width, height) /
+/// 256 when that side is at least 256) with cv2.resize's exact arithmetic; with <see cref="DetectionOptions.FfmpegResize"/>,
+/// swscale's bilinear scale instead: faster, but it averages over the whole footprint, so content_val is lower on fine
+/// detail and cuts can differ from PySceneDetect's.
 /// </summary>
 public sealed partial class VideoReader
 {
