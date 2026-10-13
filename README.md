@@ -126,7 +126,7 @@ that cuts one channel now and then (EBU, GLITS) is one run; beeps, music and run
 `ReferenceTone.MinDuration` (5 s; `DetectionOptions.ReferenceTone` is FrameReader's `ReferenceToneOptions`) don't count. Not in scenedetect, and off by default. It reads the audio in-process,
 so FFmpeg's libraries are needed, and a file path (not a Stream or URL).
 
-Which decoder a run uses is in every `DetectionProgress` report (`DecodesInProcess`, `Pipeline`), from a first report
+Which decoder a run uses is in every `DetectionProgress` report (`DecodesInProcess`), from a first report
 sent before any frame, so `DetectStreamAsync` callers see it too. `ShotDetection.CanDecodeInProcess()` tells a worker at
 startup whether FFmpeg's libraries load; `VideoDecoder.InProcess` without them throws `ShotDetectionException` with
 `Reason = FfmpegLibrariesNotFound`, where `Auto` falls back to the executable.
