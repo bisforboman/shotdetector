@@ -588,12 +588,13 @@ jobs:
           fast=${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }}
           # Exact. res_change.ts not with FastYuv through the executable: there ffmpeg scales a new size's frames
           # before FastYuv converts them (in-process, FastYuv gives them the exact conversion).
-          scaled=${{ matrix.path == 'fast-yuv' && matrix.decoder == 'process' && 'yes' || '' }}
+          exact=samples/broken/res_change.ts info=
+          if [ "${{ matrix.path }}/${{ matrix.decoder }}" = fast-yuv/process ]; then info=$exact exact=; fi
           status=0
           python tools/compare.py samples/broken/base.mp4 samples/broken/truncated.mp4 samples/broken/truncated.ts \
-            samples/broken/dup_pts.mkv ${scaled:-samples/broken/res_change.ts} --detector all --stats --report broken.md $fast || status=$?
+            samples/broken/dup_pts.mkv $exact --detector all --stats --report broken.md $fast || status=$?
           # Informational: scenedetect's own results on corrupt.ts vary from run to run (its threaded error concealment).
-          python tools/compare.py samples/broken/corrupt.ts ${scaled:+samples/broken/res_change.ts} --detector all --stats \
+          python tools/compare.py samples/broken/corrupt.ts $info --detector all --stats \
             --report broken-info.md $fast || true
           { echo "### Damaged files, ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat broken.md
             echo "#### Informational"; cat broken-info.md; } >> "$GITHUB_STEP_SUMMARY"
