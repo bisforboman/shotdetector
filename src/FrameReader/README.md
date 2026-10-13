@@ -228,6 +228,16 @@ Remux.Copy("film.mp4", "out/manifest.mpd", new()
 ```
 
 Our native libraries carry the AAC, MP3 and 16-bit PCM encoders and the mp4, mov, ipod (.m4a), matroska, matroska_audio (.mka), webm, adts, mp3, wav, flac, ogg, opus, mpegts, srt, webvtt, ass and dash muxers.
+A whole file re-encoded in one call: `Video.Transcode(input, output, options)` is `ffmpeg -i IN [-vf yadif] -c:v E
+-pix_fmt yuv420p -g G -force_key_frames ... OUT`, for making a source that isn't ready for DASH ready for `Remux.Copy`:
+deinterlaced when the stream is flagged interlaced (`Deinterlace`: null by default; true or false to force), frames
+upright, the first audio stream re-encoded, keyframes every `KeyframeEvery`. H.264 needs an encoder your libraries have
+(`libx264`, or `libopenh264` with Cisco's binary); ShotDetector.Native has none, for licensing (`mpeg4` works for tests).
+
+```csharp
+await Video.TranscodeAsync("in.mxf", "out.mp4", new() { Encoder = "libx264", Gop = 72, KeyframeEvery = TimeSpan.FromSeconds(2.4), AudioEncoder = "aac" });
+```
+
 Writing video: `VideoWriter` encodes frames to H.264 (x264) in .mp4/.mkv/.mov, optionally with an AAC track, the
 file `ffmpeg -c:v libx264` writes from the same frames with the same FFmpeg build (byte for byte with `Bitexact` on
 both sides). It needs FFmpeg libraries with libx264, which ShotDetector.Native doesn't have: a "gpl" FFmpeg 8 build
