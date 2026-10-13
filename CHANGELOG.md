@@ -4,6 +4,26 @@ Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a Gi
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
 What's merged but not released yet is in changes/ (one file per pull request).
 
+## 1.13.0 – 2026-10-13
+
+FastYuv exact on resolution changes through the ffmpeg executable too, in-process decoding about 16% lighter on SD video, Fps converting to and from FrameReader's Rational.
+
+### New
+
+- `Fps` converts implicitly to and from FrameReader's `Rational`, so a rate from `MediaProbe` works where
+  ShotDetector takes an `Fps`, and the other way round.
+
+### Faster
+
+- In-process decoding resizes straight from the converted rows instead of copying the pixels it reads first:
+  about 16% less CPU on SD video and 5% on 1080p (content detector, pinned to 2 CPUs). Results are unchanged.
+
+### Fixed
+
+- ShotDetector.FastYuv on video that changes resolution mid-stream through the ffmpeg executable (in-process was
+  fixed in 1.12.0): once a frame of another size turns up, the file is read again on the exact pipeline, so the
+  results equal the core path's and scenedetect's. Only such files are slower.
+
 ## 1.12.0 – 2026-10-13
 
 FrameReader: ffmpeg's audio conversion and ffprobe's JSON in one call, DASH names per content type, a check for what FFmpeg builds lack; FastYuv exact on resolution changes in-process (issues #191-#195).
