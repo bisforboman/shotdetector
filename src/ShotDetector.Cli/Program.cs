@@ -595,10 +595,10 @@ try
     }
 
     Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
-        $"{(input == "-" ? "stdin" : Path.GetFileName(input))}: {video.SourceWidth}x{video.SourceHeight} @ {video.Fps.Value:0.###} fps, "
-        + $"{result.FrameCount} frames, processed at {video.Width}x{video.Height}, "
+        $"{(input == "-" ? "stdin" : Path.GetFileName(input))}: {video.Width}x{video.Height} @ {video.FrameRate.Value:0.###} fps, "
+        + $"{result.FrameCount} frames, processed at {video.ProcessedWidth}x{video.ProcessedHeight}, "
         + $"detector={string.Join('+', (options.Detectors?.Select(d => d.Kind) ?? [options.Detector]).Select(k => k.ToString().ToLowerInvariant()))}, "
-        + $"min-scene-len={result.MinSceneLengthFrames} frames, decoded {(video.DecodesInProcess ? "in-process" : "by ffmpeg")}"));
+        + $"min-scene-len={result.MinSceneLengthFrames} frames, decoded {(video.DecodedInProcess ? "in-process" : "by ffmpeg")}"));
 
     if (result.ReferenceTone is { } tone)
     {

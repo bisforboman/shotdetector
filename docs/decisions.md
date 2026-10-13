@@ -3,6 +3,14 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## DetectionResult.Video's new shape (2026-10-13)
+
+For the 2.0 result record, asked: the name **DetectedVideo** (over AnalyzedVideo, VideoDetails); streams **dropped
+from the result** (over probing eagerly: detection doesn't need them, and the old property getter probed or ran
+ffprobe on first use); the analysed size as **ProcessedWidth/ProcessedHeight** (the CLI's "processed at"; Width and
+Height now only ever mean the source). Members follow VideoInfo's names (FrameRate, not Fps; Deinterlaced,
+DecodedInProcess, Streamed as past facts); FramePipeline isn't on it (the next 2.0 item hides it).
+
 ## #194 on v2: streams without the libraries (2026-10-13)
 
 FrameReader.StreamInfo's constructor was internal, and ShotDetector lists streams from ffprobe when it runs the

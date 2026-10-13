@@ -23,6 +23,20 @@
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:ShotDetector.VideoReader</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ShotDetector.DetectionResult.get_Video</Target>
+    <Left>lib/net10.0/ShotDetector.dll</Left>
+    <Right>lib/net10.0/ShotDetector.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ShotDetector.VideoInfo.get_FieldOrder</Target>
     <Left>lib/net10.0/ShotDetector.dll</Left>
@@ -32,20 +46,6 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:ShotDetector.VideoInfo.get_Streams</Target>
-    <Left>lib/net10.0/ShotDetector.dll</Left>
-    <Right>lib/net10.0/ShotDetector.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ShotDetector.VideoReader.get_FieldOrder</Target>
-    <Left>lib/net10.0/ShotDetector.dll</Left>
-    <Right>lib/net10.0/ShotDetector.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:ShotDetector.VideoReader.get_Streams</Target>
     <Left>lib/net10.0/ShotDetector.dll</Left>
     <Right>lib/net10.0/ShotDetector.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
