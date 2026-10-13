@@ -3,6 +3,14 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## Issues #236-#239 (2026-10-13)
+
+Four suggestions from #81's team. Asked which to take on: **all four, in this order: #236 (MissingFilters for a
+caller's graph), #238 (throttled progress), #237 (synthetic test media), #239 (exceptions)**. For #239: **document
+which method throws what now, a shared base type for a 3.0** (a base-class change is breaking), over a backlog row
+only or declining. #236 is a separate `MissingFilters(graph)` (one of the issue's two shapes): an overload of
+`Missing` would read ambiguously, its second parameter being the library folder.
+
 ## 2.0's renames (2026-10-13)
 
 Asked for the last 2.0 renames: **OpenCvFrameCount** (over keeping FrameCount and documenting it), **RangeDuration** for

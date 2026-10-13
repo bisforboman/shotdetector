@@ -324,8 +324,9 @@ works too. They load once per process, the first time anything needs them: next 
 to use a folder of your own, call `FFmpegLibraries.Load(folder)` first (the one place that takes one). FrameReader is MIT; FFmpeg's libraries are LGPL and loaded dynamically.
 
 What each part needs from a build of your own, beyond the decoders and demuxers of your input. Check at startup with
-`FFmpegLibraries.Missing(Capability...)`, which knows this table, or name by name with `HasEncoder`, `HasFilter` and
-`HasMuxer`:
+`FFmpegLibraries.Missing(Capability...)`, which knows this table, plus `MissingFilters(graph)` for a filter graph of
+your own (the same format, so the lists concatenate; a graph that doesn't parse is `"filter graph"`), or name by name
+with `HasEncoder`, `HasFilter` and `HasMuxer`:
 
 | Part | Encoders | Filters | Muxers |
 | --- | --- | --- | --- |
@@ -338,7 +339,9 @@ What each part needs from a build of your own, beyond the decoders and demuxers 
 | `Remux.Copy` | | | the output's (`dash` for an .mpd) |
 
 ```csharp
-var missing = FFmpegLibraries.Missing(Capability.Deinterlace | Capability.AudioFilter | Capability.Mp3 | Capability.Dash);
-if (missing.Count > 0 || !FFmpegLibraries.HasFilter("equalizer")) // your own graph's filters by name
+var missing = FFmpegLibraries.Missing(Capability.Deinterlace | Capability.AudioFilter | Capability.Mp3 | Capability.Dash)
+    .Concat(FFmpegLibraries.MissingFilters(myGraph)) // your own graph's filters, e.g. "equalizer=...,aresample"
+    .ToList();
+if (missing.Count > 0)
     throw new InvalidOperationException("This FFmpeg lacks " + string.Join(", ", missing)); // e.g. "filter yadif"
 ```
