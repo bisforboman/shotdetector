@@ -103,7 +103,7 @@ counting there). `Export.SaveImages` takes an `ImageOptions` (count, margin, wid
 jpg/png/webp).
 
 `DetectionOptions.Progress` (an `IProgress<DetectionProgress>`) reports frames done out of the
-expected total about 10 times a second. ffmpeg and ffprobe are found on `PATH`, or in
+expected total about 10 times a second (`ProgressStep = 0.1`: once per 10 %, for a log). ffmpeg and ffprobe are found on `PATH`, or in
 `DetectionOptions.FfmpegDirectory` (CLI: `--ffmpeg-dir`).
 
 Interlaced sources (1080i broadcast): `Deinterlace = DeinterlaceMode.On` (CLI `--deinterlace`) runs ffmpeg's yadif
@@ -134,7 +134,11 @@ startup whether FFmpeg's libraries load; `VideoDecoder.InProcess` without them t
 
 Failures from ffmpeg, ffprobe or the input throw `ShotDetectionException` (an `InvalidOperationException`) whose
 `Reason` tells a deployment problem (`FfmpegNotFound`, `LibrariesNotFound`) from bad input (`InvalidInput`), a
-decode failure (`DecodeFailed`) or a failed export (`ExportFailed`).
+decode failure (`DecodeFailed`) or a failed export (`ExportFailed`). ShotDetector's methods never throw FrameReader's
+`FrameReaderException`, even when FrameReader fails inside them (decoding in-process, reading audio): that one is the
+`ShotDetectionException`'s `InnerException`. So one `catch (ShotDetectionException)` covers a detection, and code that
+also calls FrameReader directly catches `FrameReaderException` there. A shared base type would change their base
+classes, so it waits for a 3.0 (issue #239).
 
 Each detection is an OpenTelemetry-ready span: `.AddSource(ShotDetection.ActivitySourceName)` shows
 "ShotDetection.Detect" with the video's size, frame rate, pipeline, frames and shots.

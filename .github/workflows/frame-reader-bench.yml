@@ -31,7 +31,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -45,13 +45,13 @@ jobs:
 
       - run: echo "BENCH_FFMPEG=${{ steps.ffmpeg.outputs.bin }}" >> "$GITHUB_ENV"
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: native-${{ matrix.rid }}
           path: native/${{ matrix.rid }}
 
       - name: Cache the videos
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: samples/realworld
           key: realworld-films-${{ hashFiles('tools/realworld.py') }}

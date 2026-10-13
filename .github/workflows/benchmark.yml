@@ -35,7 +35,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -50,7 +50,7 @@ jobs:
         run: pip install scenedetect==0.7.2 opencv-python-headless==5.0.0.93 psutil
 
       # Our FFmpeg libraries in native/: the CLI bundles them, so its default decodes in-process, as users get it.
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: native-${{ matrix.rid }}
           path: native/${{ matrix.rid }}
@@ -59,7 +59,7 @@ jobs:
         run: dotnet build src/ShotDetector.Cli -c Release
 
       - name: Cache the videos
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: samples/realworld
           key: realworld-films-${{ hashFiles('tools/realworld.py') }}
