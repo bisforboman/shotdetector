@@ -21,7 +21,8 @@ internal sealed class ProgressReporter(IProgress<MediaProgress>? progress, TimeS
 
     internal void Report(TimeSpan position)
     {
-        _position = position;
+        // An input's first timestamp can round to a tick below zero (an MP3's start after the encoder delay, issue #274).
+        _position = position = position < TimeSpan.Zero ? TimeSpan.Zero : position;
         if (progress is null || Environment.TickCount64 - _last < 100)
             return;
         _last = Environment.TickCount64;
