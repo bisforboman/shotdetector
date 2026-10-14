@@ -162,9 +162,10 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - CI downloads: BtbN's FFmpeg only through `.github/actions/btbn-ffmpeg` (retries, checked archive, daily cache with
   fallback), never `curl | tar` (a reset mid-stream left tar a truncated archive); Docker images from
   `public.ecr.aws/docker/library/` (Docker Hub's anonymous rate limit stopped a release).
-- CI load: a PR whose files are all docs, `.claude/`, `benchmarks/`, `tests/FrameReader.Tests/` or the FrameReader
-  classes ShotDetector doesn't use (VideoFrameReader, AudioReader), or workflows CI never runs (release, benchmarks,
-  upstream, Dependabot's, parity-os), is "light": AOT, ARM, Alpine, parity, real-world
-  and mutation don't start (skipped jobs pass the required checks). Add a FrameReader file to that list in the three
-  `changes` jobs only if ShotDetector really doesn't use it. The FrameReader benchmark runs on demand and weekly only.
+- CI load: a PR whose files are all docs, `.claude/`, `.githooks/`, `benchmarks/`, `tests/FrameReader.Tests/`,
+  workflows CI never runs (release, benchmarks, upstream, Dependabot's, parity-os) or FrameReader source files
+  ShotDetector's detection never runs is "light": AOT, ARM, Alpine, parity, real-world and mutation don't start
+  (skipped jobs pass the required checks). tools/ci-changes.sh decides, for all three `changes` jobs; the FrameReader
+  files come from the built assemblies (tools/reach, so a new use counts at once). The FrameReader benchmark runs on
+  demand and weekly only.
   Every push reruns everything: docs go in before `gh pr create`, not as follow-up pushes.

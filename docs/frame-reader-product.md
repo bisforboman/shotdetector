@@ -1,6 +1,6 @@
 # FrameReader as its own product
 
-Status: steps 1-4 done (2026-10-14: own versions, changelogs and releases, one PR; then the native packages); steps 5-6 open. The user's choices are in `docs/decisions/` ("FrameReader as its
+Status: done (2026-10-14): own versions, changelogs and releases (one PR), the native packages, CI by what a change touches, the docs. The user's choices are in `docs/decisions/` ("FrameReader as its
 own product").
 
 ## Why
