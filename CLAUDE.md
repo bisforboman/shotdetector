@@ -36,7 +36,8 @@ X.Y.Z "summary"`), opened once every PR going into it has merged (never stacked 
 both. Merging it releases: release.yml (on every push to main) releases each product whose newest version isn't tagged
 yet, FrameReader first, each with its own tag and GitHub release; ShotDetector's package depends on FrameReader's
 current version. Never pass `-p:Version` (it would reach FrameReader through ShotDetector's reference):
-`-p:ShotDetectorVersion` and `-p:FrameReaderVersion`. Prereleases (`-`) publish without
+`-p:ShotDetectorVersion` and `-p:FrameReaderVersion`. At each FrameReader release, count the commits touching both
+products (docs/frame-reader-product.md, "When to reconsider") and tell the user when the split trigger is met. Prereleases (`-`) publish without
 approval (the `prerelease` environment allows `v*-*` tags, and `main` once the user adds it; with tags only, push
 `vX.Y.Z-pre` on the release commit), stable ones wait for the user's approval of the `release` environment. A hand-pushed `v*` tag still works.
 After a stable release is on nuget.org, set that product's baseline in Directory.Build.props to it: `ApiBaselineVersion`
