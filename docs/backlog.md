@@ -192,7 +192,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 | #239: `MediaException : InvalidOperationException` in FrameReader, the base of FrameReaderException and ShotDetectionException | One catch for both packages | Done (2026-10-14, #290) |
 | Upper bounds: ShotDetector on FrameReader and FastYuv on ShotDetector up to the next major (Directory.Build.targets), FFmpeg.AutoGen below 9 | NuGet writes only minimums, so a later major could replace the version a package was built against | Done (2026-10-14, #290) |
 | ShotDetector.Native aliases no longer published | They only point at FrameReader.Native; the 2.x ones stay on nuget.org | Done (2026-10-14, #290) |
-| 3.0.0-preview.1 (FrameReader 2.3.0-preview.1), then 3.0.0 | A preview first (the user) | In progress (2026-10-14): preview.1 released; 3.0.0 when the user says (the release PR renames the preview sections) |
+| 3.0.0-preview.1 (FrameReader 2.3.0-preview.1), then 3.0.0 | A preview first (the user) | Done (2026-10-14): preview.1, then 3.0.0 and FrameReader 2.3.0; an API review found nothing else worth breaking for |
 
 ## Done
 

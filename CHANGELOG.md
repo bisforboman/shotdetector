@@ -6,9 +6,9 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
-## 3.0.0-preview.1 – 2026-10-14
+## 3.0.0 – 2026-10-14
 
-A preview of 3.0: ShotDetectionException under FrameReader's MediaException (issue #239), dependencies bounded below the next major, and no more ShotDetector.Native aliases.
+ShotDetectionException under FrameReader's MediaException (issue #239), dependencies bounded below the next major, and no more ShotDetector.Native aliases.
 
 ### Breaking changes
 
