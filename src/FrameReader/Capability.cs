@@ -31,7 +31,7 @@ public enum Capability
     /// <summary><see cref="AudioWriter"/> or <see cref="Audio.Convert"/> to WAV: the <c>pcm_s16le</c> encoder and <c>wav</c> muxer, and the writer's conversion filters.</summary>
     Wav = 1 << 7,
 
-    /// <summary><see cref="VideoWriter"/>'s H.264 in .mp4: the <c>libx264</c> encoder (not in ShotDetector.Native), the <c>mp4</c> muxer and its filters.</summary>
+    /// <summary><see cref="VideoWriter"/>'s H.264 in .mp4: the <c>libx264</c> encoder (not in FrameReader.Native), the <c>mp4</c> muxer and its filters.</summary>
     H264 = 1 << 8,
 
     /// <summary><see cref="Remux.Copy"/> to DASH (an .mpd): the <c>dash</c> muxer.</summary>

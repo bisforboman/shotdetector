@@ -2,7 +2,7 @@ name: Upstream releases
 
 # Weekly: an issue when something ShotDetector matches or builds on has a newer release than the one it uses: scenedetect
 # (a new compatibility mode), FFmpeg's point releases in our native build's series, zlib and dav1d, which that build
-# links in, and the FFmpeg opencv-python's Linux wheel bundles (scenedetect's frames come from it) (security and decoder fixes reach ShotDetector.Native and the CLI only when the build moves). One issue per
+# links in, and the FFmpeg opencv-python's Linux wheel bundles (scenedetect's frames come from it) (security and decoder fixes reach FrameReader.Native and the CLI only when the build moves). One issue per
 # release (none if one exists, open or closed).
 on:
   workflow_dispatch:
@@ -74,7 +74,7 @@ jobs:
             exit 0
           fi
           gh issue create --title "$title" --body "$(cat <<EOF
-          FFmpeg $latest is out; our native libraries (ShotDetector.Native.<rid>, the CLI) are built from $ours (found by the weekly upstream check).
+          FFmpeg $latest is out; our native libraries (FrameReader.Native.<rid>, the CLI) are built from $ours (found by the weekly upstream check).
 
           Changes: https://git.ffmpeg.org/gitweb/ffmpeg.git/shortlog/refs/tags/n$latest (security fixes are listed at https://ffmpeg.org/security.html).
 
@@ -120,7 +120,7 @@ jobs:
           fi
           source=${URL//'$V'/$latest}
           gh issue create --title "$title" --body "$(cat <<EOF
-          $NAME $latest is out; our native libraries (ShotDetector.Native.<rid>, the CLI) link $ours in statically (found by the weekly upstream check).
+          $NAME $latest is out; our native libraries (FrameReader.Native.<rid>, the CLI) link $ours in statically (found by the weekly upstream check).
 
           Changes: $NOTES
 

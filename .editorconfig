@@ -52,7 +52,7 @@ stylebro_blank_line_between_switch_sections = omit
 dotnet_diagnostic.BRO1406.severity = none
 # END stylebro-migrate
 
-# This repository's own choices (docs/decisions.md, 2026-10-11)
+# This repository's own choices (docs/decisions/, 2026-10-11)
 [*.cs]
 # Members are ordered by reading flow, not by kind; moving them would rewrite whole files for blame and open branches
 dotnet_diagnostic.BRO1001.severity = none

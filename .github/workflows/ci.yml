@@ -90,7 +90,7 @@ jobs:
         timeout-minutes: 15
         uses: ./.github/actions/btbn-ffmpeg
 
-      # In-process decoding with our FFmpeg build (ShotDetector.Native's): InProcessTests compare it with FFmpeg
+      # In-process decoding with our FFmpeg build (FrameReader.Native's): InProcessTests compare it with FFmpeg
       # 8.1's executables, put beside it (BtbN's static build, so they don't load these libraries).
       - uses: actions/download-artifact@v7
         if: needs.changes.outputs.docs_only != 'true'

@@ -3,7 +3,7 @@
 A C# port of PySceneDetect's shot/cut detection that gives **identical results** to `scenedetect` (cuts, scene
 list CSVs, per-frame stats, timecodes digit for digit), decoding through an ffmpeg subprocess with no native
 bindings. Repo: `github.com/bisforboman/shotdetector`. NuGet: `ShotDetector` (MIT), `ShotDetector.FastYuv`
-(LGPL-2.1, a swscale port), `ShotDetector.Native.<rid>` (our FFmpeg build, LGPL),
+(LGPL-2.1, a swscale port), `FrameReader.Native.<rid>` (our FFmpeg build, LGPL),
 `ShotDetector.Cli` (dotnet tool `shotdetect`, plus Native AOT binaries on releases).
 
 ## Core idea
@@ -12,7 +12,7 @@ Exactness over speed ("Better to have a correct baseline", user, 2026-10-01): ev
 port of what OpenCV/scenedetect do (BGR→HSV fixed-point tables, `cv2.resize` INTER_LINEAR/INTER_AREA, Canny+dilate,
 calcHist/compareHist, FrameTimecode's half-to-even rounding, the flash filter in float seconds…). Being faster and
 lighter than the Python version is the second goal, never at the cost of a differing result. Anywhere we deliberately
-differ is documented in README.md and in `docs/decisions.md`.
+differ is documented in README.md and in `docs/decisions/`.
 
 ## Status
 
@@ -25,11 +25,12 @@ dropped in 0.9.0), exports
 CLI `-i -`). CI compares every sample clip against scenedetect 0.7.2 and 0.7.1 on Linux for the core and FastYuv
 paths (10-bit h264 too), 0.7.2 both through the ffmpeg executable and in-process (our FFmpeg build; `compare.py`
 adds `SHOTDETECTOR_OURS_ARGS` to every run, CI sets `--decoder`); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
-weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what the user decided and why.
+weekly. `docs/backlog.md` has what's next, in order; `docs/decisions/` what the user decided and why.
 
 **Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Two products,
-released separately since 2.1.0 (docs/frame-reader-product.md): ShotDetector (with FastYuv, the CLI and the Native
-packages; CHANGELOG.md, tags `vX.Y.Z`) and FrameReader (src/FrameReader/CHANGELOG.md, tags `framereader-vX.Y.Z`). A
+released separately since 2.1.0 (docs/frame-reader-product.md): ShotDetector (with FastYuv, the CLI and the
+ShotDetector.Native aliases; CHANGELOG.md, tags `vX.Y.Z`) and FrameReader (with FrameReader.Native, our FFmpeg build;
+src/FrameReader/CHANGELOG.md, tags `framereader-vX.Y.Z`). A change to the native build is a FrameReader release. A
 product's release PR folds its fragments into its CHANGELOG (`python tools/changelog.py --package shotdetector|framereader
 X.Y.Z "summary"`), opened once every PR going into it has merged (never stacked on an open branch); one PR can release
 both. Merging it releases: release.yml (on every push to main) releases each product whose newest version isn't tagged
@@ -59,14 +60,14 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - **Backlog**: `docs/backlog.md`. Take the next open item; update its status when work starts and lands. Add items
   when something turns up (a divergence, a gap), with why.
 - **Decisions**: when a design question needs the user, ask with the multiple-choice prompt and record the
-  question, choices and answer in `docs/decisions.md` (newest first).
+  question, choices and answer as a new file, `docs/decisions/YYYY-MM-DD-what.md` (its README).
 - Every behaviour that reproduces a scenedetect quirk gets a unit test and a line in `tools/mutation/mutations.psd1`
   (the mutation job breaks the guard and needs a test to fail).
 - Before pushing: `dotnet test ShotDetector.slnx` (needs ffmpeg on PATH; ~3 min, the video tests make clips),
   and for detector changes `python tools/compare.py samples/*.mp4 ... --detector all --stats` (`tools/make-samples.ps1`
   creates `samples/`; `pip install scenedetect==0.7.2 opencv-python-headless`; `--compat 0.7.1` with 0.7.1 installed
   for the previous release).
-- Code style: StyleBro (analyzers on build; rules chosen in `.editorconfig`, docs/decisions.md). The
+- Code style: StyleBro (analyzers on build; rules chosen in `.editorconfig`, docs/decisions/). The
   pre-commit hook formats the staged .cs files (`git config core.hooksPath .githooks` once per clone; ~15-30 s, only
   when .cs files are staged; it stops a commit whose .cs files also have unstaged changes). By hand: `dotnet tool run
   stylebro-migrate format ShotDetector.slnx` (the version is in .config/dotnet-tools.json, with the analyzers' in

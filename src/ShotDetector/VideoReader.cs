@@ -802,7 +802,7 @@ internal sealed partial class VideoReader
                 yield return frame;
             }
 
-            // Auto: libraries that can't decode this codec (AV1 needs dav1d, which ShotDetector.Native leaves out)
+            // Auto: libraries that can't decode this codec (AV1 needs dav1d, which FrameReader.Native leaves out)
             // give no frames at all; the ffmpeg executable decodes it instead, from here on.
             // A Stream can't be read twice: what it gave is what there is.
             if (any || _decoder != VideoDecoder.Auto || ExpectedFrames <= startFrame || _stream is not null)
@@ -1121,7 +1121,7 @@ internal sealed partial class VideoReader
     /// The default decoder threads: OpenCV's, the CPUs available up to 16 (Environment.ProcessorCount honours container
     /// limits), on both paths. Frame-threaded decoders conceal damaged data differently with each thread count, so only
     /// OpenCV's gives scenedetect's frames for corrupt files (checked on Linux: exact at the CPU count, different at 1-3
-    /// and 16 on 4 CPUs); clean video decodes the same with any count (decisions.md, 2026-10-11; issue #12 before).
+    /// and 16 on 4 CPUs); clean video decodes the same with any count (docs/decisions/, 2026-10-11; issue #12 before).
     /// </summary>
     internal static int DefaultDecodeThreads(int cpus) => Math.Clamp(cpus, 1, 16);
 

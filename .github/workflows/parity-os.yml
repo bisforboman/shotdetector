@@ -3,7 +3,7 @@ name: Parity on Windows and macOS
 # The main comparison with scenedetect on Windows and macOS: informational (Linux is the reference, ci.yml's parity
 # jobs). The Windows OpenCV wheel bundles FFmpeg 7.1, which converts with BT.601 whatever the colour tags say;
 # compare.py passes --always-bt601 there, as README says users must. macOS's ARM wheel uses KleidiCV and Carotene,
-# which round resize and HSV differently (README, docs/decisions.md). Nightly rather than on every pull request: it
+# which round resize and HSV differently (README, docs/decisions/). Nightly rather than on every pull request: it
 # fails nothing, and runners are CI's limit (concurrent jobs count per account; this takes one of the 5 macOS slots).
 on:
   workflow_dispatch:

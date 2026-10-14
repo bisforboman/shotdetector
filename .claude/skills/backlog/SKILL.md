@@ -7,7 +7,7 @@ description: Preview and extend ShotDetector's backlog (docs/backlog.md). Use wh
 
 The backlog is `docs/backlog.md`: numbered sections in priority order, then `## Done`. Each item is a table row
 `| Item | Why | Status |`, status one of **Open**, **In progress**, **Maybe**, **Done (date)**, **Released**. Design
-answers live in `docs/decisions.md`; larger plans in their own docs (e.g. `docs/frame-reader-library.md`).
+answers live in `docs/decisions/`; larger plans in their own docs (e.g. `docs/frame-reader-library.md`).
 
 ## 1. Gather (read-only, in parallel)
 

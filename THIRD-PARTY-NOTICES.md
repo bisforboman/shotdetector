@@ -6,7 +6,7 @@ shared libraries when they are there.
 
 The ShotDetector library (MIT) contains ports from PySceneDetect and OpenCV only. The FFmpeg port lives in
 the separate ShotDetector.FastYuv package, which is LGPL-2.1-or-later. FFmpeg's own libraries, built by us
-for decoding only, ship in the ShotDetector.Native.<rid> packages and are bundled with the shotdetect CLI
+for decoding only, ship in the FrameReader.Native.<rid> packages and are bundled with the shotdetect CLI
 (tool and binaries); see the last section.
 
 ## PySceneDetect (BSD 3-Clause)
@@ -91,7 +91,7 @@ LGPL-2.1-or-later (`src/ShotDetector.FastYuv/COPYING.LGPL`).
 Copyright (C) 2001-2007 Michael Niedermayer, (C) 2009-2010 Konstantin Shishkov.
 https://ffmpeg.org, license: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
 
-## FFmpeg libraries (GNU LGPL 2.1 or later), ShotDetector.Native.<rid> and the shotdetect CLI
+## FFmpeg libraries (GNU LGPL 2.1 or later), FrameReader.Native.<rid> and the shotdetect CLI
 
 libavcodec, libavformat, libavutil, libswscale, libswresample and libavfilter (yadif, fps, aspectralstats and the audio filters listed in the Native README only) from FFmpeg 8.1.3
 (https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz), built with `tools/native/build-ffmpeg.sh` for decoding plus
@@ -101,7 +101,7 @@ release archive has the exact configure line (`configure.txt`) and the licence (
 are loaded dynamically, so they can be replaced with another build of the same FFmpeg version.
 https://ffmpeg.org/legal.html
 
-## dav1d (BSD 2-Clause), ShotDetector.Native.<rid> and the shotdetect CLI
+## dav1d (BSD 2-Clause), FrameReader.Native.<rid> and the shotdetect CLI
 
 dav1d 1.5.4 (https://code.videolan.org/videolan/dav1d), linked into libavcodec as FFmpeg's AV1 decoder.
 
@@ -131,14 +131,14 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## LAME (GNU LGPL 2 or later), ShotDetector.Native.<rid> and the shotdetect CLI
+## LAME (GNU LGPL 2 or later), FrameReader.Native.<rid> and the shotdetect CLI
 
 LAME 3.100 (https://lame.sourceforge.io), linked into libavcodec as FFmpeg's MP3 encoder (libmp3lame). Built from
 https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz (SHA-256 in `configure.txt`); the
 libraries can be replaced with another build, as for FFmpeg's. The MP3 patents have expired.
 License: https://www.gnu.org/licenses/old-licenses/lgpl-2.0.html
 
-## zlib (zlib licence), ShotDetector.Native.<rid> and the shotdetect CLI
+## zlib (zlib licence), FrameReader.Native.<rid> and the shotdetect CLI
 
 zlib 1.3.2 (https://zlib.net), linked into FFmpeg's libraries. Copyright (C) 1995-2026 Jean-loup Gailly and Mark
 Adler. Provided 'as-is', without any express or implied warranty; see https://zlib.net/zlib_license.html.

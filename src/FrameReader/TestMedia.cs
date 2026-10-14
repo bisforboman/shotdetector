@@ -40,7 +40,7 @@ public sealed record TestMediaOptions
 /// Writes synthetic test media from FFmpeg's own sources (test patterns, colour bars, tones) and encoders, in-process: for
 /// tests that need real media without committing any and without the ffmpeg executable (issue #237). The same as the
 /// ffmpeg command line with <c>-f lavfi</c> inputs, a concat and these encoders, not byte for byte. Needs the source
-/// filters and encoders it uses (the ShotDetector.Native libraries have testsrc2, smptebars, mandelbrot, color, sine,
+/// filters and encoders it uses (the FrameReader.Native libraries have testsrc2, smptebars, mandelbrot, color, sine,
 /// anullsrc, concat, trim; mpeg2video, mpeg4, aac and PCM): <see cref="FFmpegLibraries.MissingFilters"/> checks a source.
 /// </summary>
 public static unsafe class TestMedia

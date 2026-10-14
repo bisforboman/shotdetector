@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- An example, not a package: the API end to end (README "Example"). In the solution so it keeps compiling.
-       In your own project: dotnet add package ShotDetector (and ShotDetector.Native.<rid> for in-process decoding). -->
+       In your own project: dotnet add package ShotDetector (and FrameReader.Native.<rid> for in-process decoding). -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>

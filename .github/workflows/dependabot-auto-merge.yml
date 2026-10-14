@@ -2,7 +2,7 @@ name: Dependabot auto-merge
 
 # Dependabot's patch and minor updates merge on their own once the required checks pass (auto-merge, as every PR
 # here); majors wait for someone to look (FFmpeg.AutoGen 9 must wait for opencv-python's FFmpeg, a new actions major
-# can change behaviour). CI decides either way. The user's choice, 2026-10-13 (docs/decisions.md).
+# can change behaviour). CI decides either way. The user's choice, 2026-10-13 (docs/decisions/).
 on:
   pull_request:
     types: [opened, synchronize, reopened]

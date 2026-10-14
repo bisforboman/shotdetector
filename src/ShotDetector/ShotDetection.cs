@@ -281,7 +281,7 @@ public sealed record DetectionOptions
 
     /// <summary>
     /// compare.py on Windows (the CLI's hidden <c>--always-bt601</c>): convert with BT.601 coefficients whatever the
-    /// colour tags say, as the Windows OpenCV wheel does (docs/decisions.md); decodes with the ffmpeg executable.
+    /// colour tags say, as the Windows OpenCV wheel does (docs/decisions/); decodes with the ffmpeg executable.
     /// </summary>
     internal bool AlwaysBt601 { get; init; }
 
