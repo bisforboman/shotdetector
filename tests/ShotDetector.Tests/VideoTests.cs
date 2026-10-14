@@ -385,7 +385,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
                 "-init_seg_name", "init.m4s", "-media_seg_name", "chunk$Number%03d$.m4s", Path.Combine(dir, "play.mpd").Replace('\\', '/')],
             default);
         var (server, port) = Listen();
-        using var _ = server;
+        using var disposing = server;
         var serving = Task.Run(async () =>
         {
             while (server.IsListening)
@@ -400,25 +400,30 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
                     return;
                 }
 
-                try
+                // Each request on its own: a reader that stops reading without hanging up (the probe) would otherwise
+                // hold back every later request, ffmpeg's too, and the test hung.
+                _ = Task.Run(async () =>
                 {
-                    string file = Path.Combine(dir, ctx.Request.Url!.AbsolutePath.TrimStart('/'));
-                    if (!File.Exists(file))
+                    try
                     {
-                        ctx.Response.StatusCode = 404;
-                    }
-                    else
-                    {
-                        await using var f = File.OpenRead(file);
-                        ctx.Response.ContentLength64 = f.Length;
-                        await f.CopyToAsync(ctx.Response.OutputStream);
-                    }
+                        string file = Path.Combine(dir, ctx.Request.Url!.AbsolutePath.TrimStart('/'));
+                        if (!File.Exists(file))
+                        {
+                            ctx.Response.StatusCode = 404;
+                        }
+                        else
+                        {
+                            await using var f = File.OpenRead(file);
+                            ctx.Response.ContentLength64 = f.Length;
+                            await f.CopyToAsync(ctx.Response.OutputStream);
+                        }
 
-                    ctx.Response.Close();
-                }
-                catch (System.Net.HttpListenerException)
-                {
-                } // ffprobe hangs up after the headers
+                        ctx.Response.Close();
+                    }
+                    catch (Exception e) when (e is System.Net.HttpListenerException or ObjectDisposedException or IOException)
+                    {
+                    } // ffprobe hangs up after the headers; the server stops after the test
+                });
             }
         });
         try
