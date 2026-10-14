@@ -3,7 +3,7 @@
   <!--
     FrameReader: fast in-process video and audio reading and writing through FFmpeg's libraries, extracted from
     ShotDetector (docs/frame-reader-library.md). Its own package, versioned with ShotDetector and stable (semantic
-    versioning) from 1.5.0; ShotDetector depends on it (decisions.md, 2026-10-10; 1.4.x shipped previews). MIT; FFmpeg's libraries (LGPL) are loaded
+    versioning) from 1.5.0; ShotDetector depends on it (docs/decisions/, 2026-10-10; 1.4.x shipped previews). MIT; FFmpeg's libraries (LGPL) are loaded
     dynamically, and nothing from the LGPL ShotDetector.FastYuv may come in here. Self-contained, so it can move to its
     own repository.
   -->

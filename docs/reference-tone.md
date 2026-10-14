@@ -1,6 +1,6 @@
 # Reference tone (1 kHz line-up tone): detect and remove
 
-Status: **Done** (2026-10-09, backlog section 4). Decisions in [decisions.md](decisions.md) ("Reference tone").
+Status: **Done** (2026-10-09, backlog section 4). Decisions in [decisions/](decisions/) ("Reference tone").
 Built as FrameReader's `ReferenceTone.Find`, ShotDetector's `FindReferenceTone` and `TrimReferenceTone`, and the
 CLI's `--find-tone`, `--trim-tone` (README).
 
@@ -43,7 +43,7 @@ ShotDetector treats this segment as programme content today. That causes:
 - [x] Trimming the detected segment yields output that starts at the real programme content.
 - [x] Parity with scenedetect is unchanged when the feature is off.
 
-## Open questions (answered 2026-10-09, decisions.md)
+## Open questions (answered 2026-10-09, docs/decisions/)
 
 - Scope: detection only first, with trimming as a follow-up?
 - Input: the user wants this for "certain audio files"; ShotDetector takes video today. Audio-only input,
