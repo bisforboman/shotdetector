@@ -4,6 +4,7 @@
 [![NuGet](https://img.shields.io/nuget/v/ShotDetector.svg?label=ShotDetector)](https://www.nuget.org/packages/ShotDetector)
 [![NuGet](https://img.shields.io/nuget/v/ShotDetector.FastYuv.svg?label=ShotDetector.FastYuv)](https://www.nuget.org/packages/ShotDetector.FastYuv)
 [![NuGet](https://img.shields.io/nuget/v/ShotDetector.Cli.svg?label=ShotDetector.Cli)](https://www.nuget.org/packages/ShotDetector.Cli)
+[![NuGet](https://img.shields.io/nuget/v/FrameReader.svg?label=FrameReader)](https://www.nuget.org/packages/FrameReader)
 
 Shot/cut detection for video in C#: a faithful port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s
 detectors (scenedetect 0.7.2: adaptive, content, threshold, histogram and hash) that gives identical
@@ -16,6 +17,10 @@ detection logic is plain C#.
   `ShotDetector.FastYuv` (LGPL-2.1-or-later, since it ports FFmpeg code).
 - `src/ShotDetector.Cli`: the `shotdetect` command-line tool, as the .NET tool `ShotDetector.Cli` and
   as self-contained Native AOT binaries on each GitHub release (core only, MIT).
+
+ShotDetector reads video with [FrameReader](src/FrameReader/README.md), a library of its own in this repository:
+frames, audio, writing and probing in-process through FFmpeg's libraries, for any .NET app (NuGet `FrameReader`, MIT,
+with its own versions and changelog; FFmpeg's libraries in `FrameReader.Native`).
 
 ## Install
 

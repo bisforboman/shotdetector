@@ -181,7 +181,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 | Releases per product: framereader-vX.Y.Z tags and GitHub releases next to vX.Y.Z; a baseline issue each | Release FrameReader without ShotDetector and the other way round | Done (2026-10-14): framereader-v2.1.0 tagged on 2.1.0's release commit, so the new flow starts from there |
 | FrameReader.Native.<rid> (and the meta-package) as the real native packages; ShotDetector.Native.<rid> as aliases | FrameReader users shouldn't need a ShotDetector-named package | Done (2026-10-14): src/FrameReader.Native packs both (-p:Alias=true for the aliases, which depend on FrameReader.Native at FrameReader's version or newer); FrameReader.Native first appears with FrameReader's next release, which has to come with or before ShotDetector's |
 | CI by what a change touches: FrameReader-only parts run FrameReader's tests; shared code still runs the scenedetect comparison | FrameReader-only PRs ran the whole parity matrix | Open |
-| Docs: FrameReader's README as its package's front page, the root README introducing both; a framereader issue label | FrameReader read as a part of ShotDetector | Open |
+| Docs: FrameReader's README as its package's front page, the root README introducing both; a framereader issue label | FrameReader read as a part of ShotDetector | Done (2026-10-14): FrameReader's README opens with what it does, install, its own changelog and licence; the root README introduces it; label `framereader` |
 
 ## Done
 
