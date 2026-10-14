@@ -216,6 +216,16 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
     }
 
+    // Issue #239: one catch (MediaException) covers both packages' failures, which stay InvalidOperationExceptions.
+    [Fact]
+    public void OneCatchCoversBothPackages()
+    {
+        var e = Assert.ThrowsAny<FrameReader.MediaException>(() => ShotDetection.Detect(Path.Combine(Path.GetTempPath(), "no-such-video.mp4")));
+        Assert.IsType<ShotDetectionException>(e);
+        Assert.IsAssignableFrom<InvalidOperationException>(e);
+        Assert.True(typeof(FrameReader.MediaException).IsAssignableFrom(typeof(FrameReader.FrameReaderException)));
+    }
+
     [Fact]
     public void AudioOnlyFileIsInvalidInput()
     {

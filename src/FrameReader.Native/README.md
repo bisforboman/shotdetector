@@ -10,7 +10,7 @@ dotnet add package FrameReader.Native.linux-x64
 Or `FrameReader.Native`, which depends on every platform's package at its version: one reference for an app built on
 one platform and run on another (a publish for one runtime, `-r linux-x64`, still copies only that platform's
 libraries). A single platform's package keeps a build smaller. Until FrameReader 2.2.0 these were `ShotDetector.Native`
-and `ShotDetector.Native.<rid>`, which now only depend on these.
+and `ShotDetector.Native.<rid>`; their 2.x versions only depend on these, and ShotDetector 3.0 no longer publishes them.
 
 With the package referenced, FrameReader finds the libraries next to your app. ShotDetector then decodes in-process
 by default (`VideoDecoder.Auto`): faster and with less memory than running the ffmpeg executable, and the same

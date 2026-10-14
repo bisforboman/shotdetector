@@ -177,13 +177,22 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 
 | Item | Why | Status |
 |---|---|---|
-| Versions: FrameReader's own Version and ApiBaselineVersion; ShotDetector depends on it as [2.1.0, 3.0.0) | Lockstep moved each package's number for the other's changes | Done (2026-10-14, with the next two rows in one PR): ShotDetectorVersion/FrameReaderVersion and their baselines; ShotDetector's package depends on FrameReader's current version (>=, no upper bound: NuGet's) |
+| Versions: FrameReader's own Version and ApiBaselineVersion; ShotDetector depends on it (only a minimum until 3.0, which bounds it below the next major) | Lockstep moved each package's number for the other's changes | Done (2026-10-14, with the next two rows in one PR): ShotDetectorVersion/FrameReaderVersion and their baselines; ShotDetector's package depends on FrameReader's current version (>=, no upper bound: NuGet's) |
 | Changelog per package: changes/framereader/ and changes/shotdetector/, src/FrameReader/CHANGELOG.md, changelog.py --package | Each product's release notes say only what changed in it | Done (2026-10-14) |
 | Releases per product: framereader-vX.Y.Z tags and GitHub releases next to vX.Y.Z; a baseline issue each | Release FrameReader without ShotDetector and the other way round | Done (2026-10-14): framereader-v2.1.0 tagged on 2.1.0's release commit, so the new flow starts from there |
 | FrameReader.Native.<rid> (and the meta-package) as the real native packages; ShotDetector.Native.<rid> as aliases | FrameReader users shouldn't need a ShotDetector-named package | Done (2026-10-14): src/FrameReader.Native packs both (-p:Alias=true for the aliases, which depend on FrameReader.Native at FrameReader's version or newer); FrameReader.Native first appears with FrameReader's next release, which has to come with or before ShotDetector's |
 | CI by what a change touches: FrameReader-only parts run FrameReader's tests; shared code still runs the scenedetect comparison | FrameReader-only PRs ran the whole parity matrix | Done (2026-10-14): tools/reach reads which FrameReader files ShotDetector's detection runs from the built assemblies (14 of 27); tools/ci-changes.sh classifies for all three `changes` jobs. It found the hand-kept list wrong: AudioReader runs for ShotDetector's reference tone |
 | Docs: FrameReader's README as its package's front page, the root README introducing both; a framereader issue label | FrameReader read as a part of ShotDetector | Done (2026-10-14): FrameReader's README opens with what it does, install, its own changelog and licence; the root README introduces it; label `framereader` |
 | ShotDetector 2.2.1: the ShotDetector.Native aliases' minimum to FrameReader.Native 2.2.1, the CLI binaries rebuilt | The musl fix (#278) is in FrameReader.Native 2.2.1, but the aliases resolve to 2.2.0 (NuGet takes the lowest allowed) and the CLI's Alpine binary bundles 2.2.0's libraries (it falls back to the executable there) | Done (2026-10-14): released as 2.2.1 |
+
+## 7. 3.0 (picked 2026-10-14)
+
+| Item | Why | Status |
+| --- | --- | --- |
+| #239: `MediaException : InvalidOperationException` in FrameReader, the base of FrameReaderException and ShotDetectionException | One catch for both packages | In progress (2026-10-14) |
+| Upper bounds: ShotDetector on FrameReader and FastYuv on ShotDetector up to the next major (Directory.Build.targets), FFmpeg.AutoGen below 9 | NuGet writes only minimums, so a later major could replace the version a package was built against | In progress (2026-10-14) |
+| ShotDetector.Native aliases no longer published | They only point at FrameReader.Native; the 2.x ones stay on nuget.org | In progress (2026-10-14) |
+| 3.0.0-preview.1 (FrameReader 2.3.0-preview.1), then 3.0.0 | A preview first (the user) | Open |
 
 ## Done
 
