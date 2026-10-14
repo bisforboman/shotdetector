@@ -8,7 +8,7 @@ inputs:
     description: FFmpeg series, e.g. 8.1 or 9.0
     default: '8.1'
   platform:
-    description: BtbN's platform name (linux64, linuxarm64)
+    description: BtbN's platform name (linux64, linuxarm64, win64)
     default: linux64
   build:
     description: gpl (static executables) or gpl-shared (the executables and their shared libraries, in bin)
@@ -46,13 +46,18 @@ runs:
         dir="$RUNNER_TEMP/btbn-$V-$P-$B"
         name="ffmpeg-n$V-latest-$P-$B-$V"
         if [ "$HIT" != true ]; then
-          archive="$RUNNER_TEMP/$name.tar.xz"
+          # Windows builds are .zip, the others .tar.xz; each checked before it's unpacked.
+          case "$P" in win*) ext=zip ;; *) ext=tar.xz ;; esac
+          archive="$RUNNER_TEMP/$name.$ext"
           if curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30 -o "$archive" \
-               "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$name.tar.xz" && xz -t "$archive"; then
-            rm -rf "$dir" && mkdir -p "$dir" && tar -xJf "$archive" -C "$dir" && rm -f "$archive"
+               "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$name.$ext" \
+             && { if [ "$ext" = zip ]; then unzip -tqq "$archive"; else xz -t "$archive"; fi; }; then
+            rm -rf "$dir" && mkdir -p "$dir"
+            if [ "$ext" = zip ]; then unzip -qq "$archive" -d "$dir"; else tar -xJf "$archive" -C "$dir"; fi
+            rm -f "$archive"
             # Shared: the libraries beside the executables, one folder to load both from.
             if [ -d "$dir/$name/lib" ]; then cp -a "$dir/$name"/lib/*.so* "$dir/$name/bin/" 2>/dev/null || true; fi
-          elif [ -x "$dir/$name/bin/ffmpeg" ]; then
+          elif [ -x "$dir/$name/bin/ffmpeg" ] || [ -x "$dir/$name/bin/ffmpeg.exe" ]; then
             echo "::warning::BtbN's FFmpeg $V ($P) didn't download; using the copy cached on an earlier day"
           else
             echo "::error::BtbN's FFmpeg $V ($P) didn't download, and no earlier copy is cached"

@@ -37,7 +37,7 @@ jobs:
           if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$'; then echo docs_only=true >> "$GITHUB_OUTPUT"; fi
           # Light: only docs, the benchmarks, FrameReader's tests or FrameReader code ShotDetector doesn't use (its
           # results can't change): the heavy jobs don't start at all.
-          if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$|^\.claude/|^\.github/workflows/(release|benchmark|frame-reader-bench|upstream|dependabot-auto-merge)\.yml$|^\.github/dependabot\.yml$|^benchmarks/|^tests/FrameReader\.Tests/|^src/FrameReader/(VideoFrameReader|AudioReader)\.cs$'; then echo light=true >> "$GITHUB_OUTPUT"; fi
+          if [ -n "$files" ] && ! echo "$files" | grep -qvE '^docs/|\.md$|^\.claude/|^\.github/workflows/(release|benchmark|frame-reader-bench|upstream|dependabot-auto-merge|parity-os)\.yml$|^\.github/dependabot\.yml$|^benchmarks/|^tests/FrameReader\.Tests/|^src/FrameReader/(VideoFrameReader|AudioReader)\.cs$'; then echo light=true >> "$GITHUB_OUTPUT"; fi
 
   realworld:
     if: needs.changes.outputs.light != 'true'
