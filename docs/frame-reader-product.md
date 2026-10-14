@@ -18,6 +18,21 @@ One repository. Cross-cutting changes (FastYuv's resolution fix #202, the resize
 stay one PR: ShotDetector's exactness rests on FrameReader's internals (BgrConverter's rows, the row deinterlacer,
 FrameDecoder's timestamps), and splitting the repository would make each such change two PRs and a release.
 
+### When to reconsider (2026-10-14)
+
+Separate repositories would spare the costs one repository carries: tag prefixes, a release.yml for two products,
+GitHub's single "Latest" release (FrameReader's are created with `--latest=false`), one issue tracker, and the
+computed CI classification (tools/reach). Reconsider when changes stop crossing over: at each FrameReader release,
+count the commits since the previous one that touch FrameReader's or ShotDetector's code, and how many touch both;
+fewer than 1 in 20 touching both, at two releases in a row, is the trigger. Since framereader-v2.1.0 it was 3 of 9 (3 both, 6 one)
+(FrameReader.Native, the clips made by FrameReader, and the Alpine fix).
+
+```bash
+for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
+  a=$(echo "$f" | grep -c '^src/FrameReader'); b=$(echo "$f" | grep -cE '^(src|tests)/ShotDetector')
+  if [ $a -gt 0 ] && [ $b -gt 0 ]; then echo both; elif [ $a -gt 0 ] || [ $b -gt 0 ]; then echo one; fi; done | sort | uniq -c
+```
+
 ## Steps
 
 1. **Versions.** Each package its own `<Version>` and `ApiBaselineVersion` (Directory.Build.props today holds one of
