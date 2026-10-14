@@ -107,8 +107,10 @@ case "$rid" in
   # D3D11VA/DXVA2 for FrameReader's HardwareDecoding: Windows' own APIs, no extra libraries.
   win-x64) set -- "$@" --enable-d3d11va --enable-dxva2 --arch=x86_64 --target-os=mingw32 --cross-prefix=x86_64-w64-mingw32- \
              --extra-ldflags=-static-libgcc --enable-w32threads ;;
-  # No RUNPATH on Linux: the loader loads each library's dependencies first, by full path.
-  linux-*) set -- "$@" --enable-pthreads ;;
+  # RUNPATH $ORIGIN: each library finds its siblings in its own folder. glibc reuses a library FFmpeg.AutoGen loaded
+  # by full path for a later dependency on its soname, but musl doesn't, so without it nothing loaded on Alpine
+  # (issue #278). '$$ORIGIN': make turns $$ into $, the quotes keep the shell from expanding it.
+  linux-*) set -- "$@" --enable-pthreads "--extra-ldsoflags=-Wl,-rpath,'\$\$ORIGIN'" ;;
   osx-*)   set -- "$@" --enable-pthreads --install-name-dir=@rpath --extra-ldflags=-Wl,-rpath,@loader_path ;;
   *) echo "unknown rid $rid" >&2; exit 1 ;;
 esac
@@ -124,6 +126,17 @@ for lib in avutil swresample swscale avcodec avformat avfilter; do
     osx-*)   f=$(ls "$work"/install/lib/lib$lib.*.dylib | grep -E "lib$lib\.[0-9]+\.dylib$"); cp -L "$f" "$out/" ;;
   esac
 done
+# Linux: every library loads by full path with nothing on the library path, as FrameReader loads them (on Alpine
+# this is musl's loader, which issue #278 tripped on).
+case "$rid" in
+  linux-*)
+    printf '%s\n' '#include <dlfcn.h>' '#include <stdio.h>' \
+      'int main(int c, char **v) { for (int i = 1; i < c; i++) if (!dlopen(v[i], RTLD_NOW)) { puts(dlerror()); return 1; } return 0; }' \
+      > "$work/loads.c"
+    cc -o "$work/loads" "$work/loads.c" -ldl
+    for f in "$out"/lib*.so.*; do env -u LD_LIBRARY_PATH "$work/loads" "$f" || { echo "$f doesn't load by itself" >&2; exit 1; }; done ;;
+esac
+
 {
   echo "FFmpeg $VERSION (https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz, sha256 $SHA256)"
   echo "zlib $ZLIB (https://zlib.net/fossils/zlib-$ZLIB.tar.gz, sha256 $ZLIB_SHA256), static"
