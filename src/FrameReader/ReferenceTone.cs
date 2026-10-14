@@ -93,7 +93,9 @@ public static class ReferenceTone
             start = -1;
         }
 
-        var progress = new ProgressReporter(o.Progress, o.SearchDuration ?? audio.Duration);
+        // How much is read: the search, or the input when it's shorter (issue #273).
+        var searched = o.SearchDuration is { } limit && audio.Duration is { } whole && whole < limit ? whole : o.SearchDuration ?? audio.Duration;
+        var progress = new ProgressReporter(o.Progress, searched);
         while (window < maxWindows && audio.TryRead(out var chunk))
         {
             cancellationToken.ThrowIfCancellationRequested();

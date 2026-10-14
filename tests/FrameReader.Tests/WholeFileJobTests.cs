@@ -20,10 +20,13 @@ public class WholeFileJobTests
         }
     }
 
-    // Each job: a first report at once, positions that only grow, and a last one at the whole duration.
+    // Each job: a first report at once, positions from zero that only grow, the input's duration (not more), and a
+    // last one at the whole duration.
     static void Ends(Recorder r, TimeSpan duration)
     {
         Assert.True(r.Reports.Count >= 2, $"{r.Reports.Count} reports");
+        Assert.True(r.Reports[0].Position >= TimeSpan.Zero, $"first position {r.Reports[0].Position}");
+        Assert.All(r.Reports, p => Assert.InRange(p.Duration!.Value.TotalSeconds, duration.TotalSeconds - 0.1, duration.TotalSeconds + 0.1));
         Assert.True(r.Reports.Zip(r.Reports.Skip(1)).All(p => p.First.Position <= p.Second.Position));
         Assert.Equal(1.0, r.Reports[^1].Fraction);
         Assert.InRange(r.Reports[^1].Position.TotalSeconds, duration.TotalSeconds - 0.1, duration.TotalSeconds + 0.1);
@@ -63,6 +66,20 @@ public class WholeFileJobTests
             }
 
             Ends(search, three);
+
+            // A search longer than the input reports the input's duration (issue #273).
+            var longer = new Recorder();
+            using (var audio = new AudioReader(tone))
+                await ReferenceTone.FindAsync(audio, new ReferenceToneOptions { MinDuration = TimeSpan.FromSeconds(1), SearchDuration = TimeSpan.FromSeconds(180), Progress = longer });
+            Ends(longer, three);
+
+            // An MP3's first timestamp, after the encoder delay, rounds to a tick below zero: reported as zero (issue #274).
+            string mp3 = Path.Combine(dir, "tone.mp3");
+            Audio.Convert(tone, mp3);
+            var fromMp3 = new Recorder();
+            using (var audio = new AudioReader(mp3))
+                await WaveformData.ReadAsync(audio, new WaveformOptions { Progress = fromMp3 });
+            Ends(fromMp3, three);
             Assert.Contains("\"streams\"", await MediaProbe.ProbeJsonAsync(clip));
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Audio.ConvertAsync(clip, Path.Combine(dir, "x.wav"), null, new CancellationToken(true)));
         }
