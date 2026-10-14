@@ -6,6 +6,16 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 2.2.1 – 2026-10-14
+
+The ShotDetector.Native aliases and the CLI's Alpine binary take FrameReader.Native 2.2.1's fixed musl libraries.
+
+### Fixed
+
+- `ShotDetector.Native.<rid>` and `ShotDetector.Native` depend on FrameReader.Native 2.2.1 or newer, whose Alpine
+  (linux-musl-x64) libraries load without `LD_LIBRARY_PATH` (issue #278); the shotdetect CLI's Alpine binary bundles
+  them, so it decodes in-process there again instead of falling back to the ffmpeg executable.
+
 ## 2.2.0 – 2026-10-14
 
 ShotDetector.Native now forwards to FrameReader.Native, and ShotDetector depends on FrameReader 2.2.0.
