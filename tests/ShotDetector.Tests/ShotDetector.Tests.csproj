@@ -22,6 +22,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ShotDetector\ShotDetector.csproj" />
     <ProjectReference Include="..\..\src\ShotDetector.FastYuv\ShotDetector.FastYuv.csproj" />
+    <!-- Built first; the Clips fixture runs it (VideoTests.cs). -->
+    <ProjectReference Include="..\ClipMaker\ClipMaker.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

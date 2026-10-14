@@ -97,8 +97,9 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - `src/ShotDetector.FastYuv`: LGPL swscale yuv420p→BGR port (`SwscaleYuv420`), its own COPYING.LGPL and README.
 - `src/ShotDetector.Cli`: `shotdetect` (list-scenes table/CSV/JSON, `--stats`, `--save-images`, `--split-video`,
   time/crop/skip options). `-p:WithFastYuv=true` builds a dev-only LGPL variant for `compare.py --fast-yuv`.
-- `tests/ShotDetector.Tests`: xunit. `Clips` fixture makes mpeg4 clips with ffmpeg (150 frames @ 25 fps, cuts at
-  50/100). RangeTests (time/skip/crop), VideoTests (reader, streaming, cancellation), InProcessTests, HashDetectorTests,
+- `tests/ShotDetector.Tests`: xunit. `Clips` fixture makes mpeg4 clips (150 frames @ 25 fps, cuts at 50/100): with
+  SHOTDETECTOR_FFMPEG_LIBS through `tests/ClipMaker` (FrameReader, in its own process: loaded in the test process the
+  libraries would switch every test to in-process decoding), else with ffmpeg. RangeTests (time/skip/crop), VideoTests (reader, streaming, cancellation), InProcessTests, HashDetectorTests,
   PropertyTests (FrameTime and PyFloat against scenedetect's answers in `Data/oracle.txt`, which `tools/oracle.py` writes:
   rerun it when the scenedetect pin moves; FsCheck invariants), PixelTests (resize, HSV, gray, edges, content score on
   generated images against cv2 and scenedetect: `Data/pixels.txt` from `tools/pixel_oracle.py`, which CI regenerates on

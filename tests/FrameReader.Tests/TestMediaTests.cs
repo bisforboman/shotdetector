@@ -42,8 +42,11 @@ public class TestMediaTests
             }
 
             Assert.Equal(100, frames.Count);
-            Assert.Equal(frames[60], frames[61]); // smptebars: still
-            Assert.NotEqual(frames[49], frames[50]); // the cut to the bars
+
+            // Mean absolute difference per pixel: the still bars differ only by the P-frames' quantization noise.
+            static double Diff(byte[] a, byte[] b) => a.Zip(b, (x, y) => Math.Abs(x - y)).Average();
+            Assert.True(Diff(frames[60], frames[61]) < 1, $"smptebars: {Diff(frames[60], frames[61])}");
+            Assert.True(Diff(frames[49], frames[50]) > 20, $"the cut to the bars: {Diff(frames[49], frames[50])}");
         }
         finally
         {

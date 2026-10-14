@@ -444,9 +444,14 @@ internal sealed unsafe class Encoder : IDisposable
                 OpenVideo(_filtered);
             var send = _enc->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO ? Zeroed(_filtered) : _filtered;
             if (_enc->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO)
-                send->quality = _enc->global_quality; // as ffmpeg does: -q:v reaches the encoder per frame
-            if (forced != AVPictureType.AV_PICTURE_TYPE_NONE)
+            {
+                // As ffmpeg does: -q:v reaches the encoder per frame, and a frame's own type (a decoder's, or a lavfi
+                // source's, which marks every frame I) is dropped unless a keyframe is forced; else the encoder
+                // follows it and writes every frame intra.
+                send->quality = _enc->global_quality;
                 send->pict_type = forced;
+            }
+
             Check(ffmpeg.avcodec_send_frame(_enc, send), "encode");
             WritePackets();
         }
