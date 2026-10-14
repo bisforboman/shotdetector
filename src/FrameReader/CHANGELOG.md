@@ -7,6 +7,24 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.2.1 – 2026-10-14
+
+Fixes: FrameReader.Native loads on Alpine without LD_LIBRARY_PATH, and two progress-report fixes.
+
+With the ShotDetector.Native aliases, NuGet picks FrameReader.Native 2.2.0 (the lowest version they allow): add
+`FrameReader.Native.<rid>` 2.2.1 to get the fix. The shotdetect CLI's Alpine binary keeps 2.2.0's libraries until
+ShotDetector's next release (on Alpine it uses the ffmpeg executable meanwhile).
+
+### Fixed
+
+- `FrameReader.Native.linux-musl-x64`: the libraries didn't load on Alpine unless their folder was on `LD_LIBRARY_PATH`
+  (musl's loader doesn't look next to a library for its dependencies); every Linux build now carries a
+  `$ORIGIN` RUNPATH (issue #278).
+- Progress: the first report's `Position` could be a tick below zero (an MP3's start after the encoder delay); it starts
+  at zero (issue #274).
+- `ReferenceTone.Find`: progress on an input shorter than `SearchDuration` reports the input's duration, so `Fraction`
+  moves at the real pace and the last report is at the end of the input (issue #273).
+
 ## 2.2.0 – 2026-10-14
 
 FrameReader's first release of its own: the FrameReader.Native packages, PNG and MPEG program stream output, display rotation for stream copies, packet positions, and video frame types chosen by the encoder as ffmpeg does.
