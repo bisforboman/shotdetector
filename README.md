@@ -193,7 +193,9 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
 - `--save-images <dir>` writes `{video}-Scene-{NNN}-{II}.jpg`, 3 per shot (`--num-images`): one a
   frame in from the start, one mid-shot, one a frame before the end. They are the same frames
   scenedetect's `save-images` picks (checked on 120 thumbnails), encoded by ffmpeg instead of
-  OpenCV, so similar but not byte-identical files.
+  OpenCV, so similar but not byte-identical files. `--image-quality <0-100>` (JPEG, WebP) and
+  `--image-compression <0-9>` (PNG) are scenedetect's `--quality` and `--compression`: PNG's and WebP's mean the
+  same as OpenCV's, JPEG's is mapped onto ffmpeg's scale (`ImageOptions.Quality`, `Compression`).
 - `--save-html <file>` writes scenedetect's `save-html` page (cut list and shot table with the
   thumbnails), byte-identical to scenedetect's; `--html-no-images`, `--html-image-width/height`.
   In the library: `Shots.Html`.

@@ -504,6 +504,24 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Throws<InvalidOperationException>(() => Export.SaveImages(r, Path.GetTempPath()));
     }
 
+    // save-images --compression and --quality reach ffmpeg: less compression or a lower quality changes the files' size.
+    [Fact]
+    public void ImageQualityAndCompressionTakeEffect()
+    {
+        var r = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content });
+        string dir = Directory.CreateTempSubdirectory("shotdetector-images-").FullName;
+        try
+        {
+            long Size(ImageOptions o, string name) => Export.SaveImages(r, Path.Combine(dir, name), o with { NumImages = 1 }).Sum(f => new FileInfo(f).Length);
+            Assert.True(Size(new() { Format = "png", Compression = 0 }, "png0") > Size(new() { Format = "png", Compression = 9 }, "png9"));
+            Assert.True(Size(new(), "jpg") > Size(new() { Quality = 20 }, "jpg20"));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void PacketsWithoutPtsTakeTheFrameDtsLikeOpenCv()
     {

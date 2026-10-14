@@ -709,6 +709,26 @@ public class TemplateTests
     [InlineData("$UNKNOWN/${SCENE_NUMBER}", "$UNKNOWN/007")]
     public void TemplatesSubstituteLikePythonsSafeSubstitute(string template, string expected) =>
         Assert.Equal(expected, Export.Substitute(template, new Dictionary<string, string> { ["VIDEO_NAME"] = "clip", ["SCENE_NUMBER"] = "007" }));
+
+    // save-images --quality/--compression: the defaults are scenedetect's (JPEG 95 as -q:v 2, PNG 3, WebP 100).
+    [Theory]
+    [InlineData("jpg", null, null, "-q:v 2")]
+    [InlineData("jpg", 100, null, "-q:v 2")]
+    [InlineData("jpg", 0, null, "-q:v 31")]
+    [InlineData("jpg", 50, null, "-q:v 16")]
+    [InlineData("png", null, null, "-compression_level 3")]
+    [InlineData("png", null, 9, "-compression_level 9")]
+    [InlineData("webp", null, null, "-quality 100")]
+    [InlineData("webp", 80, null, "-quality 80")]
+    public void ImageQualityAsFfmpegsOptions(string format, int? quality, int? compression, string expected) =>
+        Assert.Equal(expected, string.Join(' ', new ImageOptions { Format = format, Quality = quality, Compression = compression }.EncoderOptions()));
+
+    [Fact]
+    public void ImageQualityOutOfRangeThrows()
+    {
+        Assert.Throws<ArgumentException>(() => new ImageOptions { Quality = 101 }.EncoderOptions());
+        Assert.Throws<ArgumentException>(() => new ImageOptions { Format = "png", Compression = -1 }.EncoderOptions());
+    }
 }
 
 public class ShotsTests

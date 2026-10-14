@@ -65,10 +65,37 @@ public sealed record ImageOptions
     public string Format { get; init; } = "jpg";
 
     /// <summary>
+    /// JPEG or WebP quality, 0-100 (save-images --quality); null: scenedetect's defaults, 95 for JPEG and 100 for WebP.
+    /// WebP's is libwebp's scale, as OpenCV's; JPEG's maps onto ffmpeg's -q:v 31-2, so files are similar, not identical.
+    /// </summary>
+    public int? Quality { get; init; }
+
+    /// <summary>PNG compression, zlib's level 0-9 as OpenCV's (save-images --compression); null: scenedetect's 3.</summary>
+    public int? Compression { get; init; }
+
+    /// <summary>
     /// File name template, without extension (save-images -f): $VIDEO_NAME, $SCENE_NUMBER, $IMAGE_NUMBER,
     /// $FRAME_NUMBER, $TIMESTAMP_MS, $TIMECODE (with ';' for ':'); may contain folders.
     /// </summary>
     public string FileName { get; init; } = "$VIDEO_NAME-Scene-$SCENE_NUMBER-$IMAGE_NUMBER";
+
+    /// <summary>ffmpeg's encoder options for the format, quality and compression.</summary>
+    internal string[] EncoderOptions()
+    {
+        if (Quality is < 0 or > 100)
+            throw new ArgumentException("Quality is 0 to 100.", nameof(Quality));
+        if (Compression is < 0 or > 9)
+            throw new ArgumentException("Compression is 0 to 9.", nameof(Compression));
+        return Format switch
+        {
+            "png" => ["-compression_level", (Compression ?? 3).ToString(CultureInfo.InvariantCulture)],
+            "webp" => ["-quality", (Quality ?? 100).ToString(CultureInfo.InvariantCulture)],
+
+            // OpenCV's JPEG quality has no ffmpeg equivalent: 95 (scenedetect's default) and above is -q:v 2, ffmpeg's
+            // best usual setting, and lower qualities spread evenly down to -q:v 31 at 0.
+            _ => ["-q:v", Math.Clamp((int)Math.Round(2 + ((95 - (Quality ?? 95)) * 29 / 95.0)), 2, 31).ToString(CultureInfo.InvariantCulture)],
+        };
+    }
 
     /// <summary>The ffmpeg scale filter for these settings (bilinear, as scenedetect's default scale-method).</summary>
     internal string ScaleFilter() => (Width, Height, Scale) switch
@@ -111,7 +138,8 @@ public static partial class Export
     /// frames in, the last that far from the end, the others mid-segment. Images are full size,
     /// stretched to square pixels if needed.
     /// Same frames as scenedetect (by its frame positions), but encoded by ffmpeg at
-    /// -q:v 2 rather than OpenCV at JPEG quality 95, so files are similar, not byte-identical.
+    /// -q:v 2 rather than OpenCV at JPEG quality 95, so files are similar, not byte-identical
+    /// (<see cref="ImageOptions.Quality"/>, <see cref="ImageOptions.Compression"/>).
     /// </summary>
     public static IReadOnlyList<string> SaveImages(DetectionResult result,
         string outputDir,
@@ -122,6 +150,7 @@ public static partial class Export
         if (result.VideoPath is null)
             throw new InvalidOperationException("Saving images needs the video as a file path or URL; the input was a Stream.");
         var io = options ?? new ImageOptions();
+        string[] quality = io.EncoderOptions();
         int numImages = io.NumImages, frameMargin = io.FrameMargin;
         if (numImages < 1 || frameMargin < 0)
             throw new ArgumentException("NumImages must be at least 1 and FrameMargin at least 0.");
@@ -169,12 +198,6 @@ public static partial class Export
             string filterFile = Path.Combine(temp, "filter.txt");
             File.WriteAllText(filterFile,
                 $"select='{string.Join("+", frames.Select(f => $"eq(n\\,{f})"))}',scale='round(iw*sar)':ih,setsar=1{io.ScaleFilter()}");
-            string[] quality = io.Format switch
-            {
-                "png" => ["-compression_level", "3"],   // scenedetect's defaults: jpeg 95, png 3, webp 100
-                "webp" => ["-quality", "100"],
-                _ => ["-q:v", "2"],
-            };
             VideoReader.Run(video.FfmpegExe,
                 ["-v", "error", "-nostdin", "-y", "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
                     "-fps_mode", "passthrough", .. quality, Path.Combine(temp, $"%06d.{io.Format}")],
