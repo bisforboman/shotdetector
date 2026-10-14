@@ -2,7 +2,8 @@ name: Release
 
 # Merging a release PR releases. Two products, released separately (docs/frame-reader-product.md):
 # - ShotDetector: CHANGELOG.md's newest version ("## X.Y.Z – date"), tag vX.Y.Z; ShotDetector, ShotDetector.FastYuv,
-#   the ShotDetector.Native.<rid> aliases (and the meta-package's), the ShotDetector.Cli tool and its Native AOT binaries.
+#   the ShotDetector.Cli tool and its Native AOT binaries (ShotDetector.Native, aliases of FrameReader.Native, ended
+#   with 2.x).
 # - FrameReader: src/FrameReader/CHANGELOG.md's newest version, tag framereader-vX.Y.Z; FrameReader and
 #   FrameReader.Native.<rid> (and the meta-package).
 # On every push to main, each product whose newest version isn't tagged yet is released: built, published to nuget.org
@@ -138,8 +139,6 @@ jobs:
           dotnet pack src/FrameReader --configuration Release $versions --output $fr_out
           for rid in $rids; do dotnet pack src/FrameReader.Native -p:Rid=$rid $versions --output $fr_out; done
           if [ "$SD_DUE" = true ]; then
-            # ShotDetector.Native.<rid>: aliases depending on FrameReader.Native.<rid> at $FR or newer.
-            for rid in $rids; do dotnet pack src/FrameReader.Native -p:Alias=true -p:Rid=$rid $versions --output artifacts; done
             dotnet pack src/ShotDetector --configuration Release $versions --output artifacts
             dotnet pack src/ShotDetector.FastYuv --configuration Release $versions --output artifacts
             dotnet pack src/ShotDetector.Cli --configuration Release $versions --output artifacts

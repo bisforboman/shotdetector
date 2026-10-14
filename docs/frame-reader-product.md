@@ -36,7 +36,7 @@ for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-onl
 ## Steps
 
 1. **Versions.** Each package its own `<Version>` and `ApiBaselineVersion` (Directory.Build.props today holds one of
-   each). Both continue from 2.1.0. ShotDetector depends on FrameReader as `[2.1.0, 3.0.0)`, the lower bound raised
+   each). Both continue from 2.1.0. ShotDetector depends on FrameReader at its version or newer (from 3.0, below the next major: Directory.Build.targets), the lower bound raised
    when ShotDetector needs something newer. Package validation per package against its own baseline.
 2. **Changelog.** `changes/framereader/*.md` and `changes/shotdetector/*.md` (a PR touching both adds one to each);
    `CHANGELOG.md` for ShotDetector (FastYuv, CLI, its Native aliases), `src/FrameReader/CHANGELOG.md` for FrameReader

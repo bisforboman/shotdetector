@@ -93,6 +93,7 @@ public class TestMediaTests
             Assert.Equal(("pcm_s24le", 1), (audio.Codec, audio.Channels));
 
             var e = Assert.Throws<FrameReaderException>(() => TestMedia.Write(Path.Combine(dir, "x.mkv"), new TestMediaOptions { Video = ["nosuchsource=d=1"] }));
+            Assert.IsAssignableFrom<MediaException>(e); // issue #239: one catch for both packages
             Assert.Equal(FrameReaderError.InvalidInput, e.Reason);
             Assert.Throws<ArgumentException>(() => TestMedia.Write(Path.Combine(dir, "x.mkv"), new TestMediaOptions()));
         }

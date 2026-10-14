@@ -1,0 +1,16 @@
+<Project>
+
+  <!--
+    A package's dependency on another of ours (a ProjectReference: ShotDetector on FrameReader, FastYuv on
+    ShotDetector) is a range up to the next major version, [X.Y.Z, X+1.0.0): NuGet writes only the minimum, which
+    would let a later major (new API, removed members) replace the version this package was built against.
+  -->
+  <Target Name="_OurDependenciesUpToTheNextMajor" AfterTargets="_GetProjectReferenceVersions">
+    <ItemGroup>
+      <_ProjectReferencesWithVersions Update="@(_ProjectReferencesWithVersions)">
+        <ProjectVersion>[%(ProjectVersion), $([MSBuild]::Add($([System.String]::Copy('%(ProjectVersion)').Split('.')[0]), 1)).0.0)</ProjectVersion>
+      </_ProjectReferencesWithVersions>
+    </ItemGroup>
+  </Target>
+
+</Project>

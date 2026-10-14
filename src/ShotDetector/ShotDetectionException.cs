@@ -24,10 +24,11 @@ public enum ShotDetectionError
 
 /// <summary>
 /// A failure from ffmpeg, ffprobe or the input, with a <see cref="Reason"/> to tell a deployment problem from bad input.
-/// An <see cref="InvalidOperationException"/>, so code catching that still catches it.
+/// A <see cref="FrameReader.MediaException"/>, as FrameReader's exception is, so one catch covers both packages; and an
+/// <see cref="InvalidOperationException"/>, so code catching that still catches it.
 /// </summary>
 public sealed class ShotDetectionException(ShotDetectionError reason, string message, Exception? innerException = null)
-    : InvalidOperationException(message, innerException)
+    : FrameReader.MediaException(message, innerException)
 {
     /// <summary>What went wrong.</summary>
     public ShotDetectionError Reason { get; } = reason;
