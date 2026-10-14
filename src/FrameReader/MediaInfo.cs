@@ -216,12 +216,18 @@ public sealed record MediaInfo
     /// for (<see cref="ProbeOptions.PacketTimestamps"/>). Reads the whole file's packets, without decoding.
     /// </summary>
     public IReadOnlyList<long?>? PacketTimestamps { get; init; }
+
+    /// <summary>
+    /// Every video packet's byte position in the file, as ffprobe's <c>packet=pos</c>, in the order of
+    /// <see cref="PacketTimestamps"/> (null entries: unknown); read along with them.
+    /// </summary>
+    public IReadOnlyList<long?>? PacketPositions { get; init; }
 }
 
 /// <summary>What <see cref="MediaProbe"/> reads besides the headers, and how it opens the input.</summary>
 public sealed record ProbeOptions
 {
-    /// <summary>Also read every video packet's pts (<see cref="MediaInfo.PacketTimestamps"/>).</summary>
+    /// <summary>Also read every video packet's pts and position (<see cref="MediaInfo.PacketTimestamps"/>, <see cref="MediaInfo.PacketPositions"/>).</summary>
     public bool PacketTimestamps { get; init; }
 
     /// <summary>

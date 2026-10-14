@@ -84,6 +84,32 @@ public class RemuxTests
         }
     }
 
+    // DisplayRotation: ffmpeg's -display_rotation, with the input's own rotation replaced.
+    [Theory]
+    [InlineData(90)]
+    [InlineData(-90)]
+    [InlineData(180)]
+    public void DisplayRotationIsFfmpegs(double degrees)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-remux-").FullName;
+        try
+        {
+            string input = Path.Combine(dir, "in.mp4"), expected = Path.Combine(dir, "expected.mp4"), actual = Path.Combine(dir, "out.mp4");
+            Ffmpeg(["-v", "error", "-y", .. Make.Split(' '), "-map", "0", "-c:v", "mpeg4", "-metadata:s:v", "rotate=0", input]);
+            string turned = Path.Combine(dir, "turned.mp4");
+            Ffmpeg("-v", "error", "-y", "-display_rotation", "45", "-i", input, "-c", "copy", turned);
+            Ffmpeg("-v", "error", "-y", "-display_rotation", degrees.ToString(System.Globalization.CultureInfo.InvariantCulture), "-i", turned, "-c", "copy", "-fflags", "+bitexact", expected);
+            Remux.Copy(turned, actual, new RemuxOptions { DisplayRotation = degrees, Bitexact = true });
+            Assert.Equal(File.ReadAllBytes(expected), File.ReadAllBytes(actual));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // DASH (issue #171): fMP4 segments and a static MPD from stream copy, every file ffmpeg's, with muxer options as
     // ffmpeg's output options. And an .mp4 with movflags=+faststart.
     [Fact]

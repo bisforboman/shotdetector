@@ -443,6 +443,8 @@ internal sealed unsafe class Encoder : IDisposable
             if (_codec != null)
                 OpenVideo(_filtered);
             var send = _enc->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO ? Zeroed(_filtered) : _filtered;
+            if (_enc->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO)
+                send->quality = _enc->global_quality; // as ffmpeg does: -q:v reaches the encoder per frame
             if (forced != AVPictureType.AV_PICTURE_TYPE_NONE)
                 send->pict_type = forced;
             Check(ffmpeg.avcodec_send_frame(_enc, send), "encode");

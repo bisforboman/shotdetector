@@ -51,6 +51,31 @@ public class TestMediaTests
         }
     }
 
+    // VideoQuality is ffmpeg's -q:v: a fixed quantizer, so a lower one is a bigger file than the default rate control's.
+    [Fact]
+    public void VideoQualityIsAFixedQuantizer()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-testmedia-").FullName;
+        try
+        {
+            long Size(int? q)
+            {
+                string path = Path.Combine(dir, $"q{q}.mp4");
+                TestMedia.Write(path, new TestMediaOptions { Video = ["mandelbrot,trim=duration=2"], VideoEncoder = "mpeg4", VideoQuality = q });
+                return new FileInfo(path).Length;
+            }
+
+            long best = Size(2), worst = Size(31), auto = Size(null);
+            Assert.True(best > auto && auto > worst, $"q2 {best}, default {auto}, q31 {worst} bytes");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void WritesAudioOnlyAndRejectsBadSources()
     {
