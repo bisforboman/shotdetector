@@ -3,6 +3,13 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## A pre-commit hook formats the staged C# files (2026-10-14)
+
+Asked: **a committed .githooks/ turned on with core.hooksPath** (over Husky.Net, or a hook on one machine only); a
+staged file that also has unstaged changes **stops the commit** (over check-only, or stashing, which is fragile and
+shared across worktrees here); the tool from **a local tool manifest** (over whatever is on PATH), which CI uses too
+and Dependabot updates with the analyzers.
+
 ## FrameReader's own versions: steps 1-3 together, from 2.1.0 (2026-10-14)
 
 Separate versions can't ship alone: release.yml passed one -p:Version, which reaches FrameReader through
