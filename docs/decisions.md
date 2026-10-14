@@ -3,6 +3,13 @@
 Design questions that came up while building ShotDetector, the choices considered, and what the user decided.
 Newest first. Add an entry whenever a design question is put to the user.
 
+## A pre-commit hook formats the staged C# files (2026-10-14)
+
+Asked: **a committed .githooks/ turned on with core.hooksPath** (over Husky.Net, or a hook on one machine only); a
+staged file that also has unstaged changes **stops the commit** (over check-only, or stashing, which is fragile and
+shared across worktrees here); the tool from **a local tool manifest** (over whatever is on PATH), which CI uses too
+and Dependabot updates with the analyzers.
+
 ## #239's shared exception base: 3.0 (2026-10-13)
 
 The user asked why a base class would be breaking. ShotDetectionException : FrameReaderException would be (it loses
