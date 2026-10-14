@@ -67,6 +67,7 @@ public static unsafe class MediaProbe
             var streams = new List<StreamInfo>();
             for (int i = 0; i < fmt->nb_streams; i++)
                 streams.Add(Stream(fmt->streams[i], i));
+            var (pts, pos) = index >= 0 && options?.PacketTimestamps == true ? Packets(fmt, index) : (null, null);
             return new MediaInfo
             {
                 Container = Marshal.PtrToStringAnsi((IntPtr)fmt->iformat->name) ?? "",
@@ -74,7 +75,8 @@ public static unsafe class MediaProbe
                 Video = index < 0 ? null : Video(fmt->streams[index], index),
                 HasAudio = audio,
                 Streams = streams,
-                PacketTimestamps = index >= 0 && options?.PacketTimestamps == true ? Packets(fmt, index) : null,
+                PacketTimestamps = pts,
+                PacketPositions = pos,
             };
         }
         finally
@@ -176,16 +178,20 @@ public static unsafe class MediaProbe
         };
     }
 
-    static List<long?> Packets(AVFormatContext* fmt, int index)
+    static (List<long?>? Pts, List<long?>? Pos) Packets(AVFormatContext* fmt, int index)
     {
-        var result = new List<long?>();
+        List<long?> result = [], positions = [];
         var pkt = ffmpeg.av_packet_alloc();
         try
         {
             while (ffmpeg.av_read_frame(fmt, pkt) >= 0)
             {
                 if (pkt->stream_index == index)
+                {
                     result.Add(Known(pkt->pts));
+                    positions.Add(pkt->pos < 0 ? null : pkt->pos);
+                }
+
                 ffmpeg.av_packet_unref(pkt);
             }
         }
@@ -194,7 +200,7 @@ public static unsafe class MediaProbe
             ffmpeg.av_packet_free(&pkt);
         }
 
-        return result;
+        return (result, positions);
     }
 
     static long? Known(long ts) => ts == ffmpeg.AV_NOPTS_VALUE ? null : ts;

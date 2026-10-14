@@ -193,6 +193,7 @@ Remux.Copy("film.mkv", "picture.mp4", new() { Streams = StreamSelection.Video })
 Remux.Copy("film.mkv", "sound.m4a", new() { Streams = StreamSelection.Audio });
 Remux.Copy("film.mkv", "commentary.mka", new() { StreamIndices = [2] });
 Remux.Copy("film.mkv", "web.mp4", new() { MuxerOptions = new Dictionary<string, string> { ["movflags"] = "+faststart" } });
+Remux.Copy("phone.mp4", "upright.mp4", new() { DisplayRotation = 90 });  // ffmpeg's -display_rotation 90
 ```
 
 `MuxerOptions` are ffmpeg's output options without the dash. With the `dash` muxer they give MPEG-DASH: fMP4 init and
@@ -302,12 +303,14 @@ TestMedia.Write("clip.ts", new()
     FieldOrder = FieldOrder.TopFirst,                                        // mpeg2video with +ilme+ildct, flagged tt
     Audio = "sine=frequency=1000:duration=9",
     VideoEncoder = "mpeg2video",
+    VideoQuality = 3,                                                        // ffmpeg's -q:v 3; null: the encoder's default rate
     AudioEncoder = "aac",
 });
 ```
 
 The FrameReader.Native libraries have the sources (testsrc2, smptebars, mandelbrot, color, sine, anullsrc), concat,
-trim and the encoders (mpeg2video, mpeg4, aac, PCM); a system FFmpeg has them too. It's ffmpeg's `-f lavfi` inputs
+trim and the encoders (mpeg2video, mpeg4, png, aac, PCM), and write program streams (.mpg) and image sequences
+(`frames/%04d.png`); a system FFmpeg has them too. It's ffmpeg's `-f lavfi` inputs
 and a concat, not byte for byte.
 
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour

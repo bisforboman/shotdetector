@@ -32,6 +32,12 @@ public sealed record TestMediaOptions
     /// <summary>The video encoder (<c>mpeg2video</c>, <c>mpeg4</c>, ...); null: the container's usual one.</summary>
     public string? VideoEncoder { get; init; }
 
+    /// <summary>
+    /// The video encoder's fixed quantizer, as ffmpeg's <c>-q:v</c> (lower is better; mpeg2video and mpeg4 take 1-31);
+    /// null: the encoder's default rate control.
+    /// </summary>
+    public int? VideoQuality { get; init; }
+
     /// <summary>The audio encoder (<c>aac</c>, <c>pcm_s16le</c>, ...); null: the container's usual one.</summary>
     public string? AudioEncoder { get; init; }
 }
@@ -80,9 +86,17 @@ public static unsafe class TestMedia
             {
                 v = new Source(video, "buffersink");
                 var codec = Encoder.Find(fmt, path, o.VideoEncoder, AVMediaType.AVMEDIA_TYPE_VIDEO, "video");
-                var encoderOptions = o.FieldOrder is FieldOrder.Progressive or FieldOrder.Unknown
-                    ? new Dictionary<string, string>()
-                    : new Dictionary<string, string> { ["flags"] = "+ilme+ildct" };
+                var flags = o.FieldOrder is FieldOrder.Progressive or FieldOrder.Unknown ? "" : "+ilme+ildct";
+                var encoderOptions = new Dictionary<string, string>();
+                if (o.VideoQuality is { } q)
+                {
+                    // ffmpeg's -q:v: a fixed quantizer, as lambda (FF_QP2LAMBDA = 118).
+                    flags += "+qscale";
+                    encoderOptions["global_quality"] = (q * 118).ToString(CultureInfo.InvariantCulture);
+                }
+
+                if (flags.Length > 0)
+                    encoderOptions["flags"] = flags;
                 ve = Encoder.Video(fmt,
                     codec,
                     AVPixelFormat.AV_PIX_FMT_YUV420P,
