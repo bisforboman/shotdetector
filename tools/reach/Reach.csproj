@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Which of FrameReader's source files ShotDetector's detection can run (CI's `changes` jobs: a change to the others
+    can't move ShotDetector's results). Program.cs has the usage.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
