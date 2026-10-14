@@ -3,7 +3,7 @@
 //
 //   dotnet run --project examples/ShotDetector.Example -- <video>
 //
-// Needs FFmpeg 8's shared libraries (add ShotDetector.Native.<rid>) or ffmpeg on PATH.
+// Needs FFmpeg 8's shared libraries (add FrameReader.Native.<rid>) or ffmpeg on PATH.
 using FrameReader;
 using ShotDetector;
 

@@ -1,20 +1,21 @@
-# ShotDetector.Native.&lt;rid&gt;
+# FrameReader.Native.&lt;rid&gt;
 
-FFmpeg's shared libraries for [ShotDetector](https://github.com/bisforboman/shotdetector)'s in-process decoding,
-one package per platform: `win-x64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `osx-arm64`.
+FFmpeg's shared libraries for FrameReader and [ShotDetector](https://github.com/bisforboman/shotdetector), one package
+per platform: `win-x64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `osx-arm64`.
 
 ```
-dotnet add package ShotDetector.Native.linux-x64
+dotnet add package FrameReader.Native.linux-x64
 ```
 
-Or `ShotDetector.Native`, which depends on every platform's package at its version: one reference for an app built on
+Or `FrameReader.Native`, which depends on every platform's package at its version: one reference for an app built on
 one platform and run on another (a publish for one runtime, `-r linux-x64`, still copies only that platform's
-libraries). A single platform's package keeps a build smaller.
+libraries). A single platform's package keeps a build smaller. Until FrameReader 2.2.0 these were `ShotDetector.Native`
+and `ShotDetector.Native.<rid>`, which now only depend on these.
 
-With the package referenced, ShotDetector finds the libraries next to your app and decodes in-process by default
-(`VideoDecoder.Auto`): faster and with less memory than running the ffmpeg executable, and the same results.
-Files are probed in-process too, so ffmpeg only needs to be installed for streams, URLs and exports (split-video,
-save-images).
+With the package referenced, FrameReader finds the libraries next to your app. ShotDetector then decodes in-process
+by default (`VideoDecoder.Auto`): faster and with less memory than running the ffmpeg executable, and the same
+results. Files are probed in-process too, so ffmpeg only needs to be installed for streams, URLs and exports
+(split-video, save-images).
 
 ## What's inside
 
@@ -33,4 +34,4 @@ is `tools/native/build-ffmpeg.sh` in the repository.
 These are FFmpeg's libraries, under the GNU Lesser General Public License 2.1 or later (`COPYING.LGPL`). They are
 dynamically loaded, so you can replace them with your own build of the same FFmpeg version. FFmpeg's source:
 https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz. dav1d is under the BSD 2-Clause licence (`COPYING.dav1d`), zlib
-under the zlib licence. ShotDetector itself is MIT.
+under the zlib licence. FrameReader and ShotDetector themselves are MIT.

@@ -16,7 +16,7 @@
     <PackageProjectUrl>https://github.com/bisforboman/shotdetector</PackageProjectUrl>
     <RepositoryUrl>https://github.com/bisforboman/shotdetector</RepositoryUrl>
     <!-- Two products, each with its own version from its CHANGELOG (release.yml passes them; these are for local
-         builds): ShotDetector (with FastYuv, the CLI and the Native packages) and FrameReader, which sets its own
+         builds): ShotDetector (with FastYuv, the CLI and the ShotDetector.Native aliases) and FrameReader (with FrameReader.Native), which sets its own
          Version from FrameReaderVersion (docs/frame-reader-product.md). Never pass -p:Version: as a global property
          it would reach FrameReader too, through ShotDetector's reference. -->
     <ShotDetectorVersion>0.1.0-alpha.1</ShotDetectorVersion>

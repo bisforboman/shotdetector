@@ -484,7 +484,7 @@ $RECYCLE.BIN/
 # Generated sample videos and outputs
 samples/
 
-# FFmpeg libraries for ShotDetector.Native (tools/native/build-ffmpeg.sh or the native.yml artifacts)
+# FFmpeg libraries for FrameReader.Native (tools/native/build-ffmpeg.sh or the native.yml artifacts)
 /native/
 BenchmarkDotNet.Artifacts/
 

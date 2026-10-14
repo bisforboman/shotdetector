@@ -25,7 +25,7 @@ internal static class InProcess
         {
             throw new ShotDetectionException(ShotDetectionError.LibrariesNotFound,
                 "In-process decoding needs FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, "
-                + "libavutil 60): add the ShotDetector.Native.<rid> package for your platform, or install them (Alpine: "
+                + "libavutil 60): add the FrameReader.Native.<rid> package for your platform, or install them (Alpine: "
                 + "`apk add ffmpeg-libs`; Windows: a \"shared\" FFmpeg 8 build, with FfmpegDirectory set to its bin folder). "
                 + $"Or decode with the ffmpeg executable (VideoDecoder.FfmpegProcess). ({e.InnerException?.Message})",
                 e);

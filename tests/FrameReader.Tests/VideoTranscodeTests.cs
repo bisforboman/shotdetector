@@ -26,7 +26,7 @@ public class VideoTranscodeTests
                 AudioEncoder = "aac",
             });
 
-            // Deinterlace: automatic (the input is flagged tt). mpeg4 because ShotDetector.Native has no H.264 encoder.
+            // Deinterlace: automatic (the input is flagged tt). mpeg4 because FrameReader.Native has no H.264 encoder.
             await Video.TranscodeAsync(input, output, new VideoTranscodeOptions { Encoder = "mpeg4", KeyframeEvery = TimeSpan.FromSeconds(1) });
 
             var info = MediaProbe.Probe(output);

@@ -54,7 +54,7 @@ public class FFmpegLibrariesTests
         Assert.False(FFmpegLibraries.HasMuxer("nosuchmuxer"));
     }
 
-    // Issue #195: our build (ShotDetector.Native) and full builds have everything FrameReader's features need, but x264.
+    // Issue #195: our build (FrameReader.Native) and full builds have everything FrameReader's features need, but x264.
     [Fact]
     public void SaysWhatAFeatureLacks()
     {

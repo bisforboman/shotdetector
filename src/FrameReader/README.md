@@ -10,7 +10,7 @@ Extracted from [ShotDetector](https://github.com/bisforboman/shotdetector)'s in-
 
 ```
 dotnet add package FrameReader
-dotnet add package ShotDetector.Native.linux-x64   # FFmpeg's libraries for your platform
+dotnet add package FrameReader.Native.linux-x64   # FFmpeg's libraries for your platform
 ```
 
 ShotDetector's own package carries a copy of FrameReader.dll; reference one or the other version consistently.
@@ -236,7 +236,7 @@ A whole file re-encoded in one call: `Video.Transcode(input, output, options)` i
 -pix_fmt yuv420p -g G -force_key_frames ... OUT`, for making a source that isn't ready for DASH ready for `Remux.Copy`:
 deinterlaced when the stream is flagged interlaced (`Deinterlace`: null by default; true or false to force), frames
 upright, the first audio stream re-encoded, keyframes every `KeyframeEvery`. H.264 needs an encoder your libraries have
-(`libx264`, or `libopenh264` with Cisco's binary); ShotDetector.Native has none, for licensing (`mpeg4` works for tests).
+(`libx264`, or `libopenh264` with Cisco's binary); FrameReader.Native has none, for licensing (`mpeg4` works for tests).
 
 ```csharp
 await Video.TranscodeAsync("in.mxf", "out.mp4", new() { Encoder = "libx264", Gop = 72, KeyframeEvery = TimeSpan.FromSeconds(2.4), AudioEncoder = "aac" });
@@ -244,7 +244,7 @@ await Video.TranscodeAsync("in.mxf", "out.mp4", new() { Encoder = "libx264", Gop
 
 Writing video: `VideoWriter` encodes frames to H.264 (x264) in .mp4/.mkv/.mov, optionally with an AAC track, the
 file `ffmpeg -c:v libx264` writes from the same frames with the same FFmpeg build (byte for byte with `Bitexact` on
-both sides). It needs FFmpeg libraries with libx264, which ShotDetector.Native doesn't have: a "gpl" FFmpeg 8 build
+both sides). It needs FFmpeg libraries with libx264, which FrameReader.Native doesn't have: a "gpl" FFmpeg 8 build
 of your own (a shared one, such as BtbN's `gpl-shared`), loaded with `FFmpegLibraries.Load(folder)`. Those are GPL: an
 app that ships with them falls under the GPL, and H.264 is covered by Via LA's AVC patent pool either way
 (docs/encoding-package.md).
@@ -296,7 +296,7 @@ TestMedia.Write("clip.ts", new()
 });
 ```
 
-The ShotDetector.Native libraries have the sources (testsrc2, smptebars, mandelbrot, color, sine, anullsrc), concat,
+The FrameReader.Native libraries have the sources (testsrc2, smptebars, mandelbrot, color, sine, anullsrc), concat,
 trim and the encoders (mpeg2video, mpeg4, aac, PCM); a system FFmpeg has them too. It's ffmpeg's `-f lavfi` inputs
 and a concat, not byte for byte.
 
@@ -345,7 +345,7 @@ thread.
 ## FFmpeg's libraries
 
 FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, libavutil 60; libavfilter 11 to
-deinterlace and filter, libswresample for audio). The ShotDetector.Native.&lt;rid&gt; packages carry a build for
+deinterlace and filter, libswresample for audio). The FrameReader.Native.&lt;rid&gt; packages carry a build for
 win-x64, linux-x64, linux-arm64, linux-musl-x64 and osx-arm64 with everything below but x264
 (for `VideoWriter`, load a build with it); a "shared" FFmpeg 8 build or the system's (`apk add ffmpeg-libs`)
 works too. They load once per process, the first time anything needs them: next to the app, else the system's places;

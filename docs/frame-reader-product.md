@@ -1,6 +1,6 @@
 # FrameReader as its own product
 
-Status: steps 1-3 done (2026-10-14: own versions, changelogs and releases, one PR); steps 4-6 open. The user's choices are in `docs/decisions.md` ("FrameReader as its
+Status: steps 1-4 done (2026-10-14: own versions, changelogs and releases, one PR; then the native packages); steps 5-6 open. The user's choices are in `docs/decisions.md` ("FrameReader as its
 own product").
 
 ## Why
@@ -42,5 +42,6 @@ FrameDecoder's timestamps), and splitting the repository would make each such ch
 
 ## Open questions (ask when the step comes)
 
-- Whether the CLI keeps bundling the FFmpeg libraries via ShotDetector.Native's alias or FrameReader.Native directly.
+- ~~Whether the CLI bundles the FFmpeg libraries via ShotDetector.Native's alias or FrameReader.Native~~: neither, it
+  bundles the same files from native/<rid>/ (step 4).
 - Whether FrameReader's issues and discussions stay in this repository's tracker (assumed yes).
