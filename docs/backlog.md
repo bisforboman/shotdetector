@@ -176,9 +176,9 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 
 | Item | Why | Status |
 |---|---|---|
-| Versions: FrameReader's own Version and ApiBaselineVersion; ShotDetector depends on it as [2.1.0, 3.0.0) | Lockstep moved each package's number for the other's changes | Open |
-| Changelog per package: changes/framereader/ and changes/shotdetector/, src/FrameReader/CHANGELOG.md, changelog.py --package | Each product's release notes say only what changed in it | Open |
-| Releases per product: framereader-vX.Y.Z tags and GitHub releases next to vX.Y.Z; a baseline issue each | Release FrameReader without ShotDetector and the other way round | Open |
+| Versions: FrameReader's own Version and ApiBaselineVersion; ShotDetector depends on it as [2.1.0, 3.0.0) | Lockstep moved each package's number for the other's changes | Done (2026-10-14, with the next two rows in one PR): ShotDetectorVersion/FrameReaderVersion and their baselines; ShotDetector's package depends on FrameReader's current version (>=, no upper bound: NuGet's) |
+| Changelog per package: changes/framereader/ and changes/shotdetector/, src/FrameReader/CHANGELOG.md, changelog.py --package | Each product's release notes say only what changed in it | Done (2026-10-14) |
+| Releases per product: framereader-vX.Y.Z tags and GitHub releases next to vX.Y.Z; a baseline issue each | Release FrameReader without ShotDetector and the other way round | Done (2026-10-14): framereader-v2.1.0 tagged on 2.1.0's release commit, so the new flow starts from there |
 | FrameReader.Native.<rid> (and the meta-package) as the real native packages; ShotDetector.Native.<rid> as aliases | FrameReader users shouldn't need a ShotDetector-named package | Open |
 | CI by what a change touches: FrameReader-only parts run FrameReader's tests; shared code still runs the scenedetect comparison | FrameReader-only PRs ran the whole parity matrix | Open |
 | Docs: FrameReader's README as its package's front page, the root README introducing both; a framereader issue label | FrameReader read as a part of ShotDetector | Open |

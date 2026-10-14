@@ -15,11 +15,17 @@
     <Copyright>Copyright (c) Jakob Boman</Copyright>
     <PackageProjectUrl>https://github.com/bisforboman/shotdetector</PackageProjectUrl>
     <RepositoryUrl>https://github.com/bisforboman/shotdetector</RepositoryUrl>
-    <!-- Local builds; releases take the version from the git tag (see .github/workflows/release.yml). -->
-    <Version>0.1.0-alpha.1</Version>
-    <!-- The libraries' API guard (SDK package validation): packing fails on a breaking change against this release,
-         the last stable version on nuget.org (docs/decisions.md, 2026-10-08). -->
+    <!-- Two products, each with its own version from its CHANGELOG (release.yml passes them; these are for local
+         builds): ShotDetector (with FastYuv, the CLI and the Native packages) and FrameReader, which sets its own
+         Version from FrameReaderVersion (docs/frame-reader-product.md). Never pass -p:Version: as a global property
+         it would reach FrameReader too, through ShotDetector's reference. -->
+    <ShotDetectorVersion>0.1.0-alpha.1</ShotDetectorVersion>
+    <FrameReaderVersion>0.1.0-alpha.1</FrameReaderVersion>
+    <Version>$(ShotDetectorVersion)</Version>
+    <!-- Each product's API guard (SDK package validation): packing fails on a breaking change against its last stable
+         version on nuget.org (docs/decisions.md, 2026-10-08). -->
     <ApiBaselineVersion>2.0.0</ApiBaselineVersion>
+    <FrameReaderApiBaselineVersion>2.0.0</FrameReaderApiBaselineVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="StyleBro.Analyzers" PrivateAssets="all" />

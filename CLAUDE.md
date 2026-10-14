@@ -27,15 +27,20 @@ paths (10-bit h264 too), 0.7.2 both through the ffmpeg executable and in-process
 adds `SHOTDETECTOR_OURS_ARGS` to every run, CI sets `--decoder`); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
 weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what the user decided and why.
 
-**Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Open a release
-PR that folds the changelog fragments into CHANGELOG.md (`python tools/changelog.py X.Y.Z "summary"`), opened
-once every PR going into it has merged (never stacked on an open branch); merging it releases: release.yml (on every
-push to main) tags `vX.Y.Z` when that version isn't tagged yet and publishes. Prereleases (`-`) publish without
+**Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Two products,
+released separately since 2.1.0 (docs/frame-reader-product.md): ShotDetector (with FastYuv, the CLI and the Native
+packages; CHANGELOG.md, tags `vX.Y.Z`) and FrameReader (src/FrameReader/CHANGELOG.md, tags `framereader-vX.Y.Z`). A
+product's release PR folds its fragments into its CHANGELOG (`python tools/changelog.py --package shotdetector|framereader
+X.Y.Z "summary"`), opened once every PR going into it has merged (never stacked on an open branch); one PR can release
+both. Merging it releases: release.yml (on every push to main) releases each product whose newest version isn't tagged
+yet, FrameReader first, each with its own tag and GitHub release; ShotDetector's package depends on FrameReader's
+current version. Never pass `-p:Version` (it would reach FrameReader through ShotDetector's reference):
+`-p:ShotDetectorVersion` and `-p:FrameReaderVersion`. Prereleases (`-`) publish without
 approval (the `prerelease` environment allows `v*-*` tags, and `main` once the user adds it; with tags only, push
 `vX.Y.Z-pre` on the release commit), stable ones wait for the user's approval of the `release` environment. A hand-pushed `v*` tag still works.
-After a stable release is on nuget.org, set `ApiBaselineVersion` in Directory.Build.props to it (FrameReader's too, from 1.5.0) (from 1.0 on; release.yml
-opens an issue as the reminder): packing
-then fails on any breaking change to ShotDetector or FastYuv (SDK package validation, CP000x errors). FrameReader.dll, inside
+After a stable release is on nuget.org, set that product's baseline in Directory.Build.props to it: `ApiBaselineVersion`
+(ShotDetector, FastYuv) or `FrameReaderApiBaselineVersion` (release.yml opens an issue per product as the reminder):
+packing then fails on any breaking change (SDK package validation, CP000x errors). FrameReader.dll, inside
 ShotDetector's package, isn't under semver: its changes go in src/ShotDetector/CompatibilitySuppressions.xml (regenerate
 with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 
@@ -48,8 +53,9 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
   to main directly.
 - **Worktrees**: `git worktree add .claude/worktrees/<name> -b <branch> origin/main` (ignored). Sessions working at
   the same time each use their own worktree, never one checkout, so a commit can't land on another's branch.
-- **Changelog**: a PR with a change users of the packages notice adds `changes/<branch>.md` (changes/README.md:
-`### Fixed` / `### New` / ... and bullets), never CHANGELOG.md itself, so parallel PRs don't conflict there.
+- **Changelog**: a PR with a change users of the packages notice adds `changes/shotdetector/<branch>.md` or
+`changes/framereader/<branch>.md`, one to each when it changes both (changes/README.md: `### Fixed` / `### New` / ...
+and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - **Backlog**: `docs/backlog.md`. Take the next open item; update its status when work starts and lands. Add items
   when something turns up (a divergence, a gap), with why.
 - **Decisions**: when a design question needs the user, ask with the multiple-choice prompt and record the
