@@ -107,10 +107,7 @@ case "$rid" in
   # D3D11VA/DXVA2 for FrameReader's HardwareDecoding: Windows' own APIs, no extra libraries.
   win-x64) set -- "$@" --enable-d3d11va --enable-dxva2 --arch=x86_64 --target-os=mingw32 --cross-prefix=x86_64-w64-mingw32- \
              --extra-ldflags=-static-libgcc --enable-w32threads ;;
-  # RUNPATH $ORIGIN: each library finds its siblings in its own folder. glibc reuses a library FFmpeg.AutoGen loaded
-  # by full path for a later dependency on its soname, but musl doesn't, so without it nothing loaded on Alpine
-  # (issue #278). '$$ORIGIN': make turns $$ into $, the quotes keep the shell from expanding it.
-  linux-*) set -- "$@" --enable-pthreads "--extra-ldsoflags=-Wl,-rpath,'\$\$ORIGIN'" ;;
+  linux-*) set -- "$@" --enable-pthreads ;;
   osx-*)   set -- "$@" --enable-pthreads --install-name-dir=@rpath --extra-ldflags=-Wl,-rpath,@loader_path ;;
   *) echo "unknown rid $rid" >&2; exit 1 ;;
 esac
@@ -126,10 +123,13 @@ for lib in avutil swresample swscale avcodec avformat avfilter; do
     osx-*)   f=$(ls "$work"/install/lib/lib$lib.*.dylib | grep -E "lib$lib\.[0-9]+\.dylib$"); cp -L "$f" "$out/" ;;
   esac
 done
-# Linux: every library loads by full path with nothing on the library path, as FrameReader loads them (on Alpine
-# this is musl's loader, which issue #278 tripped on).
+# Linux: RUNPATH $ORIGIN, so each library finds its siblings in its own folder. glibc reuses a library FFmpeg.AutoGen
+# loaded by full path for a later dependency on its soname, but musl doesn't, so without it nothing loaded on Alpine
+# (issue #278). patchelf, as passing $ORIGIN through configure, make and the shell lost it. Then every library has to
+# load by full path with nothing on the library path, as FrameReader loads them.
 case "$rid" in
   linux-*)
+    patchelf --set-rpath '$ORIGIN' "$out"/lib*.so.*
     printf '%s\n' '#include <dlfcn.h>' '#include <stdio.h>' \
       'int main(int c, char **v) { for (int i = 1; i < c; i++) if (!dlopen(v[i], RTLD_NOW)) { puts(dlerror()); return 1; } return 0; }' \
       > "$work/loads.c"
