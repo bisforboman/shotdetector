@@ -6,6 +6,22 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.0.0-preview.1 – 2026-10-14
+
+A preview of 3.0: ShotDetectionException under FrameReader's MediaException (issue #239), dependencies bounded below the next major, and no more ShotDetector.Native aliases.
+
+### Breaking changes
+
+- The `ShotDetector.Native` and `ShotDetector.Native.<rid>` packages aren't published any more: reference
+  `FrameReader.Native` or `FrameReader.Native.<rid>` (the same libraries; the 2.x aliases stay on nuget.org).
+- ShotDetector depends on FrameReader `[2.3.0, 3.0.0)` and FFmpeg.AutoGen `[8.1.0, 9.0.0)`, FastYuv on ShotDetector up
+  to its next major: a later major of either can't replace the version a package was built against.
+
+### New
+
+- `ShotDetectionException` derives from FrameReader's `MediaException` (still an `InvalidOperationException`), as
+  `FrameReaderException` does: one `catch (MediaException)` for both packages (issue #239).
+
 ## 2.2.1 – 2026-10-14
 
 The ShotDetector.Native aliases and the CLI's Alpine binary take FrameReader.Native 2.2.1's fixed musl libraries.
