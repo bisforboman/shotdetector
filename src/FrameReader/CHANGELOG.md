@@ -7,9 +7,9 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
-## 2.3.0-preview.1 – 2026-10-14
+## 2.3.0 – 2026-10-14
 
-A preview of 2.3.0: MediaException, the shared base of FrameReader's and ShotDetector's exceptions (issue #239), and FFmpeg.AutoGen bounded below 9.
+MediaException, the shared base of FrameReader's and ShotDetector's exceptions (issue #239), and FFmpeg.AutoGen bounded below 9.
 
 ### New
 
