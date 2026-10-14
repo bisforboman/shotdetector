@@ -38,7 +38,7 @@
   </ItemGroup>
 
   <!--
-    Our FFmpeg libraries (ShotDetector.Native's: native/<rid>/ at the repository root, put there by CI and the
+    Our FFmpeg libraries (FrameReader.Native's: native/<rid>/ at the repository root, put there by CI and the
     release), bundled so shotdetect decodes in-process. A platform-specific publish (the AOT binaries) gets its
     platform's next to the binary; the dotnet tool, which runs anywhere, gets them all under runtimes/<rid>/native/.
   -->

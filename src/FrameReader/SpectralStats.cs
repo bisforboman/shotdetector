@@ -53,7 +53,7 @@ public readonly ref struct SpectralWindow
 /// aspectralstats filter run over them, so the values are those <c>-af aspectralstats,ametadata=print</c> prints for the
 /// same samples (6 significant digits: the filter hands them out as text). Centroid, spread and rolloff are in Hz.
 /// </summary>
-/// <remarks>Needs the aspectralstats, abuffer and abuffersink filters (the ShotDetector.Native libraries have them).</remarks>
+/// <remarks>Needs the aspectralstats, abuffer and abuffersink filters (the FrameReader.Native libraries have them).</remarks>
 public sealed unsafe class SpectralStats : IDisposable
 {
     static readonly string[] Names = ["mean", "variance", "centroid", "spread", "skewness", "kurtosis", "entropy", "flatness", "crest", "flux", "slope", "decrease", "rolloff"];

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds FFmpeg's shared libraries for ShotDetector.Native.<rid>: decoding (libavcodec decoders, libavformat
+# Builds FFmpeg's shared libraries for FrameReader.Native.<rid>: decoding (libavcodec decoders, libavformat
 # demuxers), plus the AAC, MP3 (LAME) and 16-bit PCM encoders and the muxers FrameReader's AudioWriter and Remux
 # write with (dash for fMP4 segments and an MPD, issue #171), libswscale, libavutil; libswresample too, which FFmpeg.AutoGen loads with libavcodec), plus libavfilter
 # with only yadif (deinterlacing), fps (FrameReader's FrameRate), aspectralstats (its SpectralStats), the audio

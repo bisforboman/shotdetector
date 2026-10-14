@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Packs FFmpeg's shared libraries for one platform as FrameReader.Native.<Rid> (no code), at FrameReader's version:
+      dotnet pack src/FrameReader.Native -p:Rid=linux-x64
+    or, with -p:Rid=all, the FrameReader.Native meta-package depending on every platform's (FrameReader.Native.nuspec).
+    The libraries come from native/<Rid>/ at the repository root (tools/native/build-ffmpeg.sh, the native.yml
+    workflow's artifacts) and go to runtimes/<Rid>/native/, where the loader finds them next to the app.
+    With -p:Alias=true: ShotDetector.Native.<Rid> (or ShotDetector.Native), at ShotDetector's version, which only
+    depends on FrameReader.Native's, so references from before FrameReader.Native keep working (ShotDetector.Native.nuspec).
+  -->
+  <PropertyGroup>
+    <Rid Condition="'$(Rid)' == ''">linux-x64</Rid>
+    <NativeDir>$(MSBuildThisFileDirectory)..\..\native\$(Rid)\</NativeDir>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <!-- No code, so no dependency group for the target framework. -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+
+    <Version Condition="'$(Alias)' != 'true'">$(FrameReaderVersion)</Version>
+    <PackageId>FrameReader.Native.$(Rid)</PackageId>
+    <Description>FFmpeg 8.1.3's shared libraries for $(Rid), built for decoding plus AAC, MP3, PCM, MPEG-2 and MPEG-4 encoding and common muxers (yadif, fps, aspectralstats, FrameReader's audio filters and TestMedia's sources the only filters; zlib and dav1d for PNG and AV1 linked in), so FrameReader and ShotDetector decode and probe in-process. LGPL-2.1-or-later, as FFmpeg (dav1d: BSD-2-Clause); the build recipe is configure.txt in the package.</Description>
+    <PackageTags>video;audio;ffmpeg;native;scene-detection</PackageTags>
+    <PackageLicenseExpression>LGPL-2.1-or-later</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(NativeDir)*" Exclude="$(NativeDir)configure.txt" Pack="true" PackagePath="runtimes\$(Rid)\native\" />
+    <None Include="$(NativeDir)configure.txt" Pack="true" PackagePath="\" />
+    <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="COPYING.LGPL" Pack="true" PackagePath="\" />
+    <None Include="COPYING.dav1d" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(Rid)' == 'all' and '$(Alias)' != 'true'">
+    <NuspecFile>FrameReader.Native.nuspec</NuspecFile>
+    <NuspecProperties>version=$(Version);authors=$(Authors)</NuspecProperties>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Alias)' == 'true'">
+    <Suffix Condition="'$(Rid)' != 'all'">.$(Rid)</Suffix>
+    <NuspecFile>ShotDetector.Native.nuspec</NuspecFile>
+    <NuspecProperties>id=ShotDetector.Native$(Suffix);target=FrameReader.Native$(Suffix);version=$(Version);frameReaderVersion=$(FrameReaderVersion);authors=$(Authors)</NuspecProperties>
+  </PropertyGroup>
+
+  <Target Name="NeedsTheLibraries" BeforeTargets="GenerateNuspec" Condition="'$(Rid)' != 'all' and '$(Alias)' != 'true'">
+    <Error Condition="!Exists('$(NativeDir)configure.txt')" Text="No libraries in $(NativeDir): build them with tools/native/build-ffmpeg.sh $(Rid) native/$(Rid), or take the native.yml artifact." />
+  </Target>
+
+</Project>

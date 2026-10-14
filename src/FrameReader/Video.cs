@@ -54,7 +54,7 @@ public static class Video
     /// as <c>ffmpeg -i IN [-vf yadif] -c:v E -pix_fmt yuv420p -g G -force_key_frames ... OUT</c>: for making a source
     /// that isn't ready for DASH (codec, container, pixel format, interlacing) ready for <see cref="Remux.Copy"/>. The
     /// output's frame rate is the input's average rate and its frames are upright (the display rotation applied). H.264
-    /// needs an encoder your libraries have (<c>libx264</c> or <c>libopenh264</c>): ShotDetector.Native has neither,
+    /// needs an encoder your libraries have (<c>libx264</c> or <c>libopenh264</c>): FrameReader.Native has neither,
     /// for licensing; its <c>mpeg4</c> or <c>mpeg2video</c> work for tests.
     /// </summary>
     /// <param name="input">The input file.</param>

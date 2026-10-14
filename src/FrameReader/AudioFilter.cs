@@ -12,7 +12,7 @@ namespace FrameReader;
 /// convert after it, as -ar and -ac do. Time windows are ffmpeg's own: <c>enable='between(t,10,20)'</c> on a filter.
 /// </summary>
 /// <remarks>
-/// Filters in the ShotDetector.Native libraries: volume, equalizer, bass, treble, highpass, lowpass, bandpass,
+/// Filters in the FrameReader.Native libraries: volume, equalizer, bass, treble, highpass, lowpass, bandpass,
 /// bandreject, afade, pan, acompressor, alimiter, dynaudnorm, agate, ebur128, loudnorm, silencedetect, astats (and
 /// aformat, aresample). Any FFmpeg build loaded with <see cref="FFmpegLibraries.Load"/> brings its own set.
 /// Analysis filters' results (ebur128 with metadata=1, silencedetect, astats with metadata=1) are in

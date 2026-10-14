@@ -1,6 +1,6 @@
 name: Native libraries
 
-# FFmpeg's shared libraries for ShotDetector.Native.<rid> (tools/native/build-ffmpeg.sh), one job per platform,
+# FFmpeg's shared libraries for FrameReader.Native.<rid> (tools/native/build-ffmpeg.sh), one job per platform,
 # cached by the script's hash: they are rebuilt only when the FFmpeg version or the configure line changes.
 # release.yml and the tests take them from here (workflow_call), as artifacts native-<rid>.
 on:

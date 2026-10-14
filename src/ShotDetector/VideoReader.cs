@@ -802,7 +802,7 @@ internal sealed partial class VideoReader
                 yield return frame;
             }
 
-            // Auto: libraries that can't decode this codec (AV1 needs dav1d, which ShotDetector.Native leaves out)
+            // Auto: libraries that can't decode this codec (AV1 needs dav1d, which FrameReader.Native leaves out)
             // give no frames at all; the ffmpeg executable decodes it instead, from here on.
             // A Stream can't be read twice: what it gave is what there is.
             if (any || _decoder != VideoDecoder.Auto || ExpectedFrames <= startFrame || _stream is not null)

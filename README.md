@@ -8,7 +8,7 @@
 Shot/cut detection for video in C#: a faithful port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s
 detectors (scenedetect 0.7.2: adaptive, content, threshold, histogram and hash) that gives identical
 results, faster and lighter than scenedetect ([Performance](#performance)). Video is decoded in-process by FFmpeg's
-libraries (the `ShotDetector.Native` packages carry them) or by the [ffmpeg](https://ffmpeg.org) executable; all
+libraries (the `FrameReader.Native` packages carry them) or by the [ffmpeg](https://ffmpeg.org) executable; all
 detection logic is plain C#.
 
 - `src/ShotDetector`: the library, NuGet package `ShotDetector` (MIT).
@@ -22,12 +22,12 @@ detection logic is plain C#.
 ```
 dotnet add package ShotDetector                 # the library
 dotnet add package ShotDetector.FastYuv         # optional, LGPL: faster on large video
-dotnet add package ShotDetector.Native.linux-x64  # optional, LGPL: FFmpeg's libraries for in-process decoding
+dotnet add package FrameReader.Native.linux-x64  # optional, LGPL: FFmpeg's libraries for in-process decoding
 dotnet tool install -g ShotDetector.Cli         # the shotdetect command (bundles those libraries)
 ```
 
 When FFmpeg 8's shared libraries are available, video files are read and decoded in-process, with no ffmpeg or
-ffprobe needed: faster and lighter, with the same results (see Performance). The `ShotDetector.Native.<rid>`
+ffprobe needed: faster and lighter, with the same results (see Performance). The `FrameReader.Native.<rid>`
 packages (`win-x64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `osx-arm64`) carry them, built by us for
 decoding only; the CLI tool and binaries bundle them. A "shared" FFmpeg 8 build, or `ffmpeg-libs` on Alpine, works
 too. FFmpeg 9's libraries (libavcodec 63) don't load in-process: with only those, `Auto` uses the executable, and an
@@ -256,7 +256,7 @@ ffmpeg executable, and scenedetect. **The current numbers are in the summaries o
 and CPU counts, with less memory and similar or less CPU time; the ffmpeg executable costs more CPU and memory than
 decoding in-process (its own process and frame queues, issue #12). All give identical results.
 
-In-process decoding uses FFmpeg's shared libraries inside our process, as OpenCV does: the `ShotDetector.Native`
+In-process decoding uses FFmpeg's shared libraries inside our process, as OpenCV does: the `FrameReader.Native`
 packages or the CLI's bundled ones, or a system install. It is the default whenever they load
 (`Decoder = VideoDecoder.Auto`; from `FfmpegDirectory` / `--ffmpeg-dir`, else next to the app, else the system's
 usual places); otherwise the executable is used. `--decoder inprocess` insists on the libraries, `--decoder

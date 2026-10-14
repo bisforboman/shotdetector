@@ -2,8 +2,9 @@ name: Release
 
 # Merging a release PR releases. Two products, released separately (docs/frame-reader-product.md):
 # - ShotDetector: CHANGELOG.md's newest version ("## X.Y.Z – date"), tag vX.Y.Z; ShotDetector, ShotDetector.FastYuv,
-#   ShotDetector.Native.<rid> (and the meta-package), the ShotDetector.Cli tool and its Native AOT binaries.
-# - FrameReader: src/FrameReader/CHANGELOG.md's newest version, tag framereader-vX.Y.Z; the FrameReader package.
+#   the ShotDetector.Native.<rid> aliases (and the meta-package's), the ShotDetector.Cli tool and its Native AOT binaries.
+# - FrameReader: src/FrameReader/CHANGELOG.md's newest version, tag framereader-vX.Y.Z; FrameReader and
+#   FrameReader.Native.<rid> (and the meta-package).
 # On every push to main, each product whose newest version isn't tagged yet is released: built, published to nuget.org
 # (FrameReader first, as ShotDetector depends on it), and given its own GitHub release. Prereleases only (a '-' in
 # every due version) use the 'prerelease' environment, others 'release', which waits for approval. Pushing a v* or
@@ -85,7 +86,7 @@ jobs:
             done
           done
 
-  # Our FFmpeg build for every platform (native.yml, cached): the ShotDetector.Native.<rid> packages, and bundled in
+  # Our FFmpeg build for every platform (native.yml, cached): the FrameReader.Native.<rid> packages, and bundled in
   # the CLI tool and binaries.
   native:
     needs: version
@@ -133,12 +134,12 @@ jobs:
           for d in native/native-*; do mv "$d" "native/${d#native/native-}"; done
           versions="-p:ShotDetectorVersion=$SD -p:FrameReaderVersion=$FR"
           fr_out=unused; [ "$FR_DUE" = true ] && fr_out=artifacts
+          rids="win-x64 linux-x64 linux-arm64 linux-musl-x64 osx-arm64 all"   # all: the meta-package
           dotnet pack src/FrameReader --configuration Release $versions --output $fr_out
+          for rid in $rids; do dotnet pack src/FrameReader.Native -p:Rid=$rid $versions --output $fr_out; done
           if [ "$SD_DUE" = true ]; then
-            for rid in win-x64 linux-x64 linux-arm64 linux-musl-x64 osx-arm64; do
-              dotnet pack src/ShotDetector.Native -p:Rid=$rid $versions --output artifacts
-            done
-            dotnet pack src/ShotDetector.Native -p:Rid=all $versions --output artifacts   # the meta-package
+            # ShotDetector.Native.<rid>: aliases depending on FrameReader.Native.<rid> at $FR or newer.
+            for rid in $rids; do dotnet pack src/FrameReader.Native -p:Alias=true -p:Rid=$rid $versions --output artifacts; done
             dotnet pack src/ShotDetector --configuration Release $versions --output artifacts
             dotnet pack src/ShotDetector.FastYuv --configuration Release $versions --output artifacts
             dotnet pack src/ShotDetector.Cli --configuration Release $versions --output artifacts
@@ -293,7 +294,7 @@ jobs:
       - name: Archive
         run: |
           name=shotdetect-v${{ needs.version.outputs.shotdetector }}-${{ matrix.rid }}
-          cp LICENSE THIRD-PARTY-NOTICES.md src/ShotDetector.Native/COPYING.LGPL src/ShotDetector.Native/COPYING.dav1d native/${{ matrix.rid }}/configure.txt out/
+          cp LICENSE THIRD-PARTY-NOTICES.md src/FrameReader.Native/COPYING.LGPL src/FrameReader.Native/COPYING.dav1d native/${{ matrix.rid }}/configure.txt out/
           if [ "${{ matrix.rid }}" = win-x64 ]; then
             (cd out && 7z a "../$name.zip" . > /dev/null) && file="$name.zip"
           else

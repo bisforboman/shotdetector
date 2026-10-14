@@ -257,7 +257,7 @@ internal sealed unsafe class Encoder : IDisposable
                 .. layouts.Count > 0 ? ["channel_layouts=" + string.Join("|", layouts)] : Array.Empty<string>(),
             ];
 
-            // Without a graph ffmpeg puts anull (a pass-through) first; ShotDetector.Native has no anull, so aformat starts.
+            // Without a graph ffmpeg puts anull (a pass-through) first; FrameReader.Native has no anull, so aformat starts.
             string format = parts.Length > 0 ? "aformat=" + string.Join(":", parts) : "aformat";
             e.Graph("abuffer", args, graph is null ? format : graph + "," + format, "abuffersink", first);
 

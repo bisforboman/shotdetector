@@ -38,7 +38,7 @@ public sealed record VideoWriterOptions
     /// <summary>The layout of the frames you write (as <see cref="VideoFrameReader"/> gives them); default BGR.</summary>
     public FrameFormat FrameFormat { get; init; } = FrameFormat.Bgr24;
 
-    /// <summary>FFmpeg's encoder name; null: <c>libx264</c> (in any FFmpeg built with it; not in ShotDetector.Native).</summary>
+    /// <summary>FFmpeg's encoder name; null: <c>libx264</c> (in any FFmpeg built with it; not in FrameReader.Native).</summary>
     public string? Encoder { get; init; }
 
     /// <summary>The encoded pixel format (<c>-pix_fmt</c>), e.g. <c>yuv420p</c> for players everywhere; null: the encoder's nearest to the input, as ffmpeg picks it (yuv444p for BGR with x264).</summary>
@@ -94,7 +94,7 @@ public sealed record VideoWriterOptions
 /// <see cref="VideoFrameReader"/>.
 /// </summary>
 /// <remarks>
-/// H.264 needs FFmpeg libraries with x264, which ShotDetector.Native doesn't have: a "gpl" FFmpeg 8 build of your own,
+/// H.264 needs FFmpeg libraries with x264, which FrameReader.Native doesn't have: a "gpl" FFmpeg 8 build of your own,
 /// loaded with <see cref="FFmpegLibraries.Load"/>. x264 is GPL: an app that ships with it falls under the GPL; and H.264 is
 /// covered by Via LA's AVC patent pool, whoever distributes the encoder. <see cref="Dispose"/> finishes the file.
 /// On CPUs with AVX-512, a file can rarely differ from ffmpeg's (still valid H.264) while .NET's tiered compilation is on:

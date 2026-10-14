@@ -3,7 +3,7 @@
 A C# port of PySceneDetect's shot/cut detection that gives **identical results** to `scenedetect` (cuts, scene
 list CSVs, per-frame stats, timecodes digit for digit), decoding through an ffmpeg subprocess with no native
 bindings. Repo: `github.com/bisforboman/shotdetector`. NuGet: `ShotDetector` (MIT), `ShotDetector.FastYuv`
-(LGPL-2.1, a swscale port), `ShotDetector.Native.<rid>` (our FFmpeg build, LGPL),
+(LGPL-2.1, a swscale port), `FrameReader.Native.<rid>` (our FFmpeg build, LGPL),
 `ShotDetector.Cli` (dotnet tool `shotdetect`, plus Native AOT binaries on releases).
 
 ## Core idea
@@ -28,8 +28,9 @@ adds `SHOTDETECTOR_OURS_ARGS` to every run, CI sets `--decoder`); detect-hash an
 weekly. `docs/backlog.md` has what's next, in order; `docs/decisions.md` what the user decided and why.
 
 **Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Two products,
-released separately since 2.1.0 (docs/frame-reader-product.md): ShotDetector (with FastYuv, the CLI and the Native
-packages; CHANGELOG.md, tags `vX.Y.Z`) and FrameReader (src/FrameReader/CHANGELOG.md, tags `framereader-vX.Y.Z`). A
+released separately since 2.1.0 (docs/frame-reader-product.md): ShotDetector (with FastYuv, the CLI and the
+ShotDetector.Native aliases; CHANGELOG.md, tags `vX.Y.Z`) and FrameReader (with FrameReader.Native, our FFmpeg build;
+src/FrameReader/CHANGELOG.md, tags `framereader-vX.Y.Z`). A change to the native build is a FrameReader release. A
 product's release PR folds its fragments into its CHANGELOG (`python tools/changelog.py --package shotdetector|framereader
 X.Y.Z "summary"`), opened once every PR going into it has merged (never stacked on an open branch); one PR can release
 both. Merging it releases: release.yml (on every push to main) releases each product whose newest version isn't tagged
