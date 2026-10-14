@@ -6,6 +6,16 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 2.2.0 – 2026-10-14
+
+ShotDetector.Native now forwards to FrameReader.Native, and ShotDetector depends on FrameReader 2.2.0.
+
+### New
+
+- `ShotDetector.Native.<rid>` and `ShotDetector.Native` now only depend on `FrameReader.Native.<rid>` and
+  `FrameReader.Native` (the same libraries), so existing references keep working; new projects reference
+  FrameReader.Native.
+
 ## 2.1.0 – 2026-10-13
 
 FrameReader: TestMedia, Video.Transcode, Remux.CanCopy, MissingFilters, progress and async overloads for the whole-file jobs, a ShotDetector.Native meta-package; ShotDetector: ProgressStep; a frame-count fix for deinterlaced frame-rate reading (issues #236-#244).
