@@ -1,19 +1,29 @@
 # FrameReader
 
-Fast video frame reading for .NET, in-process through FFmpeg's libraries: no ffmpeg process per call, no pipes, no
-allocation per frame. Frames come at the size and pixel format you ask for, and the pixels are exactly the bytes
-ffmpeg's command line gives (`-vf scale=W:H:flags=bicubic,format=F -f rawvideo`), so you can check them against it.
+[![NuGet](https://img.shields.io/nuget/v/FrameReader.svg?label=FrameReader)](https://www.nuget.org/packages/FrameReader)
+[![NuGet](https://img.shields.io/nuget/v/FrameReader.Native.svg?label=FrameReader.Native)](https://www.nuget.org/packages/FrameReader.Native)
 
-Extracted from [ShotDetector](https://github.com/bisforboman/shotdetector)'s in-process decoding, released with it
-(the same version) and under semantic versioning from 1.5.0. Plan and status:
-[docs/frame-reader-library.md](https://github.com/bisforboman/shotdetector/blob/main/docs/frame-reader-library.md).
+Video and audio for .NET, in-process through FFmpeg's libraries: no ffmpeg process, no pipes, no allocation per
+frame, and the same bytes as ffmpeg's command line, so you can check them against it.
+
+- **Frames** at the size and pixel format you ask for (`-vf scale=W:H:flags=bicubic,format=F -f rawvideo`'s pixels),
+  with exact seeking, thumbnails, frame rates and deinterlacing.
+- **Audio**: samples in any format and rate, FFmpeg's audio filters, spectral statistics, waveform peaks, reference
+  tones.
+- **Writing**: MP3, AAC and WAV, H.264 with an FFmpeg built with x264, stream copy (`Remux`), synthetic test media
+  (`TestMedia`).
+- **Probing**: streams, packets and ffprobe's JSON (`MediaProbe`).
 
 ```
 dotnet add package FrameReader
-dotnet add package FrameReader.Native.linux-x64   # FFmpeg's libraries for your platform
+dotnet add package FrameReader.Native.linux-x64   # FFmpeg's libraries for your platform (or FrameReader.Native: all)
 ```
 
-ShotDetector's own package carries a copy of FrameReader.dll; reference one or the other version consistently.
+FrameReader has its own versions (semantic versioning) and
+[changelog](https://github.com/bisforboman/shotdetector/blob/main/src/FrameReader/CHANGELOG.md). It began as
+[ShotDetector](https://github.com/bisforboman/shotdetector)'s in-process decoding, which now depends on it; issues go
+to that repository, labelled `framereader`. MIT; FFmpeg's libraries are LGPL and loaded dynamically
+([FFmpeg's libraries](#ffmpegs-libraries)).
 
 ## Quick start
 
