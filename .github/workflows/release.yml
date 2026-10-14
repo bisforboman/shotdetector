@@ -187,17 +187,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         # One per due product: its tag on this commit (unless pushed by hand), its CHANGELOG section ("## X.Y.Z – date"
-        # up to the next "## ") as the notes, else GitHub's PR list, and its packages.
+        # up to the next "## ") as the notes, else GitHub's PR list, and its packages. GitHub's "Latest" stays
+        # ShotDetector's (the repository's front page and the CLI binaries): FrameReader's are never marked latest.
         run: |
           release() {   # tag, title, version, changelog, packages...
             local tag=$1 title=$2 v=$3 log=$4; shift 4
             local prerelease=""; [[ "$v" == *-* ]] && prerelease="--prerelease"
             awk -v v="## $v " 'index($0, v) == 1 { on = 1; next } on && /^## / { exit } on' "$log" > notes.md
             if [ -s notes.md ]; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
-            gh release create "$tag" "$@" --target "$GITHUB_SHA" --title "$title" "${notes[@]}" $prerelease
+            gh release create "$tag" "$@" --target "$GITHUB_SHA" --title "$title" "${notes[@]}" $prerelease ${latest:-}
           }
           if [ "$FR_DUE" = true ]; then
-            release "framereader-v$FR" "FrameReader $FR" "$FR" src/FrameReader/CHANGELOG.md artifacts/FrameReader.*.nupkg
+            latest=--latest=false release "framereader-v$FR" "FrameReader $FR" "$FR" src/FrameReader/CHANGELOG.md artifacts/FrameReader.*.nupkg
           fi
           if [ "$SD_DUE" = true ]; then
             release "v$SD" "ShotDetector $SD" "$SD" CHANGELOG.md $(ls artifacts/*.nupkg | grep -v '/FrameReader\.')
