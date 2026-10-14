@@ -2,7 +2,9 @@
 
 Versions are git tags (`vX.Y.Z`); each one publishes the NuGet packages and a GitHub release. From 1.0,
 semantic versioning (README, "Versions"); before it, minor versions could change the public API.
-What's merged but not released yet is in changes/ (one file per pull request).
+What's merged but not released yet is in changes/shotdetector/ (one file per pull request).
+From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
+marked "FrameReader:".
 
 ## 2.1.0 – 2026-10-13
 

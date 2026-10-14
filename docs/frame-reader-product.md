@@ -1,6 +1,6 @@
 # FrameReader as its own product
 
-Status: planned (2026-10-13), to start after 2.1.0. The user's choices are in `docs/decisions.md` ("FrameReader as its
+Status: steps 1-3 done (2026-10-14: own versions, changelogs and releases, one PR); steps 4-6 open. The user's choices are in `docs/decisions.md` ("FrameReader as its
 own product").
 
 ## Why

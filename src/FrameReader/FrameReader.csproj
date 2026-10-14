@@ -16,9 +16,10 @@
 
     <PackageId>FrameReader</PackageId>
     <!-- The API guard, as for ShotDetector: against the baseline once that is a stable FrameReader (1.5.0 on). -->
+    <Version>$(FrameReaderVersion)</Version>
     <EnablePackageValidation>true</EnablePackageValidation>
     <NoWarn Condition="'$(Version)' == '0.1.0-alpha.1'">$(NoWarn);CP0003</NoWarn>
-    <PackageValidationBaselineVersion Condition="'$(ApiBaselineVersion)' != '' And $([MSBuild]::VersionGreaterThanOrEquals('$(ApiBaselineVersion)', '1.5.0'))">$(ApiBaselineVersion)</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion Condition="'$(FrameReaderApiBaselineVersion)' != ''">$(FrameReaderApiBaselineVersion)</PackageValidationBaselineVersion>
     <Description>Fast in-process video and audio for .NET through FFmpeg's libraries: frames at a size and pixel format, the bytes ffmpeg's scale+format filters give, with exact seeking, thumbnails, fps and parallel reads; audio samples, filter graphs, spectral statistics, waveform peaks; writing MP3/AAC/WAV and (with x264) H.264, byte for byte ffmpeg's output; stream copy; probing. No ffmpeg process, no pipes, no allocation per frame. Needs FFmpeg 8's shared libraries: the ShotDetector.Native.&lt;rid&gt; packages (H.264 needs a build with libx264 of your own).</Description>
     <PackageTags>ffmpeg;video;audio;frames;decoding;encoding;thumbnails;waveform</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
