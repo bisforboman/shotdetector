@@ -294,7 +294,7 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   scenedetect itself differs on ARM, because opencv-python's ARM wheels replace parts of OpenCV with Arm's
   KleidiCV and Carotene libraries: `cv2.resize` for downscales under 3x (scenedetect's usual ones) and BGR to HSV
   round differently, by 1 or 2 on some pixels, which moves per-frame stats and now and then a cut. macOS on Intel
-  is different again: its wheel has no FFmpeg (Apple's decoders instead). CI's `parity-os` job shows Windows (exact)
+  is different again: its wheel has no FFmpeg (Apple's decoders instead). the nightly `parity-os` workflow shows Windows (exact)
   and macOS (informational).
 - **Timestamps:** scenedetect prints times from OpenCV's frame positions (container pts → ms →
   rounded to µs, with Python's exact-binary rounding), not from frame/fps. `FrameTime.cs` reproduces
