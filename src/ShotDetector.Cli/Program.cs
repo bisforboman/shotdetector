@@ -58,6 +58,8 @@ const string Usage = """
           --num-images <n>               Thumbnails per shot (default 3)
           --frame-margin <n>             Frames to keep away from each end of a shot (default 1)
           --image-width <px>, --image-height <px>, --image-scale <factor>, --image-format <jpg|png|webp>
+          --image-quality <0-100>        JPEG/WebP quality (default 95 JPEG, 100 WebP; JPEG approximately)
+          --image-compression <0-9>      PNG compression (default 3)
           --save-html <file>             Write the shot list as an HTML page with thumbnails (scenedetect
                                          save-html); images go to --save-images <dir>, or next to the page
           --html-no-images               Leave the thumbnails out of the HTML page
@@ -336,6 +338,12 @@ try
                 break;
             case "--image-format":
                 images = images with { Format = Next() };
+                break;
+            case "--image-quality":
+                images = images with { Quality = NextInt() };
+                break;
+            case "--image-compression":
+                images = images with { Compression = NextInt() };
                 break;
             case "-s" or "--start":
                 options = options with { StartTime = Next() };
@@ -838,6 +846,8 @@ void ApplyConfig(Config c)
         Scale = c.Double("save-images", "scale") is { } sc && sc != 1.0 ? sc : images.Scale,
         Format = c.Get("save-images", "format") is { } f ? (f == "jpeg" ? "jpg" : f) : images.Format,
         FileName = c.Get("save-images", "filename") ?? images.FileName,
+        Quality = c.Int("save-images", "quality") ?? images.Quality,
+        Compression = c.Int("save-images", "compression") ?? images.Compression,
     };
     split = split with
     {
