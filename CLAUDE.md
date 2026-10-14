@@ -60,9 +60,11 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
   and for detector changes `python tools/compare.py samples/*.mp4 ... --detector all --stats` (`tools/make-samples.ps1`
   creates `samples/`; `pip install scenedetect==0.7.2 opencv-python-headless`; `--compat 0.7.1` with 0.7.1 installed
   for the previous release).
-- Code style: StyleBro (analyzers on build; rules chosen in `.editorconfig`, docs/decisions.md). Before pushing,
-  `stylebro-migrate format ShotDetector.slnx` (`dotnet tool install StyleBro.Migrate --version 0.5.0-alpha.1
-  --tool-path <dir>`); CI checks it with `--verify-no-changes`. Feedback on StyleBro goes to its GitHub issues.
+- Code style: StyleBro (analyzers on build; rules chosen in `.editorconfig`, docs/decisions.md). The
+  pre-commit hook formats the staged .cs files (`git config core.hooksPath .githooks` once per clone; ~15-30 s, only
+  when .cs files are staged; it stops a commit whose .cs files also have unstaged changes). By hand: `dotnet tool run
+  stylebro-migrate format ShotDetector.slnx` (the version is in .config/dotnet-tools.json, with the analyzers' in
+  Directory.Packages.props; Dependabot updates both in one PR); CI checks it with `--verify-no-changes`. Feedback on StyleBro goes to its GitHub issues.
 - Docs don't copy benchmark numbers: speed and memory figures go stale with every change. READMEs link the weekly
   runs (`benchmark.yml`, `frame-reader-bench.yml`; their summaries have the tables) and keep only claims that hold.
 - Dependabot: its patch and minor PRs auto-merge once green (`dependabot-auto-merge.yml`); majors wait for a look.

@@ -1,0 +1,26 @@
+#!/bin/sh
+# Formats the staged C# files with StyleBro (the tool in dotnet-tools.json), as CI's format check wants them.
+# Turn it on once per clone: git config core.hooksPath .githooks
+files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.cs')
+[ -z "$files" ] && exit 0
+
+# Re-staging a file that also has unstaged changes would commit those too.
+partial=$(git diff --name-only -- $files)
+if [ -n "$partial" ]; then
+  echo "pre-commit: these files have unstaged changes too; stage them whole (or commit with --no-verify):"
+  echo "$partial"
+  exit 1
+fi
+
+dotnet tool restore > /dev/null || exit 1
+if ! dotnet tool run stylebro-migrate format ShotDetector.slnx --include $files > /dev/null; then
+  echo "pre-commit: stylebro-migrate format failed; run it yourself to see why:"
+  echo "  dotnet tool run stylebro-migrate format ShotDetector.slnx"
+  exit 1
+fi
+# dotnet format writes the lines it changes with CRLF; an LF file stays LF.
+cr=$(printf '\r')
+for f in $files; do
+  git show ":$f" | grep -q "$cr" || sed -i "s/$cr\$//" "$f"
+done
+git add -- $files

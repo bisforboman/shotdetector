@@ -8,3 +8,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # The analyzers (Directory.Packages.props) and the format tool (.config/dotnet-tools.json) move together.
+    groups:
+      stylebro:
+        patterns: ["StyleBro.*"]
