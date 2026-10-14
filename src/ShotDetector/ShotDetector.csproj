@@ -35,7 +35,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- FrameReader, stable from 1.5.0: a package dependency at the same version (decisions.md, 2026-10-10). -->
+    <!-- FrameReader, stable from 1.5.0: a package dependency at the same version (docs/decisions/, 2026-10-10). -->
     <ProjectReference Include="..\FrameReader\FrameReader.csproj" />
   </ItemGroup>
 
