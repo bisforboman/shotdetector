@@ -1,0 +1,71 @@
+name: Parity on Windows and macOS
+
+# The main comparison with scenedetect on Windows and macOS: informational (Linux is the reference, ci.yml's parity
+# jobs). The Windows OpenCV wheel bundles FFmpeg 7.1, which converts with BT.601 whatever the colour tags say;
+# compare.py passes --always-bt601 there, as README says users must. macOS's ARM wheel uses KleidiCV and Carotene,
+# which round resize and HSV differently (README, docs/decisions.md). Nightly rather than on every pull request: it
+# fails nothing, and runners are CI's limit (concurrent jobs count per account; this takes one of the 5 macOS slots).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 3 * * *'
+  # And on a pull request that changes this workflow or the ffmpeg action it uses, so a change is tested before it merges.
+  pull_request:
+    paths:
+      - .github/workflows/parity-os.yml
+      - .github/actions/btbn-ffmpeg/**
+
+jobs:
+  parity-os:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # Windows: BtbN's FFmpeg 9.0, as the Linux comparison (pinned series, retries, cached per day; Chocolatey's
+      # install failed once, #234). macOS: Homebrew's (BtbN has no macOS build).
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          version: '9.0'
+          platform: win64
+
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg > /dev/null && ffmpeg -hide_banner -version | head -1
+
+      - name: Install scenedetect
+        run: pip install scenedetect==0.7.2 opencv-python-headless==5.0.0.93
+
+      # main's samples job's clips (made on Linux), else made here.
+      - id: samples
+        uses: actions/cache/restore@v5
+        with:
+          path: samples
+          key: samples-${{ hashFiles('tools/make-samples.ps1') }}-ffmpeg9.0
+          enableCrossOsArchive: true
+
+      - name: Make sample clips
+        if: steps.samples.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./tools/make-samples.ps1
+
+      - name: Compare with scenedetect (informational)
+        shell: bash
+        run: |
+          python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
+            --detector all --stats --report parity.md || true
+          { echo "### scenedetect 0.7.2 on ${{ matrix.os }} (informational)"; cat parity.md 2>/dev/null || echo "No report."; } >> "$GITHUB_STEP_SUMMARY"
