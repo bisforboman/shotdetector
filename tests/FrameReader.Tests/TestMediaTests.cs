@@ -42,8 +42,36 @@ public class TestMediaTests
             }
 
             Assert.Equal(100, frames.Count);
-            Assert.Equal(frames[60], frames[61]); // smptebars: still
-            Assert.NotEqual(frames[49], frames[50]); // the cut to the bars
+
+            // Mean absolute difference per pixel: the still bars differ only by the P-frames' quantization noise.
+            static double Diff(byte[] a, byte[] b) => a.Zip(b, (x, y) => Math.Abs(x - y)).Average();
+            Assert.True(Diff(frames[60], frames[61]) < 1, $"smptebars: {Diff(frames[60], frames[61])}");
+            Assert.True(Diff(frames[49], frames[50]) > 20, $"the cut to the bars: {Diff(frames[49], frames[50])}");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // VideoQuality is ffmpeg's -q:v: a fixed quantizer, so a lower one is a bigger file than the default rate control's.
+    [Fact]
+    public void VideoQualityIsAFixedQuantizer()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-testmedia-").FullName;
+        try
+        {
+            long Size(int? q)
+            {
+                string path = Path.Combine(dir, $"q{q}.mp4");
+                TestMedia.Write(path, new TestMediaOptions { Video = ["mandelbrot,trim=duration=2"], VideoEncoder = "mpeg4", VideoQuality = q });
+                return new FileInfo(path).Length;
+            }
+
+            long best = Size(2), worst = Size(31), auto = Size(null);
+            Assert.True(best > auto && auto > worst, $"q2 {best}, default {auto}, q31 {worst} bytes");
         }
         finally
         {

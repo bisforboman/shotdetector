@@ -88,9 +88,10 @@ public class MediaProbeTests
             Assert.Equal(format.GetProperty("format_name").GetString(), info.Container);
             Assert.Equal(format.GetProperty("duration").GetString(), (info.Duration!.Value.Ticks / 10 / 1e6).ToString("F6", CultureInfo.InvariantCulture));
             Assert.Equal(streams.Any(s => s.GetProperty("codec_type").GetString() == "audio"), info.HasAudio);
-            var packets = Run("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts", "-of", "csv=p=0", path)
+            var packets = Run("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts,pos", "-of", "csv=p=0", path)
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            Assert.Equal(packets, info.PacketTimestamps!.Select(p => p?.ToString(CultureInfo.InvariantCulture) ?? "N/A"));
+            Assert.Equal(packets, info.PacketTimestamps!.Zip(info.PacketPositions!,
+                (t, p) => $"{t?.ToString(CultureInfo.InvariantCulture) ?? "N/A"},{p?.ToString(CultureInfo.InvariantCulture) ?? "N/A"}"));
 
             // The same bytes as a stream (mkv: headers first): the same headers, read as from a pipe.
             if (path.EndsWith(".mkv"))

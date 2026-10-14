@@ -10,6 +10,7 @@
     <Project Path="examples/ShotDetector.Example/ShotDetector.Example.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/ClipMaker/ClipMaker.csproj" />
     <Project Path="tests/FrameReader.Tests/FrameReader.Tests.csproj" />
     <Project Path="tests/ShotDetector.Tests/ShotDetector.Tests.csproj" />
   </Folder>

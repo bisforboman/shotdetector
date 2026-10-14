@@ -40,42 +40,58 @@ public sealed class Clips : IDisposable
 
     public Clips()
     {
-        ThreeShots = Make("three.mp4",
-            "-f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 -f lavfi -i mandelbrot=s=320x240:r=25 "
-            + "-filter_complex [2]trim=duration=2,setpts=PTS-STARTPTS[m];[0][1][m]concat=n=3:v=1:a=0,format=yuv420p");
+        ThreeShots = Path.Combine(_dir, "three.mp4");
         Rotated = Path.Combine(_dir, "rotated.mp4");
-        Run($"-v error -y -display_rotation 90 -i {ThreeShots} -c copy {Rotated}");
-        Long = Make("long.mp4", "-f lavfi -i testsrc2=s=640x360:r=25:d=300 -vf format=yuv420p");
+        Long = Path.Combine(_dir, "long.mp4");
         ThreeShotsMkv = Path.Combine(_dir, "three.mkv");
-        Run($"-v error -y -i {ThreeShots} -c copy {ThreeShotsMkv}");
         ThreeShotsFaststart = Path.Combine(_dir, "three-faststart.mp4");
-        Run($"-v error -y -i {ThreeShots} -c copy -movflags +faststart {ThreeShotsFaststart}");
         ThreeShotsMpegPs = Path.Combine(_dir, "three.mpg");
-        Run($"-v error -y -i {ThreeShots} -c:v mpeg2video -q:v 3 {ThreeShotsMpegPs}");
         Interlaced = Path.Combine(_dir, "interlaced.mpg");
-        Run($"-v error -y -i {ThreeShots} -c:v mpeg2video -q:v 3 -flags +ildct+ilme -top 1 {Interlaced}");
         Directory.CreateDirectory(Path.Combine(_dir, "frames"));
         ThreeShotsImages = Path.Combine(_dir, "frames", "%04d.png");
-        Run($"-v error -y -i {ThreeShots} {ThreeShotsImages}");
         ThreeShotsDropped = Path.Combine(_dir, "dropped.mp4");
-        var bytes = File.ReadAllBytes(ThreeShots);
+
+        // With FrameReader when SHOTDETECTOR_FFMPEG_LIBS names FFmpeg 8's libraries, in a process of its own (ClipMaker:
+        // loaded here, the libraries would make the Auto decoder use them in every test); else with the executable.
+        string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+        if (libs is not null)
+        {
+            var bin = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+            string maker = Path.Combine(bin.Parent!.Parent!.Parent!.Parent!.FullName, "ClipMaker", "bin", bin.Parent.Name, bin.Name, "ClipMaker.dll");
+            var psi = new ProcessStartInfo("dotnet") { RedirectStandardError = true };
+            psi.ArgumentList.Add(maker);
+            psi.ArgumentList.Add(libs);
+            psi.ArgumentList.Add(_dir);
+            using var p = Process.Start(psi)!;
+            string err = p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            Assert.True(p.ExitCode == 0, $"ClipMaker failed: {err}");
+            return;
+        }
+
+        Make(ThreeShots,
+            "-f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i smptebars=s=320x240:r=25:d=2 -f lavfi -i mandelbrot=s=320x240:r=25 "
+            + "-filter_complex [2]trim=duration=2,setpts=PTS-STARTPTS[m];[0][1][m]concat=n=3:v=1:a=0,format=yuv420p");
+        Run($"-v error -y -display_rotation 90 -i {ThreeShots} -c copy {Rotated}");
+        Make(Long, "-f lavfi -i testsrc2=s=640x360:r=25:d=300 -vf format=yuv420p");
+        Run($"-v error -y -i {ThreeShots} -c copy {ThreeShotsMkv}");
+        Run($"-v error -y -i {ThreeShots} -c copy -movflags +faststart {ThreeShotsFaststart}");
+        Run($"-v error -y -i {ThreeShots} -c:v mpeg2video -q:v 3 {ThreeShotsMpegPs}");
+        Run($"-v error -y -i {ThreeShots} -c:v mpeg2video -q:v 3 -flags +ildct+ilme -top 1 {Interlaced}");
+        Run($"-v error -y -i {ThreeShots} {ThreeShotsImages}");
         var positions = VideoReader.Run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pos", "-of", "csv=p=0", ThreeShots], default)
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(long.Parse)
             .ToArray();
+
+        var bytes = File.ReadAllBytes(ThreeShots);
         foreach (int k in new[] { 60, 61, 120 })
             bytes.AsSpan((int)positions[k], 4).Fill(0xff);
         File.WriteAllBytes(ThreeShotsDropped, bytes);
     }
 
-    string Make(string name, string input)
-    {
-        string path = Path.Combine(_dir, name);
-
-        // mpeg4 is built into every ffmpeg, unlike libx264.
-        Run($"-v error -y {input} -r 25 -c:v mpeg4 -q:v 3 {path}");
-        return path;
-    }
+    // mpeg4 is built into every ffmpeg, unlike libx264.
+    static void Make(string path, string input) => Run($"-v error -y {input} -r 25 -c:v mpeg4 -q:v 3 {path}");
 
     static void Run(string args)
     {

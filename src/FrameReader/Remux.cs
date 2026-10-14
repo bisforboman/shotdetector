@@ -51,6 +51,12 @@ public sealed record RemuxOptions
     /// </summary>
     public IReadOnlyDictionary<string, string>? MuxerOptions { get; init; }
 
+    /// <summary>
+    /// The video's display rotation in degrees, counter-clockwise, replacing the input's (as ffmpeg's
+    /// <c>-display_rotation</c>, e.g. 90 for a phone's portrait video); null: the input's, if any.
+    /// </summary>
+    public double? DisplayRotation { get; init; }
+
     /// <summary>Common Encryption (CENC) of an .mp4 or DASH output, optionally with Widevine signalling for DASH; null: none.</summary>
     public EncryptionOptions? Encryption { get; init; }
 
@@ -114,7 +120,7 @@ public static unsafe class Remux
             for (int i = 0; i < map.Count; i++)
             {
                 outOf[map[i]] = i;
-                AddStream(oc, ic->streams[map[i]]);
+                AddStream(oc, ic->streams[map[i]], o.DisplayRotation);
             }
 
             CopyMetadataAndChapters(ic, oc);
@@ -342,7 +348,7 @@ public static unsafe class Remux
     }
 
     /// <summary>An output stream as ffmpeg's stream copy sets it up (fftools' streamcopy_init).</summary>
-    static void AddStream(AVFormatContext* oc, AVStream* ist)
+    static void AddStream(AVFormatContext* oc, AVStream* ist, double? rotation = null)
     {
         var st = ffmpeg.avformat_new_stream(oc, null);
         var par = st->codecpar;
@@ -381,6 +387,20 @@ public static unsafe class Remux
                 var sar = ist->sample_aspect_ratio.num != 0 ? ist->sample_aspect_ratio : par->sample_aspect_ratio;
                 st->sample_aspect_ratio = par->sample_aspect_ratio = sar;
                 st->r_frame_rate = ist->r_frame_rate;
+                if (rotation is { } degrees)
+                {
+                    // ffmpeg's -display_rotation: a display matrix in place of the input's.
+                    ffmpeg.av_packet_side_data_remove(par->coded_side_data, &par->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_DISPLAYMATRIX);
+                    var sd = ffmpeg.av_packet_side_data_new(&par->coded_side_data, &par->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_DISPLAYMATRIX, sizeof(int) * 9, 0);
+                    if (sd == null)
+                        throw new OutOfMemoryException();
+                    var matrix = (int*)sd->data;
+                    var nine = default(int_array9);
+                    ffmpeg.av_display_rotation_set(ref nine, -degrees); // the matrix turns clockwise
+                    for (uint k = 0; k < 9; k++)
+                        matrix[k] = nine[k];
+                }
+
                 break;
         }
 

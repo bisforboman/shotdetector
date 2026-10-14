@@ -89,15 +89,16 @@ export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig"
 # Decoding only: what OpenCV's FFmpeg does for scenedetect, minus everything that writes, plus yadif for
 # DeinterlaceMode (LGPL, like the rest); format, null and scale for VideoWriter's graph to the encoder's pixel format
 # (scale is the converter FFmpeg inserts; without them every VideoWriter failed, issue #127); FrameReader's TestMedia: the
-# sources, concat, setfield/setsar/setparams and trim, FFmpeg's own mpeg2video and mpeg4 encoders, more PCM (issue #237). No --enable-gpl/--enable-nonfree, and --disable-autodetect keeps system
+# sources, concat, setfield/setsar/setparams and trim, FFmpeg's own mpeg2video and mpeg4 encoders, more PCM (issue #237); PNG frames (the png encoder, the image2
+# muxer) and MPEG program streams (the mpeg1system muxer, "mpeg" by name), so ShotDetector's tests make every clip without the executable. No --enable-gpl/--enable-nonfree, and --disable-autodetect keeps system
 # libraries (and their licences) out: zlib and dav1d are the ones built above, linked in.
 set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
   --disable-programs --disable-doc --disable-avdevice --disable-filters --enable-filter=buffer,buffersink,abuffer,abuffersink,yadif,fps,aspectralstats,format,null,scale \
   --enable-filter=volume,equalizer,bass,treble,highpass,lowpass,bandpass,bandreject,afade,pan,acompressor,alimiter,dynaudnorm,agate,ebur128,loudnorm,silencedetect,astats,aformat,aresample \
   --enable-filter=testsrc2,smptebars,mandelbrot,color,sine,anullsrc,concat,setfield,setsar,setparams,trim,atrim \
   --disable-network --disable-encoders --disable-muxers --disable-autodetect \
-  --enable-libmp3lame --enable-encoder=aac,libmp3lame,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,mpeg2video,mpeg4 \
-  --enable-muxer=mp4,mov,ipod,avi,matroska,matroska_audio,webm,adts,mp3,wav,flac,ogg,opus,mpegts,srt,webvtt,ass,dash \
+  --enable-libmp3lame --enable-encoder=aac,libmp3lame,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,mpeg2video,mpeg4,png \
+  --enable-muxer=mp4,mov,ipod,avi,matroska,matroska_audio,webm,adts,mp3,wav,flac,ogg,opus,mpegts,mpeg1system,image2,srt,webvtt,ass,dash \
   --enable-zlib --enable-libdav1d --pkg-config=pkg-config --pkg-config-flags=--static \
   --extra-cflags=-I"$deps/include" --extra-ldflags=-L"$deps/lib" \
   --disable-debug --enable-stripping --enable-optimizations
