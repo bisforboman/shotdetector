@@ -410,48 +410,8 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
                 // to the working directory).
                 "-init_seg_name", "init.m4s", "-media_seg_name", "chunk$Number%03d$.m4s", Path.Combine(dir, "play.mpd").Replace('\\', '/')],
             default);
-        var (server, port) = Listen();
-        using var disposing = server;
-        var serving = Task.Run(async () =>
-        {
-            while (server.IsListening)
-            {
-                System.Net.HttpListenerContext ctx;
-                try
-                {
-                    ctx = await server.GetContextAsync();
-                }
-                catch (Exception e) when (e is System.Net.HttpListenerException or ObjectDisposedException)
-                {
-                    return;
-                }
-
-                // Each request on its own: a reader that stops reading without hanging up (the probe) would otherwise
-                // hold back every later request, ffmpeg's too, and the test hung.
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        string file = Path.Combine(dir, ctx.Request.Url!.AbsolutePath.TrimStart('/'));
-                        if (!File.Exists(file))
-                        {
-                            ctx.Response.StatusCode = 404;
-                        }
-                        else
-                        {
-                            await using var f = File.OpenRead(file);
-                            ctx.Response.ContentLength64 = f.Length;
-                            await f.CopyToAsync(ctx.Response.OutputStream);
-                        }
-
-                        ctx.Response.Close();
-                    }
-                    catch (Exception e) when (e is System.Net.HttpListenerException or ObjectDisposedException or IOException)
-                    {
-                    } // ffprobe hangs up after the headers; the server stops after the test
-                });
-            }
-        });
+        var server = new FileServer(dir);
+        int port = server.Port;
         try
         {
             var expected = ShotDetection.Detect(clips.ThreeShots, new() { CollectStats = true });
@@ -467,11 +427,104 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             else
                 Assert.Equal(StreamType.Video, Assert.Single(streams).Type);
             Assert.False(r.Video.Reader.Info.HasAudio);
+
+            // With FFmpeg's libraries (http in FrameReader.Native): read in-process, the same stats. Not DASH: its
+            // demuxer needs libxml2, which FrameReader.Native leaves out.
+            if (Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS") is { } libs && !name.EndsWith(".mpd"))
+            {
+                var inProcess = ShotDetection.Detect($"http://localhost:{port}/{name}", new() { CollectStats = true, FfmpegDirectory = libs, Decoder = VideoDecoder.InProcess });
+                Assert.True(inProcess.Video.DecodedInProcess);
+                Assert.True(inProcess.Video.Streamed);
+                Assert.Equal(expected.Stats!.Csv(expected.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
+            }
         }
         finally
         {
-            server.Stop();
+            server.Dispose();
             Directory.Delete(dir, true);
+        }
+    }
+
+    /// <summary>The files of a folder over http on localhost, a request at a time each, with byte ranges.</summary>
+    sealed class FileServer : IDisposable
+    {
+        readonly System.Net.HttpListener _server;
+
+        public FileServer(string dir)
+        {
+            (_server, Port) = Listen();
+            var server = _server;
+            _ = Task.Run(async () =>
+            {
+                while (server.IsListening)
+                {
+                    System.Net.HttpListenerContext ctx;
+                    try
+                    {
+                        ctx = await server.GetContextAsync();
+                    }
+                    catch (Exception e) when (e is System.Net.HttpListenerException or ObjectDisposedException)
+                    {
+                        return;
+                    }
+
+                    // Each request on its own: a reader that stops reading without hanging up (the probe) would otherwise
+                    // hold back every later request, ffmpeg's too, and the test hung.
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            // Only the folder's own files, looked up by name: no path is built from the request.
+                            string name = ctx.Request.Url!.AbsolutePath.TrimStart('/');
+                            string? file = Directory.GetFiles(dir).FirstOrDefault(f => Path.GetFileName(f) == name);
+                            if (file is null)
+                            {
+                                ctx.Response.StatusCode = 404;
+                            }
+                            else
+                            {
+                                // Byte ranges, as web servers answer them: FFmpeg's libraries seek with them (the executable
+                                // got by without).
+                                await using var f = File.OpenRead(file);
+                                long from = 0, to = f.Length - 1;
+                                if (ctx.Request.Headers["Range"] is { } range && range.StartsWith("bytes=", StringComparison.Ordinal))
+                                {
+                                    var ends = range[6..].Split('-');
+                                    from = long.Parse(ends[0], System.Globalization.CultureInfo.InvariantCulture);
+                                    if (ends[1].Length > 0)
+                                        to = Math.Min(to, long.Parse(ends[1], System.Globalization.CultureInfo.InvariantCulture));
+                                    ctx.Response.StatusCode = 206;
+                                    ctx.Response.AddHeader("Content-Range", $"bytes {from}-{to}/{f.Length}");
+                                }
+
+                                ctx.Response.AddHeader("Accept-Ranges", "bytes");
+                                ctx.Response.ContentLength64 = to - from + 1;
+                                f.Position = from;
+                                byte[] chunk = new byte[65536];
+                                for (long left = to - from + 1; left > 0;)
+                                {
+                                    int n = await f.ReadAsync(chunk.AsMemory(0, (int)Math.Min(chunk.Length, left)));
+                                    await ctx.Response.OutputStream.WriteAsync(chunk.AsMemory(0, n));
+                                    left -= n;
+                                }
+                            }
+
+                            ctx.Response.Close();
+                        }
+                        catch (Exception e) when (e is System.Net.HttpListenerException or ObjectDisposedException or IOException)
+                        {
+                        } // ffprobe hangs up after the headers; the server stops after the test
+                    });
+                }
+            });
+        }
+
+        public int Port { get; }
+
+        public void Dispose()
+        {
+            _server.Stop();
+            _server.Close();
         }
 
         // A random port can be taken or reserved (Windows excludes ranges for Hyper-V and the like, about 4% of

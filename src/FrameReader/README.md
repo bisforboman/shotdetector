@@ -356,6 +356,17 @@ is, so one `catch (MediaException)` covers both packages (from 2.3.0). The one-c
 (`ConvertAsync`, `CopyAsync`, `ReadAsync`, `FindAsync`, and `MediaProbe.ProbeJsonAsync`) that runs it off the calling
 thread.
 
+## Security
+
+A path or URL is opened by FFmpeg, as `ffmpeg -i` opens it: prefixes such as `concat:` or `subfile:` work, and a remote
+playlist names further URLs. For untrusted input, pass FFmpeg's `protocol_whitelist` in `InputOptions` (for an http
+URL, `http,https,tcp,tls,crypto,httpproxy`, a second layer over FFmpeg's own checks, which already keep a remote
+playlist from local files) and `rw_timeout` (microseconds)
+so a stalled server fails; the options' `CancellationToken` stops a read FFmpeg waits in. Filter graphs you pass
+(`AudioFilter`, `Audio.Convert`'s) are FFmpeg's syntax, and some filters of a full build read files (`movie`,
+`amovie`): don't build them from untrusted input. Decoding runs FFmpeg's code in your process; keep the libraries
+current (FrameReader.Native follows FFmpeg's point releases).
+
 ## FFmpeg's libraries
 
 FFmpeg 8's shared libraries (libavcodec 62, libavformat 62, libswscale 9, libavutil 60; libavfilter 11 to
@@ -368,7 +379,8 @@ to use a folder of your own, call `FFmpegLibraries.Load(folder)` first (the one 
 What each part needs from a build of your own, beyond the decoders and demuxers of your input. Check at startup with
 `FFmpegLibraries.Missing(Capability...)`, which knows this table, plus `MissingFilters(graph)` for a filter graph of
 your own (the same format, so the lists concatenate; a graph that doesn't parse is `"filter graph"`), or name by name
-with `HasEncoder`, `HasFilter` and `HasMuxer`:
+with `HasEncoder`, `HasFilter` and `HasMuxer` (and `HasProtocol` for a URL's scheme: FrameReader.Native has http, and
+https on Windows):
 
 | Part | Encoders | Filters | Muxers |
 | --- | --- | --- | --- |

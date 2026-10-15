@@ -121,7 +121,7 @@ public sealed unsafe class FrameDecoder : IDisposable
             FFmpegLibraries.Load();
             _deinterlace = deinterlace;
             _yadif = deinterlace ? o.RowDeinterlacer : null;
-            _fmt = Demuxer.Open(path, o.InputOptions, io);
+            _fmt = Demuxer.Open(path, o.InputOptions, io, o.CancellationToken);
             _stream = Demuxer.FirstVideoStream(_fmt);
             if (_stream < 0)
                 throw new FrameReaderException(FrameReaderError.InvalidInput, "The input has no video stream.");
@@ -914,7 +914,7 @@ public sealed unsafe class FrameDecoder : IDisposable
         if (_fmt != null)
         {
             var f = _fmt;
-            ffmpeg.avformat_close_input(&f);
+            Demuxer.Close(&f);
             _fmt = null;
         }
 

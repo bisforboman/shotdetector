@@ -6,11 +6,11 @@ internal sealed partial class VideoReader
 {
     /// <summary>
     /// Whether frames are decoded in this process (<see cref="VideoDecoder.InProcess"/>, or <see cref="VideoDecoder.Auto"/>
-    /// with FFmpeg 8's libraries available) rather than by the ffmpeg executable. Inputs it doesn't handle yet use the
-    /// executable: URLs (and Streaming on a path), codecs the libraries have no decoder for, and rotations other than
-    /// quarter turns.
+    /// with FFmpeg 8's libraries available) rather than by the ffmpeg executable. Inputs it doesn't handle use the
+    /// executable: URLs whose protocol the libraries lack (and Streaming on a path), codecs the libraries have no decoder
+    /// for, and rotations other than quarter turns.
     /// </summary>
-    public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && (_stream is not null || !Streaming)
+    public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && (_stream is not null || !Streaming || _urlInProcess)
         && !_inProcessGaveNothing && !_alwaysBt601
         && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory))
         && FrameReader.FrameDecoder.HasDecoder(Codec)
@@ -65,6 +65,7 @@ internal sealed partial class VideoReader
                     Deinterlace = _deinterlace,
                     RowDeinterlacer = _yadif,
                     InputOptions = InProcessProbe.Options(_inputOptions),
+                    CancellationToken = cancel.Token, // the caller's, and ours when the caller stops iterating
 
                     // Rotated as OpenCV rotates (FrameWriter): by the display matrix's angle alone, after converting.
                     Autorotate = false,

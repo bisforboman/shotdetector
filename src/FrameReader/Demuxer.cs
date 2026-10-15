@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using FFmpeg.AutoGen;
 
 namespace FrameReader;
@@ -17,6 +18,8 @@ internal static unsafe class Demuxer
     {
         if (ret == ffmpeg.AVERROR_EOF || fmt->pb == null || fmt->pb->error >= 0)
             return;
+        if (fmt->pb->error == ffmpeg.AVERROR_EXIT)
+            throw new OperationCanceledException(); // the interrupt callback: the read was cancelled
         throw new FrameReaderException(FrameReaderError.DecodeFailed,
             $"Reading the input failed part way: {inner?.Message ?? FFmpegLibraries.ErrorMessage(fmt->pb->error)}",
             inner);
@@ -24,17 +27,28 @@ internal static unsafe class Demuxer
 
     /// <summary>
     /// Opens <paramref name="path"/> (or <paramref name="io"/>'s stream) as ffprobe and ffmpeg do (scan_all_pmts for
-    /// MPEG-TS), with input options, and reads its stream info. Close with avformat_close_input (then dispose io).
+    /// MPEG-TS), with input options, and reads its stream info. Close with <see cref="Close"/> (then dispose io).
+    /// <paramref name="cancellationToken"/> also stops FFmpeg where it waits (a network read): its interrupt callback.
     /// </summary>
-    internal static AVFormatContext* Open(string path, IReadOnlyDictionary<string, string>? inputOptions = null, StreamInput? io = null)
+    internal static AVFormatContext* Open(string path,
+        IReadOnlyDictionary<string, string>? inputOptions = null,
+        StreamInput? io = null,
+        CancellationToken cancellationToken = default)
     {
-        AVFormatContext* fmt = null;
+        AVFormatContext* fmt = ffmpeg.avformat_alloc_context();
         if (io != null)
         {
             // Read from a Stream: avformat_close_input leaves the context to its owner.
-            fmt = ffmpeg.avformat_alloc_context();
             fmt->pb = io.Context;
             fmt->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO;
+        }
+
+        GCHandle cancel = default;
+        if (cancellationToken.CanBeCanceled)
+        {
+            cancel = GCHandle.Alloc(cancellationToken);
+            fmt->interrupt_callback.callback = Interrupted;
+            fmt->interrupt_callback.opaque = (void*)GCHandle.ToIntPtr(cancel);
         }
 
         AVDictionary* options = null;
@@ -44,16 +58,38 @@ internal static unsafe class Demuxer
         int ret = ffmpeg.avformat_open_input(&fmt, path, null, &options);
         ffmpeg.av_dict_free(&options);
         if (ret < 0)
+        {
+            if (cancel.IsAllocated)
+                cancel.Free(); // avformat_open_input freed the context
+            cancellationToken.ThrowIfCancellationRequested();
             throw new FrameReaderException(FrameReaderError.InvalidInput, $"FFmpeg (open {path}): {FFmpegLibraries.ErrorMessage(ret)}");
+        }
+
         ret = ffmpeg.avformat_find_stream_info(fmt, null);
         if (ret < 0)
         {
-            ffmpeg.avformat_close_input(&fmt);
+            Close(&fmt);
+            cancellationToken.ThrowIfCancellationRequested();
             throw new FrameReaderException(FrameReaderError.InvalidInput, $"FFmpeg (read stream info): {FFmpegLibraries.ErrorMessage(ret)}");
         }
 
         return fmt;
     }
+
+    /// <summary>Closes an input <see cref="Open"/> opened, with what its interrupt callback held.</summary>
+    internal static void Close(AVFormatContext** fmt)
+    {
+        if (*fmt == null)
+            return;
+        nint cancel = (nint)(*fmt)->interrupt_callback.opaque;
+        ffmpeg.avformat_close_input(fmt);
+        if (cancel != 0)
+            GCHandle.FromIntPtr(cancel).Free();
+    }
+
+    // FFmpeg asks this while it waits; non-zero stops the wait (AVERROR_EXIT). Static, so it's never collected.
+    static readonly AVIOInterruptCB_callback Interrupted = opaque =>
+        GCHandle.FromIntPtr((nint)opaque).Target is CancellationToken { IsCancellationRequested: true } ? 1 : 0;
 
     /// <summary>The first video stream's index, as -select_streams v:0 / -map 0:v:0 take it; -1 if none.</summary>
     internal static int FirstVideoStream(AVFormatContext* fmt)

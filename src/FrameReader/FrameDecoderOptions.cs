@@ -16,6 +16,12 @@ public sealed record FrameDecoderOptions
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
 
     /// <summary>
+    /// Stops opening and reading the input where FFmpeg waits, as on a network read (<see cref="OperationCanceledException"/>,
+    /// or the read ends with an error); none by default.
+    /// </summary>
+    public CancellationToken CancellationToken { get; init; }
+
+    /// <summary>
     /// Decode on the GPU when possible (Windows: D3D11VA), copying each frame back: about half the CPU, but usually
     /// slower in wall time (each frame waits for the GPU and its copy: 20 s instead of 5.5 s for a 12-minute 1280x534
     /// film on the desktop tested). Worth it when CPU is the limit (many videos at once, a weak CPU). Only 8-bit 4:2:0

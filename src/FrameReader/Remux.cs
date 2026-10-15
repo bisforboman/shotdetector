@@ -88,7 +88,7 @@ public static unsafe class Remux
         bool dash = o.Container == "dash" || (o.Container is null && output.EndsWith(".mpd", StringComparison.OrdinalIgnoreCase));
         var muxerOptions = MuxerOptionsWithEncryption(o, dash, out byte[]? widevineKeyId);
         FFmpegLibraries.Load();
-        AVFormatContext* ic = Demuxer.Open(input, o.InputOptions);
+        AVFormatContext* ic = Demuxer.Open(input, o.InputOptions, cancellationToken: cancellationToken);
         AVFormatContext* oc = null;
         AVPacket* pkt = null;
         try
@@ -181,7 +181,7 @@ public static unsafe class Remux
                 ffmpeg.avformat_free_context(oc);
             }
 
-            ffmpeg.avformat_close_input(&ic);
+            Demuxer.Close(&ic);
         }
     }
 
@@ -286,7 +286,7 @@ public static unsafe class Remux
         }
         finally
         {
-            ffmpeg.avformat_close_input(&ic);
+            Demuxer.Close(&ic);
         }
     }
 

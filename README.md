@@ -40,7 +40,8 @@ FFmpeg 9 executable gives the same results (CI's comparison with scenedetect run
 libraries when OpenCV's wheels do, since scenedetect's frames come from OpenCV's FFmpeg.
 
 The ffmpeg and ffprobe executables (on `PATH`, or in `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`) are still
-needed without those libraries, and for URLs and the image and clip exports. Files of every kind decode
+needed without those libraries, for URLs whose protocol the libraries lack (FrameReader.Native has http, and https on
+Windows), and for the image and clip exports. Files of every kind decode
 in-process, including image sequences, rotated phone video, AV1 (dav1d in our build) and deinterlacing; a codec the
 libraries can't decode and a rotation that isn't a quarter turn use the executable.
 
@@ -267,7 +268,8 @@ In-process decoding uses FFmpeg's shared libraries inside our process, as OpenCV
 packages or the CLI's bundled ones, or a system install. It is the default whenever they load
 (`Decoder = VideoDecoder.Auto`; from `FfmpegDirectory` / `--ffmpeg-dir`, else next to the app, else the system's
 usual places); otherwise the executable is used. `--decoder inprocess` insists on the libraries, `--decoder
-process` on the executable. URLs use the executable (our build has no network protocols).
+process` on the executable. A URL decodes in-process when the libraries have its protocol (FrameReader.Native: http
+everywhere, https on Windows with Windows' own TLS), as a stream; other URLs use the executable.
 
 How it keeps up while computing exactly what OpenCV and scenedetect compute:
 - only the pixels the exact `cv2.resize` port reads are converted to BGR (in-process, the row slices that hold
@@ -349,6 +351,23 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   the DCT in double precision, so on flat frames (fades to black), where the hash is DCT rounding
   noise in scenedetect too, a few hash values and the odd cut inside a fade differ.
 - **Not ported:** frame skip, crop.
+
+## Security
+
+- **No shell.** ffmpeg and ffprobe are started with an argument list, never through a shell, so quotes, `;` or `$(...)`
+  in a file name stay part of the name.
+- **Inputs are FFmpeg's.** A path or URL is opened by FFmpeg, which reads prefixes such as `concat:` or `subfile:`, and a
+  remote playlist (HLS) names further URLs. FFmpeg's own checks keep a remote playlist from reaching local files; on
+  top, an http(s) URL here reads only http, https, tcp, tls and crypto (rtsp: rtsp, rtp, udp, tcp, tls), by the
+  executable and in-process alike, and a read that waits more than 30 s fails (cancellation stops it sooner). A
+  playlist can still
+  name other http addresses, including ones on your network. Pass untrusted URLs only where that's acceptable, and
+  untrusted paths only as file paths you've checked.
+- **Raw ffmpeg arguments are yours.** `SplitOptions.Args` (`--args`) goes to ffmpeg as options, which can write files;
+  don't fill it from untrusted input.
+- **Decoding untrusted media in-process** runs FFmpeg's decoders inside your process, without the separate process the
+  executable gives. Keep FFmpeg current: our native packages follow its point releases (the weekly upstream check), and
+  `Decoder = VideoDecoder.FfmpegProcess` keeps decoding out of your process.
 
 ## Versions
 
