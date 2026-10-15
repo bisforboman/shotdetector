@@ -125,6 +125,26 @@ public class RangeTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal((0, 0, 319, 239), ShotDetection.Detect(clips.ThreeShots, Content(new())).Video.Crop);   // uncropped: the whole frame
     }
 
+    // The TimeSpan options: the same detection as their strings; one form per option.
+    [Fact]
+    public void TimeSpanOptionsAreTheirStrings()
+    {
+        var text = ShotDetection.Detect(clips.ThreeShots, Content(new() { StartTime = "1.5s", EndTime = "5s", MinSceneLength = "0.4s" }));
+        var typed = ShotDetection.Detect(clips.ThreeShots, Content(new()
+        {
+            Start = TimeSpan.FromSeconds(1.5),
+            End = TimeSpan.FromSeconds(5),
+            MinSceneDuration = TimeSpan.FromSeconds(0.4),
+        }));
+        Assert.Equal(text.Shots, typed.Shots);
+        Assert.Equal(
+            ShotDetection.Detect(clips.ThreeShots, Content(new() { StartTime = "1.5s", RangeDuration = "3.5s" })).Shots,
+            ShotDetection.Detect(clips.ThreeShots, Content(new() { Start = TimeSpan.FromSeconds(1.5), Duration = TimeSpan.FromSeconds(3.5) })).Shots);
+        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(clips.ThreeShots, new() { StartTime = "1s", Start = TimeSpan.FromSeconds(1) }));
+        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(clips.ThreeShots, new() { MinSceneLength = "10", MinSceneDuration = TimeSpan.FromSeconds(1) }));
+        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(clips.ThreeShots, new() { End = TimeSpan.FromSeconds(-1) }));
+    }
+
     [Fact]
     public void CropOutsideTheFrameIsRefused() =>
         Assert.Throws<ArgumentException>(() => ShotDetection.Detect(clips.ThreeShots, new() { Crop = (400, 0, 500, 100) }));
