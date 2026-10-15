@@ -12,17 +12,27 @@ if [ -n "$files" ]; then
     exit 1
   fi
 
+  # The staged copies, to restore what formatting changes only the line endings of.
+  keep=$(mktemp -d)
+  for f in $files; do mkdir -p "$keep/$(dirname "$f")"; git show ":$f" > "$keep/$f"; done
+
   dotnet tool restore > /dev/null || exit 1
   if ! dotnet tool run stylebro-migrate format ShotDetector.slnx --include $files > /dev/null; then
     echo "pre-commit: stylebro-migrate format failed; run it yourself to see why:"
     echo "  dotnet tool run stylebro-migrate format ShotDetector.slnx"
     exit 1
   fi
-  # dotnet format writes the lines it changes with CRLF; an LF file stays LF.
+  # dotnet format makes a file's line endings consistent and writes the lines it changes with CRLF: a file whose only
+  # change was its line endings goes back to the staged copy, and an LF file stays LF.
   cr=$(printf '\r')
   for f in $files; do
-    git show ":$f" | grep -q "$cr" || sed -i "s/$cr\$//" "$f"
+    if [ "$(tr -d "$cr" < "$keep/$f")" = "$(tr -d "$cr" < "$f")" ]; then
+      cp "$keep/$f" "$f"
+    elif [ "$(tr -d "$cr" < "$keep/$f" | wc -c)" -eq "$(wc -c < "$keep/$f")" ]; then   # no CR (Git for Windows' grep can't tell)
+      sed -i "s/$cr\$//" "$f"
+    fi
   done
+  rm -rf "$keep"
   git add -- $files
 fi
 

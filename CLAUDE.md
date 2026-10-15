@@ -118,6 +118,7 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - Scripted edits: write Python edit scripts with the Write tool, not bash heredocs (`\\` and `\n` collapse).
   Line endings are per file (most CRLF, some LF; no .gitattributes): keep each file's own. Python's write_text
   writes CRLF on Windows and Git Bash's `sed -i` writes LF, so check `git diff --stat` for whole-file rewrites.
+  Git Bash's grep doesn't see a line's CR (`grep -c $'$'` says 0 on a CRLF file): count endings by bytes (Python).
   Never `git checkout -- <file>` to undo an experiment on a file with uncommitted work: copy it aside first.
   CI's `line-endings` job fails a PR in which more than 20 of a file's lines changed only their ending; for a
   conversion on purpose, label the PR `line-endings` before pushing (CI reads labels when a run starts).

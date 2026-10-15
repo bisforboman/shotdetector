@@ -112,6 +112,19 @@ public class RangeTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // DetectedVideo.Crop: the region as the option's corners, ordered and clamped, so it can be passed back.
+    [Fact]
+    public void CropComesBackAsCorners()
+    {
+        var r = ShotDetection.Detect(clips.ThreeShots, Content(new() { Crop = (299, 239, 40, 30) }));   // corners swapped
+        Assert.Equal((40, 30, 260, 210), r.Video.CropRegion);
+        Assert.Equal((40, 30, 299, 239), r.Video.Crop);
+        var clamped = ShotDetection.Detect(clips.ThreeShots, Content(new() { Crop = (10, 0, 1000, 1000) }));
+        Assert.Equal((10, 0, 319, 239), clamped.Video.Crop);
+        Assert.Equal(clamped.Video.CropRegion, ShotDetection.Detect(clips.ThreeShots, Content(new() { Crop = clamped.Video.Crop })).Video.CropRegion);
+        Assert.Equal((0, 0, 319, 239), ShotDetection.Detect(clips.ThreeShots, Content(new())).Video.Crop);   // uncropped: the whole frame
+    }
+
     [Fact]
     public void CropOutsideTheFrameIsRefused() =>
         Assert.Throws<ArgumentException>(() => ShotDetection.Detect(clips.ThreeShots, new() { Crop = (400, 0, 500, 100) }));
