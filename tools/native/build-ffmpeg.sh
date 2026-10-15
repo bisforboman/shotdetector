@@ -109,7 +109,9 @@ case "$rid" in
   # D3D11VA/DXVA2 for FrameReader's HardwareDecoding: Windows' own APIs, no extra libraries.
   win-x64) set -- "$@" --enable-d3d11va --enable-dxva2 --arch=x86_64 --target-os=mingw32 --cross-prefix=x86_64-w64-mingw32- \
              --extra-ldflags=-static-libgcc --enable-w32threads --enable-schannel ;;
-  linux-*) set -- "$@" --enable-pthreads ;;
+  # Hardened (FFmpeg's toolchain): stack protector, _FORTIFY_SOURCE, full RELRO (-z relro -z now) and PIC, so a bug in a
+  # decoder fed untrusted media is harder to exploit in-process.
+  linux-*) set -- "$@" --enable-pthreads --toolchain=hardened ;;
   osx-*)   set -- "$@" --enable-pthreads --install-name-dir=@rpath --extra-ldflags=-Wl,-rpath,@loader_path ;;
   *) echo "unknown rid $rid" >&2; exit 1 ;;
 esac
@@ -136,7 +138,9 @@ case "$rid" in
       'int main(int c, char **v) { for (int i = 1; i < c; i++) if (!dlopen(v[i], RTLD_NOW)) { puts(dlerror()); return 1; } return 0; }' \
       > "$work/loads.c"
     cc -o "$work/loads" "$work/loads.c" -ldl
-    for f in "$out"/lib*.so.*; do env -u LD_LIBRARY_PATH "$work/loads" "$f" || { echo "$f doesn't load by itself" >&2; exit 1; }; done ;;
+    for f in "$out"/lib*.so.*; do env -u LD_LIBRARY_PATH "$work/loads" "$f" || { echo "$f doesn't load by itself" >&2; exit 1; }; done
+    # The hardening took: full RELRO binds every symbol at load (BIND_NOW).
+    for f in "$out"/lib*.so.*; do readelf -d "$f" | grep -q BIND_NOW || { echo "$f isn't linked with -z now" >&2; exit 1; }; done ;;
 esac
 
 {
