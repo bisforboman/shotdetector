@@ -1,26 +1,40 @@
 #!/bin/sh
-# Formats the staged C# files with StyleBro (the tool in dotnet-tools.json), as CI's format check wants them.
+# Before a commit: formats the staged C# files with StyleBro (the tool in dotnet-tools.json), as CI's format check wants
+# them, then fails when a staged file's line endings were rewritten, as CI's line-endings job does.
 # Turn it on once per clone: git config core.hooksPath .githooks
 files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.cs')
-[ -z "$files" ] && exit 0
+if [ -n "$files" ]; then
+  # Re-staging a file that also has unstaged changes would commit those too.
+  partial=$(git diff --name-only -- $files)
+  if [ -n "$partial" ]; then
+    echo "pre-commit: these files have unstaged changes too; stage them whole (or commit with --no-verify):"
+    echo "$partial"
+    exit 1
+  fi
 
-# Re-staging a file that also has unstaged changes would commit those too.
-partial=$(git diff --name-only -- $files)
-if [ -n "$partial" ]; then
-  echo "pre-commit: these files have unstaged changes too; stage them whole (or commit with --no-verify):"
-  echo "$partial"
-  exit 1
+  dotnet tool restore > /dev/null || exit 1
+  if ! dotnet tool run stylebro-migrate format ShotDetector.slnx --include $files > /dev/null; then
+    echo "pre-commit: stylebro-migrate format failed; run it yourself to see why:"
+    echo "  dotnet tool run stylebro-migrate format ShotDetector.slnx"
+    exit 1
+  fi
+  # dotnet format writes the lines it changes with CRLF; an LF file stays LF.
+  cr=$(printf '\r')
+  for f in $files; do
+    git show ":$f" | grep -q "$cr" || sed -i "s/$cr\$//" "$f"
+  done
+  git add -- $files
 fi
 
-dotnet tool restore > /dev/null || exit 1
-if ! dotnet tool run stylebro-migrate format ShotDetector.slnx --include $files > /dev/null; then
-  echo "pre-commit: stylebro-migrate format failed; run it yourself to see why:"
-  echo "  dotnet tool run stylebro-migrate format ShotDetector.slnx"
-  exit 1
-fi
-# dotnet format writes the lines it changes with CRLF; an LF file stays LF.
-cr=$(printf '\r')
-for f in $files; do
-  git show ":$f" | grep -q "$cr" || sed -i "s/$cr\$//" "$f"
-done
-git add -- $files
+# Line endings are per file here (no .gitattributes): more than 20 of a file's added lines that differ only in their
+# ending means an editor or script rewrote it (ci.yml's line-endings job; a conversion on purpose: --no-verify, and
+# the PR's `line-endings` label).
+report=$(git diff --cached --numstat | while IFS="$(printf '	')" read -r added deleted file; do
+  [ "$added" = "-" ] && continue   # binary
+  ignoring=$(git diff --cached --numstat --ignore-cr-at-eol -- "$file" | cut -f1)
+  only=$((added - ${ignoring:-0}))
+  [ "$only" -gt 20 ] && echo "pre-commit: $file: $only lines changed only their line ending (CRLF/LF); keep the file's own"
+done)
+[ -z "$report" ] && exit 0
+echo "$report"
+exit 1

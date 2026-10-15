@@ -70,7 +70,8 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   for the previous release).
 - Code style: StyleBro (analyzers on build; rules chosen in `.editorconfig`, docs/decisions/). The
   pre-commit hook formats the staged .cs files (`git config core.hooksPath .githooks` once per clone; ~15-30 s, only
-  when .cs files are staged; it stops a commit whose .cs files also have unstaged changes). By hand: `dotnet tool run
+  when .cs files are staged; it stops a commit whose .cs files also have unstaged changes, and one that rewrites a file's line endings, as CI's
+  line-endings job does). By hand: `dotnet tool run
   stylebro-migrate format ShotDetector.slnx` (the version is in .config/dotnet-tools.json, with the analyzers' in
   Directory.Packages.props; Dependabot updates both in one PR); CI checks it with `--verify-no-changes`. Feedback on StyleBro goes to its GitHub issues.
 - Docs don't copy benchmark numbers: speed and memory figures go stale with every change. READMEs link the weekly
