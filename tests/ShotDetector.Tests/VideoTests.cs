@@ -474,8 +474,10 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
                     {
                         try
                         {
-                            string file = Path.Combine(dir, ctx.Request.Url!.AbsolutePath.TrimStart('/'));
-                            if (!File.Exists(file))
+                            // Only files in the folder: a path that resolves outside it (..) is not found.
+                            string root = Path.GetFullPath(dir) + Path.DirectorySeparatorChar;
+                            string file = Path.GetFullPath(Path.Combine(root, ctx.Request.Url!.AbsolutePath.TrimStart('/')));
+                            if (!file.StartsWith(root, StringComparison.Ordinal) || !File.Exists(file))
                             {
                                 ctx.Response.StatusCode = 404;
                             }
