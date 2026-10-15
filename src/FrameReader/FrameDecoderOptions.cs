@@ -39,6 +39,16 @@ public sealed record FrameDecoderOptions
     public bool KeyframesOnly { get; init; }
 
     /// <summary>
+    /// The largest frame decoded, in pixels (width x height): a stream claiming a larger size fails to decode, as
+    /// FFmpeg's <c>max_pixels</c>, so a crafted file can't exhaust memory. Default 8192 x 8192 (twice 8K UHD); 0: no
+    /// limit of ours (FFmpeg's own).
+    /// </summary>
+    public long MaxPixels { get; init; } = DefaultMaxPixels;
+
+    /// <summary>The default of <see cref="MaxPixels"/>: 8192 x 8192.</summary>
+    public const long DefaultMaxPixels = 8192L * 8192;
+
+    /// <summary>
     /// Apply the stream's display matrix (rotation, flips) to the frames as ffmpeg's autorotate does (the default);
     /// false: the frames as coded, as <c>-noautorotate</c> (to rotate after converting, as OpenCV does).
     /// </summary>

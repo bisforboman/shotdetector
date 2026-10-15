@@ -595,6 +595,12 @@ internal sealed partial class VideoReader
                 inner)
             : new ShotDetectionException(reason, message, inner);
 
+    /// <summary>
+    /// ffmpeg's decoder option against crafted files claiming huge frames (FrameReader's default, which in-process decoding
+    /// gets): a frame of more than 8192 x 8192 pixels fails to decode.
+    /// </summary>
+    internal static readonly string[] MaxPixels = ["-max_pixels", FrameReader.FrameDecoderOptions.DefaultMaxPixels.ToString(CultureInfo.InvariantCulture)];
+
     static bool IsUrl(string path) =>
         Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
 
@@ -913,7 +919,7 @@ internal sealed partial class VideoReader
 
         // Rotated as OpenCV does (Turn), not by ffmpeg's autorotate.
         string[] args = ["-v", "info", "-nostats", .. noStdin, "-y",
-            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount)}", .. seek, .. _inputOptions, "-noautorotate", "-i", _path,
+            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount)}", .. seek, .. _inputOptions, .. MaxPixels, "-noautorotate", "-i", _path,
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
         select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
 
