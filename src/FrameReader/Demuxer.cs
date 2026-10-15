@@ -6,6 +6,23 @@ namespace FrameReader;
 internal static unsafe class Demuxer
 {
     /// <summary>
+    /// After av_read_frame failed: the end of the input, unless reading it failed (a network reset, a Stream that threw:
+    /// FFmpeg's I/O context records those), which is a <see cref="FrameReaderException"/> rather than a shortened
+    /// result. A demuxer's own error (a truncated or damaged file) still ends the input, as in OpenCV.
+    /// </summary>
+    /// <param name="fmt">The input.</param>
+    /// <param name="ret">What av_read_frame returned.</param>
+    /// <param name="inner">What a Stream input threw, if it did.</param>
+    internal static void ThrowIfReadFailed(AVFormatContext* fmt, int ret, Exception? inner)
+    {
+        if (ret == ffmpeg.AVERROR_EOF || fmt->pb == null || fmt->pb->error >= 0)
+            return;
+        throw new FrameReaderException(FrameReaderError.DecodeFailed,
+            $"Reading the input failed part way: {inner?.Message ?? FFmpegLibraries.ErrorMessage(fmt->pb->error)}",
+            inner);
+    }
+
+    /// <summary>
     /// Opens <paramref name="path"/> (or <paramref name="io"/>'s stream) as ffprobe and ffmpeg do (scan_all_pmts for
     /// MPEG-TS), with input options, and reads its stream info. Close with avformat_close_input (then dispose io).
     /// </summary>
