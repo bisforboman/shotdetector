@@ -358,7 +358,8 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   in a file name stay part of the name.
 - **Inputs are FFmpeg's.** A path or URL is opened by FFmpeg, which reads prefixes such as `concat:` or `subfile:`, and a
   remote playlist (HLS) names further URLs. An http(s) URL reads only http, https, tcp, tls and crypto (rtsp: rtsp, rtp,
-  udp, tcp, tls), by the executable and in-process alike, so a playlist can't make FFmpeg read local files; it can still
+  udp, tcp, tls), by the executable and in-process alike, so a playlist can't make FFmpeg read local files, and a read
+  that waits more than 30 s fails (cancellation stops it sooner); it can still
   name other http addresses, including ones on your network. Pass untrusted URLs only where that's acceptable, and
   untrusted paths only as file paths you've checked.
 - **Raw ffmpeg arguments are yours.** `SplitOptions.Args` (`--args`) goes to ffmpeg as options, which can write files;

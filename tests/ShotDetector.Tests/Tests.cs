@@ -704,8 +704,8 @@ public class UrlOptionTests
 {
     // A URL reads only its own family of protocols; files and other schemes get no options.
     [Theory]
-    [InlineData("http://example.com/play.m3u8", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy")]
-    [InlineData("HTTPS://example.com/a.mp4", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy")]
+    [InlineData("http://example.com/play.m3u8", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy -rw_timeout 30000000")]
+    [InlineData("HTTPS://example.com/a.mp4", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy -rw_timeout 30000000")]
     [InlineData("rtsp://127.0.0.1:8554/shots", "-protocol_whitelist rtsp,rtsps,rtp,srtp,udp,tcp,tls")]
     [InlineData(@"C:\videos\a.mp4", "")]
     [InlineData("/videos/a.mp4", "")]

@@ -65,6 +65,7 @@ internal sealed partial class VideoReader
                     Deinterlace = _deinterlace,
                     RowDeinterlacer = _yadif,
                     InputOptions = InProcessProbe.Options(_inputOptions),
+                    CancellationToken = cancel.Token, // the caller's, and ours when the caller stops iterating
 
                     // Rotated as OpenCV rotates (FrameWriter): by the display matrix's angle alone, after converting.
                     Autorotate = false,

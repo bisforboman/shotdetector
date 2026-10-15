@@ -235,4 +235,10 @@ public sealed record ProbeOptions
     /// <c>frames/%04d.png</c>: <c>framerate</c> = <c>25/1</c>).
     /// </summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
+
+    /// <summary>
+    /// Stops opening and reading the input where FFmpeg waits, as on a network read (<see cref="OperationCanceledException"/>,
+    /// or the read ends with an error); none by default.
+    /// </summary>
+    public CancellationToken CancellationToken { get; init; }
 }

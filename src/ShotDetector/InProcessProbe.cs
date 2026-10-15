@@ -26,9 +26,15 @@ internal static unsafe class InProcessProbe
         string? libraryDirectory,
         bool packets = true,
         string[]? inputOptions = null,
-        byte[]? streamPrefix = null)
+        byte[]? streamPrefix = null,
+        CancellationToken cancellationToken = default)
     {
-        var options = new ProbeOptions { PacketTimestamps = packets && streamPrefix is null, InputOptions = Options(inputOptions) };
+        var options = new ProbeOptions
+        {
+            PacketTimestamps = packets && streamPrefix is null,
+            InputOptions = Options(inputOptions),
+            CancellationToken = cancellationToken,
+        };
         var info = Probe(() => streamPrefix is null ? MediaProbe.Probe(path, options) : MediaProbe.Probe(new MemoryStream(streamPrefix), options), libraryDirectory);
         if (info.Video is not { } v)
             return ""; // no stream entries, as ffprobe prints none

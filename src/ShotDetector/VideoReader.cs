@@ -381,7 +381,7 @@ internal sealed partial class VideoReader
         {
             try
             {
-                urlProbe = InProcessProbe.Properties(path, _ffmpegDirectory, packets: false, _inputOptions);
+                urlProbe = InProcessProbe.Properties(path, _ffmpegDirectory, packets: false, _inputOptions, cancellationToken: cancellationToken);
             }
             catch (ShotDetectionException)
             {
@@ -408,7 +408,7 @@ internal sealed partial class VideoReader
         }
         else if (_probesInProcess)
         {
-            probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly && !Streaming, _inputOptions);
+            probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly && !Streaming, _inputOptions, cancellationToken: cancellationToken);
         }
         else if (video is not null)
         {
@@ -606,7 +606,8 @@ internal sealed partial class VideoReader
         ? []
         : new Uri(path).Scheme.ToLowerInvariant() switch
         {
-            "http" or "https" => ["-protocol_whitelist", "http,https,tcp,tls,crypto,httpproxy"],
+            // A read that waits more than 30 s fails rather than hanging (rw_timeout, in microseconds).
+            "http" or "https" => ["-protocol_whitelist", "http,https,tcp,tls,crypto,httpproxy", "-rw_timeout", "30000000"],
             "rtsp" or "rtsps" => ["-protocol_whitelist", "rtsp,rtsps,rtp,srtp,udp,tcp,tls"],
             _ => [],
         };

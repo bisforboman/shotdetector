@@ -13,6 +13,12 @@ public sealed record AudioReaderOptions
 
     /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
+
+    /// <summary>
+    /// Stops opening and reading the input where FFmpeg waits, as on a network read (<see cref="OperationCanceledException"/>,
+    /// or the read ends with an error); none by default.
+    /// </summary>
+    public CancellationToken CancellationToken { get; init; }
 }
 
 /// <summary>Decoded, converted audio: valid until the next read from its <see cref="AudioReader"/>.</summary>
@@ -90,7 +96,7 @@ public sealed unsafe class AudioReader : IDisposable
         try
         {
             FFmpegLibraries.Load();
-            _fmt = Demuxer.Open(path, o.InputOptions, io);
+            _fmt = Demuxer.Open(path, o.InputOptions, io, o.CancellationToken);
             AVCodec* codec = null;
             _stream = ffmpeg.av_find_best_stream(_fmt, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
             if (_stream < 0 || codec == null)
@@ -413,7 +419,7 @@ public sealed unsafe class AudioReader : IDisposable
         if (_fmt != null)
         {
             var f = _fmt;
-            ffmpeg.avformat_close_input(&f);
+            Demuxer.Close(&f);
             _fmt = null;
         }
 

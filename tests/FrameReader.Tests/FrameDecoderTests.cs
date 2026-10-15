@@ -159,6 +159,73 @@ public class FrameDecoderTests
         }
     }
 
+    // A server that sends the start of a clip and then stalls: cancellation stops the read FFmpeg waits in (its interrupt
+    // callback), and rw_timeout makes it fail rather than wait forever.
+    [Fact]
+    public void StalledNetworkReadsCancelAndTimeOut()
+    {
+        if (Libs is null || !FFmpegLibraries.HasProtocol("http"))
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-dec-").FullName;
+        var listener = new System.Net.HttpListener();
+        try
+        {
+            string path = Path.Combine(dir, "clip.mkv");
+            TestMedia.Write(path, new TestMediaOptions { Video = ["testsrc2=d=10"], VideoEncoder = "mpeg4", VideoQuality = 3 });
+            byte[] bytes = File.ReadAllBytes(path);
+            int port = Random.Shared.Next(20000, 60000);
+            listener.Prefixes.Add($"http://localhost:{port}/");
+            listener.Start();
+            _ = Task.Run(async () =>
+            {
+                while (listener.IsListening)
+                {
+                    try
+                    {
+                        var ctx = await listener.GetContextAsync();
+                        ctx.Response.ContentLength64 = bytes.Length;
+                        await ctx.Response.OutputStream.WriteAsync(bytes.AsMemory(0, bytes.Length * 3 / 4));
+                        await ctx.Response.OutputStream.FlushAsync();
+                        await Task.Delay(Timeout.Infinite);   // the rest never comes
+                    }
+                    catch (Exception e) when (e is System.Net.HttpListenerException or ObjectDisposedException or InvalidOperationException)
+                    {
+                        return;
+                    }
+                }
+            });
+            string url = $"http://localhost:{port}/clip.mkv";
+
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            var watch = Stopwatch.StartNew();
+            Assert.ThrowsAny<OperationCanceledException>(() =>
+            {
+                using var decoder = new FrameDecoder(url, new FrameDecoderOptions { CancellationToken = cancel.Token });
+                while (decoder.Next())
+                {
+                }
+            });
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(15), $"stopped after {watch.Elapsed}");
+
+            // Opening seeks too (an mkv's index), so the wait can end in the open (InvalidInput) or in a read (DecodeFailed).
+            watch.Restart();
+            var timedOut = Assert.Throws<FrameReaderException>(() =>
+            {
+                using var decoder = new FrameDecoder(url, new FrameDecoderOptions { InputOptions = new Dictionary<string, string> { ["rw_timeout"] = "1000000" } });
+                while (decoder.Next())
+                {
+                }
+            });
+            Assert.Contains(timedOut.Reason, new[] { FrameReaderError.InvalidInput, FrameReaderError.DecodeFailed });
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(15), $"timed out after {watch.Elapsed}");
+        }
+        finally
+        {
+            listener.Close();
+            Directory.Delete(dir, true);
+        }
+    }
+
     /// <summary>A stream of these bytes whose reads throw, as a dropped connection does, from <paramref name="failAt"/> on.</summary>
     sealed class FailingStream(byte[] data, int failAt) : Stream
     {

@@ -39,14 +39,14 @@ public static unsafe class MediaProbe
     public static string ProbeJson(string path, ProbeOptions? options = null)
     {
         FFmpegLibraries.Load();
-        var fmt = Demuxer.Open(path, options?.InputOptions);
+        var fmt = Demuxer.Open(path, options?.InputOptions, cancellationToken: options?.CancellationToken ?? default);
         try
         {
             return FfprobeJson.Write(fmt);
         }
         finally
         {
-            ffmpeg.avformat_close_input(&fmt);
+            Demuxer.Close(&fmt);
         }
     }
 
@@ -57,7 +57,7 @@ public static unsafe class MediaProbe
     static MediaInfo Probe(string path, StreamInput? io, ProbeOptions? options)
     {
         FFmpegLibraries.Load();
-        var fmt = Demuxer.Open(path, options?.InputOptions, io);
+        var fmt = Demuxer.Open(path, options?.InputOptions, io, options?.CancellationToken ?? default);
         try
         {
             bool audio = false;
@@ -81,7 +81,7 @@ public static unsafe class MediaProbe
         }
         finally
         {
-            ffmpeg.avformat_close_input(&fmt);
+            Demuxer.Close(&fmt);
         }
     }
 
