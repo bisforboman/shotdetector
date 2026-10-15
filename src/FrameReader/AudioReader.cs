@@ -362,8 +362,10 @@ public sealed unsafe class AudioReader : IDisposable
                 break;
             }
 
-            if (ffmpeg.av_read_frame(_fmt, _pkt) < 0)
+            int read = ffmpeg.av_read_frame(_fmt, _pkt);
+            if (read < 0)
             {
+                Demuxer.ThrowIfReadFailed(_fmt, read, _io?.Error);
                 ffmpeg.avcodec_send_packet(_dec, null);
                 _draining = true;
                 continue;
