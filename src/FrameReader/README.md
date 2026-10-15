@@ -360,7 +360,8 @@ thread.
 
 A path or URL is opened by FFmpeg, as `ffmpeg -i` opens it: prefixes such as `concat:` or `subfile:` work, and a remote
 playlist names further URLs. For untrusted input, pass FFmpeg's `protocol_whitelist` in `InputOptions` (for an http
-URL, `http,https,tcp,tls,crypto,httpproxy`, so a playlist can't reach local files) and `rw_timeout` (microseconds)
+URL, `http,https,tcp,tls,crypto,httpproxy`: FFmpeg's own default, which already keeps out local files, also allows
+udp, rtp and data) and `rw_timeout` (microseconds)
 so a stalled server fails; the options' `CancellationToken` stops a read FFmpeg waits in. Filter graphs you pass
 (`AudioFilter`, `Audio.Convert`'s) are FFmpeg's syntax, and some filters of a full build read files (`movie`,
 `amovie`): don't build them from untrusted input. Decoding runs FFmpeg's code in your process; keep the libraries

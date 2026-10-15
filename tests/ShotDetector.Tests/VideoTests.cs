@@ -445,11 +445,11 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
-    // A URL reads only its own family of protocols: an HLS playlist served over http whose segments are local files
-    // (file: URLs with an extension FFmpeg's own check lets through) can't make FFmpeg read them, by the executable or
-    // in-process.
+    // A URL reads only its own family of protocols, stricter than FFmpeg's own default for what an http input names
+    // (which already keeps out file:, and allows udp, rtp and data): an HLS playlist whose first segment is a data: URL
+    // plays with plain ffprobe, and ShotDetector refuses it, by the executable and in-process.
     [Fact]
-    public void UrlPlaylistCantReachLocalFiles()
+    public void UrlInputsReadOnlyTheirOwnProtocols()
     {
         string dir = Directory.CreateTempSubdirectory("shotdetector-url-").FullName;
         try
@@ -458,15 +458,15 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
                 ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-f", "hls", "-hls_time", "2", "-hls_playlist_type", "vod",
                     "-hls_segment_filename", Path.Combine(dir, "seg%03d.ts"), Path.Combine(dir, "play.m3u8")],
                 default);
-            string local = new Uri(Path.Combine(dir, "seg")).AbsoluteUri;
-            File.WriteAllText(Path.Combine(dir, "local.m3u8"),
-                System.Text.RegularExpressions.Regex.Replace(File.ReadAllText(Path.Combine(dir, "play.m3u8")), "^seg", local, System.Text.RegularExpressions.RegexOptions.Multiline));
+            string inline = "data:video/mp2t;base64," + Convert.ToBase64String(File.ReadAllBytes(Path.Combine(dir, "seg000.ts")));
+            File.WriteAllText(Path.Combine(dir, "inline.m3u8"), File.ReadAllText(Path.Combine(dir, "play.m3u8")).Replace("seg000.ts", inline));
             using var server = new FileServer(dir);
-            string url = $"http://localhost:{server.Port}/local.m3u8";
+            string url = $"http://localhost:{server.Port}/inline.m3u8";
 
-            // Without the whitelist, FFmpeg does read them: what's refused below is the whitelist's doing.
+            // FFmpeg's default lets the data: segment through: what's refused below is the whitelist's doing.
             Assert.Contains("codec_type=video", VideoReader.Run("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type", url], default));
-            Assert.ThrowsAny<ShotDetectionException>(() => ShotDetection.Detect(url, new() { Decoder = VideoDecoder.FfmpegProcess }));
+            var e = Assert.ThrowsAny<ShotDetectionException>(() => ShotDetection.Detect(url, new() { Decoder = VideoDecoder.FfmpegProcess }));
+            Assert.Contains("not on whitelist", e.Message);
             if (Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS") is { } libs)
                 Assert.ThrowsAny<ShotDetectionException>(() => ShotDetection.Detect(url, new() { FfmpegDirectory = libs, Decoder = VideoDecoder.InProcess }));
         }
