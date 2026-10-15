@@ -101,7 +101,7 @@ scenedetect: `DropShortScenes`, `MergeLastScene`, `FilterMode = FlashFilterMode.
 
 Like scenedetect's `time`, `--frame-skip` and `--crop`: `StartTime`, `EndTime` and `RangeDuration`
 ("HH:MM:SS.mmm", "12.5s", or a frame number; CLI `-s`, `-e`, `--duration`), `FrameSkip` (analyse
-every (n+1)th frame; CLI `--frame-skip`) and `Crop` (inclusive pixel corners; CLI `--crop x0 y0 x1 y1`)
+every (n+1)th frame; CLI `--frame-skip`) and `Crop` (inclusive pixel corners; CLI `--crop x0 y0 x1 y1`; the result's `Video.Crop` gives them back, ordered and clamped)
 give the same shots as scenedetect with those options. On variable frame rate video a start time
 picks the first frame at or after it (scenedetect's own seek is an artifact of OpenCV's frame
 counting there). `Export.SaveImages` takes an `ImageOptions` (count, margin, width/height/scale,

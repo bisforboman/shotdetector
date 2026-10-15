@@ -50,6 +50,12 @@ public sealed class DetectedVideo
     /// <summary>The part of the upright frame analysed, in pixels: left, top, width, height. The whole frame unless cropped.</summary>
     public (int X, int Y, int Width, int Height) CropRegion => Reader.CropRegion;
 
+    /// <summary>
+    /// <see cref="CropRegion"/> as <see cref="DetectionOptions.Crop"/> takes it: inclusive pixel coordinates of the
+    /// top-left and bottom-right corners (the option's corners in that order, clamped to the frame), so it can be passed back.
+    /// </summary>
+    public (int X0, int Y0, int X1, int Y1) Crop => (CropRegion.X, CropRegion.Y, CropRegion.X + CropRegion.Width - 1, CropRegion.Y + CropRegion.Height - 1);
+
     /// <summary>Which PySceneDetect release's frame rate, downscaling and positions the detection reproduced.</summary>
     public PySceneDetectVersion Compatibility => Reader.Compatibility;
 
