@@ -356,9 +356,9 @@ internal sealed partial class VideoReader
         Fps? frameRate = o.FrameRate is not { } fr ? null
             : fr <= 0 ? throw new ArgumentException("FrameRate must be positive.")
             : Fps.FromFloat(fr);
-        _inputOptions = frameRate is { } r && video is null && path.Contains('%') && !IsUrl(path)
-            ? ["-framerate", $"{r.Num}/{r.Den}"]
-            : video is null ? UrlOptions(path) : [];
+        _inputOptions = video is not null ? []
+            : frameRate is { } r && path.Contains('%') && !IsUrl(path) ? ["-framerate", $"{r.Num}/{r.Den}", .. InputOptions(path)]
+            : InputOptions(path);
 
         // One demux-only pass: stream properties, plus every packet's pts for a file (no decoding).
         // A Stream is probed from its first bytes, which are kept to feed ffmpeg later.
@@ -599,18 +599,26 @@ internal sealed partial class VideoReader
         Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
 
     /// <summary>
-    /// FFmpeg options for a URL input: only its own family of protocols, so what it serves (an HLS playlist's entries)
-    /// can't make FFmpeg read local files or other protocols (file:, concat:, subfile:...). Other schemes: none.
+    /// FFmpeg options for an input path or URL: only the protocols it needs. A file (a plain path, or an FFmpeg
+    /// pseudo-protocol string such as concat: or subfile:, which then fails) reads as a file; an http(s) or rtsp URL its
+    /// own family, a second layer over FFmpeg's checks of what it serves (an HLS playlist's entries); another network
+    /// URL (scheme://host: srt, udp, rtmp...) none, as before.
     /// </summary>
-    internal static string[] UrlOptions(string path) => !IsUrl(path)
-        ? []
-        : new Uri(path).Scheme.ToLowerInvariant() switch
+    internal static string[] InputOptions(string path)
+    {
+        string[] files = ["-protocol_whitelist", "file,crypto"];
+        if (!IsUrl(path))
+            return files;
+        string scheme = new Uri(path).Scheme.ToLowerInvariant();
+        return scheme switch
         {
             // A read that waits more than 30 s fails rather than hanging (rw_timeout, in microseconds).
             "http" or "https" => ["-protocol_whitelist", "http,https,tcp,tls,crypto,httpproxy", "-rw_timeout", "30000000"],
             "rtsp" or "rtsps" => ["-protocol_whitelist", "rtsp,rtsps,rtp,srtp,udp,tcp,tls"],
-            _ => [],
+            _ when path.StartsWith(scheme + "://", StringComparison.OrdinalIgnoreCase) => [],
+            _ => files,
         };
+    }
 
     /// <summary>
     /// Whether an MP4/MOV's media data (mdat) comes before its headers (moov) in these first bytes: an mp4 without

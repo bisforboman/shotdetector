@@ -702,16 +702,22 @@ public class SceneListTests
 
 public class UrlOptionTests
 {
-    // A URL reads only its own family of protocols; files and other schemes get no options.
+    // An input reads only the protocols it needs: a file as a file (FFmpeg's pseudo-protocol strings included, so they
+    // fail), an http(s) or rtsp URL its own family, another network URL as before.
     [Theory]
     [InlineData("http://example.com/play.m3u8", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy -rw_timeout 30000000")]
     [InlineData("HTTPS://example.com/a.mp4", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy -rw_timeout 30000000")]
     [InlineData("rtsp://127.0.0.1:8554/shots", "-protocol_whitelist rtsp,rtsps,rtp,srtp,udp,tcp,tls")]
-    [InlineData(@"C:\videos\a.mp4", "")]
-    [InlineData("/videos/a.mp4", "")]
+    [InlineData(@"C:\videos\a.mp4", "-protocol_whitelist file,crypto")]
+    [InlineData(@"\\server\share\a.mp4", "-protocol_whitelist file,crypto")]
+    [InlineData("/videos/a.mp4", "-protocol_whitelist file,crypto")]
+    [InlineData("frames/%04d.png", "-protocol_whitelist file,crypto")]
+    [InlineData("concat:a.mp4|b.mp4", "-protocol_whitelist file,crypto")]
+    [InlineData("subfile,,start,0,end,100,,:a.mp4", "-protocol_whitelist file,crypto")]
     [InlineData("srt://host:9000", "")]
-    public void UrlsReadOnlyTheirOwnProtocols(string path, string expected) =>
-        Assert.Equal(expected, string.Join(' ', VideoReader.UrlOptions(path)));
+    [InlineData("udp://239.0.0.1:1234", "")]
+    public void InputsReadOnlyTheProtocolsTheyNeed(string path, string expected) =>
+        Assert.Equal(expected, string.Join(' ', VideoReader.InputOptions(path)));
 }
 
 public class TimeSpanOptionTests
