@@ -3,9 +3,9 @@
 - URLs decode in-process when FFmpeg's libraries have the URL's protocol (`Auto`, or `InProcess`): with
   FrameReader.Native, http everywhere and https on Windows. Faster, and no ffmpeg executable needed for them; other URLs
   use the executable as before. The results are the same either way.
-- URL inputs read only their own family of protocols, with the executable and in-process: http(s) URLs http, https,
-  tcp, tls and crypto (FFmpeg's own default, which already keeps out local files, also allows udp, rtp and data), rtsp
-  URLs rtsp, rtp, udp, tcp and tls.
+- URL inputs read only their own family of protocols, with the executable and in-process alike (http(s) URLs: http,
+  https, tcp, tls, crypto; rtsp: rtsp, rtp, udp, tcp, tls): a second layer over FFmpeg's own checks, which already keep
+  a remote playlist from reaching local files.
 
 ### Fixed
 
