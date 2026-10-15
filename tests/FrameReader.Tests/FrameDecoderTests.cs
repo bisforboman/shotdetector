@@ -117,6 +117,84 @@ public class FrameDecoderTests
         }
     }
 
+    // A read that fails part way (a network reset, a Stream that throws) is an error rather than a shorter video; a
+    // truncated file still just ends where its data does, as in OpenCV.
+    [Fact]
+    public void ReadErrorsThrowButTruncationEnds()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-dec-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "clip.mkv");
+            TestMedia.Write(path, new TestMediaOptions { Video = ["testsrc2=d=4"], VideoEncoder = "mpeg4", VideoQuality = 3 });
+            byte[] bytes = File.ReadAllBytes(path);
+            using (var decoder = new FrameDecoder(new FailingStream(bytes, bytes.Length / 2), Options))
+            {
+                var e = Assert.Throws<FrameReaderException>(() =>
+                {
+                    while (decoder.Next())
+                    {
+                    }
+                });
+                Assert.Equal(FrameReaderError.DecodeFailed, e.Reason);
+                Assert.IsType<IOException>(e.InnerException);
+            }
+
+            string truncated = Path.Combine(dir, "truncated.mkv");
+            File.WriteAllBytes(truncated, bytes[..(bytes.Length / 2)]);
+            int frames = 0;
+            using (var decoder = new FrameDecoder(truncated, Options))
+            {
+                while (decoder.Next())
+                    frames++;
+            }
+
+            Assert.InRange(frames, 1, 99);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    /// <summary>A stream of these bytes whose reads throw, as a dropped connection does, from <paramref name="failAt"/> on.</summary>
+    sealed class FailingStream(byte[] data, int failAt) : Stream
+    {
+        int _at;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => _at; set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (_at >= failAt)
+                throw new IOException("The connection was reset.");
+            int n = Math.Min(count, failAt - _at);
+            Array.Copy(data, _at, buffer, offset, n);
+            _at += n;
+            return n;
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     [Fact]
     public void NoVideoIsInvalidInput()
     {

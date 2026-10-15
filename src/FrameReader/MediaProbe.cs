@@ -184,7 +184,8 @@ public static unsafe class MediaProbe
         var pkt = ffmpeg.av_packet_alloc();
         try
         {
-            while (ffmpeg.av_read_frame(fmt, pkt) >= 0)
+            int read;
+            while ((read = ffmpeg.av_read_frame(fmt, pkt)) >= 0)
             {
                 if (pkt->stream_index == index)
                 {
@@ -194,6 +195,8 @@ public static unsafe class MediaProbe
 
                 ffmpeg.av_packet_unref(pkt);
             }
+
+            Demuxer.ThrowIfReadFailed(fmt, read, null);
         }
         finally
         {

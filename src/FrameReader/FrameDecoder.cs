@@ -685,8 +685,10 @@ public sealed unsafe class FrameDecoder : IDisposable
 
             if (_draining)
                 continue;
-            if (ffmpeg.av_read_frame(_fmt, _pkt) < 0)
+            int read = ffmpeg.av_read_frame(_fmt, _pkt);
+            if (read < 0)
             {
+                Demuxer.ThrowIfReadFailed(_fmt, read, InputError);
                 _draining = true;
                 ffmpeg.avcodec_send_packet(_dec, null);
                 continue;
