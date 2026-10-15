@@ -188,6 +188,21 @@ public sealed record DetectorSettings(DetectorKind Kind)
 
     /// <summary>Threshold: see <see cref="DetectionOptions.MinOutLength"/>.</summary>
     public string? MinOutLength { get; init; }
+
+    /// <summary><see cref="MinSceneLength"/> as a time; not both.</summary>
+    public TimeSpan? MinSceneDuration { get; init; }
+
+    /// <summary><see cref="MinOutLength"/> as a time; not both.</summary>
+    public TimeSpan? MinOutDuration { get; init; }
+
+    /// <summary>The settings with the typed times written into their strings.</summary>
+    internal DetectorSettings Resolved() => this with
+    {
+        MinSceneLength = DetectionOptions.Either(MinSceneLength, null, MinSceneDuration, nameof(MinSceneLength), nameof(MinSceneDuration)),
+        MinOutLength = DetectionOptions.Either(MinOutLength, null, MinOutDuration, nameof(MinOutLength), nameof(MinOutDuration)),
+        MinSceneDuration = null,
+        MinOutDuration = null,
+    };
 }
 
 /// <summary>Detection settings. Defaults match the scenedetect CLI.</summary>
@@ -253,6 +268,52 @@ public sealed record DetectionOptions
 
     /// <summary>How much to analyse from the start, like `time -d`; same formats. Not with <see cref="EndTime"/>.</summary>
     public string? RangeDuration { get; init; }
+
+    /// <summary><see cref="StartTime"/> as a time; not both.</summary>
+    public TimeSpan? Start { get; init; }
+
+    /// <summary><see cref="EndTime"/> as a time; not both.</summary>
+    public TimeSpan? End { get; init; }
+
+    /// <summary><see cref="RangeDuration"/> as a time; not both.</summary>
+    public TimeSpan? Duration { get; init; }
+
+    /// <summary><see cref="MinSceneLength"/> as a time; not both (the string's default aside).</summary>
+    public TimeSpan? MinSceneDuration { get; init; }
+
+    /// <summary><see cref="MinOutLength"/> as a time; not both.</summary>
+    public TimeSpan? MinOutDuration { get; init; }
+
+    /// <summary>The options with the typed times written into their strings, which the detection reads.</summary>
+    internal DetectionOptions Resolved() => this with
+    {
+        StartTime = Either(StartTime, null, Start, nameof(StartTime), nameof(Start)),
+        EndTime = Either(EndTime, null, End, nameof(EndTime), nameof(End)),
+        RangeDuration = Either(RangeDuration, null, Duration, nameof(RangeDuration), nameof(Duration)),
+        MinSceneLength = Either(MinSceneLength, "0.6s", MinSceneDuration, nameof(MinSceneLength), nameof(MinSceneDuration))!,
+        MinOutLength = Either(MinOutLength, null, MinOutDuration, nameof(MinOutLength), nameof(MinOutDuration)),
+        Detectors = Detectors?.Select(d => d.Resolved()).ToList(),
+        Start = null,
+        End = null,
+        Duration = null,
+        MinSceneDuration = null,
+        MinOutDuration = null,
+    };
+
+    /// <summary>
+    /// A time option's string: the typed value as seconds ("12.5s", exact to the tick) when set, else the string as
+    /// given; both set (the string not at its default) is an error.
+    /// </summary>
+    internal static string? Either(string? text, string? textDefault, TimeSpan? time, string textName, string timeName)
+    {
+        if (time is not { } t)
+            return text;
+        if (text != textDefault)
+            throw new ArgumentException($"{textName} and {timeName} are the same option; set one.");
+        if (t < TimeSpan.Zero)
+            throw new ArgumentException($"{timeName} can't be negative.");
+        return t.TotalSeconds.ToString("0.#######", CultureInfo.InvariantCulture) + "s";
+    }
 
     /// <summary>
     /// Analyse every (FrameSkip + 1)th frame, like scenedetect's --frame-skip: faster on very
@@ -553,7 +614,7 @@ public static class ShotDetection
         DetectionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var o = options ?? new DetectionOptions();
+        var o = (options ?? new DetectionOptions()).Resolved();
         var video = new VideoReader(videoPath, o, cancellationToken);
         var fps = video.Fps;
         using var reader = new StreamReader(sceneListCsv);
@@ -757,7 +818,7 @@ public static class ShotDetection
     static DetectionResult RunTraced(string? videoPath, Stream? videoStream, DetectionOptions? options, Action<Shot>? onShot, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var o = options ?? new DetectionOptions();
+        var o = (options ?? new DetectionOptions()).Resolved();
         if (o.TrimReferenceTone && videoPath is null)
             throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately).");
         if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null))

@@ -700,6 +700,21 @@ public class SceneListTests
     }
 }
 
+public class TimeSpanOptionTests
+{
+    // A TimeSpan becomes seconds exactly, to the tick; the detectors' own settings too.
+    [Theory]
+    [InlineData(125_000_000L, "12.5s")]
+    [InlineData(1L, "0.0000001s")]
+    [InlineData(0L, "0s")]
+    public void WrittenAsExactSeconds(long ticks, string expected)
+    {
+        Assert.Equal(expected, DetectionOptions.Either(null, null, TimeSpan.FromTicks(ticks), "Text", "Time"));
+        var o = new DetectionOptions { Detectors = [new(DetectorKind.Content) { MinOutDuration = TimeSpan.FromTicks(ticks) }] }.Resolved();
+        Assert.Equal(expected, o.Detectors![0].MinOutLength);
+    }
+}
+
 public class TemplateTests
 {
     [Theory]
