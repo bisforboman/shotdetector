@@ -700,6 +700,20 @@ public class SceneListTests
     }
 }
 
+public class UrlOptionTests
+{
+    // A URL reads only its own family of protocols; files and other schemes get no options.
+    [Theory]
+    [InlineData("http://example.com/play.m3u8", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy")]
+    [InlineData("HTTPS://example.com/a.mp4", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy")]
+    [InlineData("rtsp://127.0.0.1:8554/shots", "-protocol_whitelist rtsp,rtsps,rtp,srtp,udp,tcp,tls")]
+    [InlineData(@"C:\videos\a.mp4", "")]
+    [InlineData("/videos/a.mp4", "")]
+    [InlineData("srt://host:9000", "")]
+    public void UrlsReadOnlyTheirOwnProtocols(string path, string expected) =>
+        Assert.Equal(expected, string.Join(' ', VideoReader.UrlOptions(path)));
+}
+
 public class TimeSpanOptionTests
 {
     // A TimeSpan becomes seconds exactly, to the tick; the detectors' own settings too.

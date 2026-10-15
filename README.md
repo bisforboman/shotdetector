@@ -352,6 +352,21 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   noise in scenedetect too, a few hash values and the odd cut inside a fade differ.
 - **Not ported:** frame skip, crop.
 
+## Security
+
+- **No shell.** ffmpeg and ffprobe are started with an argument list, never through a shell, so quotes, `;` or `$(...)`
+  in a file name stay part of the name.
+- **Inputs are FFmpeg's.** A path or URL is opened by FFmpeg, which reads prefixes such as `concat:` or `subfile:`, and a
+  remote playlist (HLS) names further URLs. An http(s) URL reads only http, https, tcp, tls and crypto (rtsp: rtsp, rtp,
+  udp, tcp, tls), by the executable and in-process alike, so a playlist can't make FFmpeg read local files; it can still
+  name other http addresses, including ones on your network. Pass untrusted URLs only where that's acceptable, and
+  untrusted paths only as file paths you've checked.
+- **Raw ffmpeg arguments are yours.** `SplitOptions.Args` (`--args`) goes to ffmpeg as options, which can write files;
+  don't fill it from untrusted input.
+- **Decoding untrusted media in-process** runs FFmpeg's decoders inside your process, without the separate process the
+  executable gives. Keep FFmpeg current: our native packages follow its point releases (the weekly upstream check), and
+  `Decoder = VideoDecoder.FfmpegProcess` keeps decoding out of your process.
+
 ## Versions
 
 From 1.0, semantic versioning (before it, minor versions could change the API); packing the libraries fails on a

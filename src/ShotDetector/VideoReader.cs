@@ -358,7 +358,7 @@ internal sealed partial class VideoReader
             : Fps.FromFloat(fr);
         _inputOptions = frameRate is { } r && video is null && path.Contains('%') && !IsUrl(path)
             ? ["-framerate", $"{r.Num}/{r.Den}"]
-            : [];
+            : video is null ? UrlOptions(path) : [];
 
         // One demux-only pass: stream properties, plus every packet's pts for a file (no decoding).
         // A Stream is probed from its first bytes, which are kept to feed ffmpeg later.
@@ -597,6 +597,19 @@ internal sealed partial class VideoReader
 
     static bool IsUrl(string path) =>
         Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
+
+    /// <summary>
+    /// FFmpeg options for a URL input: only its own family of protocols, so what it serves (an HLS playlist's entries)
+    /// can't make FFmpeg read local files or other protocols (file:, concat:, subfile:...). Other schemes: none.
+    /// </summary>
+    internal static string[] UrlOptions(string path) => !IsUrl(path)
+        ? []
+        : new Uri(path).Scheme.ToLowerInvariant() switch
+        {
+            "http" or "https" => ["-protocol_whitelist", "http,https,tcp,tls,crypto,httpproxy"],
+            "rtsp" or "rtsps" => ["-protocol_whitelist", "rtsp,rtsps,rtp,srtp,udp,tcp,tls"],
+            _ => [],
+        };
 
     /// <summary>
     /// Whether an MP4/MOV's media data (mdat) comes before its headers (moov) in these first bytes: an mp4 without
