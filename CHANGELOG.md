@@ -6,6 +6,23 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.1.0 – 2026-10-15
+
+save-images quality and compression, the crop as corners, and the time options as TimeSpans.
+
+### New
+
+- `DetectedVideo.Crop`: the analysed region as `DetectionOptions.Crop` takes it, inclusive top-left and bottom-right
+  corners (the option's corners ordered and clamped to the frame), beside `CropRegion`'s X, Y, width and height.
+- save-images' quality and compression, as scenedetect's `--quality` and `--compression`: `ImageOptions.Quality` (JPEG,
+  WebP; 0-100) and `ImageOptions.Compression` (PNG; 0-9), and the CLI's `--image-quality` and `--image-compression`
+  (and `quality`, `compression` under `[save-images]` in a config file). PNG's and WebP's mean what OpenCV's do;
+  JPEG's is mapped onto ffmpeg's `-q:v`. The defaults are unchanged.
+- The time options as `TimeSpan`s, beside scenedetect's strings: `DetectionOptions.Start`, `End`, `Duration`,
+  `MinSceneDuration` and `MinOutDuration` (for `StartTime`, `EndTime`, `RangeDuration`, `MinSceneLength`,
+  `MinOutLength`), and `DetectorSettings.MinSceneDuration`/`MinOutDuration`. Set one form of each option; both is an
+  `ArgumentException`.
+
 ## 3.0.0 – 2026-10-14
 
 ShotDetectionException under FrameReader's MediaException (issue #239), dependencies bounded below the next major, and no more ShotDetector.Native aliases.
