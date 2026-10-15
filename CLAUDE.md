@@ -110,7 +110,7 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   `tools/make-samples.ps1`: synthetic + Blender trailers + VFR/rotation/colour variants. `tools/realworld.py`:
   whole Blender films and codec clips, pinned by SHA-256. `tools/mutation/`: guard mutations.
 - `.github/workflows`: `ci.yml` (build/test, AOT matrix incl. Alpine, parity matrix; `parity-os.yml`: the main comparison on Windows and macOS, informational, nightly), `mutation.yml`,
-  `realworld.yml` (also nightly 02:17 UTC), `benchmark.yml` (weekly + on demand; `tools/bench.py`), `upstream.yml` (Mondays: an issue when PyPI has a newer scenedetect than CI's pin, or a newer FFmpeg point release, zlib or dav1d than the native build's, or a new FFmpeg in opencv-python's Linux wheel), `release.yml` (tag → NuGet trusted publishing + GitHub release + binaries).
+  `realworld.yml` (also nightly 02:17 UTC), `benchmark.yml` (weekly + on demand; `tools/bench.py`), `upstream.yml` (Mondays: an issue when PyPI has a newer scenedetect than CI's pin, or a newer FFmpeg point release, zlib or dav1d than the native build's, or a new FFmpeg in opencv-python's Linux wheel), `release.yml` (tag → NuGet trusted publishing + GitHub release + binaries), `codeql.yml` (code scanning of the C#: PRs, main, weekly; findings under Security, not a required check).
 - `Directory.Build.props` (version; release.yml overrides from the tag), `Directory.Packages.props` (central versions).
 
 ## Gotchas (each cost time once)
