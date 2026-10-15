@@ -14,6 +14,9 @@ internal static class InProcess
     /// <summary>Whether FFmpeg 8's libraries load from <paramref name="directory"/>, or already have (<see cref="VideoDecoder.Auto"/>).</summary>
     internal static bool CanLoad(string? directory) => FFmpegLibraries.CanLoad(directory);
 
+    /// <summary>Whether the libraries can read a URL with this scheme (<see cref="FFmpegLibraries.HasProtocol"/>).</summary>
+    internal static bool HasProtocol(string scheme, string? directory) => FFmpegLibraries.HasProtocol(scheme, directory);
+
     /// <summary>Loads FFmpeg's shared libraries once per process (<see cref="FFmpegLibraries.Load"/>).</summary>
     internal static void Load(string? directory)
     {

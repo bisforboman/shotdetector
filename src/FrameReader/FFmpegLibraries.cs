@@ -133,6 +133,26 @@ public static unsafe class FFmpegLibraries
     public static bool HasMuxer(string name, string? directory = null) => Has(directory, () => ffmpeg.av_guess_format(name, null, null) != null);
 
     /// <summary>
+    /// Whether the libraries load and can read through this protocol (e.g. <c>file</c>, <c>http</c>, <c>https</c>): a
+    /// URL with that scheme opens in-process. FrameReader.Native has http on every platform and https on Windows
+    /// (Windows' own TLS); a build without network protocols has neither.
+    /// </summary>
+    /// <param name="name">The protocol's name, as <c>ffmpeg -protocols</c> lists it (a URL's scheme).</param>
+    /// <param name="directory">As for <see cref="Load"/>.</param>
+    public static bool HasProtocol(string name, string? directory = null) => Has(directory, () =>
+    {
+        void* opaque = null;
+        string? protocol;
+        while ((protocol = ffmpeg.avio_enum_protocols(&opaque, 0)) is not null)
+        {
+            if (protocol == name)
+                return true;
+        }
+
+        return false;
+    });
+
+    /// <summary>
     /// What these libraries lack for the given features, as <c>"filter yadif"</c>, <c>"encoder libmp3lame"</c>,
     /// <c>"muxer dash"</c>; empty when they have everything. To check a system FFmpeg at startup without tracking what
     /// each feature uses. A filter graph of your own (an <see cref="AudioFilter"/>'s, Audio.Convert's): add

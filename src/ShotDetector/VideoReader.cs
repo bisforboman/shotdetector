@@ -280,6 +280,7 @@ internal sealed partial class VideoReader
     readonly string? _ffmpegDirectory;
     readonly int _rotation;            // the display rotation ffmpeg applies (degrees); 0 if none
     readonly bool _probesInProcess;    // read with FFmpeg's libraries rather than ffprobe
+    readonly bool _urlInProcess;       // a URL whose protocol the libraries have: probed and decoded in-process
 
     /// <summary>The stream entries read from ffprobe (or the same in-process, <see cref="InProcessProbe"/>); files add :packet=pts.</summary>
     internal const string ProbeEntries = "stream=codec_name,field_order,width,height,pix_fmt,color_space,color_range,chroma_location,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration,format_name";
@@ -368,8 +369,11 @@ internal sealed partial class VideoReader
 
         // A file, with FFmpeg's libraries available (as for decoding in-process): read the same with them, no ffprobe.
         // A Stream too: its first bytes, as ffprobe reads them from stdin.
-        _probesInProcess = (video is not null || !Streaming) && _decoder != VideoDecoder.FfmpegProcess
-            && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory));
+        // A URL too, when the libraries have its protocol (FrameReader.Native: http everywhere, https on Windows), streamed
+        // as a Stream is.
+        bool libraries = _decoder != VideoDecoder.FfmpegProcess && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory));
+        _urlInProcess = libraries && video is null && IsUrl(path) && InProcess.HasProtocol(new Uri(path).Scheme, _ffmpegDirectory);
+        _probesInProcess = (video is not null || !Streaming || _urlInProcess) && libraries;
         if (_probesInProcess && video is not null)
         {
             _prefix = prefix ?? ReadPrefix(video, o.ProbeBytes, cancellationToken);
@@ -384,7 +388,7 @@ internal sealed partial class VideoReader
         }
         else if (_probesInProcess)
         {
-            probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly, _inputOptions);
+            probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly && !Streaming, _inputOptions);
         }
         else if (video is not null)
         {

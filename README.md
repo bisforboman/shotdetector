@@ -40,7 +40,8 @@ FFmpeg 9 executable gives the same results (CI's comparison with scenedetect run
 libraries when OpenCV's wheels do, since scenedetect's frames come from OpenCV's FFmpeg.
 
 The ffmpeg and ffprobe executables (on `PATH`, or in `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`) are still
-needed without those libraries, and for URLs and the image and clip exports. Files of every kind decode
+needed without those libraries, for URLs whose protocol the libraries lack (FrameReader.Native has http, and https on
+Windows), and for the image and clip exports. Files of every kind decode
 in-process, including image sequences, rotated phone video, AV1 (dav1d in our build) and deinterlacing; a codec the
 libraries can't decode and a rotation that isn't a quarter turn use the executable.
 
@@ -267,7 +268,8 @@ In-process decoding uses FFmpeg's shared libraries inside our process, as OpenCV
 packages or the CLI's bundled ones, or a system install. It is the default whenever they load
 (`Decoder = VideoDecoder.Auto`; from `FfmpegDirectory` / `--ffmpeg-dir`, else next to the app, else the system's
 usual places); otherwise the executable is used. `--decoder inprocess` insists on the libraries, `--decoder
-process` on the executable. URLs use the executable (our build has no network protocols).
+process` on the executable. A URL decodes in-process when the libraries have its protocol (FrameReader.Native: http
+everywhere, https on Windows with Windows' own TLS), as a stream; other URLs use the executable.
 
 How it keeps up while computing exactly what OpenCV and scenedetect compute:
 - only the pixels the exact `cv2.resize` port reads are converted to BGR (in-process, the row slices that hold

@@ -91,12 +91,14 @@ export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig"
 # (scale is the converter FFmpeg inserts; without them every VideoWriter failed, issue #127); FrameReader's TestMedia: the
 # sources, concat, setfield/setsar/setparams and trim, FFmpeg's own mpeg2video and mpeg4 encoders, more PCM (issue #237); PNG frames (the png encoder, the image2
 # muxer) and MPEG program streams (the mpeg1system muxer, "mpeg" by name), so ShotDetector's tests make every clip without the executable. No --enable-gpl/--enable-nonfree, and --disable-autodetect keeps system
-# libraries (and their licences) out: zlib and dav1d are the ones built above, linked in.
+# libraries (and their licences) out: zlib and dav1d are the ones built above, linked in. Protocols: the local ones, and
+# http (with tcp) for URLs in-process; https where the system has TLS of its own (Windows' Schannel), not elsewhere.
 set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
   --disable-programs --disable-doc --disable-avdevice --disable-filters --enable-filter=buffer,buffersink,abuffer,abuffersink,yadif,fps,aspectralstats,format,null,scale \
   --enable-filter=volume,equalizer,bass,treble,highpass,lowpass,bandpass,bandreject,afade,pan,acompressor,alimiter,dynaudnorm,agate,ebur128,loudnorm,silencedetect,astats,aformat,aresample \
   --enable-filter=testsrc2,smptebars,mandelbrot,color,sine,anullsrc,concat,setfield,setsar,setparams,trim,atrim \
-  --disable-network --disable-encoders --disable-muxers --disable-autodetect \
+  --disable-protocols --enable-protocol=file,pipe,fd,data,crypto,cache,async,concat,concatf,subfile,md5,tee,hls,http,httpproxy,tcp,https,tls \
+  --disable-encoders --disable-muxers --disable-autodetect \
   --enable-libmp3lame --enable-encoder=aac,libmp3lame,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,mpeg2video,mpeg4,png \
   --enable-muxer=mp4,mov,ipod,avi,matroska,matroska_audio,webm,adts,mp3,wav,flac,ogg,opus,mpegts,mpeg1system,image2,srt,webvtt,ass,dash \
   --enable-zlib --enable-libdav1d --pkg-config=pkg-config --pkg-config-flags=--static \
@@ -106,7 +108,7 @@ set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
 case "$rid" in
   # D3D11VA/DXVA2 for FrameReader's HardwareDecoding: Windows' own APIs, no extra libraries.
   win-x64) set -- "$@" --enable-d3d11va --enable-dxva2 --arch=x86_64 --target-os=mingw32 --cross-prefix=x86_64-w64-mingw32- \
-             --extra-ldflags=-static-libgcc --enable-w32threads ;;
+             --extra-ldflags=-static-libgcc --enable-w32threads --enable-schannel ;;
   linux-*) set -- "$@" --enable-pthreads ;;
   osx-*)   set -- "$@" --enable-pthreads --install-name-dir=@rpath --extra-ldflags=-Wl,-rpath,@loader_path ;;
   *) echo "unknown rid $rid" >&2; exit 1 ;;

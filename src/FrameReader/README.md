@@ -368,7 +368,8 @@ to use a folder of your own, call `FFmpegLibraries.Load(folder)` first (the one 
 What each part needs from a build of your own, beyond the decoders and demuxers of your input. Check at startup with
 `FFmpegLibraries.Missing(Capability...)`, which knows this table, plus `MissingFilters(graph)` for a filter graph of
 your own (the same format, so the lists concatenate; a graph that doesn't parse is `"filter graph"`), or name by name
-with `HasEncoder`, `HasFilter` and `HasMuxer`:
+with `HasEncoder`, `HasFilter` and `HasMuxer` (and `HasProtocol` for a URL's scheme: FrameReader.Native has http, and
+https on Windows):
 
 | Part | Encoders | Filters | Muxers |
 | --- | --- | --- | --- |

@@ -52,6 +52,9 @@ public class FFmpegLibrariesTests
         Assert.False(FFmpegLibraries.HasEncoder("nosuchencoder"));
         Assert.False(FFmpegLibraries.HasFilter("nosuchfilter"));
         Assert.False(FFmpegLibraries.HasMuxer("nosuchmuxer"));
+        Assert.True(FFmpegLibraries.HasProtocol("file"));
+        Assert.True(FFmpegLibraries.HasProtocol("http"));   // FrameReader.Native and full builds have it (https: Windows' Schannel, or a TLS library)
+        Assert.False(FFmpegLibraries.HasProtocol("nosuchprotocol"));
     }
 
     // Issue #195: our build (FrameReader.Native) and full builds have everything FrameReader's features need, but x264.
