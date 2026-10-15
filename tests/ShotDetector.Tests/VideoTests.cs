@@ -474,10 +474,10 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
                     {
                         try
                         {
-                            // Only files in the folder: a path that resolves outside it (..) is not found.
-                            string root = Path.GetFullPath(dir) + Path.DirectorySeparatorChar;
-                            string file = Path.GetFullPath(Path.Combine(root, ctx.Request.Url!.AbsolutePath.TrimStart('/')));
-                            if (!file.StartsWith(root, StringComparison.Ordinal) || !File.Exists(file))
+                            // Only the folder's own files, looked up by name: no path is built from the request.
+                            string name = ctx.Request.Url!.AbsolutePath.TrimStart('/');
+                            string? file = Directory.GetFiles(dir).FirstOrDefault(f => Path.GetFileName(f) == name);
+                            if (file is null)
                             {
                                 ctx.Response.StatusCode = 404;
                             }
