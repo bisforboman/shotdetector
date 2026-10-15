@@ -374,7 +374,27 @@ internal sealed partial class VideoReader
         bool libraries = _decoder != VideoDecoder.FfmpegProcess && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory));
         _urlInProcess = libraries && video is null && IsUrl(path) && InProcess.HasProtocol(new Uri(path).Scheme, _ffmpegDirectory);
         _probesInProcess = (video is not null || !Streaming || _urlInProcess) && libraries;
-        if (_probesInProcess && video is not null)
+
+        // Auto: a URL the libraries can't open (a format they lack, as DASH without libxml2) goes to the executable.
+        string? urlProbe = null;
+        if (_urlInProcess && _decoder == VideoDecoder.Auto)
+        {
+            try
+            {
+                urlProbe = InProcessProbe.Properties(path, _ffmpegDirectory, packets: false, _inputOptions);
+            }
+            catch (ShotDetectionException)
+            {
+                _urlInProcess = false;
+                _probesInProcess = false;
+            }
+        }
+
+        if (urlProbe is not null)
+        {
+            probed = urlProbe;
+        }
+        else if (_probesInProcess && video is not null)
         {
             _prefix = prefix ?? ReadPrefix(video, o.ProbeBytes, cancellationToken);
             try
