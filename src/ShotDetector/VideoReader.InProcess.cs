@@ -23,7 +23,7 @@ internal sealed partial class VideoReader
     bool _ptsFromFrames;        // MPEG-PS and the like: packets without pts, timestamps from a decoding pass
 
     /// <summary>Frames(startFrame, count) decoded in-process: the same bytes per pipeline as the ffmpeg pipe, then the same resize.</summary>
-    IEnumerable<byte[]> FramesInProcess(int startFrame, int? count, CancellationToken cancellationToken)
+    IEnumerable<byte[]> FramesInProcess(int startFrame, int? count, CancellationToken cancellationToken, int seekBack)
     {
         var pipeline = Pipeline;
         var resizer = pipeline != FramePipeline.FfmpegScale ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
@@ -54,6 +54,7 @@ internal sealed partial class VideoReader
         for (int i = 0; i < 8; i++)
             free.Add(new byte[size]);
         double timeBase = 0;
+        bool late = false;
         var producer = Task.Run(() =>
         {
             try
@@ -79,18 +80,26 @@ internal sealed partial class VideoReader
                 // Streamed: times from the stream's start, as ffmpeg gives them without -copyts.
                 long offset = Streaming ? decoder.StartOffset : 0;
 
-                // Seek as the command line does: two frames early, then drop every frame before the wanted one's pts.
-                // Not when the packets carry no pts (MPEG-PS): there libavformat's seek lands after the wanted frame (no
-                // index to go by), so decode from the start and drop.
+                // Seek as the command line does: seekBack frames early, then drop every frame before the wanted one's
+                // pts; landed after it (MPEG-TS), again from further back (below). Not when the packets carry no pts
+                // (MPEG-PS): there libavformat's seek lands after the wanted frame (no index to go by), so decode from
+                // the start and drop.
                 long? from = startFrame > 0 && startFrame < _pts.Length ? _pts[startFrame] : null;
-                if (from is not null && startFrame - 2 > 0 && !_ptsFromFrames)
-                    decoder.Seek(_pts[startFrame - 2]);
+                bool seeked = from is not null && startFrame - seekBack > 0 && !_ptsFromFrames;
+                if (seeked)
+                    decoder.Seek(_pts[startFrame - seekBack]);
                 int emitted = 0;
                 while ((count is null || emitted < count) && decoder.Next())
                 {
                     long pts = decoder.Pts;
                     if (from is { } f && pts < f)
                         continue;
+                    if (emitted == 0 && seeked && SeekLandedLate(pts * timeBase, startFrame))
+                    {
+                        late = true;
+                        break;
+                    }
+
                     var buffer = free.Take(cancel.Token);
 
                     // A frame of another size than the stream's first: OpenCV scales it to that size inside its one
@@ -117,6 +126,8 @@ internal sealed partial class VideoReader
                     emitted++;
                 }
 
+                // No frame at all: the seek landed after the last keyframe.
+                late |= seeked && emitted == 0;
                 if (decoder.InputError is { } e)
                     throw new ShotDetectionException(ShotDetectionError.DecodeFailed, $"Reading the stream failed: {e.Message}", e);
             }
@@ -190,6 +201,12 @@ internal sealed partial class VideoReader
             catch (AggregateException)
             {
             } // the decoder is disposed on its thread
+        }
+
+        if (late)
+        {
+            foreach (var frame in FramesInProcess(startFrame, count, cancellationToken, SeekBackAgain(seekBack)))
+                yield return frame;
         }
     }
 }
