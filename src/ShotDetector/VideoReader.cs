@@ -628,8 +628,10 @@ internal sealed partial class VideoReader
         return scheme switch
         {
             // A read that waits more than 30 s fails rather than hanging (rw_timeout, in microseconds); https checks the
-            // server's certificate (tls_verify, which FFmpeg 8 leaves off; FrameReader turns it on in-process too).
-            "http" or "https" => ["-protocol_whitelist", "http,https,tcp,tls,crypto,httpproxy", "-rw_timeout", "30000000", "-tls_verify", "1"],
+            // server's certificate (tls_verify, which FFmpeg 8 leaves off; FrameReader turns it on in-process too). Not
+            // for http: nothing there takes tls_verify, and ffmpeg refuses an option nothing took.
+            "http" => ["-protocol_whitelist", "http,https,tcp,tls,crypto,httpproxy", "-rw_timeout", "30000000"],
+            "https" => ["-protocol_whitelist", "http,https,tcp,tls,crypto,httpproxy", "-rw_timeout", "30000000", "-tls_verify", "1"],
             "rtsp" or "rtsps" => ["-protocol_whitelist", "rtsp,rtsps,rtp,srtp,udp,tcp,tls"],
             _ when path.StartsWith(scheme + "://", StringComparison.OrdinalIgnoreCase) => [],
             _ => files,

@@ -355,6 +355,10 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: Could be a real bug with live input (e.g. how `--duration` ends a stream), or the publisher's
   - Status: Done (2026-10-11): neither. A Linux probe with a fresh server per run: looped or not, `--duration 8s` gives 199 stats rows (8 s) on both decoder settings; without it a looped source runs until stopped, as a live one should. The short and hung reads came from joining an on-demand stream an earlier reader had used up (mediamtx). CI now also checks the looped source with `--duration`
 
+- HLS segments over https with the certificate checked: in-process, wrap the format context's io_open to add tls_verify=1 to every nested open
+  - Why: FFmpeg's HLS opens segments, keys and variant playlists with a fixed option list (ffio_copy_url_options) that leaves tls_verify out, so they're read unchecked even when the playlist was checked (2026-10-16, source and a local run); the executable path has no such hook
+  - Status: Open
+
 - URLs in-process: network protocols (and TLS for https) in our FFmpeg build
   - Why: URLs are the last input on the executable; TLS means another linked library (licence, updates)
   - Status: In progress (2026-10-16): http everywhere and https on Windows (Schannel) in our build, now with the certificate checked (FFmpeg 8 doesn't by default); next a static OpenSSL 3 on Linux and Secure Transport on macOS (docs/decisions/2026-10-16-https-certificates-and-tls.md)
