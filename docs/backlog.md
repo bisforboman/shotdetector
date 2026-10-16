@@ -225,7 +225,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Edges (--stats, edge weights): Sobel, dilate and non-maximum suppression in row bands across threads, then SIMD (integer math)
   - Why: Stats runs measured 2.2-3.5x slower than plain detection (EdgeDetector about 440-620 us per frame, scalar); the scoring thread is mostly idle (performance review 2026-10-16)
-  - Status: Open
+  - Status: Done (2026-10-16): SIMD on one thread was enough (Sobel 8 pixels at a time in 16-bit words, the dilation's window maximum 16 at a time, the suppression without bounds checks): 548 -> 145 us per frame at 256x144, edge maps hashed identical; --stats runs 0.51-0.60x wall on this desktop, stats identical. No threads (they'd add CPU)
 
 - Conversion (BgrConverter) off the decoding thread: av_frame_ref'd frames to converter threads, order restored
   - Why: 148 us per frame at 1280x534, serial with decoding (measured); after the resize move, large frames would be decode-bound; costs a decoded frame of memory per worker
