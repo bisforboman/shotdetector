@@ -631,7 +631,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 
 - release.yml: the tests in a job of their own (read-only permissions), so the publishing job never runs a third-party binary
   - Why: The release job runs `dotnet test` with BtbN's ffmpeg (latest, unpinned) while it holds id-token: write (NuGet trusted publishing) and contents: write; a compromised build could tamper with the packages or take the token (security review, 2026-10-16, docs/decisions/2026-10-16-security-review-fixes.md)
-  - Status: Open
+  - Status: Done (2026-10-16): a test job (contents: read) before the release job, which no longer installs BtbN
 
 - Deprecate the ShotDetector.Native 2.x packages on nuget.org, FrameReader.Native as the alternative
   - Why: 3.0 stopped publishing them; deprecation makes NuGet warn whoever still references them. Done on nuget.org by the user: steps in [deprecate-shotdetector-native.md](deprecate-shotdetector-native.md)
