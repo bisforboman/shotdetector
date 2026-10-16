@@ -9,7 +9,13 @@ namespace ShotDetector;
 internal interface IDetector
 {
     /// <summary>Feeds the next frame (packed BGR, downscaled); returns where a new shot starts, if a cut was found.</summary>
-    FrameTime? ProcessFrame(int frame, byte[] bgr);
+    FrameTime? ProcessFrame(int frame, byte[] bgr) => Decide(frame, Metric(frame, bgr));
+
+    /// <summary>The frame's score (null where the detector has none, e.g. its first frame), from it and at most the previous frame; records its stats.</summary>
+    double? Metric(int frame, byte[] bgr);
+
+    /// <summary>The cut decision for the frame's score, in frame order.</summary>
+    FrameTime? Decide(int frame, double? metric);
 
     /// <summary>Called once after the last frame; <paramref name="end"/> is the position after decoding stopped.</summary>
     FrameTime? PostProcess(FrameTime end) => null;
@@ -46,12 +52,18 @@ internal sealed class ContentDetector(
         : position(frame).Minus(position(since)).Seconds >= _minSeconds;
 
     /// <inheritdoc/>
-    public FrameTime? ProcessFrame(int frame, byte[] bgr)
+    public FrameTime? ProcessFrame(int frame, byte[] bgr) => Decide(frame, Metric(frame, bgr));
+
+    /// <inheritdoc/>
+    public double? Metric(int frame, byte[] bgr)
     {
         double score = scorer.Score(bgr);
         scorer.Record(Stats, frame, score);
-        return ProcessScore(frame, score) is int cut ? position(cut) : null;
+        return score;
     }
+
+    /// <inheritdoc/>
+    public FrameTime? Decide(int frame, double? metric) => ProcessScore(frame, metric!.Value) is int cut ? position(cut) : null;
 
     /// <summary>Returns the frame index of a cut.</summary>
     internal int? ProcessScore(int frame, double score)
@@ -125,12 +137,18 @@ internal sealed class AdaptiveDetector(
     public Stats? Stats { get; set; }
 
     /// <inheritdoc/>
-    public FrameTime? ProcessFrame(int frame, byte[] bgr)
+    public FrameTime? ProcessFrame(int frame, byte[] bgr) => Decide(frame, Metric(frame, bgr));
+
+    /// <inheritdoc/>
+    public double? Metric(int frame, byte[] bgr)
     {
         double score = scorer.Score(bgr);
         scorer.Record(Stats, frame, score);
-        return ProcessScore(frame, score) is int cut ? position(cut) : null;
+        return score;
     }
+
+    /// <inheritdoc/>
+    public FrameTime? Decide(int frame, double? metric) => ProcessScore(frame, metric!.Value) is int cut ? position(cut) : null;
 
     /// <summary>Returns the frame index of a cut.</summary>
     internal int? ProcessScore(int frame, double score)
@@ -201,9 +219,15 @@ internal sealed class ThresholdDetector(
     public Stats? Stats { get; set; }
 
     /// <inheritdoc/>
-    public FrameTime? ProcessFrame(int frame, byte[] bgr)
+    public FrameTime? ProcessFrame(int frame, byte[] bgr) => Decide(frame, Metric(frame, bgr));
+
+    /// <inheritdoc/>
+    public double? Metric(int frame, byte[] bgr) => Average(bgr);
+
+    /// <inheritdoc/>
+    public FrameTime? Decide(int frame, double? metric)
     {
-        double average = Average(bgr);
+        double average = metric!.Value;
 
         // With a stats manager, scenedetect reuses the average already stored at this position (a repeated timestamp, or
         // two encodes joined) for both the stats and the detection; it doesn't overwrite it.
@@ -301,26 +325,27 @@ internal sealed class HistogramDetector(
     public Stats? Stats { get; set; }
 
     /// <inheritdoc/>
-    public FrameTime? ProcessFrame(int frame, byte[] bgr)
+    public FrameTime? ProcessFrame(int frame, byte[] bgr) => Decide(frame, Metric(frame, bgr));
+
+    /// <inheritdoc/>
+    public double? Metric(int frame, byte[] bgr)
     {
-        if (_lastCut is null)
-            _lastCut = frame;
         var hist = Histogram(bgr, bins);
-        FrameTime? cut = null;
-        if (_lastHist is not null)
-        {
-            double correlation = Correlation(_lastHist, hist);
-            if (correlation <= _maxCorrelation && position(frame).Minus(position(_lastCut.Value)).FrameNum >= minSceneLen)
-            {
-                cut = position(frame);
-                _lastCut = frame;
-            }
-
-            Stats?.Set(frame, _key, correlation);
-        }
-
+        double? correlation = _lastHist is null ? null : Correlation(_lastHist, hist);
+        if (correlation is { } c)
+            Stats?.Set(frame, _key, c);
         _lastHist = hist;
-        return cut;
+        return correlation;
+    }
+
+    /// <inheritdoc/>
+    public FrameTime? Decide(int frame, double? metric)
+    {
+        _lastCut ??= frame;
+        if (metric is not { } correlation || !(correlation <= _maxCorrelation && position(frame).Minus(position(_lastCut.Value)).FrameNum >= minSceneLen))
+            return null;
+        _lastCut = frame;
+        return position(frame);
     }
 
     /// <summary>calculate_histogram: the L2-normalised histogram of the Y channel, as float32.</summary>

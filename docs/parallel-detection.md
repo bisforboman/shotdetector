@@ -1,7 +1,8 @@
 # Parallel detection of long files
 
-Status: design (2026-10-16), for review; next a measured prototype. The user's choices: docs/decisions/
-("Parallel detection: opt-in, in-process files, automatic chunks, a prototype first").
+Status: built (2026-10-16), opt-in: `DetectionOptions.Parallel`, `--parallel`, `DetectedVideo.Chunks`. The user's
+choices: docs/decisions/ ("Parallel detection: opt-in, in-process files, automatic chunks, a prototype first" and
+"Parallel detection: build it, `Parallel` and `--parallel`, half the CPUs up to 4").
 
 ## Goal
 
@@ -40,6 +41,42 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
   across the whole run). The list can shrink as the prototype proves cases.
 - **Stats** are merged in frame order, as `Stats.Csv` already does by position.
 - **Threads:** each chunk's decoder gets a share of the cores, so the total stays near today's.
+
+## As built
+
+- `IDetector.Metric` (the score, from the frame and at most the previous one, with its stats) and `Decide` (the
+  unchanged decision, in frame order); `ProcessFrame` is the two in a row. Threshold's stats dedupe by position stays
+  in `Decide`, so threshold with stats runs in chunks too.
+- `ShotDetection.ScoreChunked`: chunks split evenly by the probe's frame count (not on keyframes: the exact seek starts
+  anywhere), each on its own `VideoReader` with `DecodeThreads / chunks` decoder threads. Checked: every frame's
+  position equals the probe's for its index, each chunk gives its frames, the overlap frame's score equals the next
+  chunk's, every chunk's first frame has the first chunk's size, and nothing threw. Otherwise the file is read
+  sequentially from the start (a real error comes from there) and `DetectedVideo.Chunks` is 1.
+- `AutoChunks`: half the CPUs, at most 4, from 4 CPUs on, each chunk at least a minute.
+- Sequential, always: streams and URLs, the executable path, MPEG-PS without packet pts, a time range, frame skip.
+  Progress counts all chunks' frames; a fallback starts it over.
+- Damaged video: frame-threaded decoders conceal damage differently from run to run (`samples/broken/corrupt.mp4` gave
+  three different stats files in three sequential runs), so chunks can't be compared there; dropped frames are caught
+  by the positions.
+
+## Prototype (2026-10-16)
+
+Exactness, scene list and stats CSV byte for byte against sequential: all 35 samples and variants with 7 detector
+configurations at 5 chunks (245/245) and the two films at 4 and 8 chunks (28/28) identical. The two MPEG-TS variants
+fell back (their seek landed late; fixed in #316, since then they run in chunks); open GOPs (long GOP, MPEG-2, DivX),
+VFR and 0.7.1's frame labels needed nothing special.
+
+Speed, adaptive, median wall time (CPU time the same throughout):
+
+| Machine | Film | Sequential | 2 chunks | 4 chunks | 8 chunks |
+|---|---|---|---|---|---|
+| 16-thread desktop | Elephants Dream 426x240 | 6.5 s | 1.55x | 2.23x | 2.27x |
+| 16-thread desktop | Tears of Steel 1280x534 | 13.5 s | 1.39x | 1.49x | 1.55x |
+| 4-vCPU runner, x64 / ARM | Elephants Dream | 5.2 s / 6.2 s | 1.41x / 1.62x | 1.18x / 1.33x | 1.02x / 1.10x |
+| 4-vCPU runner, x64 / ARM | Tears of Steel | 17.9 s / 17.4 s | 1.09x / 1.11x | 1.15x / 1.13x | 1.08x / 1.06x |
+
+Decoding already uses several cores (Tears of Steel keeps ~5 busy sequentially), so the gain is what the idle cores
+give; past 4 chunks nothing measured gained.
 
 ## Proof
 

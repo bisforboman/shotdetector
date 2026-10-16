@@ -26,6 +26,19 @@ public sealed class Stats
         row[key] = value;
     }
 
+    /// <summary>Copies another's rows for frames from..to-1.</summary>
+    internal void Merge(Stats other, int from, int to)
+    {
+        foreach (var (frame, row) in other._rows)
+        {
+            if (frame >= from && frame < to)
+            {
+                foreach (var (key, value) in row)
+                    Set(frame, key, value);
+            }
+        }
+    }
+
     /// <summary>A recorded metric, or null.</summary>
     public double? Get(int frame, string key) =>
         _rows.TryGetValue(frame, out var row) && row.TryGetValue(key, out var v) ? v : null;
