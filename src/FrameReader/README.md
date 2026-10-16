@@ -362,7 +362,9 @@ A path or URL is opened by FFmpeg, as `ffmpeg -i` opens it: prefixes such as `co
 playlist names further URLs. For untrusted input, pass FFmpeg's `protocol_whitelist` in `InputOptions` (for an http
 URL, `http,https,tcp,tls,crypto,httpproxy`, a second layer over FFmpeg's own checks, which already keep a remote
 playlist from local files) and `rw_timeout` (microseconds)
-so a stalled server fails; the options' `CancellationToken` stops a read FFmpeg waits in. Filter graphs you pass
+so a stalled server fails. An https URL's server certificate is checked against the system's trusted ones (FFmpeg 8
+doesn't by default; `tls_verify=0` in `InputOptions` turns that off), but not for the segments an HLS playlist names:
+FFmpeg opens those with a fixed set of options that leaves it out; the options' `CancellationToken` stops a read FFmpeg waits in. Filter graphs you pass
 (`AudioFilter`, `Audio.Convert`'s) are FFmpeg's syntax, and some filters of a full build read files (`movie`,
 `amovie`): don't build them from untrusted input. Decoding runs FFmpeg's code in your process; keep the libraries
 current (FrameReader.Native follows FFmpeg's point releases). A stream claiming a frame larger than

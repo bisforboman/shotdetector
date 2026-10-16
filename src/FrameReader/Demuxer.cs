@@ -53,6 +53,9 @@ internal static unsafe class Demuxer
 
         AVDictionary* options = null;
         ffmpeg.av_dict_set(&options, "scan_all_pmts", "1", ffmpeg.AV_DICT_DONT_OVERWRITE);
+
+        // https checks the server's certificate (FFmpeg 8 doesn't by default); tls_verify=0 in InputOptions turns it off.
+        ffmpeg.av_dict_set(&options, "tls_verify", "1", ffmpeg.AV_DICT_DONT_OVERWRITE);
         foreach (var (name, value) in inputOptions ?? new Dictionary<string, string>())
             ffmpeg.av_dict_set(&options, name, value, 0);
         int ret = ffmpeg.avformat_open_input(&fmt, path, null, &options);
