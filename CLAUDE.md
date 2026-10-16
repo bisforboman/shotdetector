@@ -59,7 +59,8 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 `changes/framereader/<branch>.md`, one to each when it changes both (changes/README.md: `### Fixed` / `### New` / ...
 and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - **Backlog**: `docs/backlog.md`. Take the next open item; update its status when work starts and lands. Add items
-  when something turns up (a divergence, a gap), with why.
+  when something turns up (a divergence, a gap), with why. Items are list entries (What, then Why: and Status:) with a
+  blank line between them, so parallel PRs that edit neighbouring items merge cleanly, on GitHub too.
 - **Decisions**: when a design question needs the user, ask with the multiple-choice prompt and record the
   question, choices and answer as a new file, `docs/decisions/YYYY-MM-DD-what.md` (its README).
 - Every behaviour that reproduces a scenedetect quirk gets a unit test and a line in `tools/mutation/mutations.psd1`

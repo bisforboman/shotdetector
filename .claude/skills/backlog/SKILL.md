@@ -5,8 +5,9 @@ description: Preview and extend ShotDetector's backlog (docs/backlog.md). Use wh
 
 # Backlog: preview and extend
 
-The backlog is `docs/backlog.md`: numbered sections in priority order, then `## Done`. Each item is a table row
-`| Item | Why | Status |`, status one of **Open**, **In progress**, **Maybe**, **Done (date)**, **Released**. Design
+The backlog is `docs/backlog.md`: numbered sections in priority order, then `## Done`. Each item is a list entry,
+`- What` with `  - Why: ...` and `  - Status: ...` under it and a blank line before the next (so edits to neighbouring
+items merge cleanly), status one of **Open**, **In progress**, **Maybe**, **Done (date)**, **Released**. Design
 answers live in `docs/decisions/`; larger plans in their own docs (e.g. `docs/frame-reader-library.md`).
 
 ## 1. Gather (read-only, in parallel)
@@ -42,8 +43,9 @@ include each one's proposed section and status (Open or Maybe) in its descriptio
 
 ## 4. Extend (only what the user picked)
 
-- Add each picked item as a row in the right section (new ideas usually go in the latest ideas section), in the
-  existing style: `| What, concretely | Why it matters, with numbers or the issue if any | Open |`.
+- Add each picked item as an entry in the right section (new ideas usually go in the latest ideas section), in the
+  existing style: `- What, concretely`, `  - Why: why it matters, with numbers or the issue if any`, `  - Status: Open`,
+  then a blank line.
 - Fix stale statuses the user agreed to (`Done (YYYY-MM-DD)`, absolute dates).
 - Keep the file's line endings (most files here are CRLF; see CLAUDE.md's scripted-edit gotcha) and check
   `git diff --stat` shows only the lines you meant.
