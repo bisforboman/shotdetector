@@ -95,8 +95,8 @@ https://ffmpeg.org, license: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.
 
 libavcodec, libavformat, libavutil, libswscale, libswresample and libavfilter (yadif, fps, aspectralstats and the audio filters listed in the Native README only) from FFmpeg 8.1.3
 (https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz), built with `tools/native/build-ffmpeg.sh` for decoding plus
-the AAC, MP3 and PCM encoders and common muxers: no video encoders, devices, network protocols or GPL parts; zlib,
-dav1d and LAME (below) linked in. Each package and
+the AAC, MP3 and PCM encoders and common muxers: no video encoders, devices or GPL parts, and only the http(s)
+network protocols; zlib, dav1d, LAME and, on Linux, OpenSSL (below) linked in. Each package and
 release archive has the exact configure line (`configure.txt`) and the licence (`COPYING.LGPL`). The libraries
 are loaded dynamically, so they can be replaced with another build of the same FFmpeg version.
 https://ffmpeg.org/legal.html
@@ -142,3 +142,10 @@ License: https://www.gnu.org/licenses/old-licenses/lgpl-2.0.html
 
 zlib 1.3.2 (https://zlib.net), linked into FFmpeg's libraries. Copyright (C) 1995-2026 Jean-loup Gailly and Mark
 Adler. Provided 'as-is', without any express or implied warranty; see https://zlib.net/zlib_license.html.
+
+## OpenSSL (Apache License 2.0), FrameReader.Native.<rid> and the shotdetect CLI on Linux
+
+OpenSSL 3.5.9 (https://openssl-library.org), linked into FFmpeg's libraries on Linux for https (Windows and macOS use
+the system's TLS). Built from https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz
+(SHA-256 in `configure.txt`); the licence is `COPYING.openssl` in those packages and archives, and
+https://www.apache.org/licenses/LICENSE-2.0.

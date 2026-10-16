@@ -134,8 +134,8 @@ public static unsafe class FFmpegLibraries
 
     /// <summary>
     /// Whether the libraries load and can read through this protocol (e.g. <c>file</c>, <c>http</c>, <c>https</c>): a
-    /// URL with that scheme opens in-process. FrameReader.Native has http on every platform and https on Windows
-    /// (Windows' own TLS); a build without network protocols has neither.
+    /// URL with that scheme opens in-process. FrameReader.Native has http and https (Windows' and macOS's own TLS,
+    /// OpenSSL on Linux); a build without network protocols has neither.
     /// </summary>
     /// <param name="name">The protocol's name, as <c>ffmpeg -protocols</c> lists it (a URL's scheme).</param>
     /// <param name="directory">As for <see cref="Load"/>.</param>

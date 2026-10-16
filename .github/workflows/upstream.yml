@@ -85,7 +85,8 @@ jobs:
           EOF
           )"
 
-  # zlib and dav1d, linked statically into our FFmpeg libraries: any newer release than build-ffmpeg.sh's.
+  # zlib, dav1d and OpenSSL (its 3.5 LTS series; Linux), linked statically into our FFmpeg libraries: any newer release
+  # than build-ffmpeg.sh's.
   libraries:
     name: ${{ matrix.name }}
     runs-on: ubuntu-26.04
@@ -95,6 +96,7 @@ jobs:
       matrix:
         include:
           - { name: zlib, var: ZLIB, index: 'https://zlib.net/fossils/', pattern: 'zlib-[0-9]+([.][0-9]+)+[.]tar[.]gz', notes: 'https://zlib.net/ChangeLog.txt', url: 'https://zlib.net/fossils/zlib-$V.tar.gz' }
+          - { name: OpenSSL, var: OPENSSL, index: 'https://github.com/openssl/openssl/releases.atom', pattern: 'openssl-3[.]5[.][0-9]+', notes: 'https://github.com/openssl/openssl/blob/openssl-3.5/CHANGES.md', url: 'https://github.com/openssl/openssl/releases/download/openssl-$V/openssl-$V.tar.gz' }
           - { name: dav1d, var: DAV1D, index: 'https://downloads.videolan.org/pub/videolan/dav1d/', pattern: 'href="[0-9]+([.][0-9]+)+/"', notes: 'https://code.videolan.org/videolan/dav1d/-/releases', url: 'https://downloads.videolan.org/pub/videolan/dav1d/$V/dav1d-$V.tar.xz' }
     steps:
       - uses: actions/checkout@v7

@@ -5,7 +5,7 @@
 # with only yadif (deinterlacing), fps (FrameReader's FrameRate), aspectralstats (its SpectralStats), the audio
 # filters its AudioFilter offers (EQ and level, dynamics, loudness, detection; aformat/aresample to convert) and a
 # graph's buffer/buffersink and abuffer/abuffersink ends. LGPL; linked in statically: zlib (PNG, compressed
-# MOV/MKV headers), dav1d (AV1, BSD-2-Clause) and LAME (MP3, LGPL). Run on the platform itself, except win-x64, which cross-compiles from
+# MOV/MKV headers), dav1d (AV1, BSD-2-Clause), LAME (MP3, LGPL) and, on Linux, OpenSSL (https, Apache-2.0). Run on the platform itself, except win-x64, which cross-compiles from
 # Linux with mingw-w64. Needs nasm (x86), meson, ninja and pkg-config.
 #
 #   tools/native/build-ffmpeg.sh <rid> <output dir>
@@ -23,6 +23,8 @@ DAV1D=1.5.4
 DAV1D_SHA256=686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5
 LAME=3.100
 LAME_SHA256=ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
+OPENSSL=3.5.9
+OPENSSL_SHA256=603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
 rid=$1
 out=$(mkdir -p "$2" && cd "$2" && pwd)
 work=${TMPDIR:-/tmp}/ffmpeg-build-$rid
@@ -53,6 +55,11 @@ fetch dav1d.tar.xz "$DAV1D_SHA256" "https://downloads.videolan.org/pub/videolan/
 fetch lame.tar.gz "$LAME_SHA256" "https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz" \
   "https://deb.debian.org/debian/pool/main/l/lame/lame_$LAME.orig.tar.gz"
 tar -xJf ffmpeg.tar.xz && tar -xzf zlib.tar.gz && tar -xJf dav1d.tar.xz && tar -xzf lame.tar.gz
+case "$rid" in
+  linux-*) fetch openssl.tar.gz "$OPENSSL_SHA256" "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL/openssl-$OPENSSL.tar.gz" \
+             "https://www.openssl.org/source/openssl-$OPENSSL.tar.gz"
+           tar -xzf openssl.tar.gz ;;
+esac
 
 # zlib, static and position-independent (it ends up inside libavcodec/libavformat).
 (
@@ -83,6 +90,20 @@ tar -xJf ffmpeg.tar.xz && tar -xzf zlib.tar.gz && tar -xJf dav1d.tar.xz && tar -
   make -j"$jobs" install > make.log 2>&1 || { tail -40 make.log; exit 1; }
 )
 
+# OpenSSL, static, Linux only: https (Windows has Schannel, macOS Secure Transport). The 3.5 LTS series; an LGPL build
+# needs no --enable-version3 for OpenSSL 3. --openssldir=/etc/ssl, where Debian, Ubuntu and Alpine keep the trusted
+# certificates (FrameReader passes ca_file for the distributions that keep them elsewhere).
+case "$rid" in
+  linux-*) (
+    cd "openssl-$OPENSSL"
+    case "$rid" in linux-arm64) target=linux-aarch64 ;; *) target=linux-x86_64 ;; esac
+    ./Configure "$target" no-shared no-apps no-docs no-tests no-legacy -fPIC --prefix="$deps" --libdir=lib \
+      --openssldir=/etc/ssl > configure.log || { tail -40 configure.log; exit 1; }
+    make -j"$jobs" > make.log 2>&1 || { tail -40 make.log; exit 1; }
+    make install_sw > install.log 2>&1 || { tail -40 install.log; exit 1; }
+  ) ;;
+esac
+
 cd "ffmpeg-$VERSION"
 # Only our static zlib and dav1d, never the system's.
 export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig"
@@ -93,7 +114,7 @@ export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig"
 # sources, concat, setfield/setsar/setparams and trim, FFmpeg's own mpeg2video and mpeg4 encoders, more PCM (issue #237); PNG frames (the png encoder, the image2
 # muxer) and MPEG program streams (the mpeg1system muxer, "mpeg" by name), so ShotDetector's tests make every clip without the executable. No --enable-gpl/--enable-nonfree, and --disable-autodetect keeps system
 # libraries (and their licences) out: zlib and dav1d are the ones built above, linked in. Protocols: the local ones, and
-# http (with tcp) for URLs in-process; https where the system has TLS of its own (Windows' Schannel), not elsewhere.
+# http (with tcp) for URLs in-process, and https: Windows' Schannel, macOS's Secure Transport, OpenSSL on Linux.
 set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
   --disable-programs --disable-doc --disable-avdevice --disable-filters --enable-filter=buffer,buffersink,abuffer,abuffersink,yadif,fps,aspectralstats,format,null,scale \
   --enable-filter=volume,equalizer,bass,treble,highpass,lowpass,bandpass,bandreject,afade,pan,acompressor,alimiter,dynaudnorm,agate,ebur128,loudnorm,silencedetect,astats,aformat,aresample \
@@ -112,8 +133,8 @@ case "$rid" in
              --extra-ldflags=-static-libgcc --enable-w32threads --enable-schannel ;;
   # Hardened (FFmpeg's toolchain): stack protector, _FORTIFY_SOURCE, full RELRO (-z relro -z now) and PIC, so a bug in a
   # decoder fed untrusted media is harder to exploit in-process.
-  linux-*) set -- "$@" --enable-pthreads --toolchain=hardened ;;
-  osx-*)   set -- "$@" --enable-pthreads --install-name-dir=@rpath --extra-ldflags=-Wl,-rpath,@loader_path ;;
+  linux-*) set -- "$@" --enable-pthreads --toolchain=hardened --enable-openssl ;;
+  osx-*)   set -- "$@" --enable-pthreads --install-name-dir=@rpath --extra-ldflags=-Wl,-rpath,@loader_path --enable-securetransport ;;
   *) echo "unknown rid $rid" >&2; exit 1 ;;
 esac
 
@@ -141,7 +162,27 @@ case "$rid" in
     cc -o "$work/loads" "$work/loads.c" -ldl
     for f in "$out"/lib*.so.*; do env -u LD_LIBRARY_PATH "$work/loads" "$f" || { echo "$f doesn't load by itself" >&2; exit 1; }; done
     # The hardening took: full RELRO binds every symbol at load (BIND_NOW).
-    for f in "$out"/lib*.so.*; do readelf -d "$f" | grep -q BIND_NOW || { echo "$f isn't linked with -z now" >&2; exit 1; }; done ;;
+    for f in "$out"/lib*.so.*; do readelf -d "$f" | grep -q BIND_NOW || { echo "$f isn't linked with -z now" >&2; exit 1; }; done
+    # OpenSSL is inside, not a dependency, and stays hidden: no symbol of it exported to interpose an app's own libssl.
+    for f in "$out"/lib*.so.*; do
+      if readelf -d "$f" | grep -qE "NEEDED.*lib(ssl|crypto)"; then echo "$f needs a system OpenSSL" >&2; exit 1; fi
+      if nm -D --defined-only "$f" | grep -qE " (SSL|EVP|OPENSSL|X509|CRYPTO)_"; then echo "$f exports OpenSSL's symbols" >&2; exit 1; fi
+    done ;;
+esac
+
+# https checks certificates with the system's trusted ones: a real server reads, a self-signed one is refused (each
+# tried three times, as a network can fail). Built here, so win-x64 (cross-compiled) is checked by FrameReader's tests.
+case "$rid" in
+  win-x64) ;;
+  *)
+    printf '%s\n' '#include <libavformat/avformat.h>' \
+      'int main(int c, char **v) { AVIOContext *pb = NULL; AVDictionary *o = NULL; avformat_network_init();' \
+      '  av_dict_set(&o, "tls_verify", "1", 0); int r = avio_open2(&pb, v[1], AVIO_FLAG_READ, NULL, &o);' \
+      '  av_dict_free(&o); if (pb) avio_closep(&pb); return r < 0; }' > "$work/https.c"
+    cc -o "$work/https" "$work/https.c" -I"$work/install/include" "$out"/libavformat.* "$out"/libavutil.* -Wl,-rpath,"$out"
+    ok=0; for try in 1 2 3; do "$work/https" https://download.blender.org/demo/movies/ToS/ && { ok=1; break; }; sleep 10; done
+    [ $ok = 1 ] || { echo "https with tls_verify didn't read a trusted server" >&2; exit 1; }
+    if "$work/https" https://self-signed.badssl.com/; then echo "https read a self-signed server with tls_verify" >&2; exit 1; fi ;;
 esac
 
 {
@@ -149,6 +190,7 @@ esac
   echo "zlib $ZLIB (https://zlib.net/fossils/zlib-$ZLIB.tar.gz, sha256 $ZLIB_SHA256), static"
   echo "dav1d $DAV1D (https://downloads.videolan.org/pub/videolan/dav1d/$DAV1D/dav1d-$DAV1D.tar.xz, sha256 $DAV1D_SHA256), static"
   echo "LAME $LAME (https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz, sha256 $LAME_SHA256), static"
+  case "$rid" in linux-*) echo "OpenSSL $OPENSSL (https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL/openssl-$OPENSSL.tar.gz, sha256 $OPENSSL_SHA256), static" ;; esac
   echo "./configure $*"
 } > "$out/configure.txt"
 
@@ -169,11 +211,19 @@ pkg() {
   pkg zlib zlib "$ZLIB" Zlib "https://zlib.net/fossils/zlib-$ZLIB.tar.gz" "$ZLIB_SHA256" zlib:zlib; printf ',\n'
   pkg dav1d dav1d "$DAV1D" BSD-2-Clause "https://downloads.videolan.org/pub/videolan/dav1d/$DAV1D/dav1d-$DAV1D.tar.xz" "$DAV1D_SHA256" videolan:dav1d; printf ',\n'
   pkg lame LAME "$LAME" LGPL-2.0-or-later "https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz" "$LAME_SHA256" lame_project:lame
+  linked="zlib dav1d lame"
+  case "$rid" in
+    linux-*) printf ',\n'; linked="$linked openssl"
+             pkg openssl OpenSSL "$OPENSSL" Apache-2.0 "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL/openssl-$OPENSSL.tar.gz" "$OPENSSL_SHA256" openssl:openssl ;;
+  esac
   printf '\n  ],\n  "relationships": [\n'
-  for d in zlib dav1d lame; do
+  sep=''
+  for d in $linked; do
+    printf "$sep"
     printf '    {"spdxElementId": "SPDXRef-ffmpeg", "relationshipType": "STATIC_LINK", "relatedSpdxElement": "SPDXRef-%s"}' "$d"
-    [ $d = lame ] && printf '\n' || printf ',\n'
+    sep=',\n'
   done
+  printf '\n' 
   printf '  ]\n}\n'
 } > "$out/sbom.spdx.json"
 ls -l "$out"
