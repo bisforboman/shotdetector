@@ -105,6 +105,13 @@ case "$rid" in
 esac
 
 cd "ffmpeg-$VERSION"
+# libavutil would link all of libcrypto (5.5 MB) for one fallback: av_random_bytes calls RAND_bytes only when
+# /dev/urandom can't be read. Without it, that case fails as in a build without OpenSSL, and OpenSSL is in libavformat
+# only (its TLS). The one change to FFmpeg's source; the build stops if the lines it changes move.
+case "$rid" in
+  linux-*) [ "$(grep -c '^#elif CONFIG_OPENSSL$' libavutil/random_seed.c)" = 2 ] || { echo "random_seed.c changed" >&2; exit 1; }
+           sed -i 's/^#elif CONFIG_OPENSSL$/#elif 0 \/* FrameReader.Native: OpenSSL only in libavformat *\//' libavutil/random_seed.c ;;
+esac
 # Only our static zlib and dav1d, never the system's.
 export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig"
 
@@ -167,7 +174,9 @@ case "$rid" in
     for f in "$out"/lib*.so.*; do
       if readelf -d "$f" | grep -qE "NEEDED.*lib(ssl|crypto)"; then echo "$f needs a system OpenSSL" >&2; exit 1; fi
       if nm -D --defined-only "$f" | grep -qE " (SSL|EVP|OPENSSL|X509|CRYPTO)_"; then echo "$f exports OpenSSL's symbols" >&2; exit 1; fi
-    done ;;
+    done
+    # ...and libavutil doesn't carry a copy of libcrypto (about 1 MB without, 6.5 MB with).
+    [ "$(cat "$out"/libavutil.so.* | wc -c)" -lt 3000000 ] || { echo "libavutil has OpenSSL inside" >&2; exit 1; } ;;
 esac
 
 # https checks certificates with the system's trusted ones: a real server reads, a self-signed one is refused (each
