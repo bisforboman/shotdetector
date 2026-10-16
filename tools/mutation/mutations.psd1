@@ -78,5 +78,11 @@
 
         # yadif halves the time base: a seek with deinterlacing compares times, not pts
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'select = ["-vf", _deinterlace'; Replace = 'select = ["-vf", false'; Tests = 'DeinterlaceTests' }
+
+        # MPEG-TS: a seek that lands after the wanted frame (no index) starts over from further back, on both paths
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (emitted == 0 && seek.Length > 1 && SeekLandedLate(pts * liveTimeBase, startFrame))'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (emitted == 0 && !again && seek.Length > 1)'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'if (emitted == 0 && seeked && SeekLandedLate(pts * timeBase, startFrame))'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'late |= seeked && emitted == 0;'; Replace = ''; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
     )
 }

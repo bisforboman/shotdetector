@@ -563,6 +563,15 @@ internal sealed partial class VideoReader
     }
 
     /// <summary>
+    /// Whether the first frame a seek for <paramref name="startFrame"/> gave (its absolute time) is more than half a
+    /// frame after that frame's: the frames between were lost.
+    /// </summary>
+    internal bool SeekLandedLate(double seconds, int startFrame) => seconds > _pts[startFrame] * _timeBase + 0.5 / Fps.Value;
+
+    /// <summary>How many frames early a seek goes after one that landed late <paramref name="seekBack"/> frames early.</summary>
+    internal static int SeekBackAgain(int seekBack) => seekBack * 16;
+
+    /// <summary>
     /// The packet a decoded frame is, from its absolute showinfo time: the first packet after
     /// <paramref name="previous"/> within half a frame of it; if none is (a time the packet list doesn't
     /// have), simply the next one. A time before the previous packet's (timestamps that start over, as in two
@@ -838,7 +847,12 @@ internal sealed partial class VideoReader
     /// Yields frames <paramref name="startFrame"/> .. <paramref name="startFrame"/> + <paramref name="count"/> - 1
     /// (count null: to the end), downscaled; see <see cref="Frames(CancellationToken)"/>.
     /// </summary>
-    internal IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// A seek goes <paramref name="seekBack"/> frames early. Where it lands after the wanted frame anyway (MPEG-TS has no
+    /// index: libavformat's seek finds a packet by time, and decoding starts at the next keyframe after it), frames would
+    /// be lost, so the read starts over from <see cref="SeekBackAgain"/> frames early, up to from the start.
+    /// </remarks>
+    internal IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken = default, int seekBack = 2)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (count is <= 0)
@@ -848,7 +862,7 @@ internal sealed partial class VideoReader
         if (DecodesInProcess)
         {
             bool any = false;
-            foreach (var frame in FramesInProcess(startFrame, count, cancellationToken))
+            foreach (var frame in FramesInProcess(startFrame, count, cancellationToken, seekBack))
             {
                 any = true;
                 yield return frame;
@@ -892,7 +906,7 @@ internal sealed partial class VideoReader
         string[] seek = [], select = [];
         if (startFrame > 0 && startFrame < _pts.Length)
         {
-            int early = Math.Max(startFrame - 2, 0);
+            int early = Math.Max(startFrame - seekBack, 0);
             if (early > 0)
                 seek = ["-ss", ((_pts[early] - _startPts) * _timeBase).ToString("R", CultureInfo.InvariantCulture), "-copyts"];
 
@@ -1074,6 +1088,7 @@ internal sealed partial class VideoReader
 
         int emitted = 0;
         bool again = false;
+        int againBack = seekBack;
         try
         {
             var small = new byte[Width * Height * 3];
@@ -1087,6 +1102,14 @@ internal sealed partial class VideoReader
                 if (!livePts.TryTake(out var info, Timeout.Infinite, cancel.Token))
                     throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg gave no timestamp for frame {_livePts.Count + _livePackets.Count}: {stderr.Result}");
                 long pts = info.Pts;
+
+                // The seek landed after the wanted frame: again from further back.
+                if (emitted == 0 && seek.Length > 1 && SeekLandedLate(pts * liveTimeBase, startFrame))
+                {
+                    again = true;
+                    againBack = SeekBackAgain(seekBack);
+                    break;
+                }
 
                 // A new size on the yuv420p pipeline: read again on a BGR pipeline (after the finally below). Files
                 // only: a stream can't be read twice.
@@ -1117,6 +1140,13 @@ internal sealed partial class VideoReader
                 free.Add(buffer);
                 emitted++;
                 yield return small;
+            }
+
+            // No frame at all: the seek landed after the last keyframe.
+            if (emitted == 0 && !again && seek.Length > 1)
+            {
+                again = true;
+                againBack = SeekBackAgain(seekBack);
             }
 
             if (!again)
@@ -1164,7 +1194,7 @@ internal sealed partial class VideoReader
         // without the frames already given.
         if (again)
         {
-            foreach (var frame in Frames(startFrame, count, cancellationToken).Skip(emitted))
+            foreach (var frame in Frames(startFrame, count, cancellationToken, againBack).Skip(emitted))
                 yield return frame;
         }
     }

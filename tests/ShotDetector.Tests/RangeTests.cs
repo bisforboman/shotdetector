@@ -112,6 +112,31 @@ public class RangeTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SeekingInATransportStreamLosesNoFrames(bool inProcess)
+    {
+        // MPEG-TS has no index: a seek finds a packet by time and decoding starts at the next keyframe after it. With
+        // keyframes at 0 and 100, a seek for 60 lands at 100, and one for 120 after the last keyframe, at nothing.
+        string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+        if (inProcess && libs is null)
+            return;
+        string ts = Path.Combine(Path.GetTempPath(), $"shotdetector-{Guid.NewGuid():N}.ts");
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c:v", "mpeg2video", "-g", "100", "-q:v", "3", ts], default);
+        try
+        {
+            var o = new DetectionOptions { FfmpegDirectory = libs, Decoder = inProcess ? VideoDecoder.InProcess : VideoDecoder.FfmpegProcess };
+            var all = new VideoReader(ts, o).Frames().Select(f => f.ToArray()).ToList();
+            foreach (int start in new[] { 60, 120 })
+                Assert.Equal(all.Skip(start).Take(10), new VideoReader(ts, o).Frames(start, 10).Select(f => f.ToArray()));
+        }
+        finally
+        {
+            File.Delete(ts);
+        }
+    }
+
     // DetectedVideo.Crop: the region as the option's corners, ordered and clamped, so it can be passed back.
     [Fact]
     public void CropComesBackAsCorners()
