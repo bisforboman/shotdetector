@@ -365,7 +365,8 @@ playlist from local files) and `rw_timeout` (microseconds)
 so a stalled server fails; the options' `CancellationToken` stops a read FFmpeg waits in. Filter graphs you pass
 (`AudioFilter`, `Audio.Convert`'s) are FFmpeg's syntax, and some filters of a full build read files (`movie`,
 `amovie`): don't build them from untrusted input. Decoding runs FFmpeg's code in your process; keep the libraries
-current (FrameReader.Native follows FFmpeg's point releases).
+current (FrameReader.Native follows FFmpeg's point releases). A stream claiming a frame larger than
+`FrameDecoderOptions.MaxPixels` (8192 x 8192 by default) fails to decode, so a crafted file can't exhaust memory.
 
 ## FFmpeg's libraries
 

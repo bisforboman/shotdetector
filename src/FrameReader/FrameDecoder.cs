@@ -139,6 +139,8 @@ public sealed unsafe class FrameDecoder : IDisposable
 
             if (o.KeyframesOnly)
                 _dec->skip_frame = AVDiscard.AVDISCARD_NONKEY;
+            if (o.MaxPixels > 0)
+                _dec->max_pixels = o.MaxPixels;
             Check(ffmpeg.avcodec_open2(_dec, codec, null), "open decoder");
             _pkt = ffmpeg.av_packet_alloc();
             _frame = ffmpeg.av_frame_alloc();

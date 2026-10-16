@@ -366,7 +366,8 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
 - **Raw ffmpeg arguments are yours.** `SplitOptions.Args` (`--args`) goes to ffmpeg as options, which can write files;
   don't fill it from untrusted input.
 - **Decoding untrusted media in-process** runs FFmpeg's decoders inside your process, without the separate process the
-  executable gives. Keep FFmpeg current: our native packages follow its point releases (the weekly upstream check), and
+  executable gives (a frame larger than 8192 x 8192 pixels fails to decode, by either path, so a crafted file can't
+  exhaust memory). Keep FFmpeg current: our native packages follow its point releases (the weekly upstream check), and
   `Decoder = VideoDecoder.FfmpegProcess` keeps decoding out of your process.
 
 ## Versions

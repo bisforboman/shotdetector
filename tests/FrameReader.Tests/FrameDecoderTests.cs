@@ -262,6 +262,33 @@ public class FrameDecoderTests
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
+    // MaxPixels (FFmpeg's max_pixels): a frame larger than the cap fails to decode; the default leaves real video alone.
+    [Fact]
+    public void FramesLargerThanTheCapFail()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-dec-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "clip.mkv");
+            TestMedia.Write(path, new TestMediaOptions { Video = ["testsrc2=d=1"], Size = (320, 240), VideoEncoder = "mpeg4" });
+            using (var decoder = new FrameDecoder(path, Options))
+                Assert.True(decoder.Next());
+            Assert.Throws<FrameReaderException>(() =>
+            {
+                using var decoder = new FrameDecoder(path, new FrameDecoderOptions { MaxPixels = 320 * 200 });
+                while (decoder.Next())
+                {
+                }
+            });
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void NoVideoIsInvalidInput()
     {
