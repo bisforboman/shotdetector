@@ -27,7 +27,22 @@ internal sealed class CvResize
     sealed class Chunk(int start, int end, int dw, int sw)
     {
         public readonly int Start = start, End = end;
-        public readonly int[] Row0 = new int[dw * 3], Row1 = new int[dw * 3];
+        public int[] Row0 = new int[dw * 3], Row1 = new int[dw * 3];
+        public int LastRow0 = -1, LastRow1 = -1;
+
+        /// <summary>
+        /// Before resizing output row (r0, r1): when r0 is the source row Row1 holds (downscaling by less than 2, and
+        /// upscaling), the buffers swap instead of resizing it again, as OpenCV keeps it. Returns which to resize.
+        /// </summary>
+        public (bool Row0, bool Row1) Need(int r0, int r1)
+        {
+            if (r0 != LastRow0 && r0 == LastRow1)
+                (Row0, Row1, LastRow0, LastRow1) = (Row1, Row0, LastRow1, LastRow0);
+            (bool need0, bool need1) = (r0 != LastRow0, r1 != LastRow1);
+            (LastRow0, LastRow1) = (r0, r1);
+            return (need0, need1);
+        }
+
         public byte[] BgrRow0 = new byte[sw * 3], BgrRow1 = new byte[sw * 3];
     }
 
@@ -81,15 +96,16 @@ internal sealed class CvResize
             PrepareSampled();
         ForChunks(c =>
         {
-            int rowBytes = SourceCols.Length * 3, lastRow0 = -1, lastRow1 = -1;
+            int rowBytes = SourceCols.Length * 3;
+            c.LastRow0 = c.LastRow1 = -1;
             for (int dy = c.Start; dy < c.End; dy++)
             {
                 int r0 = Row0(dy), r1 = Row1(dy);
-                if (r0 != lastRow0)
+                var (need0, need1) = c.Need(r0, r1);
+                if (need0)
                     HResizeSampled(sampled.AsSpan(_rowIndex![r0] * rowBytes, rowBytes), c.Row0);
-                if (r1 != lastRow1)
+                if (need1)
                     HResizeSampled(sampled.AsSpan(_rowIndex![r1] * rowBytes, rowBytes), c.Row1);
-                (lastRow0, lastRow1) = (r0, r1);
                 VResize(dy, c, dst);
             }
         });
@@ -104,15 +120,15 @@ internal sealed class CvResize
     {
         foreach (var c in _chunks)
         {
-            int lastRow0 = -1, lastRow1 = -1;
+            c.LastRow0 = c.LastRow1 = -1;
             for (int dy = c.Start; dy < c.End; dy++)
             {
                 int r0 = Row0(dy), r1 = Row1(dy);
-                if (r0 != lastRow0)
+                var (need0, need1) = c.Need(r0, r1);
+                if (need0)
                     HResize(frame.Slice((y + r0) * stride + x * 3, _sw * 3), c.Row0);
-                if (r1 != lastRow1)
+                if (need1)
                     HResize(frame.Slice((y + r1) * stride + x * 3, _sw * 3), c.Row1);
-                (lastRow0, lastRow1) = (r0, r1);
                 VResize(dy, c, dst);
             }
         }
@@ -189,10 +205,15 @@ internal sealed class CvResize
     public void Resize(byte[] src, byte[] dst) => ForChunks(c =>
     {
         int stride = _sw * 3;
+        c.LastRow0 = c.LastRow1 = -1;
         for (int dy = c.Start; dy < c.End; dy++)
         {
-            HResize(src.AsSpan(Row0(dy) * stride, stride), c.Row0);
-            HResize(src.AsSpan(Row1(dy) * stride, stride), c.Row1);
+            int r0 = Row0(dy), r1 = Row1(dy);
+            var (need0, need1) = c.Need(r0, r1);
+            if (need0)
+                HResize(src.AsSpan(r0 * stride, stride), c.Row0);
+            if (need1)
+                HResize(src.AsSpan(r1 * stride, stride), c.Row1);
             VResize(dy, c, dst);
         }
     });
@@ -216,25 +237,25 @@ internal sealed class CvResize
         int rowBytes = fullWidth * 3;
         if (c.BgrRow0.Length < rowBytes)
             (c.BgrRow0, c.BgrRow1) = (new byte[rowBytes], new byte[rowBytes]);
-        int lastRow0 = -1, lastRow1 = -1;
+        c.LastRow0 = c.LastRow1 = -1;
         for (int dy = c.Start; dy < c.End; dy++)
         {
             int r0 = Row0(dy), r1 = Row1(dy);
 
-            // Downscaling rarely reuses rows, but upscaling does; skip converting them twice.
-            if (r0 != lastRow0)
+            // Rows already converted and resized (upscaling, and downscaling by less than 2) aren't done again.
+            var (need0, need1) = c.Need(r0, r1);
+            if (need0)
             {
                 converter.RowToBgr(yuv, fullWidth, fullHeight, r0 + cropY, cols, c.BgrRow0);
                 HResize(c.BgrRow0.AsSpan(cropX * 3), c.Row0);
             }
 
-            if (r1 != lastRow1)
+            if (need1)
             {
                 converter.RowToBgr(yuv, fullWidth, fullHeight, r1 + cropY, cols, c.BgrRow1);
                 HResize(c.BgrRow1.AsSpan(cropX * 3), c.Row1);
             }
 
-            (lastRow0, lastRow1) = (r0, r1);
             VResize(dy, c, dst);
         }
     });
