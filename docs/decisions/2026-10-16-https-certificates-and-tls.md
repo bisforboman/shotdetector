@@ -7,7 +7,8 @@ opt-out option and CLI flag (more API to keep stable) or keeping FFmpeg's defaul
 unless the caller's InputOptions say otherwise; ShotDetector passes `-tls_verify 1` to the executable for http(s).
 
 Then https in our build beyond Windows, asked with the choices from FFmpeg 8.1.3's configure: **a static OpenSSL 3 on
-Linux and Secure Transport on macOS** (OpenSSL 3 needs no --enable-version3 in an LGPL build; about 4 MB more; we ship
+Linux and Secure Transport on macOS** (OpenSSL 3 needs no --enable-version3 in an LGPL build; estimated at about 4 MB
+more, measured at about 7 MB in libavformat once libavutil's copy was patched out; we ship
 its security fixes, upstream.yml to watch it; Secure Transport is the system's, TLS 1.2 at most), over the system's
 OpenSSL (libavformat wouldn't load without libssl.so.3), a static GnuTLS (nettle, GMP, libtasn1 to keep current) or
 leaving https to the executable there (mbedTLS would have made the build LGPL-3). CA certificates on Linux:

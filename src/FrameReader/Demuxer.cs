@@ -7,6 +7,15 @@ namespace FrameReader;
 internal static unsafe class Demuxer
 {
     /// <summary>
+    /// The trusted certificates https checks against on Linux: the system's bundle, which FrameReader.Native's OpenSSL
+    /// (looking in /etc/ssl, as Debian, Ubuntu and Alpine have it) wouldn't find on RHEL, Fedora or openSUSE. Null
+    /// elsewhere (the system's store), when SSL_CERT_FILE names one (OpenSSL reads it), or when no bundle is there.
+    /// </summary>
+    internal static readonly string? CaBundle = OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SSL_CERT_FILE"))
+        ? Array.Find(["/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/ca-bundle.pem", "/etc/ssl/cert.pem"], File.Exists)
+        : null;
+
+    /// <summary>
     /// After av_read_frame failed: the end of the input, unless reading it failed (a network reset, a Stream that threw:
     /// FFmpeg's I/O context records those), which is a <see cref="FrameReaderException"/> rather than a shortened
     /// result. A demuxer's own error (a truncated or damaged file) still ends the input, as in OpenCV.
@@ -56,6 +65,8 @@ internal static unsafe class Demuxer
 
         // https checks the server's certificate (FFmpeg 8 doesn't by default); tls_verify=0 in InputOptions turns it off.
         ffmpeg.av_dict_set(&options, "tls_verify", "1", ffmpeg.AV_DICT_DONT_OVERWRITE);
+        if (CaBundle is { } bundle)
+            ffmpeg.av_dict_set(&options, "ca_file", bundle, ffmpeg.AV_DICT_DONT_OVERWRITE);
         foreach (var (name, value) in inputOptions ?? new Dictionary<string, string>())
             ffmpeg.av_dict_set(&options, name, value, 0);
         int ret = ffmpeg.avformat_open_input(&fmt, path, null, &options);

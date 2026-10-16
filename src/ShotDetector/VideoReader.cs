@@ -369,7 +369,7 @@ internal sealed partial class VideoReader
 
         // A file, with FFmpeg's libraries available (as for decoding in-process): read the same with them, no ffprobe.
         // A Stream too: its first bytes, as ffprobe reads them from stdin.
-        // A URL too, when the libraries have its protocol (FrameReader.Native: http everywhere, https on Windows), streamed
+        // A URL too, when the libraries have its protocol (FrameReader.Native: http and https), streamed
         // as a Stream is.
         bool libraries = _decoder != VideoDecoder.FfmpegProcess && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory));
         _urlInProcess = libraries && video is null && IsUrl(path) && InProcess.HasProtocol(new Uri(path).Scheme, _ffmpegDirectory);

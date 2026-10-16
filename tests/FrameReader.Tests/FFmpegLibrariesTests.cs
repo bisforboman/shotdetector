@@ -53,7 +53,10 @@ public class FFmpegLibrariesTests
         Assert.False(FFmpegLibraries.HasFilter("nosuchfilter"));
         Assert.False(FFmpegLibraries.HasMuxer("nosuchmuxer"));
         Assert.True(FFmpegLibraries.HasProtocol("file"));
-        Assert.True(FFmpegLibraries.HasProtocol("http"));   // FrameReader.Native and full builds have it (https: Windows' Schannel, or a TLS library)
+        Assert.True(FFmpegLibraries.HasProtocol("http"));   // FrameReader.Native and full builds have it
+        Assert.True(FFmpegLibraries.HasProtocol("https"));  // FrameReader.Native: Schannel, Secure Transport, OpenSSL
+        if (OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SSL_CERT_FILE")))
+            Assert.NotNull(Demuxer.CaBundle);   // the runner's (Ubuntu's) bundle, passed as ca_file
         Assert.False(FFmpegLibraries.HasProtocol("nosuchprotocol"));
     }
 

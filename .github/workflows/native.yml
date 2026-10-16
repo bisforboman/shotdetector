@@ -94,7 +94,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true' && matrix.alpine
         run: |
           docker run --rm -v "$PWD:/w" -w /w "${{ steps.alpine.outputs.image }}" sh -c '
-            apk add --no-cache build-base nasm curl tar xz git perl coreutils meson samurai pkgconf patchelf > /dev/null &&
+            apk add --no-cache build-base linux-headers nasm curl tar xz git perl coreutils meson samurai pkgconf patchelf > /dev/null &&
             sh tools/native/build-ffmpeg.sh ${{ matrix.rid }} native'
 
       - name: What the libraries link against
