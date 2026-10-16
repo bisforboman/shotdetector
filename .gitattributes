@@ -1,2 +1,0 @@
-# Row-wise merges for the backlog table (tools/backlog-merge.py; needs the one-time git config in its header).
-docs/backlog.md merge=backlog
