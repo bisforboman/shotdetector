@@ -193,7 +193,7 @@ internal sealed partial class VideoReader
 
     IReadOnlyList<StreamInfo> FfprobeStreams()
     {
-        string json = Run(_ffprobe, ["-v", "error", "-show_entries", StreamEntries, "-of", "json", .. _inputOptions, _path], CancellationToken.None);
+        string json = Run(_ffprobe, ["-v", "error", "-show_entries", StreamEntries, "-of", "json", .. _inputOptions, "-i", _path], CancellationToken.None);
         using var doc = System.Text.Json.JsonDocument.Parse(json);
         var result = new List<StreamInfo>();
         if (!doc.RootElement.TryGetProperty("streams", out var streams))
@@ -364,7 +364,7 @@ internal sealed partial class VideoReader
         // A Stream is probed from its first bytes, which are kept to feed ffmpeg later.
         string entries = ProbeEntries + (Streaming || headersOnly ? "" : ":packet=pts");
         string ffprobe = _ffprobe = Executable(o.FfmpegDirectory, "ffprobe");
-        string[] probeArgs = ["-v", "error", .. _inputOptions, "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", path];
+        string[] probeArgs = ["-v", "error", .. _inputOptions, "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", "-i", path];
         string probed;
 
         // A file, with FFmpeg's libraries available (as for decoding in-process): read the same with them, no ffprobe.
@@ -453,6 +453,12 @@ internal sealed partial class VideoReader
             throw new ShotDetectionException(ShotDetectionError.InvalidInput, $"The input has no video stream: {path}");
         SourceWidth = int.Parse(stream["width"], CultureInfo.InvariantCulture);
         SourceHeight = int.Parse(stream["height"], CultureInfo.InvariantCulture);
+        if ((long)SourceWidth * SourceHeight > FrameReader.FrameDecoderOptions.DefaultMaxPixels)
+        {
+            throw new ShotDetectionException(ShotDetectionError.InvalidInput,
+                $"The video's frames ({SourceWidth}x{SourceHeight}) are larger than 8192 x 8192 pixels: {path}");
+        }
+
         _codedSize = (SourceWidth, SourceHeight);
 
         // Phone video is often stored sideways with a rotation tag. ffmpeg and OpenCV both rotate it
@@ -537,16 +543,15 @@ internal sealed partial class VideoReader
         // from a decoding pass, which only such files pay for.
         _ptsFromFrames = missingPts;
         if (missingPts)
-            pts = _probesInProcess ? InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions) : FrameTimestamps(ffprobe, path, cancellationToken);
+            pts = _probesInProcess ? InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions) : FrameTimestamps(ffprobe, path, _inputOptions, cancellationToken);
         _pts = [.. pts];
     }
 
-    static List<long> FrameTimestamps(string ffprobe, string path, CancellationToken ct)
+    static List<long> FrameTimestamps(string ffprobe, string path, string[] inputOptions, CancellationToken ct)
     {
         var result = new List<long>();
         long? framePts = null;
-        string[] args = ["-v", "error", "-select_streams", "v:0", "-show_entries", "frame=pts,pkt_dts", "-of", "default=nw=1", path];
-        foreach (var line in Run(ffprobe, args, ct).Split('\n', StringSplitOptions.TrimEntries))
+        foreach (var line in Run(ffprobe, FrameTimestampsArgs(path, inputOptions), ct).Split('\n', StringSplitOptions.TrimEntries))
         {
             if (line.StartsWith("pts="))
             {
@@ -676,12 +681,19 @@ internal sealed partial class VideoReader
     }
 
     /// <summary>
+    /// ffprobe's decoding pass for per-frame timestamps: it decodes, so it gets the input's options (protocols, timeout,
+    /// certificate check) and the frame size cap like every other read.
+    /// </summary>
+    internal static string[] FrameTimestampsArgs(string path, string[] inputOptions) =>
+        ["-v", "error", .. inputOptions, .. MaxPixels, "-select_streams", "v:0", "-show_entries", "frame=pts,pkt_dts", "-of", "default=nw=1", "-i", path];
+
+    /// <summary>
     /// The whole stream (<paramref name="prefix"/>, already read, then the rest) in a temporary file, deleted when the
     /// result is disposed: for an mp4 without "faststart", whose headers come last.
     /// </summary>
     internal static TempFile Spill(byte[] prefix, Stream video, CancellationToken cancellationToken)
     {
-        var file = new TempFile(Path.Combine(Path.GetTempPath(), $"shotdetector-{Guid.NewGuid():N}.mp4"));
+        var file = new TempFile("spill.mp4");
         try
         {
             using var output = File.Create(file.Path);
@@ -1266,10 +1278,28 @@ internal sealed partial class VideoReader
         }
     }
 
-    /// <summary>"ffmpeg" (found on PATH) or that executable in <paramref name="directory"/>.</summary>
-    static string Executable(string? directory, string name) => directory is null
-        ? name
-        : Path.Combine(directory, OperatingSystem.IsWindows() ? name + ".exe" : name);
+    /// <summary>
+    /// That executable in <paramref name="directory"/>, else next to the app, else the first on PATH (absolute folders
+    /// only). Not left to the process start, which would also look in the current folder (Windows' CreateProcess and
+    /// .NET on Unix both do), where a file someone else put there would run.
+    /// </summary>
+    internal static string Executable(string? directory, string name)
+    {
+        string file = OperatingSystem.IsWindows() ? name + ".exe" : name;
+        if (directory is not null)
+            return Path.Combine(directory, file);
+        string beside = Path.Combine(AppContext.BaseDirectory, file);
+        if (File.Exists(beside))
+            return beside;
+        foreach (string dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string candidate = Path.Combine(dir.Trim('"'), file);
+            if (Path.IsPathFullyQualified(candidate) && File.Exists(candidate))
+                return candidate;
+        }
+
+        return beside; // not found: starting it fails with FfmpegNotFound
+    }
 
     /// <summary>Runs ffmpeg/ffprobe to completion and returns its stdout; cancelling kills it.</summary>
     internal static string Run(string exe,
@@ -1311,17 +1341,19 @@ internal sealed partial class VideoReader
     }
 }
 
-/// <summary>A temporary file, deleted on Dispose.</summary>
-internal sealed class TempFile(string path) : IDisposable
+/// <summary>A temporary file in a new folder of its own (only the user can open it on Unix), both deleted on Dispose.</summary>
+internal sealed class TempFile(string name) : IDisposable
 {
-    public string Path { get; } = path;
+    readonly string _dir = Directory.CreateTempSubdirectory("shotdetector-").FullName;
+
+    public string Path => System.IO.Path.Combine(_dir, name);
 
     /// <inheritdoc/>
     public void Dispose()
     {
         try
         {
-            File.Delete(Path);
+            Directory.Delete(_dir, true);
         }
         catch (IOException)
         {
