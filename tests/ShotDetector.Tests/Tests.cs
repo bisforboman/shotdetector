@@ -564,6 +564,38 @@ public class CvResizeTests
         CvResize.Linear(src, 5, 1, dst, 2, 1);
         Assert.Equal([75, 75, 75, 194, 196, 199], dst);
     }
+
+    // The in-process pipeline hands the source rows over packed (ResizePackedRows on the caller's thread): the same bytes
+    // as resizing from the frame (ResizeRows, with a crop's offset) and from the whole image (Resize). Sizes for
+    // downscaling by less and more than 2, upscaling (rows reused), and widths whose last pixels take the scalar tail.
+    [Theory]
+    [InlineData(426, 240, 256, 144)]
+    [InlineData(1280, 534, 256, 107)]
+    [InlineData(200, 100, 256, 144)]
+    [InlineData(37, 22, 11, 6)]
+    [InlineData(5, 3, 2, 2)]
+    [InlineData(3, 2, 7, 5)]
+    public void PackedRowsResizeAsTheFrame(int w, int h, int dw, int dh)
+    {
+        const int cropX = 3, cropY = 2;
+        int fw = w + cropX + 4, fh = h + cropY + 1, stride = fw * 3 + 5;
+        var frame = new byte[stride * fh];
+        new Random(w * 31 + h).NextBytes(frame);
+        var resize = new CvResize(w, h, dw, dh);
+        var image = new byte[w * h * 3];
+        for (int y = 0; y < h; y++)
+            frame.AsSpan((cropY + y) * stride + cropX * 3, w * 3).CopyTo(image.AsSpan(y * w * 3));
+        var packed = new byte[resize.SourceRows.Length * w * 3];
+        for (int i = 0; i < resize.SourceRows.Length; i++)
+            frame.AsSpan((cropY + resize.SourceRows[i]) * stride + cropX * 3, w * 3).CopyTo(packed.AsSpan(i * w * 3));
+
+        byte[] expected = new byte[dw * dh * 3], fromFrame = new byte[dw * dh * 3], fromPacked = new byte[dw * dh * 3];
+        resize.Resize(image, expected);
+        resize.ResizeRows(frame, stride, cropX, cropY, fromFrame);
+        resize.ResizePackedRows(packed, fromPacked);
+        Assert.Equal(expected, fromFrame);
+        Assert.Equal(expected, fromPacked);
+    }
 }
 
 // Expected values come from scenedetect's own FrameTimecode.

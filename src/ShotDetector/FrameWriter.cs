@@ -126,6 +126,20 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : I
         resizer.ResizeRows(bgr, stride, crop.X, crop.Y, dst);
     }
 
+    /// <summary>
+    /// The converted frame's <paramref name="rows"/> (the resize's source rows, offset by the crop), each the crop's
+    /// width, one after another: for <see cref="CvResize.ResizePackedRows"/> on another thread. Only those rows are
+    /// converted.
+    /// </summary>
+    public void WriteRows(byte[] dst, int[] rows, (int X, int Width) crop)
+    {
+        // Turned, the rows read are columns of the decoded frame: the whole frame then.
+        var bgr = _turn == 0 ? _bgr.Convert(rows, out int stride) : Converted(out stride);
+        int n = crop.Width * 3;
+        for (int i = 0; i < rows.Length; i++)
+            bgr.Slice(rows[i] * stride + crop.X * 3, n).CopyTo(dst.AsSpan(i * n, n));
+    }
+
     /// <summary>The converted frame's crop region, packed BGR (scale,format=bgr24,crop).</summary>
     public void WriteBgr(byte[] dst, (int X, int Y, int Width, int Height) crop)
     {

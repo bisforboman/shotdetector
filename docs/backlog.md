@@ -221,7 +221,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Resize: the horizontal pass (CvResize.HResize) off the critical path, and source rows resized once
   - Why: A performance review (2026-10-16) found in-process detection bound by the decoding thread's own work, not decoding: the consumer waits 80-90% of the time, and the horizontal resize pass is 116 of 129 us per frame at 1280x534 (measured). Row reuse (OpenCV keeps the row it resized as the next row's first) is done; an AVX2 gather version measured no faster on Zen 3 (this desktop, and CI's EPYC 7763), so the rest is moving the resize to the idle consumer thread
-  - Status: In progress (2026-10-16): row reuse done (426x240 -15%, upscaling -41% per frame, bit-identical)
+  - Status: Done (2026-10-16): rows reused (3.3.0), then the horizontal pass with SSE2 (pmaddwd: a pixel's three channels at once; 145 -> 80 us per frame at 426x240, 129 -> 80 at 1280x534) and the resize on the caller's thread; in-process wall time 0.67x (Elephants Dream 426x240), 0.76x (BBB 640x360), 0.80x (Tears of Steel 1280x534) on this desktop, stats identical. ARM keeps the scalar pass
 
 - Edges (--stats, edge weights): Sobel, dilate and non-maximum suppression in row bands across threads, then SIMD (integer math)
   - Why: Stats runs measured 2.2-3.5x slower than plain detection (EdgeDetector about 440-620 us per frame, scalar); the scoring thread is mostly idle (performance review 2026-10-16)

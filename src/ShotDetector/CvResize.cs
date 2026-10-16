@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 namespace ShotDetector;
 
@@ -112,6 +113,31 @@ internal sealed class CvResize
     }
 
     /// <summary>
+    /// Resizes from <see cref="SourceRows"/>' rows alone, whole (the source's width), one after another: row i of
+    /// <paramref name="rows"/> is source row SourceRows[i]. What <see cref="ResizeRows"/> gives the frame they came from.
+    /// </summary>
+    public void ResizePackedRows(byte[] rows, byte[] dst)
+    {
+        if (_rowIndex is null)
+            PrepareSampled();
+        int rowBytes = _sw * 3;
+        ForChunks(c =>
+        {
+            c.LastRow0 = c.LastRow1 = -1;
+            for (int dy = c.Start; dy < c.End; dy++)
+            {
+                int r0 = Row0(dy), r1 = Row1(dy);
+                var (need0, need1) = c.Need(r0, r1);
+                if (need0)
+                    HResize(rows.AsSpan(_rowIndex![r0] * rowBytes, rowBytes), c.Row0);
+                if (need1)
+                    HResize(rows.AsSpan(_rowIndex![r1] * rowBytes, rowBytes), c.Row1);
+                VResize(dy, c, dst);
+            }
+        });
+    }
+
+    /// <summary>
     /// Resizes straight from a converted frame's rows (only <see cref="SourceRows"/> need be converted), the source
     /// being its crop at (<paramref name="x"/>, <paramref name="y"/>): what <see cref="Resize"/> gives that crop, with
     /// no copy of it or of the sampled pixels. On the calling thread.
@@ -174,8 +200,26 @@ internal sealed class CvResize
             {
                 fixed (short* v0 = w0, v1 = w1)
                 {
-                    int* o = dp;
-                    for (int dx = 0; dx < x0.Length; dx++, o += 3)
+                    int dx = 0;
+                    if (Sse2.IsSupported)
+                    {
+                        // A pixel at a time, its three channels at once: the two pixels' bytes as words, interleaved
+                        // (a0 b0 a1 b1 ...), times (wa wb) pairs, summed pairwise (pmaddwd): a * wa + b * wb per channel,
+                        // the scalar loop's integers. Each 4-byte load must stay in the row, and each 16-byte store
+                        // writes a fourth value into the next pixel's place (it overwrites it): the last pixel, and any
+                        // whose load would leave the row, go the scalar way.
+                        var zero = Vector128<byte>.Zero;
+                        for (; dx < x0.Length - 1 && a1[dx] + 3 < s.Length; dx++)
+                        {
+                            var pa = Sse2.UnpackLow(Vector128.CreateScalarUnsafe(Unsafe.ReadUnaligned<int>(sp + a0[dx])).AsByte(), zero).AsInt16();
+                            var pb = Sse2.UnpackLow(Vector128.CreateScalarUnsafe(Unsafe.ReadUnaligned<int>(sp + a1[dx])).AsByte(), zero).AsInt16();
+                            var w = Vector128.Create((ushort)v0[dx] | (v1[dx] << 16)).AsInt16();
+                            Sse2.MultiplyAddAdjacent(Sse2.UnpackLow(pa, pb), w).Store(dp + dx * 3);
+                        }
+                    }
+
+                    int* o = dp + dx * 3;
+                    for (; dx < x0.Length; dx++, o += 3)
                     {
                         byte* a = sp + a0[dx], b = sp + a1[dx];
                         int wa = v0[dx], wb = v1[dx];
