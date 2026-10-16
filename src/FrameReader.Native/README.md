@@ -27,8 +27,9 @@ TestMedia's sources: testsrc2, smptebars, mandelbrot, color, sine, anullsrc, con
 Windows only (Windows' own TLS, Schannel; elsewhere a TLS library would be needed), for URLs in-process. Three
 libraries are linked in statically: zlib 1.3.2 (PNG, compressed MOV/MKV headers), dav1d 1.5.4 (AV1) and LAME 3.100
 (MP3, LGPL).
-`configure.txt` in the package has the source URLs, their SHA-256 and the exact configure line; the build script
-is `tools/native/build-ffmpeg.sh` in the repository.
+`configure.txt` in the package has the source URLs, their SHA-256 and the exact configure line, and
+`sbom.spdx.json` the same components as an SPDX 2.3 SBOM (versions, sources, SHA-256, licences and CPEs, for
+vulnerability scanners); the build script is `tools/native/build-ffmpeg.sh` in the repository.
 
 ## Licence
 
