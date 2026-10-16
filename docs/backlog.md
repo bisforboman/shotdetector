@@ -357,7 +357,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - URLs in-process: network protocols (and TLS for https) in our FFmpeg build
   - Why: URLs are the last input on the executable; TLS means another linked library (licence, updates)
-  - Status: In progress (2026-10-15): http everywhere and https on Windows (Schannel) in our build; tested on CI, as this machine's local HTTP resets connections
+  - Status: In progress (2026-10-16): http everywhere and https on Windows (Schannel) in our build, now with the certificate checked (FFmpeg 8 doesn't by default); next a static OpenSSL 3 on Linux and Secure Transport on macOS (docs/decisions/2026-10-16-https-certificates-and-tls.md)
 
 - Rotation gaps: 4:2:2 at 90/270 degrees (transpose converts the format first), rotated video deinterlaced (ffmpeg rotates before yadif)
   - Why: Rare, and the executable handled them exactly (it turned out it didn't: see the status)

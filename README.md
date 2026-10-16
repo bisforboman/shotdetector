@@ -368,7 +368,8 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
 - **Inputs are FFmpeg's.** A path or URL is opened by FFmpeg. A path reads as a file only: FFmpeg's pseudo-protocol
   strings (`concat:`, `subfile:`, `data:`...) are refused. A remote playlist (HLS) names further URLs. FFmpeg's own checks keep a remote playlist from reaching local files; on
   top, an http(s) URL here reads only http, https, tcp, tls and crypto (rtsp: rtsp, rtp, udp, tcp, tls), by the
-  executable and in-process alike, and a read that waits more than 30 s fails (cancellation stops it sooner). A
+  executable and in-process alike, https checks the server's certificate against the system's trusted ones (FFmpeg 8
+  doesn't by default), and a read that waits more than 30 s fails (cancellation stops it sooner). A
   playlist can still
   name other http addresses, including ones on your network. Pass untrusted URLs only where that's acceptable, and
   untrusted paths only as file paths you've checked.

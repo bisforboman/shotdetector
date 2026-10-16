@@ -705,8 +705,8 @@ public class UrlOptionTests
     // An input reads only the protocols it needs: a file as a file (FFmpeg's pseudo-protocol strings included, so they
     // fail), an http(s) or rtsp URL its own family, another network URL as before.
     [Theory]
-    [InlineData("http://example.com/play.m3u8", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy -rw_timeout 30000000")]
-    [InlineData("HTTPS://example.com/a.mp4", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy -rw_timeout 30000000")]
+    [InlineData("http://example.com/play.m3u8", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy -rw_timeout 30000000 -tls_verify 1")]
+    [InlineData("HTTPS://example.com/a.mp4", "-protocol_whitelist http,https,tcp,tls,crypto,httpproxy -rw_timeout 30000000 -tls_verify 1")]
     [InlineData("rtsp://127.0.0.1:8554/shots", "-protocol_whitelist rtsp,rtsps,rtp,srtp,udp,tcp,tls")]
     [InlineData(@"C:\videos\a.mp4", "-protocol_whitelist file,crypto")]
     [InlineData(@"\\server\share\a.mp4", "-protocol_whitelist file,crypto")]
