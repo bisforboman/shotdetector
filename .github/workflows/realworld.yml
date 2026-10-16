@@ -99,6 +99,62 @@ jobs:
           { echo "### ${{ matrix.video }}"; cat realworld.md; } >> "$GITHUB_STEP_SUMMARY"
           exit ${status:-0}
 
+  # Parallel detection (DetectionOptions.Parallel) on the long films: --parallel's automatic count (2 chunks on these
+  # 4-CPU runners) and 4 chunks, byte for byte the sequential result, and never falling back to sequential. In-process,
+  # with FFmpeg 8.1's libraries.
+  parallel:
+    if: needs.changes.outputs.light != 'true'
+    needs: changes
+    name: Real world parallel
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      FILMS: bbb_640x360_h264.mp4 elephants_dream_426x240_h264.mp4 tears_of_steel_1280x534_h264.mov
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: FFmpeg 8.1, shared
+        id: ffmpeg
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          build: gpl-shared
+          add-to-path: 'false'
+
+      - uses: actions/cache/restore@v5
+        with:
+          path: samples/realworld
+          key: realworld-bbb_640x360_h264.mp4-${{ hashFiles('tools/realworld.py') }}
+
+      - uses: actions/cache/restore@v5
+        with:
+          path: samples/realworld
+          key: realworld-elephants_dream_426x240_h264.mp4-${{ hashFiles('tools/realworld.py') }}
+
+      - uses: actions/cache/restore@v5
+        with:
+          path: samples/realworld
+          key: realworld-tears_of_steel_1280x534_h264.mov-${{ hashFiles('tools/realworld.py') }}
+
+      - name: Parallel against sequential
+        env:
+          SHOTDETECTOR_OURS_ARGS: --decoder inprocess --ffmpeg-dir ${{ steps.ffmpeg.outputs.bin }}
+        run: |
+          films=$(python3 tools/realworld.py $FILMS --download | tail -3)
+          status=0
+          python3 tools/compare-parallel.py $films --require-chunks --report auto.md || status=$?
+          python3 tools/compare-parallel.py $films --require-chunks --chunks 4 --report four.md || status=$?
+          { echo "### Parallel against sequential, --parallel ($(nproc) CPUs)"; cat auto.md; echo "### 4 chunks"; cat four.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
   # FrameReader's AudioReader and SpectralStats on the films' own audio (AAC at 44.1 and 48 kHz, MP3, Opus, Vorbis) against
   # ffmpeg's command line (tests/FrameReader.Tests/RealWorldAudioTests.cs), one file after another in one job (five
   # jobs before, each mostly setup). Libraries and executable from one FFmpeg 8.1 build.
@@ -179,7 +235,7 @@ jobs:
   # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
   passed:
     name: Real world passed
-    needs: [changes, realworld, audio]
+    needs: [changes, realworld, audio, parallel]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

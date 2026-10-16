@@ -71,6 +71,9 @@ public sealed class DetectedVideo
     /// </summary>
     public bool Streamed => Reader.Streaming;
 
+    /// <summary>How many chunks were scored at once (<see cref="DetectionOptions.Parallel"/>); 1 when read sequentially.</summary>
+    public int Chunks { get; internal init; } = 1;
+
     /// <summary>
     /// A frame's position as PySceneDetect's OpenCV backend reports it (CAP_PROP_POS_MSEC, rounded to µs), which its
     /// scene lists and stats print: what <see cref="Stats.Csv"/> and the exports take.

@@ -365,6 +365,20 @@ public sealed record DetectionOptions
     public int? DecodeThreads { get; init; }
 
     /// <summary>
+    /// Detect a long local file on several cores at once, with exactly the result of a sequential run: chunks of it are
+    /// scored at the same time, each from one frame early, then the cut decisions run once over all scores. Half the CPUs,
+    /// at most 4 chunks, from 4 CPUs on and for files of two minutes or more (each chunk at least a minute). Only for
+    /// files decoded in-process, without a time range or frame skip and not MPEG-PS; anything a chunk can't reproduce
+    /// (a seek that lands late, dropped frames, a size change) makes it read the file sequentially instead,
+    /// from the start. <see cref="DetectedVideo.Chunks"/> says which ran. Shots then all come once the whole file is
+    /// scored, and memory grows by a decoder per chunk.
+    /// </summary>
+    public bool Parallel { get; init; }
+
+    /// <summary>With <see cref="Parallel"/>: this many chunks instead of the automatic count (tests, the CLI's hidden --chunks).</summary>
+    internal int? Chunks { get; init; }
+
+    /// <summary>
     /// Enables the yuv420p fast path: much faster on large video, same results. Use SwscaleYuv420
     /// from the ShotDetector.FastYuv package (LGPL).
     /// </summary>
@@ -799,6 +813,7 @@ public static class ShotDetection
                 activity.SetTag("shotdetector.pipeline", v.Pipeline.ToString());
                 activity.SetTag("shotdetector.decoder", v.DecodesInProcess ? "inprocess" : "process");
                 activity.SetTag("shotdetector.streaming", v.Streaming);
+                activity.SetTag("shotdetector.chunks", result.Video.Chunks);
                 activity.SetTag("shotdetector.frames", result.FrameCount);
                 activity.SetTag("shotdetector.shots", result.Shots.Count);
             }
@@ -913,7 +928,67 @@ public static class ShotDetection
 
         // A first report before any frame: which decoder and pipeline this run uses.
         o.Progress?.Report(Progress(0, Math.Max(0, video.ExpectedFrames - startFrame)));
-        foreach (var frame in video.Frames(startFrame, null, cancellationToken))
+
+        void Advance(int done)
+        {
+            int expected = Math.Max(0, video.ExpectedFrames - startFrame);
+            if (o.ProgressStep is { } progressStep)
+            {
+                // The steps crossed below 100 % (the last report is that); none when the count is unknown.
+                int reached = expected > 0 ? (int)Math.Floor(Math.Min(1.0, done / (double)expected) / progressStep + 1e-9) : 0;
+                if (reached > lastStep && reached * progressStep < 1 - 1e-9)
+                {
+                    o.Progress!.Report(Progress(done, expected));
+                    lastStep = reached;
+                }
+            }
+            else if (Environment.TickCount64 - lastReport >= 100)
+            {
+                o.Progress!.Report(Progress(done, expected));
+                lastReport = Environment.TickCount64;
+            }
+        }
+
+        // Parallel: the scores in chunks at once, then the decisions over them in frame order (docs/parallel-detection.md).
+        int chunks = o.Parallel && videoPath is not null && spilled is null && !video.Streaming && video.DecodesInProcess
+            && !video.PtsFromFrames && startFrame == 0 && endFrame is null && stride == 1
+            ? o.Chunks ?? AutoChunks(Environment.ProcessorCount, video.ExpectedFrames, video.Fps)
+            : 1;
+        var gate = new object();
+        int scoredFrames = 0;
+        var chunked = chunks > 1
+            ? ScoreChunked(videoPath!,
+                o,
+                video,
+                settings,
+                minSceneLen,
+                stats is not null,
+                chunks,
+                o.Progress is null ? null : () => { lock (gate) Advance(++scoredFrames); },
+                cancellationToken)
+            : null;
+        if (chunked is { } scored)
+        {
+            for (int k = 0; k < scored.Frames; k++)
+            {
+                for (int d = 0; d < detectors.Count; d++)
+                {
+                    if (detectors[d].Decide(k, scored.Metrics[d][k]) is { } cut)
+                        Cut(cut);
+                }
+            }
+
+            foreach (var chunkStats in scored.Stats)
+                stats?.Merge(chunkStats.Stats!, chunkStats.From, chunkStats.To);
+            frameCount = scored.Frames;
+        }
+        else
+        {
+            chunks = 1;
+            lastStep = 0; // a fallback reads from the start: its progress starts over
+        }
+
+        foreach (var frame in chunked is null ? video.Frames(startFrame, null, cancellationToken) : [])
         {
             int index = startFrame + frameCount;
             if (frameCount % stride == 0)
@@ -927,24 +1002,7 @@ public static class ShotDetection
 
             frameCount++;
             if (o.Progress is not null)
-            {
-                int expected = Math.Max(0, video.ExpectedFrames - startFrame);
-                if (o.ProgressStep is { } progressStep)
-                {
-                    // The steps crossed below 100 % (the last report is that); none when the count is unknown.
-                    int reached = expected > 0 ? (int)Math.Floor(Math.Min(1.0, frameCount / (double)expected) / progressStep + 1e-9) : 0;
-                    if (reached > lastStep && reached * progressStep < 1 - 1e-9)
-                    {
-                        o.Progress.Report(Progress(frameCount, expected));
-                        lastStep = reached;
-                    }
-                }
-                else if (Environment.TickCount64 - lastReport >= 100)
-                {
-                    o.Progress.Report(Progress(frameCount, expected));
-                    lastReport = Environment.TickCount64;
-                }
-            }
+                Advance(frameCount);
 
             // scenedetect analyses a frame, skips the next FrameSkip frames, then stops if the last
             // frame read plus one frame reaches the end (an end hit while skipping counts as EOF).
@@ -989,7 +1047,7 @@ public static class ShotDetection
         return new()
         {
             VideoPath = videoPath,
-            Video = new DetectedVideo(video),
+            Video = new DetectedVideo(video) { Chunks = chunks },
             Shots = shots,
             FrameCount = frameCount,
             MinSceneLengthFrames = minSceneLen,
@@ -1017,6 +1075,127 @@ public static class ShotDetection
         if (tone.Count > first && duration is { } d && tone[^1].End >= d - ends)
             o = o with { EndTime = Seconds(tone[^1].Start) };
         return o;
+    }
+
+    /// <summary>
+    /// <see cref="DetectionOptions.Parallel"/>'s chunk count: half the CPUs, at most 4, from 4 CPUs on (measured: 2 chunks
+    /// pay on 4 cores, more than 4 don't), and none shorter than a minute.
+    /// </summary>
+    internal static int AutoChunks(int cpus, int frames, Fps fps) =>
+        cpus < 4 ? 1 : Math.Max(1, Math.Min(Math.Min(4, cpus / 2), (int)(frames / (60 * fps.Value))));
+
+    /// <summary>
+    /// Each detector's per-frame metrics, scored in chunks of the file at once: each chunk on its own reader, from one
+    /// frame before its first (metrics compare with the previous frame) to one past its last, whose score must equal the
+    /// next chunk's for it. Every frame's position must be the probe's for its index (a seek that lands late, a dropped
+    /// frame), each chunk's first frame must have the first chunk's size (scenedetect's buffer keeps the stream's first
+    /// size), and nothing may fail: otherwise null, and the caller reads the video sequentially (which reports any real
+    /// error itself). Stats are per chunk, for its frames.
+    /// </summary>
+    static (List<double?>[] Metrics, int Frames, (Stats? Stats, int From, int To)[] Stats)? ScoreChunked(string path,
+        DetectionOptions o,
+        VideoReader video,
+        IReadOnlyList<DetectorSettings> settings,
+        int minSceneLen,
+        bool collectStats,
+        int chunks,
+        Action? onFrame,
+        CancellationToken cancellationToken)
+    {
+        using var activity = Tracing.StartActivity("ShotDetection.ScoreChunked");
+        int total = video.ExpectedFrames;
+
+        // The decoder threads shared out, so the total stays near a sequential run's.
+        var co = o with { DecodeThreads = Math.Max(1, (o.DecodeThreads ?? VideoReader.DefaultDecodeThreads(Environment.ProcessorCount)) / chunks) };
+        var metrics = new List<double?>[chunks, settings.Count];
+        var overlap = new double?[chunks, settings.Count];
+        var sizes = new (int, int)?[chunks];
+        var chunkStats = new Stats?[chunks];
+        var bounds = Enumerable.Range(0, chunks + 1).Select(i => (int)((long)total * i / chunks)).ToArray();
+        string? problem = null;
+        void Fail(string why) => Interlocked.CompareExchange(ref problem, why, null);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var tasks = Enumerable.Range(0, chunks).Select(i => Task.Factory.StartNew(() =>
+        {
+            int a = bounds[i], b = bounds[i + 1], from = Math.Max(0, a - 1), k = from;
+            bool last = i == chunks - 1;
+            try
+            {
+                var reader = new VideoReader(path, co, stop.Token);
+                chunkStats[i] = collectStats ? new Stats() : null;
+                var ds = settings.Select(st => Build(st, co, reader, minSceneLen, chunkStats[i])).ToList();
+                for (int d = 0; d < ds.Count; d++)
+                    metrics[i, d] = [];
+                foreach (var frame in reader.Frames(from, last ? null : b + 1 - from, stop.Token))
+                {
+                    sizes[i] ??= reader.FirstFrameSize;
+                    for (int d = 0; d < ds.Count; d++)
+                    {
+                        var m = ds[d].Metric(k, frame);
+                        if (k == b && !last)
+                            overlap[i, d] = m;
+                        else if (k >= a)
+                            metrics[i, d].Add(m);
+                    }
+
+                    if (k >= a && reader.Position(k).Key != video.Position(k).Key)
+                        Fail($"chunk {i}: frame {k} at {reader.Position(k).Seconds} s, expected {video.Position(k).Seconds} s");
+                    if (problem is not null)
+                    {
+                        stop.Cancel();
+                        return;
+                    }
+
+                    if (k >= a && (k < b || last))
+                        onFrame?.Invoke();
+                    k++;
+                }
+
+                if (!last && k != b + 1)
+                    Fail($"chunk {i}: {k - a} frames, expected {b + 1 - a}");
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+            } // another chunk's problem stopped this one
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                Fail($"chunk {i}: {e.Message}");
+                stop.Cancel();
+            }
+        },
+            stop.Token,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default)).ToArray();
+        try
+        {
+            Task.WaitAll(tasks);
+        }
+        catch (AggregateException e) when (e.InnerExceptions.All(x => x is OperationCanceledException))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        for (int i = 0; i + 1 < chunks && problem is null; i++)
+        {
+            if (sizes[i + 1] != sizes[0])
+                Fail($"chunk {i + 1}: frames of {sizes[i + 1]}, the first chunk's {sizes[0]}");
+            for (int d = 0; d < settings.Count; d++)
+            {
+                if (!Equals(overlap[i, d], metrics[i + 1, d].FirstOrDefault()))
+                    Fail($"chunk {i}: overlap score {overlap[i, d]} != {metrics[i + 1, d].FirstOrDefault()} at frame {bounds[i + 1]}");
+            }
+        }
+
+        if (problem is not null)
+        {
+            activity?.SetTag("shotdetector.chunks.fallback", problem);
+            return null;
+        }
+
+        var all = Enumerable.Range(0, settings.Count)
+            .Select(d => Enumerable.Range(0, chunks).SelectMany(i => metrics[i, d]).ToList())
+            .ToArray();
+        return (all, all[0].Count, [.. Enumerable.Range(0, chunks).Select(i => (chunkStats[i], bounds[i], i == chunks - 1 ? int.MaxValue : bounds[i + 1]))]);
     }
 
     static IDetector Build(DetectorSettings st, DetectionOptions o, VideoReader video, int minSceneLen, Stats? stats)

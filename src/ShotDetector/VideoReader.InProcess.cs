@@ -22,6 +22,12 @@ internal sealed partial class VideoReader
     bool _inProcessGaveNothing; // Auto, and the libraries decoded no frame of this video: the executable instead
     bool _ptsFromFrames;        // MPEG-PS and the like: packets without pts, timestamps from a decoding pass
 
+    /// <summary>MPEG-PS and the like: the packets carry no pts, so a seek decodes from the start.</summary>
+    internal bool PtsFromFrames => _ptsFromFrames;
+
+    /// <summary>The decoded size of the first frame Frames gave in-process (before rotation); null before then.</summary>
+    internal (int Width, int Height)? FirstFrameSize { get; private set; }
+
     /// <summary>Frames(startFrame, count) decoded in-process: the same bytes per pipeline as the ffmpeg pipe, then the same resize.</summary>
     IEnumerable<byte[]> FramesInProcess(int startFrame, int? count, CancellationToken cancellationToken, int seekBack)
     {
@@ -101,6 +107,7 @@ internal sealed partial class VideoReader
                     }
 
                     var buffer = free.Take(cancel.Token);
+                    FirstFrameSize ??= (decoder.Width, decoder.Height);
 
                     // A frame of another size than the stream's first: OpenCV scales it to that size inside its one
                     // conversion to BGR, which FastYuv's conversion at the stream's size can't reproduce. The core

@@ -31,13 +31,15 @@ internal sealed class HashDetector(
     public Stats? Stats { get; set; }
 
     /// <inheritdoc/>
-    public FrameTime? ProcessFrame(int frame, byte[] bgr)
+    public FrameTime? ProcessFrame(int frame, byte[] bgr) => Decide(frame, Metric(frame, bgr));
+
+    /// <inheritdoc/>
+    public double? Metric(int frame, byte[] bgr)
     {
-        _lastCut ??= frame;
         if (_width == 0)
             throw new InvalidOperationException("Call SetFrameSize first.");
         var hash = Hash(bgr);
-        FrameTime? cut = null;
+        double? normalized = null;
         if (_lastHash is not null)
         {
             int distance = 0;
@@ -47,17 +49,22 @@ internal sealed class HashDetector(
                     distance++;
             }
 
-            double normalized = distance / (double)(size * size);
-            Stats?.Set(frame, _key, normalized);
-            if (normalized >= threshold && position(frame).Minus(position(_lastCut.Value)).FrameNum >= minSceneLen)
-            {
-                cut = position(frame);
-                _lastCut = frame;
-            }
+            normalized = distance / (double)(size * size);
+            Stats?.Set(frame, _key, normalized.Value);
         }
 
         _lastHash = hash;
-        return cut;
+        return normalized;
+    }
+
+    /// <inheritdoc/>
+    public FrameTime? Decide(int frame, double? metric)
+    {
+        _lastCut ??= frame;
+        if (metric is not { } normalized || !(normalized >= threshold && position(frame).Minus(position(_lastCut.Value)).FrameNum >= minSceneLen))
+            return null;
+        _lastCut = frame;
+        return position(frame);
     }
 
     /// <summary>The frames' size, needed to shrink them.</summary>
