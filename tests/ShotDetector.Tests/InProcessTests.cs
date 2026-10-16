@@ -477,6 +477,82 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // A rotated video whose frames grow mid-stream (a larger second encode joined on): every frame is turned at the
+    // first frame's size, which the converter keeps, as through the executable. Turning at the current frame's size read
+    // past the converter's buffer.
+    [Fact]
+    public void RotatedVideoGrowingMidStream()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetector-rot-grow-").FullName;
+        try
+        {
+            string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts"), rotated = Path.Combine(dir, "rotated.mov");
+            string[] h264 = ["-c:v", "libx264", "-bf", "0", "-bsf:v", "h264_mp4toannexb", "-muxdelay", "0", "-muxpreload", "0"];
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-frames:v", "100", .. h264, a], default);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "4", "-i", clips.ThreeShots, "-vf", "scale=640:480", .. h264, "-output_ts_offset", "4", b], default);
+            File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-display_rotation", "90", "-i", joined, "-c", "copy", rotated], default);
+            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess };
+            var pipe = ShotDetection.Detect(rotated, options);
+            var inProcess = ShotDetection.Detect(rotated, options with { Decoder = VideoDecoder.InProcess });
+            Assert.True(inProcess.Video.DecodedInProcess);
+            Assert.Equal(pipe.Stats!.Csv(pipe.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // Row-wise deinterlacing (Yadif) reads each frame at the first frame's size: an interlaced stream that shrinks
+    // mid-way is an error, not a read past the smaller frame.
+    [Fact]
+    public void RowDeinterlacingRefusesAShrinkingStream()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetector-yadif-shrink-").FullName;
+        try
+        {
+            string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts");
+            string[] mpeg2 = ["-c:v", "mpeg2video", "-flags", "+ilme+ildct", "-muxdelay", "0", "-muxpreload", "0"];
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.Interlaced, "-t", "1", .. mpeg2, a], default);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "1", "-i", clips.Interlaced, "-t", "1", "-vf", "scale=iw:ih/2,setfield=tff", .. mpeg2, "-output_ts_offset", "1", b], default);
+            File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
+            var options = new DetectionOptions { Detector = DetectorKind.Content, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
+            Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(joined, options));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // A stream claiming frames over the cap (8192 x 8192) fails at the probe, before any buffer is sized from it.
+    [Theory]
+    [InlineData(VideoDecoder.InProcess)]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    public void FramesOverTheSizeCapFailAtTheProbe(VideoDecoder decoder)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetector-huge-").FullName;
+        try
+        {
+            string huge = Path.Combine(dir, "huge.mkv");
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=s=8200x8200:d=0.04", "-pix_fmt", "gray", "-c:v", "png", huge], default);
+            var e = Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(huge, new DetectionOptions { FfmpegDirectory = Libs, Decoder = decoder }));
+            Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
+            Assert.Contains("8192", e.Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // VideoInfo.Streams: every stream with type, codec, tag, language, title, flags, bit rate, duration and audio details,
     // the same in-process as from ffprobe (issue #81).
     [Theory]

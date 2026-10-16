@@ -534,9 +534,15 @@ public sealed unsafe class FrameDecoder : IDisposable
         return true;
     }
 
+    // Row-wise deinterlacing reads the first frame's rows (_frame's size) from each of the three.
+    bool SameAsFirst(AVFrame* f) => f->width == _frame->width && f->height == _frame->height && f->format == _frame->format;
+
     /// <summary>Starts output frame i (prev, cur, next): its properties now, its rows when asked for.</summary>
     void Output(AVFrame* prev, AVFrame* cur, AVFrame* next)
     {
+        if (!SameAsFirst(prev) || !SameAsFirst(cur) || !SameAsFirst(next))
+            throw new FrameReaderException(FrameReaderError.DecodeFailed, "Deinterlacing: the frame size changed mid-stream.");
+
         for (int p = 0; p < _rPlanes; p++)
         {
             if (prev->linesize[(uint)p] != cur->linesize[(uint)p] || next->linesize[(uint)p] != cur->linesize[(uint)p])

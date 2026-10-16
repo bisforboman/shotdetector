@@ -357,7 +357,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - HLS segments over https with the certificate checked: in-process, wrap the format context's io_open to add tls_verify=1 to every nested open
   - Why: FFmpeg's HLS opens segments, keys and variant playlists with a fixed option list (ffio_copy_url_options) that leaves tls_verify out, so they're read unchecked even when the playlist was checked (2026-10-16, source and a local run); the executable path has no such hook
-  - Status: Open
+  - Status: Done (2026-10-16): Demuxer wraps io_open in-process (unless InputOptions set tls_verify=0 or a ca_file); the executable path still has no hook
 
 - URLs in-process: network protocols (and TLS for https) in our FFmpeg build
   - Why: URLs are the last input on the executable; TLS means another linked library (licence, updates)
@@ -628,6 +628,10 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - ShotDetector 2.2.1: the ShotDetector.Native aliases' minimum to FrameReader.Native 2.2.1, the CLI binaries rebuilt
   - Why: The musl fix (#278) is in FrameReader.Native 2.2.1, but the aliases resolve to 2.2.0 (NuGet takes the lowest allowed) and the CLI's Alpine binary bundles 2.2.0's libraries (it falls back to the executable there)
   - Status: Done (2026-10-14): released as 2.2.1
+
+- release.yml: the tests in a job of their own (read-only permissions), so the publishing job never runs a third-party binary
+  - Why: The release job runs `dotnet test` with BtbN's ffmpeg (latest, unpinned) while it holds id-token: write (NuGet trusted publishing) and contents: write; a compromised build could tamper with the packages or take the token (security review, 2026-10-16, docs/decisions/2026-10-16-security-review-fixes.md)
+  - Status: Open
 
 - Deprecate the ShotDetector.Native 2.x packages on nuget.org, FrameReader.Native as the alternative
   - Why: 3.0 stopped publishing them; deprecation makes NuGet warn whoever still references them. Done on nuget.org by the user: steps in [deprecate-shotdetector-native.md](deprecate-shotdetector-native.md)

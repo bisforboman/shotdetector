@@ -47,7 +47,10 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : I
             return bgr;
         }
 
-        int w = _d.Width, h = _d.Height, ow = _turn == 180 ? w : h, oh = _turn == 180 ? h : w;
+        // The converter scales every frame to the first one's size (KeepFirstSize): read it at that size, not at the
+        // current frame's, which a stream changing size mid-way would make larger than the buffer.
+        _ = HasFirstSize;
+        int w = _firstWidth, h = _firstHeight, ow = _turn == 180 ? w : h, oh = _turn == 180 ? h : w;
         if (_turned.Length != ow * oh * 3)
             _turned = new byte[ow * oh * 3];
         fixed (byte* src = bgr)
