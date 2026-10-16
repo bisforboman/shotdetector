@@ -23,6 +23,8 @@ URLs over http (https on Windows), cancellable and time-limited network reads, r
 - `FrameDecoderOptions`, `AudioReaderOptions` and `ProbeOptions` take a `CancellationToken` that also stops a read
   FFmpeg waits in, such as a stalled network read (FFmpeg's interrupt callback); `Remux.Copy`'s token does too. A
   cancelled read is an `OperationCanceledException`.
+- FrameReader.Native packages carry `sbom.spdx.json`, an SPDX 2.3 SBOM of the FFmpeg build (FFmpeg, zlib, dav1d and
+  LAME: versions, sources, SHA-256, licences and CPEs), and so do the `shotdetect` release archives.
 
 ### Fixed
 
