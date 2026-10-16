@@ -6,6 +6,38 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.2.0 – 2026-10-16
+
+Parallel detection of long files (opt-in), URLs decoded in-process, inputs that read only what they need, a frame size cap and an MPEG-TS start-time fix.
+
+### New
+
+- Parallel detection of long files: `DetectionOptions.Parallel` (CLI `--parallel`) scores chunks of a local file on
+  several cores at once, with exactly the sequential result: the same cuts, scene list, stats and timecodes. Half the
+  CPUs, at most 4 chunks, from 4 CPUs on and for files of two minutes or more. Measured on films: 1.5-2.3x faster on
+  16 threads, 1.1-1.6x on 4-CPU runners, with the same CPU time. Anything a chunk can't reproduce (a seek that lands
+  late, dropped frames, a size change) reads the file sequentially instead; `DetectedVideo.Chunks` says which
+  ran. In-process decoding of files only; streams, URLs, a time range, frame skip and MPEG-PS read sequentially.
+- URLs decode in-process when FFmpeg's libraries have the URL's protocol (`Auto`, or `InProcess`): with
+  FrameReader.Native, http everywhere and https on Windows. Faster, and no ffmpeg executable needed for them; other URLs
+  use the executable as before. The results are the same either way.
+- URL inputs read only their own family of protocols, with the executable and in-process alike (http(s) URLs: http,
+  https, tcp, tls, crypto; rtsp: rtsp, rtp, udp, tcp, tls): a second layer over FFmpeg's own checks, which already keep
+  a remote playlist from reaching local files.
+
+### Fixed
+
+- An input path reads as a file only (FFmpeg's `protocol_whitelist=file,crypto`, with the executable and in-process): an
+  FFmpeg pseudo-protocol string passed as a path, such as `concat:a.mp4|b.mp4` or `subfile:...`, is refused rather than
+  interpreted. Network URLs (`scheme://host`) are unaffected.
+- A start time (`StartTime`, `-s`) in an MPEG-TS file lost frames: the seek, which in a file without an index can
+  land after the wanted frame (at the next keyframe, up to a GOP late, or past the last one: no frames at all), now
+  starts over from further back when it does, on both decoders. The results match scenedetect's again.
+- A video whose frames are larger than 8192 x 8192 pixels fails to decode (`InvalidInput`/`DecodeFailed`), with the
+  executable and in-process, so a crafted file can't exhaust memory. No real video comes near it.
+- An http(s) URL that stops sending fails after 30 s instead of waiting forever (FFmpeg's `rw_timeout`, with the
+  executable and in-process), and cancellation stops an in-process read that waits on the network.
+
 ## 3.1.0 – 2026-10-15
 
 save-images quality and compression, the crop as corners, and the time options as TimeSpans.
