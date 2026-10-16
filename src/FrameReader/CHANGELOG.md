@@ -32,6 +32,10 @@ URLs over http (https on Windows), cancellable and time-limited network reads, r
   `Stream` that throws, an I/O error) ended the input as if it were over, giving a silently shortened result; it's a
   `FrameReaderException` (`DecodeFailed`) now, with the stream's exception inside. A truncated or damaged file still
   ends where its data does, as in OpenCV.
+- An https URL's server certificate is checked: FFmpeg 8 doesn't by default, so a self-signed or forged one was
+  accepted (with any FFmpeg build that has TLS; FrameReader.Native's https, new here, checks from the start).
+  `tls_verify=0` in `InputOptions` turns the check off. The segments an HLS playlist names are still opened without it (FFmpeg doesn't
+  pass the option on).
 
 ## 2.3.0 – 2026-10-14
 
