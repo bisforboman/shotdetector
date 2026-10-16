@@ -199,7 +199,7 @@ public static partial class Export
             File.WriteAllText(filterFile,
                 $"select='{string.Join("+", frames.Select(f => $"eq(n\\,{f})"))}',scale='round(iw*sar)':ih,setsar=1{io.ScaleFilter()}");
             VideoReader.Run(video.FfmpegExe,
-                ["-v", "error", "-nostdin", "-y", .. VideoReader.UrlOptions(videoPath), "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
+                ["-v", "error", "-nostdin", "-y", .. VideoReader.InputOptions(videoPath), "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
                     "-fps_mode", "passthrough", .. quality, Path.Combine(temp, $"%06d.{io.Format}")],
                 cancellationToken,
                 failure: ShotDetectionError.ExportFailed);
@@ -281,7 +281,7 @@ public static partial class Export
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
             VideoReader.Run(video.FfmpegExe,
                 ["-v", "error", "-nostdin", "-y",
-                    "-ss", Stats.PyFloat(start.Seconds), .. VideoReader.UrlOptions(videoPath), "-i", videoPath, "-t", Stats.PyFloat(end.Minus(start).Seconds),
+                    "-ss", Stats.PyFloat(start.Seconds), .. VideoReader.InputOptions(videoPath), "-i", videoPath, "-t", Stats.PyFloat(end.Minus(start).Seconds),
                     .. codecArgs, "-sn", file],
                 cancellationToken,
                 failure: ShotDetectionError.ExportFailed);
