@@ -69,6 +69,15 @@ internal static unsafe class Demuxer
             ffmpeg.av_dict_set(&options, "ca_file", bundle, ffmpeg.AV_DICT_DONT_OVERWRITE);
         foreach (var (name, value) in inputOptions ?? new Dictionary<string, string>())
             ffmpeg.av_dict_set(&options, name, value, 0);
+
+        // The URLs the input opens itself (an HLS playlist's segments, keys and variants) are checked too, unless the
+        // caller chose (tls_verify or ca_file in InputOptions, which FFmpeg wouldn't pass on to them either).
+        if (inputOptions is null || !inputOptions.Keys.Any(k => k is "tls_verify" or "verify" or "ca_file" or "cafile"))
+        {
+            _defaultIoOpen = fmt->io_open;
+            fmt->io_open = NestedOpen;
+        }
+
         int ret = ffmpeg.avformat_open_input(&fmt, path, null, &options);
         ffmpeg.av_dict_free(&options);
         if (ret < 0)
@@ -100,6 +109,31 @@ internal static unsafe class Demuxer
         if (cancel != 0)
             GCHandle.FromIntPtr(cancel).Free();
     }
+
+    // FFmpeg's own io_open (the same for every context), which NestedOpen calls.
+    static AVFormatContext_io_open_func _defaultIoOpen;
+
+    // Every URL the input opens after the first: FFmpeg's demuxers pass on only a fixed set of options to them
+    // (ffio_copy_url_options: headers, cookies, rw_timeout...), without tls_verify, so https segments went unchecked.
+    // Static, so it's never collected.
+    static readonly AVFormatContext_io_open NestedOpen = (s, pb, url, flags, options) =>
+    {
+        AVDictionary* local = null;
+        AVDictionary** opts = options != null ? options : &local;
+        ffmpeg.av_dict_set(opts, "tls_verify", "1", ffmpeg.AV_DICT_DONT_OVERWRITE);
+        if (CaBundle is { } bundle)
+            ffmpeg.av_dict_set(opts, "ca_file", bundle, ffmpeg.AV_DICT_DONT_OVERWRITE);
+        nint utf8 = Marshal.StringToCoTaskMemUTF8(url);   // FFmpeg.AutoGen gave it as a string
+        try
+        {
+            return ((delegate* unmanaged[Cdecl]<AVFormatContext*, AVIOContext**, byte*, int, AVDictionary**, int>)_defaultIoOpen.Pointer)(s, pb, (byte*)utf8, flags, opts);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(utf8);
+            ffmpeg.av_dict_free(&local);
+        }
+    };
 
     // FFmpeg asks this while it waits; non-zero stops the wait (AVERROR_EXIT). Static, so it's never collected.
     static readonly AVIOInterruptCB_callback Interrupted = opaque =>

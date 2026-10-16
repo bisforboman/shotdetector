@@ -258,6 +258,72 @@ public class FrameDecoderTests
         }
     }
 
+    // The segments an HLS playlist names are checked too: FFmpeg doesn't pass tls_verify on to them, so FrameReader
+    // adds it to every URL the input opens. A playlist over http naming a segment on a self-signed https server reads
+    // nothing by default, and the whole segment with tls_verify=0 (which leaves FFmpeg's own opening alone).
+    [Fact]
+    public void HlsSegmentsOverHttpsAreChecked()
+    {
+        if (Libs is null || !FFmpegLibraries.HasProtocol("https"))
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-dec-").FullName;
+        var segments = new SelfSignedHttpsServer(dir, "seg.ts");
+        var listener = new System.Net.HttpListener();
+        try
+        {
+            byte[] playlist = System.Text.Encoding.ASCII.GetBytes(
+                $"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:1\n#EXTINF:1.0,\nhttps://localhost:{segments.Port}/seg.ts\n#EXT-X-ENDLIST\n");
+            int port = Random.Shared.Next(20000, 60000);
+            listener.Prefixes.Add($"http://localhost:{port}/");
+            listener.Start();
+            _ = Task.Run(async () =>
+            {
+                while (listener.IsListening)
+                {
+                    try
+                    {
+                        var ctx = await listener.GetContextAsync();
+                        ctx.Response.ContentType = "application/vnd.apple.mpegurl";
+                        ctx.Response.ContentLength64 = playlist.Length;
+                        await ctx.Response.OutputStream.WriteAsync(playlist);
+                        ctx.Response.Close();
+                    }
+                    catch (Exception e) when (e is System.Net.HttpListenerException or ObjectDisposedException or InvalidOperationException)
+                    {
+                        return;
+                    }
+                }
+            });
+            string url = $"http://localhost:{port}/play.m3u8";
+
+            Assert.Equal(0, Frames(url, null));
+            Assert.Equal(25, Frames(url, new Dictionary<string, string> { ["tls_verify"] = "0" }));
+        }
+        finally
+        {
+            listener.Close();
+            segments.Dispose();
+            Directory.Delete(dir, true);
+        }
+
+        // Frames decoded; 0 when opening fails (no segment read: no stream to find).
+        static int Frames(string url, Dictionary<string, string>? options)
+        {
+            try
+            {
+                using var decoder = new FrameDecoder(url, new FrameDecoderOptions { InputOptions = options });
+                int n = 0;
+                while (decoder.Next())
+                    n++;
+                return n;
+            }
+            catch (FrameReaderException)
+            {
+                return 0;
+            }
+        }
+    }
+
     /// <summary>A clip over https (TLS on a TcpListener) with a self-signed certificate for localhost; byte ranges too.</summary>
     sealed class SelfSignedHttpsServer : IDisposable
     {
@@ -265,9 +331,9 @@ public class FrameDecoderTests
         readonly System.Security.Cryptography.X509Certificates.X509Certificate2 _cert;
         readonly byte[] _bytes;
 
-        public SelfSignedHttpsServer(string dir)
+        public SelfSignedHttpsServer(string dir, string name = "clip.mkv")
         {
-            string path = Path.Combine(dir, "clip.mkv");
+            string path = Path.Combine(dir, name);
             TestMedia.Write(path, new TestMediaOptions { Video = ["testsrc2=d=1"], VideoEncoder = "mpeg4" });
             _bytes = File.ReadAllBytes(path);
             using var key = System.Security.Cryptography.RSA.Create(2048);

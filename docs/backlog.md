@@ -357,7 +357,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - HLS segments over https with the certificate checked: in-process, wrap the format context's io_open to add tls_verify=1 to every nested open
   - Why: FFmpeg's HLS opens segments, keys and variant playlists with a fixed option list (ffio_copy_url_options) that leaves tls_verify out, so they're read unchecked even when the playlist was checked (2026-10-16, source and a local run); the executable path has no such hook
-  - Status: Open
+  - Status: Done (2026-10-16): Demuxer wraps io_open in-process (unless InputOptions set tls_verify or ca_file); the executable path still has no hook
 
 - URLs in-process: network protocols (and TLS for https) in our FFmpeg build
   - Why: URLs are the last input on the executable; TLS means another linked library (licence, updates)
