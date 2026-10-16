@@ -7,6 +7,27 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.5.0 – 2026-10-16
+
+https on Linux (OpenSSL) and macOS, certificates checked for HLS segments too, and fixes from a security review.
+
+### New
+
+- FrameReader.Native reads https on Linux and macOS too: OpenSSL 3.5 linked in on Linux (Apache-2.0,
+  `COPYING.openssl`; FrameReader passes the system's certificate bundle as `ca_file` unless `SSL_CERT_FILE` is set),
+  macOS's own TLS (Secure Transport). The server's certificate is checked on every platform.
+
+### Fixed
+
+- The segments, keys and variant playlists an HLS playlist names are opened with the server's certificate checked
+  too: FFmpeg passes only a fixed set of options on to them, without `tls_verify`, so a playlist naming https
+  segments read them unchecked. `tls_verify=0` or a `ca_file` of your own in `InputOptions` leave them as FFmpeg opens
+  them.
+- Row-wise deinterlacing (a `RowDeinterlacer`) read past a frame when an interlaced stream got smaller mid-way, which
+  could crash the process; that's a `FrameReaderException` now.
+- `FFmpegLibraries.Load()` on Windows: the system's places are PATH's folders, by full path; the libraries were
+  loaded by bare name, which also searched the current folder first, so DLLs someone put there could load.
+
 ## 2.4.0 – 2026-10-16
 
 URLs over http (https on Windows), cancellable and time-limited network reads, read errors reported instead of a shortened result, a frame size cap and a hardened Linux build.
