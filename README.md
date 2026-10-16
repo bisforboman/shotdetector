@@ -356,8 +356,8 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
 
 - **No shell.** ffmpeg and ffprobe are started with an argument list, never through a shell, so quotes, `;` or `$(...)`
   in a file name stay part of the name.
-- **Inputs are FFmpeg's.** A path or URL is opened by FFmpeg, which reads prefixes such as `concat:` or `subfile:`, and a
-  remote playlist (HLS) names further URLs. FFmpeg's own checks keep a remote playlist from reaching local files; on
+- **Inputs are FFmpeg's.** A path or URL is opened by FFmpeg. A path reads as a file only: FFmpeg's pseudo-protocol
+  strings (`concat:`, `subfile:`, `data:`...) are refused. A remote playlist (HLS) names further URLs. FFmpeg's own checks keep a remote playlist from reaching local files; on
   top, an http(s) URL here reads only http, https, tcp, tls and crypto (rtsp: rtsp, rtp, udp, tcp, tls), by the
   executable and in-process alike, and a read that waits more than 30 s fails (cancellation stops it sooner). A
   playlist can still

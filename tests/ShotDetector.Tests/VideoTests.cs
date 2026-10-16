@@ -445,6 +445,19 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // A file reads as a file: an FFmpeg pseudo-protocol string (concat:) that plain ffprobe opens is refused, by the
+    // executable and in-process.
+    [Fact]
+    public void PseudoProtocolInputsAreRefused()
+    {
+        string input = $"concat:{clips.ThreeShotsMpegPs}|{clips.ThreeShotsMpegPs}";
+        Assert.Contains("video", VideoReader.Run("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", input], default));
+        var e = Assert.ThrowsAny<ShotDetectionException>(() => ShotDetection.Detect(input, new() { Decoder = VideoDecoder.FfmpegProcess }));
+        Assert.Contains("not on whitelist", e.Message);
+        if (Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS") is { } libs)
+            Assert.ThrowsAny<ShotDetectionException>(() => ShotDetection.Detect(input, new() { FfmpegDirectory = libs, Decoder = VideoDecoder.InProcess }));
+    }
+
     /// <summary>The files of a folder over http on localhost, a request at a time each, with byte ranges.</summary>
     sealed class FileServer : IDisposable
     {
