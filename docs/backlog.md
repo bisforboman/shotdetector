@@ -219,6 +219,22 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: The copy was 5-13% of the CPU (profiled with dotnet-trace); pinned to 2 CPUs, CPU -16% on 480p and -5% on 1080p; byte-identical on all samples
   - Status: Done (2026-10-13)
 
+- Resize: the horizontal pass (CvResize.HResize) off the critical path, and source rows resized once
+  - Why: A performance review (2026-10-16) found in-process detection bound by the decoding thread's own work, not decoding: the consumer waits 80-90% of the time, and the horizontal resize pass is 116 of 129 us per frame at 1280x534 (measured). Row reuse (OpenCV keeps the row it resized as the next row's first) is done; an AVX2 gather version measured no faster on Zen 3 (this desktop, and CI's EPYC 7763), so the rest is moving the resize to the idle consumer thread
+  - Status: In progress (2026-10-16): row reuse done (426x240 -15%, upscaling -41% per frame, bit-identical)
+
+- Edges (--stats, edge weights): Sobel, dilate and non-maximum suppression in row bands across threads, then SIMD (integer math)
+  - Why: Stats runs measured 2.2-3.5x slower than plain detection (EdgeDetector about 440-620 us per frame, scalar); the scoring thread is mostly idle (performance review 2026-10-16)
+  - Status: Open
+
+- Conversion (BgrConverter) off the decoding thread: av_frame_ref'd frames to converter threads, order restored
+  - Why: 148 us per frame at 1280x534, serial with decoding (measured); after the resize move, large frames would be decode-bound; costs a decoded frame of memory per worker
+  - Status: Open
+
+- Frame handoff in batches (or a single-producer ring) instead of BlockingCollection per frame
+  - Why: Take/Add cost 30-40 us per frame on the producer in a trace, about 20% of its time on SD (estimated gain 5-10% once the resize moves)
+  - Status: Open
+
 ## 3. Toward 1.0
 
 - API freeze review: detectors/ContentScorer/EdgeDetector internal, VideoReader trimmed, FrameTime raw fields hidden, DetectAsync (docs/decisions/)
