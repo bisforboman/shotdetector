@@ -1,3 +1,7 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+
 namespace ShotDetector;
 
 /// <summary>
@@ -12,8 +16,13 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
     public int KernelSize { get; } = kernelSize ?? EstimatedKernelSize(width, height);
 
     readonly short[] _dx = new short[width * height], _dy = new short[width * height];
-    readonly int[] _mag = new int[width * height];
+
+    // The magnitudes with a border of zeros (a pixel outside the image has magnitude 0 to the suppression).
+    readonly int[] _mag = new int[(width + 2) * (height + 2)];
     readonly byte[] _map = new byte[width * height], _canny = new byte[width * height], _rowMax = new byte[width * height];
+
+    // One row with a border of zeros either side, for the dilation's window.
+    readonly byte[] _padded = new byte[width + 2 * (kernelSize ?? EstimatedKernelSize(width, height))];
     readonly Stack<int> _stack = new();
 
     /// <summary>_estimated_kernel_size: 4 + round(sqrt(w * h) / 192), made odd.</summary>
@@ -61,31 +70,31 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
         int w = width, h = height;
 
         // 3x3 Sobel (CV_16S) with BORDER_REPLICATE, and the L1 magnitude.
+        int pw = w + 2;
         for (int y = 0; y < h; y++)
         {
             int up = Math.Max(y - 1, 0) * w, mid = y * w, down = Math.Min(y + 1, h - 1) * w;
-            for (int x = 0; x < w; x++)
-            {
-                int l = Math.Max(x - 1, 0), r = Math.Min(x + 1, w - 1);
-                int dx = (src[up + r] + 2 * src[mid + r] + src[down + r]) - (src[up + l] + 2 * src[mid + l] + src[down + l]);
-                int dy = (src[down + l] + 2 * src[down + x] + src[down + r]) - (src[up + l] + 2 * src[up + x] + src[up + r]);
-                _dx[mid + x] = (short)dx;
-                _dy[mid + x] = (short)dy;
-                _mag[mid + x] = Math.Abs(dx) + Math.Abs(dy);
-            }
+
+            // The interior 8 at a time where it can; the rest, and column 0, one at a time.
+            bool vector = Vector128.IsHardwareAccelerated && w >= 10;
+            int x = vector ? SobelRow(src, up, mid, down, w, y) : 0;
+            for (; x < w; x++)
+                SobelPixel(src, up, mid, down, w, x, y);
+            if (vector)
+                SobelPixel(src, up, mid, down, w, 0, y);
         }
 
         // Non-maximum suppression along the gradient direction, using OpenCV's fixed-point tangent
         // test. Neighbours outside the image have magnitude 0. Map: 0 = no, 1 = weak, 2 = edge.
         const int shift = 15;
         const int tg22 = 13573; // (int)(tan(22.5°) * (1 << 15) + 0.5)
-        int Mag(int x, int y) => x < 0 || x >= w || y < 0 || y >= h ? 0 : _mag[y * w + x];
+        int Mag(int x, int y) => _mag[(y + 1) * pw + x + 1];
         _stack.Clear();
         for (int y = 0; y < h; y++)
         {
             for (int x = 0; x < w; x++)
             {
-                int i = y * w + x, m = _mag[i];
+                int i = y * w + x, m = _mag[(y + 1) * pw + x + 1];
                 _map[i] = 0;
                 if (m <= low)
                     continue;
@@ -146,27 +155,96 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
     /// <summary>cv2.dilate with a k×k square of ones: the maximum over the window, ignoring pixels outside.</summary>
     internal void Dilate(ReadOnlySpan<byte> src, Span<byte> edges)
     {
-        int w = width, h = height, r = KernelSize / 2;
+        // Pixels outside are left out of the maximum, which is what zeros give (bytes are never below 0).
+        int w = width, h = height, r = KernelSize / 2, k = 2 * r + 1;
+        var padded = _padded.AsSpan(0, w + 2 * r);
         for (int y = 0; y < h; y++)
         {
-            for (int x = 0; x < w; x++)
-            {
-                byte max = 0;
-                for (int k = Math.Max(x - r, 0); k <= Math.Min(x + r, w - 1) && max < 255; k++)
-                    max = Math.Max(max, src[y * w + k]);
-                _rowMax[y * w + x] = max;
-            }
+            src.Slice(y * w, w).CopyTo(padded[r..]);
+            WindowMax(padded, k, _rowMax.AsSpan(y * w, w));
         }
 
         for (int y = 0; y < h; y++)
         {
-            for (int x = 0; x < w; x++)
-            {
-                byte max = 0;
-                for (int k = Math.Max(y - r, 0); k <= Math.Min(y + r, h - 1) && max < 255; k++)
-                    max = Math.Max(max, _rowMax[k * w + x]);
-                edges[y * w + x] = max;
-            }
+            var row = edges.Slice(y * w, w);
+            int y0 = Math.Max(y - r, 0), y1 = Math.Min(y + r, h - 1);
+            _rowMax.AsSpan(y0 * w, w).CopyTo(row);
+            for (int yy = y0 + 1; yy <= y1; yy++)
+                Max(row, _rowMax.AsSpan(yy * w, w));
         }
     }
+
+    /// <summary>output[x] = the maximum of padded[x .. x + k - 1].</summary>
+    static void WindowMax(ReadOnlySpan<byte> padded, int k, Span<byte> output)
+    {
+        padded[..output.Length].CopyTo(output);
+        for (int j = 1; j < k; j++)
+            Max(output, padded.Slice(j, output.Length));
+    }
+
+    /// <summary>a[i] = max(a[i], b[i]), 16 at a time.</summary>
+    static void Max(Span<byte> a, ReadOnlySpan<byte> b)
+    {
+        int i = 0;
+        ref byte ra = ref MemoryMarshal.GetReference(a);
+        ref byte rb = ref MemoryMarshal.GetReference(b);
+        if (Vector128.IsHardwareAccelerated)
+        {
+            for (; i <= a.Length - 16; i += 16)
+                Vector128.Max(Vector128.LoadUnsafe(ref ra, (nuint)i), Vector128.LoadUnsafe(ref rb, (nuint)i)).StoreUnsafe(ref ra, (nuint)i);
+        }
+
+        for (; i < a.Length; i++)
+            Unsafe.Add(ref ra, i) = Math.Max(Unsafe.Add(ref ra, i), Unsafe.Add(ref rb, i));
+    }
+
+    /// <summary>One pixel's Sobel derivatives and magnitude, its neighbours replicated at the border.</summary>
+    void SobelPixel(ReadOnlySpan<byte> src, int up, int mid, int down, int w, int x, int y)
+    {
+        int l = Math.Max(x - 1, 0), r = Math.Min(x + 1, w - 1);
+        int dx = (src[up + r] + 2 * src[mid + r] + src[down + r]) - (src[up + l] + 2 * src[mid + l] + src[down + l]);
+        int dy = (src[down + l] + 2 * src[down + x] + src[down + r]) - (src[up + l] + 2 * src[up + x] + src[up + r]);
+        _dx[mid + x] = (short)dx;
+        _dy[mid + x] = (short)dy;
+        _mag[(y + 1) * (w + 2) + x + 1] = Math.Abs(dx) + Math.Abs(dy);
+    }
+
+    /// <summary>
+    /// A row's interior (x from 1, while x + 8 &lt;= w - 1) 8 pixels at a time, in 16-bit words: the derivatives are
+    /// at most 4 * 255 either way and the magnitude 8 * 255, so nothing overflows. Returns where it stopped.
+    /// </summary>
+    int SobelRow(ReadOnlySpan<byte> src, int up, int mid, int down, int w, int y)
+    {
+        ref byte s = ref MemoryMarshal.GetReference(src);
+        ref short rdx = ref _dx[0];
+        ref short rdy = ref _dy[0];
+        ref int rmag = ref _mag[0];
+        int magRow = (y + 1) * (w + 2) + 1;
+        int x = 1;
+        for (; x + 8 <= w - 1; x += 8)
+        {
+            var ul = Load8(ref s, up + x - 1);
+            var uc = Load8(ref s, up + x);
+            var ur = Load8(ref s, up + x + 1);
+            var ml = Load8(ref s, mid + x - 1);
+            var mr = Load8(ref s, mid + x + 1);
+            var dl = Load8(ref s, down + x - 1);
+            var dc = Load8(ref s, down + x);
+            var dr = Load8(ref s, down + x + 1);
+            var dx = (ur + mr + mr + dr) - (ul + ml + ml + dl);
+            var dy = (dl + dc + dc + dr) - (ul + uc + uc + ur);
+            dx.StoreUnsafe(ref rdx, (nuint)(mid + x));
+            dy.StoreUnsafe(ref rdy, (nuint)(mid + x));
+            var mag = Vector128.Abs(dx) + Vector128.Abs(dy);
+            var (lo, hi) = Vector128.Widen(mag);
+            lo.StoreUnsafe(ref rmag, (nuint)(magRow + x));
+            hi.StoreUnsafe(ref rmag, (nuint)(magRow + x + 4));
+        }
+
+        return x;
+    }
+
+    /// <summary>The 8 bytes at <paramref name="at"/> as 16-bit words (reads those 8 only).</summary>
+    static Vector128<short> Load8(ref byte s, int at) =>
+        Vector128.WidenLower(Vector128.CreateScalarUnsafe(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, at))).AsByte()).AsInt16();
 }
