@@ -226,6 +226,119 @@ public class FrameDecoderTests
         }
     }
 
+    // https checks the server's certificate: one nobody vouches for (self-signed) is refused, so whoever sits between
+    // client and server can't hand it another video. FFmpeg 8 doesn't check by default (tls_verify 0 until libavformat
+    // 63); tls_verify=0 in InputOptions still turns it off, which also shows the server serves the clip.
+    [Fact]
+    public void HttpsRefusesAnUntrustedCertificate()
+    {
+        if (Libs is null || !FFmpegLibraries.HasProtocol("https"))
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-dec-").FullName;
+        var server = new SelfSignedHttpsServer(dir);
+        try
+        {
+            string url = $"https://localhost:{server.Port}/clip.mkv";
+            var refused = Assert.Throws<FrameReaderException>(() => new FrameDecoder(url).Dispose());
+            Assert.Equal(FrameReaderError.InvalidInput, refused.Reason);
+
+            int frames = 0;
+            using (var decoder = new FrameDecoder(url, new FrameDecoderOptions { InputOptions = new Dictionary<string, string> { ["tls_verify"] = "0" } }))
+            {
+                while (decoder.Next())
+                    frames++;
+            }
+
+            Assert.Equal(25, frames);
+        }
+        finally
+        {
+            server.Dispose();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    /// <summary>A clip over https (TLS on a TcpListener) with a self-signed certificate for localhost; byte ranges too.</summary>
+    sealed class SelfSignedHttpsServer : IDisposable
+    {
+        readonly System.Net.Sockets.TcpListener _listener = new(System.Net.IPAddress.Loopback, 0);
+        readonly System.Security.Cryptography.X509Certificates.X509Certificate2 _cert;
+        readonly byte[] _bytes;
+
+        public SelfSignedHttpsServer(string dir)
+        {
+            string path = Path.Combine(dir, "clip.mkv");
+            TestMedia.Write(path, new TestMediaOptions { Video = ["testsrc2=d=1"], VideoEncoder = "mpeg4" });
+            _bytes = File.ReadAllBytes(path);
+            using var key = System.Security.Cryptography.RSA.Create(2048);
+            var request = new System.Security.Cryptography.X509Certificates.CertificateRequest("CN=localhost",
+                key,
+                System.Security.Cryptography.HashAlgorithmName.SHA256,
+                System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+            var san = new System.Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder();
+            san.AddDnsName("localhost");
+            request.CertificateExtensions.Add(san.Build());
+            using var cert = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+
+            // Through PFX: Schannel can't use an ephemeral key.
+            _cert = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12(cert.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Pfx), null);
+            _listener.Start();
+            _ = Task.Run(Serve);
+        }
+
+        public int Port => ((System.Net.IPEndPoint)_listener.LocalEndpoint).Port;
+
+        async Task Serve()
+        {
+            while (true)
+            {
+                System.Net.Sockets.TcpClient client;
+                try
+                {
+                    client = await _listener.AcceptTcpClientAsync();
+                }
+                catch (Exception e) when (e is System.Net.Sockets.SocketException or ObjectDisposedException or InvalidOperationException)
+                {
+                    return;
+                }
+
+                _ = Task.Run(async () =>
+                {
+                    using (client)
+                    {
+                        try
+                        {
+                            using var tls = new System.Net.Security.SslStream(client.GetStream());
+                            await tls.AuthenticateAsServerAsync(_cert);
+                            var head = new System.Text.StringBuilder();
+                            var one = new byte[1];
+                            while (!head.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal) && await tls.ReadAsync(one) == 1)
+                                head.Append((char)one[0]);
+                            var range = System.Text.RegularExpressions.Regex.Match(head.ToString(), @"Range: bytes=(\d+)-", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            int from = range.Success ? int.Parse(range.Groups[1].Value, CultureInfo.InvariantCulture) : 0;
+                            string status = range.Success
+                                ? $"206 Partial Content\r\nContent-Range: bytes {from}-{_bytes.Length - 1}/{_bytes.Length}"
+                                : "200 OK";
+                            await tls.WriteAsync(System.Text.Encoding.ASCII.GetBytes(
+                                $"HTTP/1.1 {status}\r\nContent-Length: {_bytes.Length - from}\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n"));
+                            await tls.WriteAsync(_bytes.AsMemory(from));
+                        }
+                        catch (Exception e) when (e is IOException or System.Security.Authentication.AuthenticationException or ObjectDisposedException)
+                        {
+                            // the client refused the certificate, or went away
+                        }
+                    }
+                });
+            }
+        }
+
+        public void Dispose()
+        {
+            _listener.Stop();
+            _cert.Dispose();
+        }
+    }
+
     /// <summary>A stream of these bytes whose reads throw, as a dropped connection does, from <paramref name="failAt"/> on.</summary>
     sealed class FailingStream(byte[] data, int failAt) : Stream
     {
