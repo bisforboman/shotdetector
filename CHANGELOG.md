@@ -37,6 +37,9 @@ Parallel detection of long files (opt-in), URLs decoded in-process, inputs that 
   executable and in-process, so a crafted file can't exhaust memory. No real video comes near it.
 - An http(s) URL that stops sending fails after 30 s instead of waiting forever (FFmpeg's `rw_timeout`, with the
   executable and in-process), and cancellation stops an in-process read that waits on the network.
+- An https URL's server certificate is checked, in-process and with the ffmpeg executable (`-tls_verify 1`): FFmpeg
+  8 doesn't by default, so a self-signed or forged one was accepted. The segments an HLS playlist names are still
+  opened without the check (FFmpeg doesn't pass the option on).
 
 ## 3.1.0 – 2026-10-15
 

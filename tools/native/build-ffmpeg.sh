@@ -11,7 +11,8 @@
 #   tools/native/build-ffmpeg.sh <rid> <output dir>
 #
 # The output dir gets the four libraries under the names FFmpeg.AutoGen loads (avcodec-62.dll, libavcodec.so.62,
-# libavcodec.62.dylib, ...), plus the configure line used (configure.txt) for the LGPL notice.
+# libavcodec.62.dylib, ...), plus the configure line used (configure.txt) for the LGPL notice and an SPDX SBOM of
+# what's inside (sbom.spdx.json: FFmpeg, zlib, dav1d and LAME with their versions, sources, SHA-256 and CPEs).
 set -eu
 
 VERSION=8.1.3
@@ -150,4 +151,29 @@ esac
   echo "LAME $LAME (https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz, sha256 $LAME_SHA256), static"
   echo "./configure $*"
 } > "$out/configure.txt"
+
+# pkg id name version licence url sha256 cpe-vendor:product
+pkg() {
+  printf '    {"SPDXID": "SPDXRef-%s", "name": "%s", "versionInfo": "%s", "supplier": "NOASSERTION", "downloadLocation": "%s",\n' "$1" "$2" "$3" "$5"
+  printf '     "filesAnalyzed": false, "licenseConcluded": "%s", "licenseDeclared": "%s", "copyrightText": "NOASSERTION",\n' "$4" "$4"
+  printf '     "checksums": [{"algorithm": "SHA256", "checksumValue": "%s"}],\n' "$6"
+  printf '     "externalRefs": [{"referenceCategory": "SECURITY", "referenceType": "cpe23Type", "referenceLocator": "cpe:2.3:a:%s:%s:*:*:*:*:*:*:*"}]}' "$7" "$3"
+}
+{
+  printf '{\n  "spdxVersion": "SPDX-2.3", "dataLicense": "CC0-1.0", "SPDXID": "SPDXRef-DOCUMENT",\n'
+  printf '  "name": "FFmpeg %s for %s (FrameReader.Native)",\n' "$VERSION" "$rid"
+  printf '  "documentNamespace": "https://github.com/bisforboman/shotdetector/spdx/ffmpeg-%s-%s-%s",\n' "$VERSION" "$rid" "$(date -u +%Y%m%dT%H%M%SZ)"
+  printf '  "creationInfo": {"created": "%s", "creators": ["Tool: tools/native/build-ffmpeg.sh"]},\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '  "documentDescribes": ["SPDXRef-ffmpeg"],\n  "packages": [\n'
+  pkg ffmpeg FFmpeg "$VERSION" LGPL-2.1-or-later "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz" "$SHA256" ffmpeg:ffmpeg; printf ',\n'
+  pkg zlib zlib "$ZLIB" Zlib "https://zlib.net/fossils/zlib-$ZLIB.tar.gz" "$ZLIB_SHA256" zlib:zlib; printf ',\n'
+  pkg dav1d dav1d "$DAV1D" BSD-2-Clause "https://downloads.videolan.org/pub/videolan/dav1d/$DAV1D/dav1d-$DAV1D.tar.xz" "$DAV1D_SHA256" videolan:dav1d; printf ',\n'
+  pkg lame LAME "$LAME" LGPL-2.0-or-later "https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz" "$LAME_SHA256" lame_project:lame
+  printf '\n  ],\n  "relationships": [\n'
+  for d in zlib dav1d lame; do
+    printf '    {"spdxElementId": "SPDXRef-ffmpeg", "relationshipType": "STATIC_LINK", "relatedSpdxElement": "SPDXRef-%s"}' "$d"
+    [ $d = lame ] && printf '\n' || printf ',\n'
+  done
+  printf '  ]\n}\n'
+} > "$out/sbom.spdx.json"
 ls -l "$out"
