@@ -297,6 +297,7 @@ public class FrameDecoderTests
             string url = $"http://localhost:{port}/play.m3u8";
 
             Assert.Equal(0, Frames(url, null));
+            Assert.Equal(0, Frames(url, new Dictionary<string, string> { ["tls_verify"] = "1" }));   // as ShotDetector passes it
             Assert.Equal(25, Frames(url, new Dictionary<string, string> { ["tls_verify"] = "0" }));
         }
         finally

@@ -71,8 +71,9 @@ internal static unsafe class Demuxer
             ffmpeg.av_dict_set(&options, name, value, 0);
 
         // The URLs the input opens itself (an HLS playlist's segments, keys and variants) are checked too, unless the
-        // caller chose (tls_verify or ca_file in InputOptions, which FFmpeg wouldn't pass on to them either).
-        if (inputOptions is null || !inputOptions.Keys.Any(k => k is "tls_verify" or "verify" or "ca_file" or "cafile"))
+        // caller turned the check off or named their own certificates (tls_verify=0 or ca_file in InputOptions, which
+        // FFmpeg wouldn't pass on to them either). tls_verify=1 from the caller still gets the wrapper.
+        if (inputOptions is null || !inputOptions.Any(o => (o.Key is "tls_verify" or "verify" && o.Value == "0") || o.Key is "ca_file" or "cafile"))
         {
             _defaultIoOpen = fmt->io_open;
             fmt->io_open = NestedOpen;
