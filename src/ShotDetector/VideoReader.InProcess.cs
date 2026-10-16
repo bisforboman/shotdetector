@@ -40,12 +40,14 @@ internal sealed partial class VideoReader
             // Frames of a new size come resized already (below), so room for those too.
             FramePipeline.Yuv420Sampled => Math.Max(IYuv420Converter.FrameSize(SourceWidth, SourceHeight), Width * Height * 3),
             FramePipeline.FullFrameResize => CropRegion.Width * CropRegion.Height * 3,
+            FramePipeline.SampledBgr => resizer!.SourceRows.Length * CropRegion.Width * 3,
             _ => Width * Height * 3,
         };
 
-        // The rows the resize reads, with the crop's offset: the only ones converted. The decoding thread resizes those
-        // frames itself (straight from the converter's rows, no copy), with its own CvResize: the caller's resizes the
-        // FastYuv frames meanwhile, and each keeps row buffers.
+        // The rows the resize reads, with the crop's offset: the only ones converted. The decoding thread hands those
+        // rows over and the caller's thread resizes them (it waited for frames most of the time otherwise: the resize
+        // was most of the decoding thread's work). Frames of a new size on the FastYuv path are resized on the decoding
+        // thread, with its own CvResize, as each keeps row buffers.
         int[]? rows = resizer?.SourceRows.Select(r => r + CropRegion.Y).ToArray();
         var decoderResizer = resizer is null ? null : new CvResize(CropRegion.Width, CropRegion.Height, Width, Height);
         var small = new byte[Width * Height * 3];
@@ -118,8 +120,11 @@ internal sealed partial class VideoReader
                         case FramePipeline.Yuv420Sampled:
                             writer.WriteYuv420(buffer);
                             break;
-                        case FramePipeline.SampledBgr:
+                        case FramePipeline.SampledBgr when bgr:
                             writer.WriteResized(buffer, decoderResizer!, rows!, (CropRegion.X, CropRegion.Y));
+                            break;
+                        case FramePipeline.SampledBgr:
+                            writer.WriteRows(buffer, rows!, (CropRegion.X, CropRegion.Width));
                             break;
                         case FramePipeline.FullFrameResize:
                             writer.WriteBgr(buffer, CropRegion);
@@ -180,13 +185,16 @@ internal sealed partial class VideoReader
 
                 switch (pipeline)
                 {
+                    case FramePipeline.SampledBgr:
+                        resizer!.ResizePackedRows(buffer, small);
+                        break;
                     case FramePipeline.Yuv420Sampled:
                         resizer!.ResizeYuv420(buffer, small, _yuv420ForVideo!, SourceWidth, SourceHeight, CropRegion.X, CropRegion.Y);
                         break;
                     case FramePipeline.FullFrameResize:
                         resizer!.Resize(buffer, small);
                         break;
-                    default: // resized already (SampledBgr) or by ffmpeg's scale
+                    default: // scaled by ffmpeg's scale
                         previous = buffer; // the frame itself: back to the pool once the caller is done with it
                         yield return buffer;
                         continue;
