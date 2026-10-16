@@ -6,6 +6,37 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.3.0 – 2026-10-16
+
+https in-process on Linux and macOS, HLS segments checked, fixes from a security review (two crashes on crafted files among them) and a faster resize.
+
+### New
+
+- https URLs decode in-process on Linux and macOS too, with FrameReader.Native's https (OpenSSL on Linux, the
+  system's TLS on macOS); before, they went through the ffmpeg executable there.
+
+### Faster
+
+- The resize to scenedetect's size resizes each source row once, as OpenCV does: about 15% less resize time per
+  frame for videos up to twice the processed height (426x240, for one), and about 40% when upscaling.
+
+### Fixed
+
+- In-process, the https segments an HLS playlist names are checked too (FFmpeg didn't pass the check on to them); the
+  ffmpeg executable still doesn't.
+- A rotated video whose frames got larger mid-stream (a larger encode joined on) read past a buffer in-process and
+  could crash the process; every frame is now turned at the first frame's size, as through the ffmpeg executable.
+- ffprobe's timestamp pass (MPEG-PS without packet timestamps, through the executable) read without the input's
+  protocol whitelist, timeout, certificate check and frame size cap, so a crafted playlist could reach other
+  protocols or addresses there; it reads as the other passes do now.
+- ffmpeg and ffprobe are started by full path, next to the app or from PATH: by bare name, Windows and .NET on Unix
+  also looked in the current folder, so an `ffmpeg` someone put there could run.
+- A video claiming frames larger than 8192 x 8192 fails at the probe, before buffers are sized from it (the FastYuv
+  path allocated them first).
+- A spilled stream (an mp4 without faststart read from a `Stream`) goes in a temp folder of its own, readable only by
+  the user on Linux and macOS; it was readable by every local user.
+- ffprobe takes the input with `-i`, so a file named like one of its options (`-report`) is read as a file.
+
 ## 3.2.0 – 2026-10-16
 
 Parallel detection of long files (opt-in), URLs decoded in-process, inputs that read only what they need, a frame size cap and an MPEG-TS start-time fix.
