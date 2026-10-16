@@ -94,8 +94,33 @@ jobs:
     if: needs.version.outputs.release == 'true'
     uses: ./.github/workflows/native.yml
 
+  # The tests, with BtbN's ffmpeg (a third-party build) for the video tests: in a job of their own with read-only
+  # permissions, so no third-party binary runs where the NuGet publishing token and write access are (security review,
+  # 2026-10-16).
+  test:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install ffmpeg   # for the video tests
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+
+      - name: Test
+        run: dotnet test ShotDetector.slnx
+
+  # Packs, attests and publishes: only our own code and our FFmpeg build (native.yml, from pinned sources) run here.
   release:
-    needs: [version, native]
+    needs: [version, native, test]
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     environment: ${{ needs.version.outputs.environment }}
@@ -114,13 +139,6 @@ jobs:
         run: |
           { echo "SD=${{ needs.version.outputs.shotdetector }}"; echo "FR=${{ needs.version.outputs.framereader }}"
             echo "SD_DUE=${{ needs.version.outputs.shotdetector-due }}"; echo "FR_DUE=${{ needs.version.outputs.framereader-due }}"; } >> "$GITHUB_ENV"
-
-      - name: Install ffmpeg   # for the video tests
-        timeout-minutes: 15
-        uses: ./.github/actions/btbn-ffmpeg
-
-      - name: Test
-        run: dotnet test ShotDetector.slnx
 
       - uses: actions/download-artifact@v7
         with:
