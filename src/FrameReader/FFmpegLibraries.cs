@@ -18,6 +18,16 @@ public static unsafe class FFmpegLibraries
     static readonly Dictionary<string, bool> Loadable = [];
 
     /// <summary>
+    /// The system's places: a bare name, which the loader looks up itself (Linux and macOS: the library path, never the
+    /// current folder); on Windows PATH's folders by full path, as a bare name would search the current folder first.
+    /// </summary>
+    static string[] SystemPlaces() => OperatingSystem.IsWindows()
+        ? [.. (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Select(d => d.Trim('"'))
+            .Where(Path.IsPathFullyQualified)]
+        : [""];
+
+    /// <summary>
     /// Loads the libraries, once per process: the first copy loaded is the one used, whatever folder is asked for
     /// later. Logging is turned off (failures surface as exceptions).
     /// </summary>
@@ -33,7 +43,7 @@ public static unsafe class FFmpegLibraries
             Exception? error = null;
             string[] places = directory is not null
                 ? [directory]
-                : [Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native"), AppContext.BaseDirectory, ""];
+                : [Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier, "native"), AppContext.BaseDirectory, .. SystemPlaces()];
             foreach (string dir in places)
             {
                 if (dir.Length > 0 && !Directory.Exists(dir))

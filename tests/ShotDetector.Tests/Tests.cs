@@ -718,6 +718,38 @@ public class UrlOptionTests
     [InlineData("udp://239.0.0.1:1234", "")]
     public void InputsReadOnlyTheProtocolsTheyNeed(string path, string expected) =>
         Assert.Equal(expected, string.Join(' ', VideoReader.InputOptions(path)));
+
+    // ffprobe's timestamp pass (MPEG-PS without pts) reads with the input's options and the frame size cap like every
+    // other read, and takes the path with -i, so a file named like an option stays a file.
+    [Fact]
+    public void TheTimestampPassReadsAsTheOthersDo() =>
+        Assert.Equal("-v error -protocol_whitelist file,crypto -max_pixels 67108864 -select_streams v:0 -show_entries frame=pts,pkt_dts -of default=nw=1 -i -report",
+            string.Join(' ', VideoReader.FrameTimestampsArgs("-report", VideoReader.InputOptions("-report"))));
+
+    // ffmpeg and ffprobe are started by full path (next to the app, else from PATH), never by a bare name, which would
+    // also find one in the current folder.
+    [Fact]
+    public void ExecutablesStartByFullPath()
+    {
+        Assert.True(Path.IsPathFullyQualified(VideoReader.Executable(null, "ffmpeg")));
+        Assert.True(Path.IsPathFullyQualified(VideoReader.Executable(null, "no-such-tool")));
+    }
+
+    // A spilled stream goes in a folder of its own, only the user's on Unix, deleted with it.
+    [Fact]
+    public void TempFilesAreTheUsersOnly()
+    {
+        string dir;
+        using (var file = new TempFile("spill.mp4"))
+        {
+            File.WriteAllText(file.Path, "x");
+            dir = Path.GetDirectoryName(file.Path)!;
+            if (!OperatingSystem.IsWindows())
+                Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(dir));
+        }
+
+        Assert.False(Directory.Exists(dir));
+    }
 }
 
 public class TimeSpanOptionTests
