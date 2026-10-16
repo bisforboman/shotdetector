@@ -6,6 +6,21 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.4.0 – 2026-10-16
+
+Faster in-process detection: the resize with SSE2 on the scoring thread, and edge detection about 3.8x faster.
+
+### Faster
+
+- Edge detection (`--stats`, and edge weights in the content and adaptive detectors) is about 3.8x faster: Sobel and
+  the dilation work on 8 and 16 pixels at a time with the same integer arithmetic. `--stats` runs took 0.51-0.60x the
+  wall time on an 8-core desktop; the edge maps and stats are the same, byte for byte.
+- In-process detection on x64 is faster where decoding isn't the limit: on an 8-core desktop, wall time 0.74x
+  (Elephants Dream 426x240), 0.64x (Big Buck Bunny 640x360), 0.86x (Tears of Steel 1280x534), 0.97x (Elephants Dream
+  1080p VP9, decode-bound). The resize's horizontal pass uses SSE2, a pixel's three channels at once with the same
+  integer arithmetic, and the resize runs on the thread that scores frames, which used to wait for the decoding thread
+  most of the time. The results are the same, byte for byte.
+
 ## 3.3.0 – 2026-10-16
 
 https in-process on Linux and macOS, HLS segments checked, fixes from a security review (two crashes on crafted files among them) and a faster resize.
