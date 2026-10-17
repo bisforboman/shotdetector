@@ -452,8 +452,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Saves after the job when it missed.
       - id: cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6; saves after the job when it missed
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: samples
           key: samples-${{ hashFiles('tools/make-samples.ps1') }}-ffmpeg${{ env.FFMPEG }}

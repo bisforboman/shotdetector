@@ -1,7 +1,8 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    # The workflows and our composite actions (their pins too).
+    directories: ["/", "/.github/actions/*"]
     schedule:
       interval: weekly
   - package-ecosystem: nuget
