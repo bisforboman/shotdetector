@@ -265,7 +265,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - CI checks benchmarks/micro's output hashes (--hash-only --set synthetic) against recorded ones, on x64 and ARM
   - Why: The resize's and the edge detector's SIMD paths differ by CPU (SSE2 on x64, scalar on ARM, Vector256 or not): the pixel tests cover set sizes against cv2, but a recorded hash over the synthetic set fails a PR on any change in their output, on every runner
-  - Status: Open
+  - Status: Done (2026-10-17): benchmarks/micro/check-hash.sh in ci.yml's build (x64) and arm jobs against expected-hash.txt; the first runs gave the same pair on both
 
 ## 3. Toward 1.0
 

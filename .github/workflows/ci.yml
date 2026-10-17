@@ -147,6 +147,11 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx
 
+      # The resize's and edge detector's outputs on the synthetic set, the same hash on x64 and ARM (benchmarks/micro).
+      - name: Microbenchmark hashes as recorded
+        if: needs.changes.outputs.docs_only != 'true'
+        run: benchmarks/micro/check-hash.sh
+
       # The CLI's --waveform with audiowaveform's options gives audiowaveform's .dat, byte for byte (PCM input).
       - name: CLI --waveform is audiowaveform's
         if: needs.changes.outputs.docs_only != 'true' && env.AUDIOWAVEFORM != ''
@@ -390,6 +395,11 @@ jobs:
       - name: Test
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx
+
+      # The resize's and edge detector's outputs on the synthetic set, the same hash on x64 and ARM (benchmarks/micro).
+      - name: Microbenchmark hashes as recorded
+        if: needs.changes.outputs.docs_only != 'true'
+        run: benchmarks/micro/check-hash.sh
 
   # Alpine (musl), with Alpine's own ffmpeg. scenedetect can't run here (no musl OpenCV wheels), but
   # the video tests check real detection, cancellation, and that Alpine's ffmpeg converts colours

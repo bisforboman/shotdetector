@@ -61,6 +61,7 @@ foreach (var c in cases)
 }
 
 Console.WriteLine();
+Console.WriteLine($"all inputs:  {Hex(Sha([.. sources.SelectMany(src => src.Frames)]))}");
 Console.WriteLine($"all outputs: {Hex(SHA256.HashData(total.ToArray()))}");
 if (!o.HashOnly)
     Console.WriteLine($"best of {o.Rounds} rounds, {Environment.ProcessorCount} CPUs, {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}; timings hold for this machine only");

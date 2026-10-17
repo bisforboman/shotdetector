@@ -31,12 +31,21 @@ of the films). `BENCH_FFMPEG`: the folder with ffmpeg and ffprobe, else PATH.
 
 Per case, the best of N rounds in microseconds per frame (rounds interleave the cases, after three warm-up passes),
 and the first 16 hex digits of the SHA-256 of all its outputs; then one SHA-256 over every case. `inputs` lines hash
-each set's frames.
+each set's frames, and `all inputs` all of them.
 
 The hash says whether the results changed: an optimisation must leave it as it was. Synthetic hashes are the same
 everywhere; real ones depend on the converted frames too, so they compare between builds on one machine with one ffmpeg
 (the `inputs` hash shows when the frames differ). The total covers the cases that ran, so compare runs with the same
 options and films.
+
+## The recorded hash
+
+`expected-hash.txt` holds the synthetic set's `all inputs` and `all outputs` hashes (`--hash-only --set synthetic`),
+one pair for every platform: the SSE2 and scalar resize, the Vector256 and Vector128/scalar edge detector all give
+cv2's bytes, so they give the same hash. CI runs `check-hash.sh` on x64 (`build`) and ARM (`arm`) and fails on any
+difference. The recorded hashes change only in a PR that changes the synthetic set or the case list, in that same PR; a
+code change must never change them (a different `outputs` hash with the same `inputs` is a changed result, on that
+platform). The synthetic generator uses integer arithmetic only, so its frames are the same on every machine.
 
 Timings belong to the machine they were taken on. Compare A and B on the same machine, interleaved (A, B, A, B...),
 each a separate build of its own checkout (a worktree per side), and pin the CPUs where you can (CLAUDE.md, "Benchmarks
