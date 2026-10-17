@@ -273,7 +273,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - benchmarks/micro on the films in the weekly benchmark (benchmark.yml, x64 and ARM)
   - Why: The per-frame resize and edge timings are measured only by hand (the 3.4.0/3.5.0 rounds, #370 on a throwaway workflow); a weekly table beside the whole-pipeline one shows a regression in them, and the CPU behind it, week to week
-  - Status: Maybe
+  - Status: Done (2026-10-17): a step after tools/bench.py's tables (built first, so the table holds only timings); [first run](https://github.com/bisforboman/shotdetector/actions/runs/39048657694), dispatched on the branch: both runners wrote the table
 
 - The resize on ARM with AdvSimd intrinsics (widening multiply-adds), not the portable vectors
   - Why: The portable Vector128 resize measured twice as slow as the scalar loop on ARM (2026-10-17), but NEON's own widening multiply-accumulate (vmlal) fits the fixed-point weights; measure on CI's ARM runners as #370 did (main against the branch, interleaved, film frames) and drop it if it doesn't win
