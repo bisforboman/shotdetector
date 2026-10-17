@@ -285,7 +285,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - benchmarks/micro's 1920x1080 case takes 9 frames from the Sintel trailer, against 60 for the other films
   - Why: The trailer has few keyframes, so its rows (resize and edges) are the noisiest in the weekly table (#376) and in compare.yml's; take frames other than keyframes from it, or another 1080p film from realworld.py's pinned list
-  - Status: Open
+  - Status: Done (2026-10-17): the trailer takes every 18th frame from 5 s instead of keyframes (60 frames, as the other films); the other films keep keyframes
 
 - The resize on ARM with AdvSimd intrinsics (widening multiply-adds), not the portable vectors
   - Why: The portable Vector128 resize measured twice as slow as the scalar loop on ARM (2026-10-17), but NEON's own widening multiply-accumulate (vmlal) fits the fixed-point weights; measure on CI's ARM runners as #370 did (main against the branch, interleaved, film frames) and drop it if it doesn't win

@@ -17,7 +17,8 @@ of the films). `BENCH_FFMPEG`: the folder with ffmpeg and ffprobe, else PATH.
 
 ## Inputs
 
-- **real**: keyframes from one public-domain film per source size, the ones `tools/realworld.py` pins by SHA-256
+- **real**: 60 keyframes (every 18th frame of the Sintel trailer, which has few) from one public-domain film per
+  source size, the ones `tools/realworld.py` pins by SHA-256
   (Elephants Dream 426x240, Big Buck Bunny 640x360, Tears of Steel 1280x534, the Sintel trailer 1920x1080). Download
   them once with `python tools/realworld.py --download elephants_dream_426x240_h264.mp4 bbb_640x360_h264.mp4
   tears_of_steel_1280x534_h264.mov sintel_trailer_1920x1080_h264.mp4`; films that are missing are skipped. ffmpeg
