@@ -553,6 +553,43 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // FrameReader's DecodedFrame with row-wise deinterlacing (Yadif): a taken frame has every row computed, and keeps
+    // them after later frames reuse the decoder's output buffer, converted by a converter of its own as the decoder's
+    // own frame was.
+    [Fact]
+    public void TakenFramesKeepTheirDeinterlacedRows()
+    {
+        if (Libs is null)
+            return;
+        var expected = new List<byte[]>();
+        var taken = new List<FrameReader.DecodedFrame>();
+        int width = 0, height = 0;
+        using (var decoder = new FrameReader.FrameDecoder(clips.Interlaced, new FrameReader.FrameDecoderOptions { Deinterlace = true, RowDeinterlacer = new Yadif() }))
+        {
+            using var own = new FrameReader.BgrConverter(decoder);
+            for (int n = 0; n < 30 && decoder.Next(); n++)
+            {
+                var bgr = own.Convert(out int stride);
+                (width, height) = (decoder.Width, decoder.Height);
+                var packed = new byte[width * height * 3];
+                for (int y = 0; y < height; y++)
+                    bgr.Slice(y * stride, width * 3).CopyTo(packed.AsSpan(y * width * 3));
+                expected.Add(packed);
+                taken.Add(decoder.TakeFrame());
+            }
+        }
+
+        Assert.Equal(30, taken.Count);
+        using var converter = new FrameReader.BgrConverter();
+        for (int i = 0; i < taken.Count; i++)
+        {
+            using var frame = taken[i];
+            var bgr = converter.Convert(frame, out int stride);
+            for (int y = 0; y < height; y++)
+                Assert.True(bgr.Slice(y * stride, width * 3).SequenceEqual(expected[i].AsSpan(y * width * 3, width * 3)), $"frame {i}, row {y}");
+        }
+    }
+
     // VideoInfo.Streams: every stream with type, codec, tag, language, title, flags, bit rate, duration and audio details,
     // the same in-process as from ffprobe (issue #81).
     [Theory]

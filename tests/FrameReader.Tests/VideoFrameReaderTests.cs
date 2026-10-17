@@ -114,6 +114,86 @@ public class VideoFrameReaderTests
         }
     }
 
+    // DecodedFrame: every frame taken (a reference, not a copy) and kept past later Next calls and the decoder's
+    // Dispose, then converted by a converter of its own: still ffmpeg's bgr24, whole and row by row. Rotated (the
+    // decoder's own buffer, which a taken frame must not see rewritten) and a stream growing mid-way (KeepFirstSize)
+    // too.
+    [Theory]
+    [MemberData(nameof(Sources))]
+    [InlineData("rotated.mov", "-c:v ffv1 -pix_fmt yuv420p|-display_rotation 90")]
+    [InlineData("grows.ts", "-c:v mpeg2video -pix_fmt yuv420p|grow")]
+    public void TakenFramesConvertAsTheDecodersOwn(string name, string encode)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-taken-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            string[] parts = encode.Split('|');
+            string[] codec = parts[0].Split(' ');
+            if (parts.Length > 1 && parts[1] == "grow")
+            {
+                // 320x240, then 480x360: OpenCV (and KeepFirstSize) scale the larger frames to the first size.
+                string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts");
+                Run(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=0.4", .. codec, a]);
+                Run(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=480x360:r=25:d=0.4", .. codec, "-output_ts_offset", "0.4", b]);
+                File.WriteAllBytes(path, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
+            }
+            else if (parts.Length > 1)
+            {
+                string plain = Path.Combine(dir, "plain.mkv");
+                Run(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=1", .. codec, plain]);
+                Run(["-v", "error", "-y", .. parts[1].Split(' '), "-i", plain, "-c", "copy", path]);
+            }
+            else
+            {
+                Run(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=1", .. codec, path]);
+            }
+
+            // The reference: the decoder's own frame converted as it comes.
+            var expected = new List<byte[]>();
+            var taken = new List<DecodedFrame>();
+            int width = 0, height = 0;
+            using (var decoder = new FrameDecoder(path, new FrameDecoderOptions()))
+            {
+                using var own = new BgrConverter(decoder) { KeepFirstSize = true };
+                while (decoder.Next())
+                {
+                    var bgr = own.Convert(out int stride);
+                    if (width == 0)
+                        (width, height) = (decoder.Width, decoder.Height);
+                    var packed = new byte[width * height * 3];
+                    for (int y = 0; y < height; y++)
+                        bgr.Slice(y * stride, width * 3).CopyTo(packed.AsSpan(y * width * 3));
+                    expected.Add(packed);
+                    taken.Add(decoder.TakeFrame());
+                }
+            }
+
+            Assert.True(expected.Count >= 10, $"{name}: {expected.Count} frames");
+            int[] rows = [0, 1, 7, height / 2, height - 1];
+            using var whole = new BgrConverter { KeepFirstSize = true };
+            using var some = new BgrConverter { KeepFirstSize = true };
+            for (int i = 0; i < taken.Count; i++)
+            {
+                using var frame = taken[i];
+                var bgr = whole.Convert(frame, out int stride);
+                for (int y = 0; y < height; y++)
+                    Assert.True(bgr.Slice(y * stride, width * 3).SequenceEqual(expected[i].AsSpan(y * width * 3, width * 3)), $"{name}: frame {i}, row {y}");
+                var sampled = some.Convert(frame, rows, out stride);
+                foreach (int y in rows)
+                    Assert.True(sampled.Slice(y * stride, width * 3).SequenceEqual(expected[i].AsSpan(y * width * 3, width * 3)), $"{name}: frame {i}, row {y} alone");
+            }
+
+            Assert.Throws<ObjectDisposedException>(() => taken[0].Width);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     static int FirstDifference(byte[] a, byte[] b)
     {
         int n = Math.Min(a.Length, b.Length);

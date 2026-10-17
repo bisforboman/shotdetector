@@ -324,7 +324,8 @@ public sealed unsafe class FrameDecoder : IDisposable
 
         bool t = _transpose >= 0;
         int w = _frame->width, h = _frame->height, ow = t ? h : w, oh = t ? w : h;
-        if (_oriented->width != ow || _oriented->height != oh || _oriented->format != _frame->format)
+        if (_oriented->width != ow || _oriented->height != oh || _oriented->format != _frame->format
+            || ffmpeg.av_frame_is_writable(_oriented) == 0) // a DecodedFrame still holds the last one
         {
             ffmpeg.av_frame_unref(_oriented);
             (_oriented->format, _oriented->width, _oriented->height) = (_frame->format, ow, oh);
@@ -549,6 +550,15 @@ public sealed unsafe class FrameDecoder : IDisposable
                 throw new FrameReaderException(FrameReaderError.DecodeFailed, "Deinterlacing: frames with differing strides.");
         }
 
+        // A DecodedFrame still holds the last output frame: this one gets buffers of its own.
+        if (ffmpeg.av_frame_is_writable(_frame) == 0)
+        {
+            var (format, width, height) = (_frame->format, _frame->width, _frame->height);
+            ffmpeg.av_frame_unref(_frame);
+            (_frame->format, _frame->width, _frame->height) = (format, width, height);
+            Check(ffmpeg.av_frame_get_buffer(_frame, 64), "deinterlace");
+        }
+
         // copy_props adds to the side data and metadata already there: without this, every frame's would pile up
         // (and sws_frame_start refs them all).
         ffmpeg.av_frame_side_data_free(&_frame->side_data, &_frame->nb_side_data);
@@ -734,13 +744,34 @@ public sealed unsafe class FrameDecoder : IDisposable
     public ReadOnlySpan<byte> GetPlane(int plane, out int stride)
     {
         EnsureRows(0, _frame->height);
-        if (plane is < 0 or > 3 || _frame->data[(uint)plane] == null)
+        return Plane(_frame, plane, out stride);
+    }
+
+    internal static ReadOnlySpan<byte> Plane(AVFrame* frame, int plane, out int stride)
+    {
+        if (plane is < 0 or > 3 || frame->data[(uint)plane] == null)
             throw new ArgumentOutOfRangeException(nameof(plane));
-        var desc = ffmpeg.av_pix_fmt_desc_get((AVPixelFormat)_frame->format);
+        var desc = ffmpeg.av_pix_fmt_desc_get((AVPixelFormat)frame->format);
         int shift = plane is 1 or 2 && desc != null ? desc->log2_chroma_h : 0;
-        int rows = -((-_frame->height) >> shift);
-        stride = _frame->linesize[(uint)plane];
-        return new ReadOnlySpan<byte>(_frame->data[(uint)plane], stride * rows);
+        int rows = -((-frame->height) >> shift);
+        stride = frame->linesize[(uint)plane];
+        return new ReadOnlySpan<byte>(frame->data[(uint)plane], stride * rows);
+    }
+
+    /// <summary>
+    /// The current frame as a <see cref="DecodedFrame"/> that stays valid after <see cref="Next"/> and after this decoder
+    /// is disposed, until it is: a reference to the frame's buffers (FFmpeg's refcounting), not a copy. Deinterlaced row
+    /// by row, its rows are computed first.
+    /// </summary>
+    public DecodedFrame TakeFrame()
+    {
+        if (!_started)
+            throw new InvalidOperationException("No frame yet: call Next first.");
+        EnsureRows(0, _frame->height);
+        var clone = ffmpeg.av_frame_clone(_frame);
+        if (clone == null)
+            throw new FrameReaderException(FrameReaderError.DecodeFailed, "Can't reference the frame.");
+        return new DecodedFrame(clone, Pts);
     }
 
     // Hardware decoding: the device, the GPU's pixel format for this codec, and the frame each GPU frame is copied to.
