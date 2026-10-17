@@ -18,18 +18,25 @@ One repository. Cross-cutting changes (FastYuv's resolution fix #202, the resize
 stay one PR: ShotDetector's exactness rests on FrameReader's internals (BgrConverter's rows, the row deinterlacer,
 FrameDecoder's timestamps), and splitting the repository would make each such change two PRs and a release.
 
-### When to reconsider (2026-10-14)
+### When to reconsider (2026-10-14; sample and tests added 2026-10-17)
 
 Separate repositories would spare the costs one repository carries: tag prefixes, a release.yml for two products,
 GitHub's single "Latest" release (FrameReader's are created with `--latest=false`), one issue tracker, and the
 computed CI classification (tools/reach). Reconsider when changes stop crossing over: at each FrameReader release,
-count the commits since the previous one that touch FrameReader's or ShotDetector's code, and how many touch both;
-fewer than 1 in 20 touching both, at two releases in a row, is the trigger. Since framereader-v2.1.0 it was 3 of 9 (3 both, 6 one)
-(FrameReader.Native, the clips made by FrameReader, and the Alpine fix).
+count the commits since the previous one that touch FrameReader (`src/FrameReader*`, `tests/FrameReader.Tests`) or
+ShotDetector (`src/ShotDetector*`, `tests/ShotDetector.Tests`, `tests/ClipMaker`), and how many touch both (tests
+count: a FrameReader feature tested through ShotDetector is coupling). The trigger is fewer than 1 in 20 touching
+both, at two releases in a row, **over at least 20 counted commits**: with fewer, the windows join and counting
+continues at the next release. A met trigger means asking the user, not splitting.
+
+History (until 2.6.1 counted without tests): since 2.1.0, 3 of 9 (FrameReader.Native, the clips made by FrameReader,
+the Alpine fix); 2.4.0, 2 of 9; 2.5.0, 2 of 4 (the security fixes, OpenSSL); 2.6.0, 0 of 6; 2.6.1, 0 of 2. Under
+the old rule 2.6.0 and 2.6.1 met the trigger on 8 commits in two days; the user's choice was not to split and to add
+the sample and the tests (docs/decisions/2026-10-17-split-trigger-sample.md).
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
-  a=$(echo "$f" | grep -c '^src/FrameReader'); b=$(echo "$f" | grep -cE '^(src|tests)/ShotDetector')
+  a=$(echo "$f" | grep -cE '^(src/FrameReader|tests/FrameReader\.Tests)'); b=$(echo "$f" | grep -cE '^(src/ShotDetector|tests/(ShotDetector\.Tests|ClipMaker))')
   if [ $a -gt 0 ] && [ $b -gt 0 ]; then echo both; elif [ $a -gt 0 ] || [ $b -gt 0 ]; then echo one; fi; done | sort | uniq -c
 ```
 
