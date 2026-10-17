@@ -229,7 +229,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Conversion (BgrConverter) off the decoding thread: av_frame_ref'd frames to converter threads, order restored
   - Why: 148 us per frame at 1280x534, serial with decoding (measured); after the resize move, large frames would be decode-bound; costs a decoded frame of memory per worker
-  - Status: In progress (2026-10-17): design reviewed (docs/frame-references.md): DecodedFrame from FrameDecoder.TakeFrame, BgrConverter overloads, workers on by default with a threshold
+  - Status: In progress (2026-10-17): FrameReader's part done (DecodedFrame, TakeFrame, BgrConverter's overloads; docs/frame-references.md); next ShotDetector's conversion workers, measured
 
 - Frame handoff in batches (or a single-producer ring) instead of BlockingCollection per frame
   - Why: Take/Add cost 30-40 us per frame on the producer in a trace, about 20% of its time on SD (estimated gain 5-10% once the resize moves)
