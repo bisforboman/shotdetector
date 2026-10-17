@@ -1,6 +1,7 @@
-"""Summarises how tools/arch-outputs.sh's folders from two platforms differ (ci.yml's arch-diff): per clip, detector and
-decoder, whether the row counts match, the largest difference in each stats column, and the cuts only one side has; then
-which of the frame checksums (decoded yuv420p, bgr24, bgr24 with +bitexact) agree. Exits 1 when anything differs.
+"""Summarises how tools/arch-outputs.sh's folders from two platforms differ (ci.yml's arch-diff; a = the reference, x64):
+per clip, detector and decoder, how many stats rows differ and by how much at most, and the cuts only one side has; the
+frame checksums (decoded, single-threaded, bgr24, bgr24 from swscale's C code, bgr24 +bitexact), as frames differing;
+and whether b's FastYuv files equal a's default ones. Exits 1 when any default scene list or stats file differs.
 Usage: python3 tools/arch-summary.py <a-dir> <b-dir>"""
 import csv
 import sys
@@ -21,44 +22,65 @@ def stats_delta(a: Path, b: Path) -> str:
     ra, rb = rows(a), rows(b)
     if len(ra) != len(rb):
         return f"rows {len(ra)} vs {len(rb)}"
-    names = ra[0]
-    worst = {}
+    worst, differing = {}, 0
     for x, y in zip(ra[1:], rb[1:]):
-        for name, u, v in zip(names[2:], x[2:], y[2:]):
+        differing += x != y
+        for name, u, v in zip(ra[0][2:], x[2:], y[2:]):
             try:
                 d = abs(float(u) - float(v))
             except ValueError:
                 d = 0.0 if u == v else float("inf")
             worst[name] = max(worst.get(name, 0.0), d)
-    return ", ".join(f"{n} {d:.3g}" for n, d in worst.items() if d) or "same"
+    peaks = ", ".join(f"{n} {d:.3g}" for n, d in worst.items() if d)
+    return f"{differing} of {len(ra) - 1} rows; largest: {peaks}"
+
+
+def frames(a: Path, b: Path) -> str:
+    fa = [l for l in a.read_text().splitlines() if not l.startswith("#")]
+    fb = [l for l in b.read_text().splitlines() if not l.startswith("#")]
+    if fa == fb:
+        return "same"
+    if len(fa) != len(fb):
+        return f"{len(fa)} vs {len(fb)} frames"
+    diff = [i for i, (x, y) in enumerate(zip(fa, fb)) if x != y]
+    return f"{len(diff)}/{len(fa)}, from {diff[0]}"
+
+
+def same(a: Path, b: Path) -> bool:
+    return a.exists() and b.exists() and a.read_bytes() == b.read_bytes()
 
 
 def main() -> int:
     a, b = Path(sys.argv[1]), Path(sys.argv[2])
     names = sorted(p.name for p in a.iterdir())
+    outputs = [n for n in names if n.endswith(".csv") and ".fastyuv." not in n]
     differ = False
-    print("| file | stats: largest difference per column | cuts only on one side |\n|---|---|---|")
-    for name in names:
+    print("| file | stats rows differing; largest difference per column | cuts only on one side |\n|---|---|---|")
+    for name in outputs:
         pa, pb = a / name, b / name
-        if not pb.exists():
-            print(f"| {name} | missing on the second side | |")
-            differ = True
-            continue
-        if pa.read_bytes() == pb.read_bytes() or name.endswith(".md5"):
+        if same(pa, pb):
             continue
         differ = True
-        if name.endswith(".stats.csv"):
+        if not pb.exists():
+            print(f"| {name} | missing on the second side | |")
+        elif name.endswith(".stats.csv"):
             print(f"| {name} | {stats_delta(pa, pb)} | |")
-        elif name.endswith(".scenes.csv"):
+        else:
             ca, cb = cuts(pa), cuts(pb)
             only = [f"-{c}" for c in ca if c not in cb] + [f"+{c}" for c in cb if c not in ca]
             print(f"| {name} | | {' '.join(only) or 'cuts same, other cells differ'} |")
-    print("\n| clip | file | yuv420p | yuv420p, 1 thread | bgr24 | bgr24 +bitexact |\n|---|---|---|---|---|---|")
-    for md5 in sorted(n for n in names if n.endswith(".yuv420p.md5")):
-        clip = md5[: -len(".yuv420p.md5")]
-        cells = [("same" if (a / f"{clip}.{k}.md5").read_bytes() == (b / f"{clip}.{k}.md5").read_bytes() else "differ")
-                 for k in ("file", "yuv420p", "yuv420p-1thread", "bgr24", "bgr24-bitexact")]
-        print(f"| {clip} | {' | '.join(cells)} |")
+
+    kinds = ["file", "decoded", "decoded-1thread", "bgr24", "bgr24-c", "bgr24-bitexact"]
+    print("\n| clip | codec | " + " | ".join(kinds) + " | b's FastYuv = a's default |")
+    print("|---|---|" + "---|" * len(kinds) + "---|")
+    for codec in sorted(n for n in names if n.endswith(".codec.md5")):
+        clip = codec[: -len(".codec.md5")]
+        cells = [frames(a / f"{clip}.{k}.md5", b / f"{clip}.{k}.md5") if k != "file"
+                 else ("same" if same(a / f"{clip}.file.md5", b / f"{clip}.file.md5") else "differ") for k in kinds]
+        fast = [n for n in outputs if n.startswith(clip + ".")]
+        hits = sum(same(a / n, b / n.replace(".scenes.csv", ".fastyuv.scenes.csv").replace(".stats.csv", ".fastyuv.stats.csv"))
+                   for n in fast)
+        print(f"| {clip} | {(a / codec).read_text().strip()} | {' | '.join(cells)} | {hits}/{len(fast)} |")
     return 1 if differ else 0
 
 

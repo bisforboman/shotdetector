@@ -717,7 +717,9 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: |
           dotnet build -c Release -v q src/ShotDetector.Cli
-          tools/arch-outputs.sh src/ShotDetector.Cli/bin/Release/net10.0/shotdetect "$PWD/native/${{ matrix.rid }}" out \
+          # The LGPL converter too (dev-only build, as compare.py --fast-yuv): does it give x64's results on ARM?
+          dotnet build -c Release -v q -p:WithFastYuv=true -o fastyuv src/ShotDetector.Cli
+          FASTYUV=$PWD/fastyuv/shotdetect tools/arch-outputs.sh src/ShotDetector.Cli/bin/Release/net10.0/shotdetect "$PWD/native/${{ matrix.rid }}" out \
             samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg
 
       - uses: actions/upload-artifact@v7
