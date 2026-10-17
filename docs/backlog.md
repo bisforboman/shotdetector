@@ -251,6 +251,10 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: A --stats run on Elephants Dream 426x240 takes about 9.5 s against 2.5 s for plain detection (in-process, 2026-10-17), and the edges are now about 2 s of it: something else (every detector's metrics, the stats rows, writing the CSV) takes the other 5 s
   - Status: Done (2026-10-17): it was the edges after all: on real frames (Elephants Dream's, dark, so a low threshold) EdgeDetector took 306 us per frame against 127 on the synthetic benchmark, mostly the suppression and hysteresis. The suppression now does 8 pixels at a time and the map has a zero border: 306 -> 236 us on real frames; --stats runs 0.68-0.74x of 3.4.0 with both edge PRs
 
+- Microbenchmarks in the repository (benchmarks/micro): the resize and the edge detector, on real frames, with an output hash
+  - Why: Recent performance work used scratch projects; one compiled a stale copy of the file (a wrong "no gain" result), and synthetic images hid the edge detector's real cost (127 us per frame on smoothed noise against 306 us on a real film's frames). A committed benchmark makes the next round trustworthy
+  - Status: Done (2026-10-17): CvResize.ResizeRows from 426x240, 640x360, 1280x534 and 1920x1080 to the processed size, and EdgeDetector.Detect on the resized frames' V plane; keyframes of the realworld.py films (cached under the build output) and a seeded synthetic set; best-of-N us per frame and a SHA-256 of the outputs, `--hash-only` for a quick check. In ShotDetector.slnx so CI builds it
+
 ## 3. Toward 1.0
 
 - API freeze review: detectors/ContentScorer/EdgeDetector internal, VideoReader trimmed, FrameTime raw fields hidden, DetectAsync (docs/decisions/)

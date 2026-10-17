@@ -6,6 +6,9 @@
     <Project Path="src/FrameReader.Native/FrameReader.Native.csproj" />
     <Project Path="src/ShotDetector/ShotDetector.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/micro/ShotDetector.Micro.csproj" />
+  </Folder>
   <Folder Name="/examples/">
     <Project Path="examples/ShotDetector.Example/ShotDetector.Example.csproj" />
   </Folder>

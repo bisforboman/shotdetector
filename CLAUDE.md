@@ -149,7 +149,8 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   (downscales under 3x) and BGR2HSV, off by 1-2 on some pixels (user's choice: x86 stays the reference). macOS Intel
   wheels have no FFmpeg. `getBuildInformation()`'s "Custom HAL" line names the library.
 - Benchmarks on this desktop: pin CPUs with `cmd /c start /affinity 3 ...` (children inherit), compare CPU time
-  (more stable than wall time here), and interleave runs.
+  (more stable than wall time here), and interleave runs. The resize and edge detector alone: benchmarks/micro (real
+  frames, an output hash: `--hash-only`).
 - Streamed input needs the container headers first (mkv/webm/ts/mov or faststart mp4); ffmpeg reports a non-faststart
   mp4 on a pipe as "moov atom not found" or, when the whole file fit the probe prefix, "partial file". ShotDetection
   spills those to a temp file first (`VideoReader.HeadersLast`: mdat before moov in the first bytes).
