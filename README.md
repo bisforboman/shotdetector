@@ -314,8 +314,8 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   per-frame stats differ slightly from x86's and now and then a cut moves. For x86's results on ARM, add
   ShotDetector.FastYuv (`Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420()`), a port of the x86
   conversion: CI checks that ARM then gives x64's results exactly on 8-bit 4:2:0 video (nearly all video), through
-  both decoders. 10-bit, 4:2:2, MPEG-2 and MJPEG still differ on ARM (other conversion paths, and those decoders'
-  IDCTs). The `shotdetect` binaries don't include FastYuv (LGPL), so on ARM they give the default results
+  both decoders (MPEG-1/2 and MJPEG included: they decode with FFmpeg's C IDCT, which x86's default matches and
+  ARM's doesn't). 10-bit and 4:2:2 still differ on ARM (other conversion paths). The `shotdetect` binaries don't include FastYuv (LGPL), so on ARM they give the default results
   ([docs/decisions/2026-10-17-arm-results.md](docs/decisions/2026-10-17-arm-results.md)).
   scenedetect itself differs on ARM, because opencv-python's ARM wheels replace parts of OpenCV with Arm's
   KleidiCV and Carotene libraries: `cv2.resize` for downscales under 3x (scenedetect's usual ones) and BGR to HSV

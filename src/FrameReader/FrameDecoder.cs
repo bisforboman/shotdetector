@@ -141,6 +141,11 @@ public sealed unsafe class FrameDecoder : IDisposable
                 _dec->skip_frame = AVDiscard.AVDISCARD_NONKEY;
             if (o.MaxPixels > 0)
                 _dec->max_pixels = o.MaxPixels;
+
+            // MPEG-1/2 and MJPEG with the C IDCT: x86's default (its SIMD IDCT) gives the same frames, ARM's NEON one rounds
+            // differently, so every platform decodes these as x86 does.
+            if (st->codecpar->codec_id is AVCodecID.AV_CODEC_ID_MPEG1VIDEO or AVCodecID.AV_CODEC_ID_MPEG2VIDEO or AVCodecID.AV_CODEC_ID_MJPEG)
+                _dec->idct_algo = ffmpeg.FF_IDCT_SIMPLE;
             Check(ffmpeg.avcodec_open2(_dec, codec, null), "open decoder");
             _pkt = ffmpeg.av_packet_alloc();
             _frame = ffmpeg.av_frame_alloc();

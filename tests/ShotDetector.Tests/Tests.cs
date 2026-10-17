@@ -758,6 +758,16 @@ public class UrlOptionTests
         Assert.Equal("-v error -protocol_whitelist file,crypto -max_pixels 67108864 -select_streams v:0 -show_entries frame=pts,pkt_dts -of default=nw=1 -i -report",
             string.Join(' ', VideoReader.FrameTimestampsArgs("-report", VideoReader.InputOptions("-report"))));
 
+    // MPEG-1/2 and MJPEG decode with the C IDCT, which x86's default matches and ARM's doesn't (ci.yml's arch-diff).
+    [Theory]
+    [InlineData("mpeg1video", "-idct simple")]
+    [InlineData("mpeg2video", "-idct simple")]
+    [InlineData("mjpeg", "-idct simple")]
+    [InlineData("h264", "")]
+    [InlineData("mpeg4", "")]
+    public void MpegAndMjpegDecodeWithTheCIdct(string codec, string expected) =>
+        Assert.Equal(expected, string.Join(' ', VideoReader.IdctOptions(codec)));
+
     // ffmpeg and ffprobe are started by full path (next to the app, else from PATH), never by a bare name, which would
     // also find one in the current folder.
     [Fact]
