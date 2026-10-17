@@ -624,6 +624,10 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: Another local user could connect to the frame pipe first and break the run (a denial of service; the name is a GUID, so nothing leaks); CurrentUserOnly closes it (security review)
   - Status: Done (2026-10-17)
 
+- FrameReader.Native's Linux packages: runtimes/<rid>/native/ paths without the double slash
+  - Why: Packed on Linux, the libraries were listed as `runtimes/linux-x64/native//libavcodec.so.62` (2.3.0 on nuget.org too); NuGet and the loader cope, but CI's pack check had to accept it
+  - Status: Done (2026-10-17): the csproj's `PackagePath="runtimes\$(Rid)\native\"` kept its backslashes on Linux (MSBuild only rewrites what looks like an existing path), so NuGet didn't see a trailing separator and joined the file name with another slash; forward slashes now, and ci.yml's pack check requires exactly one
+
 ## 5. 2.0 (breaking; picked 2026-10-13)
 
 Nothing here changes detection results: types, names and visibility only. With #194 (section 1). A 2.0 moves the
