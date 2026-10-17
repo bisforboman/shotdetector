@@ -138,7 +138,8 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - 10-bit (any format without swscale's unscaled path to BGR): chroma is interpolated from where the samples sit. OpenCV's
   `sws_scale_frame` takes that from the frame (h264/HEVC 4:2:0: left); ffmpeg's command line drops it before its filters
   (center), so the executable path passes `in_chroma_loc` and BgrConverter's row context sets swscale's position. Linux
-  OpenCV can't decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments.
+  OpenCV can't decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments
+  (files for it outside a `debug/` folder: .gitignore ignores those, so they'd silently not be committed).
 - Frame labels (0.7.1): each decoded frame's showinfo time is matched to its packet (`PacketOf`), so frames
   the decoder drops make numbers skip as in OpenCV. Files always run with `-copyts` (absolute times); streamed
   times already start at 0 (ffmpeg shifts them), so `_startPts` must not be subtracted there.

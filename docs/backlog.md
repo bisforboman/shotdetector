@@ -251,6 +251,18 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: A --stats run on Elephants Dream 426x240 takes about 9.5 s against 2.5 s for plain detection (in-process, 2026-10-17), and the edges are now about 2 s of it: something else (every detector's metrics, the stats rows, writing the CSV) takes the other 5 s
   - Status: Done (2026-10-17): it was the edges after all: on real frames (Elephants Dream's, dark, so a low threshold) EdgeDetector took 306 us per frame against 127 on the synthetic benchmark, mostly the suppression and hysteresis. The suppression now does 8 pixels at a time and the map has a zero border: 306 -> 236 us on real frames; --stats runs 0.68-0.74x of 3.4.0 with both edge PRs
 
+- Microbenchmarks in the repository (benchmarks/micro): the resize and the edge detector, on real frames, with an output hash
+  - Why: The 2026-10-16/17 performance work used scratch projects: one compiled a stale copy of the file (a no-gain result that was wrong), and the synthetic edge images hid the real cost (127 us per frame against 306 on Elephants Dream's frames). Committed ones, with real frames and a hash of the outputs, make the next round's numbers trustworthy
+  - Status: Open
+
+- --stats rows in the weekly benchmark (benchmark.yml)
+  - Why: It measures plain detection only: the edge detector's work (--stats runs 0.68-0.74x in 3.5.0) has no CI tracking, so a regression there would go unseen
+  - Status: Open
+
+- Edges on ARM: the suppression and Sobel with Vector128
+  - Why: 3.5.0's suppression uses Vector256 where accelerated: on ARM (128-bit vectors) it falls back to the scalar loop. Measure on CI's ARM runners first: the resize's portable vector path measured twice as slow there
+  - Status: Maybe
+
 ## 3. Toward 1.0
 
 - API freeze review: detectors/ContentScorer/EdgeDetector internal, VideoReader trimmed, FrameTime raw fields hidden, DetectAsync (docs/decisions/)
@@ -623,6 +635,14 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 - Windows named pipe: PipeOptions.CurrentUserOnly
   - Why: Another local user could connect to the frame pipe first and break the run (a denial of service; the name is a GUID, so nothing leaks); CurrentUserOnly closes it (security review)
   - Status: Done (2026-10-17)
+
+- upstream.yml: an issue when BtbN has a newer month-end release with a newer FFmpeg point release
+  - Why: Since #347 CI's BtbN build is pinned to a month-end release (autobuild-2026-09-30-13-08) and moved by hand; an issue, like the native build's FFmpeg and library checks, keeps it current
+  - Status: Open
+
+- FrameReader.Native's Linux packages: runtimes/<rid>/native/ paths without the double slash
+  - Why: The libraries are listed as runtimes/linux-x64/native//libavcodec.so.62 (PackagePath ends in a slash and the file name adds one); NuGet and the loader cope (2.3.0 shipped so), but a clean path is a one-character fix, checked by ci.yml's pack step
+  - Status: Open
 
 ## 5. 2.0 (breaking; picked 2026-10-13)
 
