@@ -1,0 +1,49 @@
+# Throwaway (debug/arm-edges only): the resize's AdvSimd horizontal pass against main's scalar one, on ARM.
+name: debug arm resize
+on:
+  push:
+    branches: [debug/arm-edges]
+permissions:
+  contents: read
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04-arm, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: FFmpeg (Linux)
+        id: ffmpeg
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          platform: linuxarm64
+      - name: FFmpeg on PATH
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then echo "${{ steps.ffmpeg.outputs.bin }}" >> "$GITHUB_PATH"; else brew install ffmpeg; fi
+      # Correctness first: the new path runs nowhere else.
+      - name: Recorded hash on the branch
+        run: benchmarks/micro/check-hash.sh
+      - name: Pixel tests on the branch
+        run: dotnet test tests/ShotDetector.Tests --filter "FullyQualifiedName~PixelTests|FullyQualifiedName~Resize"
+      - name: Films
+        run: python3 tools/realworld.py --download elephants_dream_426x240_h264.mp4 bbb_640x360_h264.mp4 tears_of_steel_1280x534_h264.mov sintel_trailer_1920x1080_h264.mp4
+      - name: Main beside the branch
+        run: git worktree add ../base origin/main
+      - name: Interleaved, resize only
+        run: |
+          films="$PWD/samples/realworld"
+          for d in ../base .; do dotnet build -c Release "$d/benchmarks/micro" -v q; done
+          for r in 1 2 3 4; do
+            for d in ../base .; do
+              echo "== round $r: $([ "$d" = . ] && echo branch || echo main)"
+              dotnet run -c Release --no-build --project "$d/benchmarks/micro" -- --filter resize --films "$films"
+            done
+          done
