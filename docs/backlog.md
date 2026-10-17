@@ -237,7 +237,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - ARM: the resize's horizontal pass with AdvSimd
   - Why: 3.4.0's SSE2 pass (pmaddwd) is x86 only: ARM (Apple Silicon, the ARM runners) still runs the scalar loop, the measured cost on the critical path (145 -> 80 us per frame at 426x240 on x64)
-  - Status: Open
+  - Status: Dropped (2026-10-17): a portable Vector128 path (each pixel's bytes widened to 32-bit lanes, a * wa + b * wb) gave identical output but measured about twice as slow as the scalar loop on CI's ARM runners (Linux ARM 182 -> 332 us, Apple Silicon 127 -> 279 us per frame at 426x240); ARM's scalar loop is already fast
 
 - Edges: the non-maximum suppression and hysteresis
   - Why: After 3.4.0's Sobel and dilation, --stats runs still take about twice plain detection; the suppression and hysteresis are the scalar part left
