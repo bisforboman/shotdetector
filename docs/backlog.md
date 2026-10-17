@@ -249,7 +249,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - --stats runs: find where the time goes beyond the edges
   - Why: A --stats run on Elephants Dream 426x240 takes about 9.5 s against 2.5 s for plain detection (in-process, 2026-10-17), and the edges are now about 2 s of it: something else (every detector's metrics, the stats rows, writing the CSV) takes the other 5 s
-  - Status: Open
+  - Status: Done (2026-10-17): it was the edges after all: on real frames (Elephants Dream's, dark, so a low threshold) EdgeDetector took 306 us per frame against 127 on the synthetic benchmark, mostly the suppression and hysteresis. The suppression now does 8 pixels at a time and the map has a zero border: 306 -> 236 us on real frames; --stats runs 0.68-0.74x of 3.4.0 with both edge PRs
 
 ## 3. Toward 1.0
 
