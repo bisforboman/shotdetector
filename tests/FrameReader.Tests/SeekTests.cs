@@ -177,7 +177,7 @@ public class SeekTests
         try
         {
             string path = Path.Combine(dir, "mpeg2.ts");
-            Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=2", "-c:v", "mpeg2video", "-bf", "2", "-g", "12", path]);
+            Ffmpeg("-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=2", "-c:v", "mpeg2video", "-bf", "2", "-g", "12", path);
             byte[] expected = Ffmpeg("-v", "error", "-idct", "simple", "-i", path, "-vf", "scale=160:90:flags=bicubic,format=gray", "-f", "rawvideo", "-");
             using var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
             {
