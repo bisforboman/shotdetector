@@ -57,4 +57,5 @@ include each one's proposed section and status (Open or Maybe) in its descriptio
   "Backlog: ...", PR body listing the added and changed rows; turn on auto-merge when the user asked for that kind of
   thing before in this conversation, otherwise say it's ready.
 
-If the user only asked to look (no ideas wanted), stop after step 2 and a one-line offer to suggest additions.
+If the user only asked to look (no ideas wanted), stop after step 2 and ask with the multiple-choice prompt
+whether to suggest additions (or start the item marked next).
