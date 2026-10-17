@@ -1,6 +1,6 @@
 # Decoded frames that outlive the next one (FrameReader)
 
-Status: design (2026-10-17), reviewed; next the build. Backlog: "Conversion (BgrConverter) off the decoding thread".
+Status: FrameReader's part built (DecodedFrame, 2026-10-17); ShotDetector's workers dropped (see Measured). Backlog: "Conversion (BgrConverter) off the decoding thread".
 
 ## Why
 
@@ -72,3 +72,10 @@ on HD; measured before choosing.
 The user's choices (docs/decisions/2026-10-17-frame-references.md): the type is `DecodedFrame`; only
 `FrameDecoder.TakeFrame` and the `BgrConverter` overloads for now (`VideoFrameReader` later, if asked for); ShotDetector's
 conversion workers on by default, one on small frames and more on HD only where measured faster.
+
+## Measured (2026-10-17)
+
+ShotDetector's conversion workers, built on DecodedFrame, gave identical stats but no gain on this desktop (16
+threads): plain detection 1.00-1.01x with 1-3 workers on Tears of Steel, 1.04-1.07x slower on BBB. Decoding keeps about
+9 cores busy on Tears and sets the pace, so the 148 us per frame of conversion was never on the critical path. The
+user's choice: keep DecodedFrame as a FrameReader feature, drop the workers.

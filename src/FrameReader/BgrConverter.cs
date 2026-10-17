@@ -10,10 +10,11 @@ namespace FrameReader;
 /// Advanced: part of the low-level layer ShotDetector's exact pipelines use; the main API is VideoFrameReader, the audio
 /// readers, the writers, Remux and MediaProbe.
 /// </summary>
-/// <param name="decoder">The decoder whose current frame is converted; not disposed with the converter.</param>
-public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
+public sealed unsafe class BgrConverter : IDisposable
 {
-    readonly FrameDecoder _d = decoder;
+    readonly FrameDecoder? _d;
+    AVFrame* _src;          // the frame being converted: the decoder's current one, or a DecodedFrame's
+    bool _fromDecoder;      // _src is the decoder's, whose rows may be computed on demand
     AVFrame* _bgr;
     SwsContext* _toBgr, _toRows;
 
@@ -23,6 +24,55 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
     /// </summary>
     public bool KeepFirstSize { get; init; }
 
+    /// <summary>A converter of <paramref name="decoder"/>'s current frame.</summary>
+    /// <param name="decoder">The decoder whose current frame is converted; not disposed with the converter.</param>
+    public BgrConverter(FrameDecoder decoder) => _d = decoder;
+
+    /// <summary>
+    /// A converter of <see cref="DecodedFrame"/>s (<see cref="Convert(DecodedFrame, out int)"/>), tied to no decoder. One
+    /// thread at a time: each thread converting frames needs its own.
+    /// </summary>
+    public BgrConverter()
+    {
+    }
+
+    /// <summary>The whole <paramref name="frame"/> as BGR: the bytes <see cref="Convert(out int)"/> gives it as the decoder's current frame.</summary>
+    /// <param name="frame">A frame from <see cref="FrameDecoder.TakeFrame"/>.</param>
+    /// <param name="stride">Bytes from one row to the next (at least 3 x width).</param>
+    /// <returns>Height x stride bytes, valid until the next conversion or <see cref="Dispose"/>.</returns>
+    public ReadOnlySpan<byte> Convert(DecodedFrame frame, out int stride)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        _src = frame.Frame;
+        _fromDecoder = false;
+        return Whole(out stride);
+    }
+
+    /// <summary>
+    /// Only the slices of <paramref name="frame"/> holding <paramref name="rows"/> converted, as
+    /// <see cref="Convert(ReadOnlySpan{int}, out int)"/> converts the decoder's current frame.
+    /// </summary>
+    /// <param name="frame">A frame from <see cref="FrameDecoder.TakeFrame"/>.</param>
+    /// <param name="rows">The rows wanted, ascending.</param>
+    /// <param name="stride">Bytes from one row to the next.</param>
+    /// <returns>Height x stride bytes, valid until the next conversion or <see cref="Dispose"/>.</returns>
+    public ReadOnlySpan<byte> Convert(DecodedFrame frame, ReadOnlySpan<int> rows, out int stride)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        _src = frame.Frame;
+        _fromDecoder = false;
+        return Rows(rows, out stride);
+    }
+
+    /// <summary>The decoder's current frame, for the overloads that convert it.</summary>
+    void FromDecoder()
+    {
+        if (_d == null)
+            throw new InvalidOperationException("This converter has no decoder: pass a DecodedFrame.");
+        _src = _d.Frame;
+        _fromDecoder = true;
+    }
+
     (int W, int H, int Format, AVColorSpace Space, AVColorRange Range, AVChromaLocation Loc) _rowsFor;
 
     /// <summary>The whole current frame as BGR, its rows <paramref name="stride"/> bytes apart.</summary>
@@ -30,16 +80,23 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
     /// <returns>Height x stride bytes, valid until the next conversion or <see cref="Dispose"/>.</returns>
     public ReadOnlySpan<byte> Convert(out int stride)
     {
+        FromDecoder();
+        return Whole(out stride);
+    }
+
+    ReadOnlySpan<byte> Whole(out int stride)
+    {
         Prepare();
-        _d.EnsureRows(0, _d.Frame->height);
+        if (_fromDecoder)
+            _d!.EnsureRows(0, _src->height);
         int flags = AsProgressive();
         try
         {
-            Check(ffmpeg.sws_scale_frame(_toBgr, _bgr, _d.Frame), "convert");
+            Check(ffmpeg.sws_scale_frame(_toBgr, _bgr, _src), "convert");
         }
         finally
         {
-            _d.Frame->flags = flags;
+            _src->flags = flags;
         }
 
         return Result(out stride);
@@ -54,14 +111,20 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
     /// <returns>Height x stride bytes, valid until the next conversion or <see cref="Dispose"/>.</returns>
     public ReadOnlySpan<byte> Convert(ReadOnlySpan<int> rows, out int stride)
     {
+        FromDecoder();
+        return Rows(rows, out stride);
+    }
+
+    ReadOnlySpan<byte> Rows(ReadOnlySpan<int> rows, out int stride)
+    {
         Prepare();
 
         // Scaled to the first size: the rows wanted aren't the decoded frame's rows, so the whole frame.
-        if (_bgr->width != _d.Frame->width || _bgr->height != _d.Frame->height)
-            return Convert(out stride);
+        if (_bgr->width != _src->width || _bgr->height != _src->height)
+            return Whole(out stride);
 
         // Deinterlacing row by row: only the rows that are read (a slice's other rows come out wrong, and nothing reads them).
-        if (_d.RowMode)
+        if (_fromDecoder && _d!.RowMode)
         {
             foreach (int r in rows)
                 _d.MarkRows(r, r + 1);
@@ -72,9 +135,9 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
         int flags = AsProgressive();
         try
         {
-            Check(ffmpeg.sws_frame_start(ctx, _bgr, _d.Frame), "convert");
-            Check(ffmpeg.sws_send_slice(ctx, 0, (uint)_d.Frame->height), "convert");
-            int align = (int)ffmpeg.sws_receive_slice_alignment(ctx), h = _d.Frame->height;
+            Check(ffmpeg.sws_frame_start(ctx, _bgr, _src), "convert");
+            Check(ffmpeg.sws_send_slice(ctx, 0, (uint)_src->height), "convert");
+            int align = (int)ffmpeg.sws_receive_slice_alignment(ctx), h = _src->height;
             for (int i = 0; i < rows.Length;)
             {
                 // Merge the aligned slices of consecutive wanted rows into one request.
@@ -88,7 +151,7 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
         }
         finally
         {
-            _d.Frame->flags = flags;
+            _src->flags = flags;
         }
 
         return Result(out stride);
@@ -100,8 +163,8 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
     /// </summary>
     int AsProgressive()
     {
-        int flags = _d.Frame->flags;
-        _d.Frame->flags &= ~ffmpeg.AV_FRAME_FLAG_INTERLACED;
+        int flags = _src->flags;
+        _src->flags &= ~ffmpeg.AV_FRAME_FLAG_INTERLACED;
         return flags;
     }
 
@@ -114,11 +177,11 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
             _bgr = ffmpeg.av_frame_alloc();
         }
 
-        if ((_bgr->width != _d.Frame->width || _bgr->height != _d.Frame->height) && !(KeepFirstSize && _bgr->width > 0))
+        if ((_bgr->width != _src->width || _bgr->height != _src->height) && !(KeepFirstSize && _bgr->width > 0))
         {
             ffmpeg.av_frame_unref(_bgr);
             _bgr->format = (int)AVPixelFormat.AV_PIX_FMT_BGR24;
-            (_bgr->width, _bgr->height) = (_d.Frame->width, _d.Frame->height);
+            (_bgr->width, _bgr->height) = (_src->width, _src->height);
             Check(ffmpeg.av_frame_get_buffer(_bgr, 32), "frame buffer");
         }
     }
@@ -136,7 +199,7 @@ public sealed unsafe class BgrConverter(FrameDecoder decoder) : IDisposable
     /// </summary>
     SwsContext* RowsContext()
     {
-        var key = (_d.Frame->width, _d.Frame->height, _d.Frame->format, _d.Frame->colorspace, _d.Frame->color_range, _d.Frame->chroma_location);
+        var key = (_src->width, _src->height, _src->format, _src->colorspace, _src->color_range, _src->chroma_location);
         if (_toRows != null && _rowsFor == key)
             return _toRows;
         if (_toRows != null)
