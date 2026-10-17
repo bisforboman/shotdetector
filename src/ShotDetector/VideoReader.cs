@@ -614,7 +614,7 @@ internal sealed partial class VideoReader
     /// gets): a frame of more than 8192 x 8192 pixels fails to decode.
     /// </summary>
     /// <summary>
-    /// MPEG-1/2 and MJPEG with FFmpeg's C IDCT (as FrameDecoder decodes them in-process): x86's default, its SIMD IDCT,
+    /// MPEG-1/2 and MJPEG with FFmpeg's C IDCT (in-process too, FrameDecoderOptions.CodecOptions): x86's default, its SIMD IDCT,
     /// gives the same frames, ARM's NEON one rounds differently, so every platform decodes these as x86 (and OpenCV there) does.
     /// </summary>
     internal static string[] IdctOptions(string codec) => codec is "mpeg1video" or "mpeg2video" or "mjpeg" ? ["-idct", "simple"] : [];

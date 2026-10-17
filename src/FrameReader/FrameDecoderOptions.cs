@@ -16,6 +16,13 @@ public sealed record FrameDecoderOptions
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
 
     /// <summary>
+    /// FFmpeg decoder options, as ffmpeg's decoder options before <c>-i</c> without the dash. <c>idct</c> = <c>simple</c>
+    /// decodes MPEG-1/2 and MJPEG with the C IDCT: x86's default IDCT gives the same frames, ARM's rounds differently, so
+    /// with it ARM gives x86's frames (and ffmpeg's with <c>-idct simple</c>, not its default ones there).
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? CodecOptions { get; init; }
+
+    /// <summary>
     /// Stops opening and reading the input where FFmpeg waits, as on a network read (<see cref="OperationCanceledException"/>,
     /// or the read ends with an error); none by default.
     /// </summary>

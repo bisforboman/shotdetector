@@ -1,4 +1,4 @@
-### Fixed
+### New
 
-- `FrameDecoder` (and so `VideoFrameReader`): MPEG-1/2 and MJPEG decode with FFmpeg's C IDCT, so ARM gives the same
-  frames as x86 (ARM's NEON IDCT rounds differently). Unchanged on x86, whose default IDCT gives these frames.
+- `FrameDecoderOptions.CodecOptions`: FFmpeg decoder options, as ffmpeg's before `-i`. `idct` = `simple` decodes
+  MPEG-1/2 and MJPEG with the C IDCT, so ARM gives x86's frames (ARM's default IDCT rounds differently).

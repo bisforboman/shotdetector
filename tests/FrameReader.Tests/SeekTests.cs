@@ -166,6 +166,38 @@ public class SeekTests
         }
     }
 
+    // CodecOptions are ffmpeg's decoder options: MPEG-2 with idct=simple is ffmpeg's -idct simple (on ARM, where the
+    // default IDCT differs, a real difference).
+    [Fact]
+    public void CodecOptionsAreFfmpegsDecoderOptions()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-idct-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "mpeg2.ts");
+            Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=2", "-c:v", "mpeg2video", "-bf", "2", "-g", "12", path]);
+            byte[] expected = Ffmpeg("-v", "error", "-idct", "simple", "-i", path, "-vf", "scale=160:90:flags=bicubic,format=gray", "-f", "rawvideo", "-");
+            using var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
+            {
+                Width = 160,
+                Height = 90,
+                FrameFormat = FrameFormat.Gray8,
+                Decoder = new FrameDecoderOptions { CodecOptions = new Dictionary<string, string> { ["idct"] = "simple" } },
+            });
+            var actual = new MemoryStream();
+            while (reader.TryRead(out var frame))
+                actual.Write(frame.Data);
+            Assert.True(expected.Length > 0 && expected.AsSpan().SequenceEqual(actual.ToArray()),
+                $"{expected.Length / (160 * 90)} frames from ffmpeg, {actual.Length / (160 * 90)} read");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // ReadAt: several readers on contiguous shares of the times give the frames one reader gives, byte for byte.
     [Theory]
     [InlineData("bframes.mp4", "-c:v mpeg4 -bf 2 -g 12")]
