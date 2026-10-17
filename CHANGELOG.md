@@ -6,6 +6,23 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.5.0 – 2026-10-17
+
+Faster --stats runs (edge detection), and hardening: a protocol whitelist for Stream input, a frame pipe only the user can open.
+
+### Faster
+
+- `--stats` runs (and edge weights in the content and adaptive detectors) take 0.68-0.74x the time of 3.4.0 on an
+  8-core desktop: edge detection's non-maximum suppression works on 8 pixels at a time, the hysteresis needs no
+  border checks, and the edge map is written 16 bytes at a time. The edge maps and stats are the same, byte for byte.
+
+### Fixed
+
+- A `Stream` input (and the CLI's `-i -`) reads with FFmpeg's protocol whitelist set to `pipe`, as a file reads only as
+  a file, so nothing in the piped data can open another protocol.
+- Windows: the named pipe the ffmpeg executable writes frames to accepts only the current user's connections, so
+  another local user can't connect to it first and break the run.
+
 ## 3.4.0 – 2026-10-16
 
 Faster in-process detection: the resize with SSE2 on the scoring thread, and edge detection about 3.8x faster.
