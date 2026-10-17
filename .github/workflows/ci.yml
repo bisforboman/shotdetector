@@ -732,22 +732,20 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v7
         with:
           pattern: arch-*
 
-      # Not vacuous: both sides wrote the same, non-zero number of files.
+      # Not vacuous: both sides wrote the same, non-zero number of files. Then what differs, and how much, in the summary.
       - name: x64 and ARM give the same files
         run: |
           a=$(ls arch-linux-x64 | wc -l) b=$(ls arch-linux-arm64 | wc -l)
           echo "x64: $a files, ARM: $b files"
           if [ "$a" -eq 0 ] || [ "$a" -ne "$b" ]; then echo "::error::Expected the same, non-zero number of files"; exit 1; fi
-          if ! diff -rq arch-linux-x64 arch-linux-arm64 > differ.txt; then
-            echo "::error::$(wc -l < differ.txt) files differ between x64 and ARM"
-            cat differ.txt
-            diff -r arch-linux-x64 arch-linux-arm64 | head -40
-            exit 1
-          fi
+          set -o pipefail
+          python3 tools/arch-summary.py arch-linux-x64 arch-linux-arm64 | tee -a "$GITHUB_STEP_SUMMARY"
 
   # The one check branch protection requires from this workflow: every job above passed or was skipped (a light PR
   # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
