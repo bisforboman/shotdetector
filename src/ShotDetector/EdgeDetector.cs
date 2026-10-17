@@ -19,7 +19,11 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
 
     // The magnitudes with a border of zeros (a pixel outside the image has magnitude 0 to the suppression).
     readonly int[] _mag = new int[(width + 2) * (height + 2)];
-    readonly byte[] _map = new byte[width * height], _canny = new byte[width * height], _rowMax = new byte[width * height];
+    readonly byte[] _canny = new byte[width * height], _rowMax = new byte[width * height];
+
+    // The suppression's map (0 = no, 1 = weak, 2 = edge) with a border of zeros, so the hysteresis's neighbours need no
+    // clamping; laid out as the magnitudes are.
+    readonly byte[] _map = new byte[(width + 2) * (height + 2)];
 
     // One row with a border of zeros either side, for the dilation's window.
     readonly byte[] _padded = new byte[width + 2 * (kernelSize ?? EstimatedKernelSize(width, height))];
@@ -91,21 +95,14 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
         _stack.Clear();
         Array.Clear(_map);
         ref int mag0 = ref _mag[0];
-        var lowV = Vector256.Create(low);
         for (int y = 0; y < h; y++)
         {
-            // This row's magnitudes start at row y + 1, column 1 of the bordered array; a neighbour is at +-1 and +-pw.
+            // This row's magnitudes (and map) start at row y + 1, column 1 of the bordered arrays; a neighbour is at +-1
+            // and +-pw.
             ref int row = ref Unsafe.Add(ref mag0, (y + 1) * pw + 1);
-            for (int x = 0; x < w; x++)
+            int x = Vector256.IsHardwareAccelerated ? SuppressRow(ref row, y, low, high) : 0;
+            for (; x < w; x++)
             {
-                // Most pixels are at or under the low threshold: 8 at a time while none of them is above it.
-                if (Vector256.IsHardwareAccelerated && x + 8 <= w
-                    && !Vector256.GreaterThanAny(Vector256.LoadUnsafe(ref row, (nuint)x), lowV))
-                {
-                    x += 7;
-                    continue;
-                }
-
                 int i = y * w + x, m = Unsafe.Add(ref row, x);
                 if (m <= low)
                     continue;
@@ -130,50 +127,110 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
 
                 if (!isMax)
                     continue;
+                int p = (y + 1) * pw + x + 1;
                 if (m > high)
                 {
-                    _map[i] = 2;
-                    _stack.Push(i);
+                    _map[p] = 2;
+                    _stack.Push(p);
                 }
                 else
                 {
-                    _map[i] = 1;
+                    _map[p] = 1;
                 }
             }
         }
 
-        // Hysteresis: weak pixels 8-connected to an edge become edges.
-        while (_stack.TryPop(out int i))
-        {
-            int x = i % w, y = i / w;
-            for (int ny = Math.Max(y - 1, 0); ny <= Math.Min(y + 1, h - 1); ny++)
-            {
-                for (int nx = Math.Max(x - 1, 0); nx <= Math.Min(x + 1, w - 1); nx++)
-                {
-                    int j = ny * w + nx;
-                    if (_map[j] == 1)
-                    {
-                        _map[j] = 2;
-                        _stack.Push(j);
-                    }
-                }
-            }
-        }
-
-        // Edges (2) to 255, the rest to 0: 16 at a time, then one by one.
-        int o = 0;
+        // Hysteresis: weak pixels 8-connected to an edge become edges (the border is never weak).
         ref byte map = ref _map[0];
-        ref byte dst = ref MemoryMarshal.GetReference(output);
-        if (Vector128.IsHardwareAccelerated)
+        while (_stack.TryPop(out int p))
         {
-            var two = Vector128.Create((byte)2);
-            for (; o <= output.Length - 16; o += 16)
-                Vector128.Equals(Vector128.LoadUnsafe(ref map, (nuint)o), two).StoreUnsafe(ref dst, (nuint)o);
+            foreach (int j in (ReadOnlySpan<int>)[p - pw - 1, p - pw, p - pw + 1, p - 1, p + 1, p + pw - 1, p + pw, p + pw + 1])
+            {
+                if (Unsafe.Add(ref map, j) == 1)
+                {
+                    Unsafe.Add(ref map, j) = 2;
+                    _stack.Push(j);
+                }
+            }
         }
 
-        for (; o < output.Length; o++)
-            Unsafe.Add(ref dst, o) = Unsafe.Add(ref map, o) == 2 ? (byte)255 : (byte)0;
+        // Edges (2) to 255, the rest to 0, row by row out of the bordered map: 16 at a time, then one by one.
+        ref byte dst = ref MemoryMarshal.GetReference(output);
+        var two = Vector128.Create((byte)2);
+        for (int y = 0; y < h; y++)
+        {
+            ref byte from = ref Unsafe.Add(ref map, (y + 1) * pw + 1);
+            ref byte to = ref Unsafe.Add(ref dst, y * w);
+            int o = 0;
+            if (Vector128.IsHardwareAccelerated)
+            {
+                for (; o <= w - 16; o += 16)
+                    Vector128.Equals(Vector128.LoadUnsafe(ref from, (nuint)o), two).StoreUnsafe(ref to, (nuint)o);
+            }
+
+            for (; o < w; o++)
+                Unsafe.Add(ref to, o) = Unsafe.Add(ref from, o) == 2 ? (byte)255 : (byte)0;
+        }
     }
+
+    /// <summary>
+    /// The suppression for row <paramref name="y"/>, 8 pixels at a time (while x + 8 &lt;= width): OpenCV's tangent test and
+    /// neighbour comparisons for every lane, the scalar loop's integers, then each lane's outcome where its magnitude is
+    /// above <paramref name="low"/>. Strong pixels go on the stack in order. Returns where it stopped.
+    /// </summary>
+    int SuppressRow(ref int row, int y, int low, int high)
+    {
+        const int shift = 15, tg22 = 13573;
+        int w = width, pw = w + 2, x = 0;
+        var lowV = Vector256.Create(low);
+        var highV = Vector256.Create(high);
+        var tg = Vector256.Create(tg22);
+        var one = Vector256.Create(1);
+        ref short rdx = ref _dx[0];
+        ref short rdy = ref _dy[0];
+        ref byte map = ref _map[0];
+        for (; x + 8 <= w; x += 8)
+        {
+            ref int at = ref Unsafe.Add(ref row, x);
+            var m = Vector256.LoadUnsafe(ref at);
+            var candidate = Vector256.GreaterThan(m, lowV);
+            if (candidate == Vector256<int>.Zero)
+                continue;
+            int i = y * w + x;
+            var xs = Widen(Vector128.LoadUnsafe(ref rdx, (nuint)i));
+            var ys = Widen(Vector128.LoadUnsafe(ref rdy, (nuint)i));
+            var ax = Vector256.Abs(xs);
+            var ay = Vector256.Abs(ys) << shift;
+            var tg22x = ax * tg;
+            var horizontal = Vector256.LessThan(ay, tg22x);
+            var vertical = Vector256.GreaterThan(ay, tg22x + (ax << (shift + 1)));
+            var byRow = Vector256.GreaterThan(m, Load(ref at, -1)) & Vector256.GreaterThanOrEqual(m, Load(ref at, 1));
+            var byColumn = Vector256.GreaterThan(m, Load(ref at, -pw)) & Vector256.GreaterThanOrEqual(m, Load(ref at, pw));
+            var down = Vector256.GreaterThan(m, Load(ref at, -pw - 1)) & Vector256.GreaterThan(m, Load(ref at, pw + 1));   // s = 1
+            var up = Vector256.GreaterThan(m, Load(ref at, -pw + 1)) & Vector256.GreaterThan(m, Load(ref at, pw - 1));     // s = -1
+            var diagonal = Vector256.ConditionalSelect(Vector256.LessThan(xs ^ ys, Vector256<int>.Zero), up, down);
+            var isMax = candidate & Vector256.ConditionalSelect(horizontal, byRow, Vector256.ConditionalSelect(vertical, byColumn, diagonal));
+            if (isMax == Vector256<int>.Zero)
+                continue;
+            var label = (isMax & one) + (isMax & Vector256.GreaterThan(m, highV) & one);
+            int p = (y + 1) * pw + x + 1;
+            for (int k = 0; k < 8; k++)
+            {
+                int l = label.GetElement(k);
+                if (l == 0)
+                    continue;
+                Unsafe.Add(ref map, p + k) = (byte)l;
+                if (l == 2)
+                    _stack.Push(p + k);
+            }
+        }
+
+        return x;
+    }
+
+    static Vector256<int> Load(ref int at, int offset) => Vector256.LoadUnsafe(ref Unsafe.Add(ref at, offset));
+
+    static Vector256<int> Widen(Vector128<short> v) => Vector256.Create(Vector128.WidenLower(v), Vector128.WidenUpper(v));
 
     /// <summary>cv2.dilate with a k×k square of ones: the maximum over the window, ignoring pixels outside.</summary>
     internal void Dilate(ReadOnlySpan<byte> src, Span<byte> edges)
