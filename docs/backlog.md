@@ -229,7 +229,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Conversion (BgrConverter) off the decoding thread: av_frame_ref'd frames to converter threads, order restored
   - Why: 148 us per frame at 1280x534, serial with decoding (measured); after the resize move, large frames would be decode-bound; costs a decoded frame of memory per worker
-  - Status: In progress (2026-10-17): FrameReader's part done (DecodedFrame, TakeFrame, BgrConverter's overloads; docs/frame-references.md); next ShotDetector's conversion workers, measured
+  - Status: Dropped (2026-10-17): FrameReader's DecodedFrame is in (a feature of its own), but conversion workers built on it measured no gain: plain detection 1.00-1.01x on Tears of Steel, 1.04-1.07x slower on BBB with 1-3 workers, stats identical. The decoding threads (about 9 cores busy on Tears) set the pace, not the conversion
 
 - Frame handoff in batches (or a single-producer ring) instead of BlockingCollection per frame
   - Why: Take/Add cost 30-40 us per frame on the producer in a trace, about 20% of its time on SD (estimated gain 5-10% once the resize moves)
