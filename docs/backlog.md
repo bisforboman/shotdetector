@@ -257,7 +257,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - --stats rows in the weekly benchmark (benchmark.yml)
   - Why: It measures plain detection only: the edge detector's work (--stats runs 0.68-0.74x in 3.5.0) has no CI tracking, so a regression there would go unseen
-  - Status: In progress (2026-10-17)
+  - Status: Done (2026-10-17): bench.py --stats (scenedetect -s against shotdetect --stats in-process, content), all CPUs, the same four films; [first run](https://github.com/bisforboman/shotdetector/actions/runs/39027227136): shotdetect's wall time 0.59-0.78x scenedetect's on x64 (Tears of Steel 23.6 against 33.1 s) and 0.72-0.84x on ARM (18.4 against 25.5 s), with less CPU time on every film
 
 - Edges on ARM: the suppression and Sobel with Vector128
   - Why: 3.5.0's suppression uses Vector256 where accelerated: on ARM (128-bit vectors) it falls back to the scalar loop. Measure on CI's ARM runners first: the resize's portable vector path measured twice as slow there
