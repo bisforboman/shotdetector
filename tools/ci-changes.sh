@@ -8,7 +8,7 @@ files=$(git diff --name-only HEAD^1 HEAD)
 [ -z "$files" ] && exit 0
 if ! echo "$files" | grep -qvE '^docs/|\.md$'; then echo docs_only=true; fi
 
-rest=$(echo "$files" | grep -vE '^docs/|\.md$|^\.claude/|^\.githooks/|^\.github/workflows/(release|benchmark|frame-reader-bench|upstream|dependabot-auto-merge|parity-os|codeql)\.yml$|^\.github/dependabot\.yml$|^benchmarks/|^tests/FrameReader\.Tests/' || true)
+rest=$(echo "$files" | grep -vE '^docs/|\.md$|^\.claude/|^\.githooks/|^\.github/workflows/(release|benchmark|frame-reader-bench|upstream|dependabot-auto-merge|parity-os|codeql|compare)\.yml$|^\.github/dependabot\.yml$|^benchmarks/|^tests/FrameReader\.Tests/' || true)
 if [ -z "$rest" ]; then echo light=true; exit 0; fi
 # Anything else but FrameReader's source runs everything.
 if echo "$rest" | grep -qvE '^src/FrameReader/[^/]*\.cs$'; then exit 0; fi

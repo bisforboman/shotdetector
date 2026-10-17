@@ -1,0 +1,89 @@
+name: Compare
+
+# A branch against a base, on chosen runners, before a performance change is kept: the branch's pixel tests and
+# recorded microbenchmark hash first (its new code may run nowhere else, e.g. an ARM-only path), then benchmarks/micro
+# on the films, base and branch interleaved, each its own build. Dispatch it on the branch ("Run workflow", or
+# `gh workflow run compare.yml --ref <branch>`); the tables go in the run summary. It replaces the throwaway debug/**
+# branches with push-triggered workflows, which left a branch to delete each time.
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: The ref to compare against
+        default: main
+      filter:
+        description: benchmarks/micro's --filter (e.g. edges, resize, 1280x534); empty for every case
+        default: ''
+      runners:
+        description: A JSON list of runner labels
+        default: '["ubuntu-26.04-arm", "macos-latest"]'
+      rounds:
+        description: Base/branch rounds, interleaved
+        default: '4'
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.runners) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: FFmpeg (Linux)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          platform: ${{ runner.arch == 'ARM64' && 'linuxarm64' || 'linux64' }}
+
+      - name: FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
+      # The branch's own results first: these need no clips, so any FFmpeg on PATH will do.
+      - name: The branch's pixel tests
+        run: dotnet test tests/ShotDetector.Tests --filter "FullyQualifiedName~PixelTests|FullyQualifiedName~HsvTests|FullyQualifiedName~ContentScorerTests"
+
+      - name: The branch's recorded hash
+        run: benchmarks/micro/check-hash.sh
+
+      - name: Films
+        run: python3 tools/realworld.py --download elephants_dream_426x240_h264.mp4 bbb_640x360_h264.mp4 tears_of_steel_1280x534_h264.mov sintel_trailer_1920x1080_h264.mp4
+
+      - name: Base and branch, interleaved
+        env:
+          BASE: ${{ inputs.base }}
+          FILTER: ${{ inputs.filter }}
+          ROUNDS: ${{ inputs.rounds }}
+        run: |
+          set -o pipefail
+          git worktree add ../base "origin/$BASE" 2>/dev/null || git worktree add ../base "$BASE"
+          films="$PWD/samples/realworld"
+          for d in ../base .; do dotnet build -c Release "$d/benchmarks/micro" -v q; done
+          args=(--films "$films")
+          if [ -n "$FILTER" ]; then args+=(--filter "$FILTER"); fi
+          echo "### $RUNNER_OS $RUNNER_ARCH, $(nproc 2>/dev/null || sysctl -n hw.ncpu) CPUs: $BASE against ${GITHUB_REF_NAME}" >> "$GITHUB_STEP_SUMMARY"
+          for r in $(seq 1 "$ROUNDS"); do
+            for d in ../base .; do
+              side=$([ "$d" = . ] && echo branch || echo base)
+              echo "== round $r: $side"
+              dotnet run -c Release --no-build --project "$d/benchmarks/micro" -- "${args[@]}" | tee "micro-$side.txt"
+            done
+          done
+          # The last round's tables (best of 15 each); the outputs hashes must match between the two.
+          for side in base branch; do
+            { echo "#### $side, round $ROUNDS"; echo '```text'; cat "micro-$side.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          done
+          a=$(sed -n 's/^all outputs: *//p' micro-base.txt); b=$(sed -n 's/^all outputs: *//p' micro-branch.txt)
+          if [ "$a" != "$b" ]; then echo "::error::The outputs differ: base $a, branch $b"; exit 1; fi

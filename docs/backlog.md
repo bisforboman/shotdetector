@@ -279,6 +279,10 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: The portable Vector128 resize measured twice as slow as the scalar loop on ARM (2026-10-17), but NEON's own widening multiply-accumulate (vmlal) fits the fixed-point weights; measure on CI's ARM runners as #370 did (main against the branch, interleaved, film frames) and drop it if it doesn't win
   - Status: Dropped (2026-10-17): an AdvSimd horizontal pass (per pixel: the two pixels' bytes widened to words, smull by wa, smlal by wb, the SSE2 branch's loads and overlapping stores) gave identical output (the recorded hash on Linux ARM and Apple Silicon, the same real-frame hashes as main) but measured 1.5-1.6x the time of the scalar loop on CI's Linux ARM runner (Elephants Dream 184 -> 288 us, Sintel trailer 259 -> 408 us per frame, four interleaved rounds). One pixel per vector leaves too little work for the loads and lane moves: ARM's scalar loop stays
 
+- compare.yml: a branch against a base on chosen runners (workflow_dispatch), instead of throwaway debug/** branches
+  - Why: The two ARM measurements of 2026-10-17 each needed a push-triggered workflow on a debug/** branch, which this repository's sessions can't delete (the owner did by hand), and the second copy's test filter picked up a clip test that failed on macOS
+  - Status: Done (2026-10-17): inputs base, filter, runners, rounds; the branch's pixel tests and recorded hash first, then benchmarks/micro on the films interleaved, the last round's tables in the summary, and a failure when the outputs differ
+
 ## 3. Toward 1.0
 
 - API freeze review: detectors/ContentScorer/EdgeDetector internal, VideoReader trimmed, FrameTime raw fields hidden, DetectAsync (docs/decisions/)
