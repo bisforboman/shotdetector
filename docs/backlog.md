@@ -425,7 +425,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - A parity leg through the FFmpeg 9 executable, informational
   - Why: The question the move to FFmpeg 9 hinges on is whether 9's decoders and swscale give OpenCV's bytes; with the test suite passing on 9 (#374) and BtbN's 9.0 already pinned in the action, one compare.py leg with `--decoder process` and FFmpeg 9 against scenedetect answers it for the executable path before the trigger (opencv-python's wheel) fires. Not required: the reference is still FFmpeg 8
-  - Status: Maybe
+  - Status: Dropped (2026-10-17): already covered. ci.yml's parity matrix runs on BtbN's FFmpeg 9.0 (`FFMPEG: '9.0'`), so its required `process` legs already compare the FFmpeg 9 executable with scenedetect, and pass. What the move still needs answered is in-process decoding with FFmpeg 9's libraries, which needs FFmpeg.AutoGen 9: the move itself
 
 - README performance: 1.0's x64 and ARM benchmark, 2-CPU figures and memory
   - Why: Issue #7 asked for 2-CPU numbers; the README table predates in-process decoding
