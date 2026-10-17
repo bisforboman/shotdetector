@@ -617,6 +617,15 @@ try
         + $"min-scene-len={result.MinSceneLengthFrames} frames, decoded {(video.DecodedInProcess ? "in-process" : "by ffmpeg")}"
         + $"{(video.Chunks > 1 ? " in " + video.Chunks + " chunks" : "")}"));
 
+    // The ffmpeg executable checks an https playlist's certificate but opens its segments, keys and variants without
+    // the check (FFmpeg's HLS demuxer doesn't pass tls_verify on); in-process, FrameReader checks them too.
+    if (!video.DecodedInProcess && video.Container == "hls"
+        && Uri.TryCreate(input, UriKind.Absolute, out var url) && url.Scheme == Uri.UriSchemeHttps)
+    {
+        Console.Error.WriteLine("Warning: decoded by ffmpeg, which fetched the playlist's segments without checking their "
+            + "certificates; in-process decoding (the FrameReader.Native packages) checks them.");
+    }
+
     if (result.ReferenceTone is { } tone)
     {
         foreach (var line in ToneLines(tone))
