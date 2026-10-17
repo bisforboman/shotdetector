@@ -16,6 +16,10 @@ Status: **Released** (on nuget.org), **Done** (on `main`, in the next release), 
   - Why: The promise is identical results
   - Status: Open (none known; MPEG-PS timestamps fixed 2026-10-06)
 
+- CI: x64 and ARM give the same results end to end: the arm job runs `shotdetect --stats` on the sample clips and diffs its CSVs against the build job's
+  - Why: Each piece is tested on ARM (the HSV conversion on all 2^24 colours, the content score, the microbenchmark hash, the in-process tests with the linux-arm64 build), but nothing compares a whole run: decoding goes through a different native build per platform, and scenedetect on ARM isn't the reference (opencv-python's ARM wheels use KleidiCV), so the parity matrix runs on x64 only
+  - Status: Open
+
 - VideoWriter's rare CI mismatch: about 1 CI test run in 10-20, one file differs from `ffmpeg -c:v libx264`'s by a few hundred bytes (never locally, never in ffmpeg's own output). Ruled out (2026-10-10): x264 threads (1, both sides; the SEI settings match), filter-graph threads, frame padding (zeroed), the input frames (hashes identical), uninitialised heap (MALLOC_PERTURB_). Left: something in x264/FFmpeg inside a long-lived .NET process
   - Why: The exact-output promise; the check stays a hard failure (docs/decisions/), so every failure is a data point (the test prints both files' x264 settings and CI keeps both files)
   - Status: Done (2026-10-12): stress runs on Linux (200 runs per runner, CPU logged): only AVX-512 CPUs differ (about 0.4%; 0 in 1,800 on EPYC 7763s). Not padding or the stack, not .NET's own AVX-512 code, not the GC. Tiered JIT off: 0 in 3,200; x264 capped at AVX2 on both sides: 0 in 2,000. So x264's AVX-512 code with the JIT thread in one process (likely an over-read into memory that thread writes). CI's step turns tiered compilation off; FrameReader's README and VideoWriter's docs give the workarounds
@@ -275,6 +279,10 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: The per-frame resize and edge timings are measured only by hand (the 3.4.0/3.5.0 rounds, #370 on a throwaway workflow); a weekly table beside the whole-pipeline one shows a regression in them, and the CPU behind it, week to week
   - Status: Done (2026-10-17): a step after tools/bench.py's tables (built first, so the table holds only timings); [first run](https://github.com/bisforboman/shotdetector/actions/runs/39048657694), dispatched on the branch: both runners wrote the table
 
+- benchmarks/micro's 1920x1080 case takes 9 frames from the Sintel trailer, against 60 for the other films
+  - Why: The trailer has few keyframes, so its rows (resize and edges) are the noisiest in the weekly table (#376) and in compare.yml's; take frames other than keyframes from it, or another 1080p film from realworld.py's pinned list
+  - Status: Open
+
 - The resize on ARM with AdvSimd intrinsics (widening multiply-adds), not the portable vectors
   - Why: The portable Vector128 resize measured twice as slow as the scalar loop on ARM (2026-10-17), but NEON's own widening multiply-accumulate (vmlal) fits the fixed-point weights; measure on CI's ARM runners as #370 did (main against the branch, interleaved, film frames) and drop it if it doesn't win
   - Status: Dropped (2026-10-17): an AdvSimd horizontal pass (per pixel: the two pixels' bytes widened to words, smull by wa, smlal by wb, the SSE2 branch's loads and overlapping stores) gave identical output (the recorded hash on Linux ARM and Apple Silicon, on Linux ARM the same real-frame hashes as main) but measured 1.5-1.6x the time of the scalar loop on CI's Linux ARM runner (Elephants Dream 184 -> 288 us, Sintel trailer 259 -> 408 us per frame, four interleaved rounds). One pixel per vector leaves too little work for the loads and lane moves: ARM's scalar loop stays
@@ -410,6 +418,10 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 - The test clips with FFmpeg 9 on PATH: the interlaced clip's `-top 1`
   - Why: FFmpeg 9 dropped the encoder option ("Codec AVOption top ... is not a encoding option"), so the Clips fixture failed and with it every VideoTests test, for anyone with FFmpeg 9 on PATH (Homebrew has 9.0.2); found on a macOS run 2026-10-17. A step toward the row above
   - Status: Done (2026-10-17): `-vf setfield=tff` instead (the encoder takes the field order from the frames, as ClipMaker's TestMedia already did): the same bytes as before with BtbN's 8.1.3, and the whole ShotDetector.Tests suite passes with BtbN's 9.0.2 on PATH (391 of 391) as with 8.1.3
+
+- A parity leg through the FFmpeg 9 executable, informational
+  - Why: The question the move to FFmpeg 9 hinges on is whether 9's decoders and swscale give OpenCV's bytes; with the test suite passing on 9 (#374) and BtbN's 9.0 already pinned in the action, one compare.py leg with `--decoder process` and FFmpeg 9 against scenedetect answers it for the executable path before the trigger (opencv-python's wheel) fires. Not required: the reference is still FFmpeg 8
+  - Status: Maybe
 
 - README performance: 1.0's x64 and ARM benchmark, 2-CPU figures and memory
   - Why: Issue #7 asked for 2-CPU numbers; the README table predates in-process decoding

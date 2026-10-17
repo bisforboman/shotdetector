@@ -50,4 +50,5 @@ platform). The synthetic generator uses integer arithmetic only, so its frames a
 
 Timings belong to the machine they were taken on. Compare A and B on the same machine, interleaved (A, B, A, B...),
 each a separate build of its own checkout (a worktree per side), and pin the CPUs where you can (CLAUDE.md, "Benchmarks
-on this desktop"). For whole-pipeline numbers there is the weekly `benchmark.yml` (`tools/bench.py`).
+on this desktop"). The weekly `benchmark.yml` runs it on the films too (x64 and ARM, its table in the run summary),
+after the whole-pipeline numbers (`tools/bench.py`); `compare.yml` runs it for a branch against main.
