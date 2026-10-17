@@ -147,13 +147,17 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   `sws_scale_frame` takes that from the frame (h264/HEVC 4:2:0: left); ffmpeg's command line drops it before its filters
   (center), so the executable path passes `in_chroma_loc` and BgrConverter's row context sets swscale's position. Linux
   OpenCV can't decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments
-  (files for it outside a `debug/` folder: .gitignore ignores those, so they'd silently not be committed).
+  (files for it outside a `debug/` folder: .gitignore ignores those, so they'd silently not be committed). To time a
+  change against main on other runners (ARM, macOS), dispatch `compare.yml` on its branch instead: no branch to delete.
 - Frame labels (0.7.1): each decoded frame's showinfo time is matched to its packet (`PacketOf`), so frames
   the decoder drops make numbers skip as in OpenCV. Files always run with `-copyts` (absolute times); streamed
   times already start at 0 (ffmpeg shifts them), so `_startPts` must not be subtracted there.
 - The core path's frames: ffmpeg converts to BGR, then `remap` (two looping 16-bit PGM maps, x and y) keeps only
   `CvResize.SourceCols` x `SourceRows`; `ResizeSampled` resizes from that. Equivalent to the full frames by test
   (`SampledFramesAreTheFullFramesResized`); `DetectionOptions.FullFrames` (internal) brings the old path back.
+- SIMD on ARM pays only with work per vector: the edge suppression with Vector128 (4 lanes of compares per load) took
+  0.72-0.88x the time, but the resize's horizontal pass at one pixel per vector lost both ways (portable 2x, AdvSimd
+  1.5-1.6x the scalar loop). Time an ARM path on CI's ARM runners (`compare.yml`) before keeping it.
 - scenedetect on ARM isn't scenedetect on x86: opencv-python's ARM wheels use KleidiCV/Carotene for `cv2.resize`
   (downscales under 3x) and BGR2HSV, off by 1-2 on some pixels (user's choice: x86 stays the reference). macOS Intel
   wheels have no FFmpeg. `getBuildInformation()`'s "Custom HAL" line names the library.
@@ -178,7 +182,7 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   SHA-256 in the action, retries, cached; move the pin by hand: BtbN prunes daily releases), never `curl | tar` (a reset mid-stream left tar a truncated archive); Docker images from
   `public.ecr.aws/docker/library/` (Docker Hub's anonymous rate limit stopped a release).
 - CI load: a PR whose files are all docs, `.claude/`, `.githooks/`, `benchmarks/`, `tests/FrameReader.Tests/`,
-  workflows CI never runs (release, benchmarks, upstream, Dependabot's, parity-os) or FrameReader source files
+  workflows CI never runs (release, benchmarks, upstream, Dependabot's, parity-os, compare) or FrameReader source files
   ShotDetector's detection never runs is "light": AOT, ARM, Alpine, parity, real-world and mutation don't start
   (skipped jobs pass the required checks). tools/ci-changes.sh decides, for all three `changes` jobs; the FrameReader
   files come from the built assemblies (tools/reach, so a new use counts at once). The FrameReader benchmark runs on
