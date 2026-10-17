@@ -261,7 +261,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Edges on ARM: the non-maximum suppression with Vector128
   - Why: 3.5.0's suppression (SuppressRow) needs Vector256, so on ARM (128-bit vectors) it runs the scalar loop; Sobel, the dilation and the 0/255 output already use Vector128 there. Measure on CI's ARM runners first: the resize's portable vector path measured twice as slow there
-  - Status: Maybe
+  - Status: Done (2026-10-17): SuppressRow4, the same lanes at 4 ints where Vector256 isn't accelerated; edges on film frames (benchmarks/micro, interleaved against main, best of 15) 0.81-0.88x the time on CI's Linux ARM runner (Elephants Dream 356 -> 289 us per frame) and 0.72-0.82x on Apple Silicon (395 -> 286 us); outputs and the recorded synthetic hash unchanged, also on x64 with AVX2 off
 
 - CI checks benchmarks/micro's output hashes (--hash-only --set synthetic) against recorded ones, on x64 and ARM
   - Why: The resize's and the edge detector's SIMD paths differ by CPU (SSE2 on x64, scalar on ARM, Vector256 or not): the pixel tests cover set sizes against cv2, but a recorded hash over the synthetic set fails a PR on any change in their output, on every runner
