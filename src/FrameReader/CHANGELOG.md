@@ -7,6 +7,17 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.6.0 – 2026-10-17
+
+DecodedFrame: decoded frames that outlive the next one, converted to BGR on any thread.
+
+### New
+
+- `FrameDecoder.TakeFrame()` returns a `DecodedFrame`: the current frame as a reference to its buffers (no copy) that
+  stays valid after `Next()` and after the decoder is disposed, until it is. `new BgrConverter()` with
+  `Convert(DecodedFrame, ...)` converts one to BGR on any thread (one converter per thread), the same bytes as
+  converting the decoder's current frame.
+
 ## 2.5.0 – 2026-10-16
 
 https on Linux (OpenSSL) and macOS, certificates checked for HLS segments too, and fixes from a security review.
