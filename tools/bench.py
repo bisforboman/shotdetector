@@ -3,14 +3,17 @@
 shotdetect runs in its default mode (in-process decoding when FFmpeg's libraries are found, e.g. bundled from
 native/) and with --decoder process (the ffmpeg executable). CPU time is the user + system time of the finished
 child processes (Unix: getrusage(RUSAGE_CHILDREN), which counts ffmpeg too once shotdetect has waited for it);
-memory is the peak RSS of the process tree, polled with psutil (`pip install psutil`).
+memory is the peak RSS of the process tree, polled with psutil (`pip install psutil`). With --stats both tools also
+write per-frame metrics (scenedetect -s, shotdetect --stats; content computes edges for every frame then), and only
+shotdetect's default mode runs.
 
 Usage: python tools/bench.py <video>... [--detector adaptive|content|threshold|hist|hash] [--runs 1]
-                             [--threads N] [--fast-yuv] [--report bench.md]
+                             [--threads N] [--fast-yuv] [--stats] [--report bench.md]
 Builds first: dotnet build src/ShotDetector.Cli -c Release (and compare.py's --fast-yuv build for --fast-yuv)."""
 import argparse
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -76,25 +79,34 @@ def main():
     ap.add_argument("--runs", type=int, default=1, help="best of N (by wall time)")
     ap.add_argument("--threads", type=int, help="shotdetect --threads (default: its own)")
     ap.add_argument("--fast-yuv", action="store_true")
+    ap.add_argument("--stats", action="store_true", help="both tools write a stats CSV")
     ap.add_argument("--report")
     a = ap.parse_args()
     exe = str(FAST_DIR / EXE_NAME if a.fast_yuv else EXE)
     sd_cmd = {"hist": "detect-hist", "hash": "detect-hash"}.get(a.detector, f"detect-{a.detector}")
     threads = ["--threads", str(a.threads)] if a.threads else []
-    tools = (
-        ("scenedetect 0.7.2", [sys.executable, "-m", "scenedetect", "-q", "-i", "{v}", sd_cmd, "list-scenes", "-n"]),
-        ("shotdetect", [exe, "-i", "{v}", "-d", a.detector, *threads]),
-        ("shotdetect --decoder process", [exe, "-i", "{v}", "-d", a.detector, "--decoder", "process", *threads]),
-    )
+    stats = Path(tempfile.mkdtemp()) / "stats.csv"
+    sd_stats, sh_stats = (["-s", str(stats)], ["--stats", str(stats)]) if a.stats else ([], [])
+    suffix = " --stats" if a.stats else ""
+    tools = [
+        (f"scenedetect 0.7.2{suffix}",
+         [sys.executable, "-m", "scenedetect", "-q", "-i", "{v}", *sd_stats, sd_cmd, "list-scenes", "-n"]),
+        (f"shotdetect{suffix}", [exe, "-i", "{v}", "-d", a.detector, *sh_stats, *threads]),
+    ]
+    if not a.stats:
+        tools.append(("shotdetect --decoder process", [exe, "-i", "{v}", "-d", a.detector, "--decoder", "process", *threads]))
     table = ["| Video | Frames | Tool | Wall | fps | CPU | Peak MB | vs scenedetect |", "|---|---|---|---|---|---|---|---|"]
     for video in a.videos:
         n = frames(video)
         base = None
         for name, cmd in tools:
-            results = [run([c.replace("{v}", video) for c in cmd]) for _ in range(a.runs)]
+            results = []
+            for _ in range(a.runs):
+                stats.unlink(missing_ok=True)  # a fresh file each run, written in full
+                results.append(run([c.replace("{v}", video) for c in cmd]))
             wall, cpu, _, err = min(results, key=lambda r: r[0])
             peak = max(r[2] for r in results)
-            if name == "shotdetect" and "decoded in-process" in err:
+            if name.startswith("shotdetect") and "decoded in-process" in err:
                 name += " (in-process)"
             base = base or wall
             cpu_s = f"{cpu:.1f} s" if resource else "-"
