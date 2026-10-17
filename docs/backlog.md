@@ -610,7 +610,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - A cap on the probe's packet-timestamp lists
   - Why: An MP4 whose sample tables repeat chunk offsets could make the packet-pts lists (VideoReader, MediaProbe) grow to hundreds of millions of entries from a small file (security review, unverified: needs a crafted file to confirm)
-  - Status: Open
+  - Status: Maybe (2026-10-17): unverified; such an input would grow FFmpeg's own packet index first (several times larger per packet than our lists), so a cap of ours alone likely wouldn't help. Revisit if a real file shows it
 
 - CI: BtbN's ffmpeg pinned to a dated release and its SHA-256
   - Why: ci.yml and release.yml's test job fetch BtbN's latest build, checked only as a valid archive; the publishing job no longer runs it (#328), so the risk is low, but a pin makes CI reproducible and a tampered build visible
