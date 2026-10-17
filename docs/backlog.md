@@ -683,7 +683,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 
 - Deprecate the ShotDetector.Native 2.x packages on nuget.org, FrameReader.Native as the alternative
   - Why: 3.0 stopped publishing them; deprecation makes NuGet warn whoever still references them. Done on nuget.org by the user: steps in [deprecate-shotdetector-native.md](deprecate-shotdetector-native.md)
-  - Status: Open
+  - Status: Done (2026-10-17): all 128 versions of the six packages deprecated (legacy) on nuget.org, each with its FrameReader.Native counterpart as the alternate; checked on the website, version by version
 
 ## 7. 3.0 (picked 2026-10-14)
 
