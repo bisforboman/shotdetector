@@ -269,7 +269,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - CI: x64 also runs benchmarks/micro/check-hash.sh and the PixelTests with DOTNET_EnableAVX2=0 and with DOTNET_EnableHWIntrinsic=0
   - Why: Since #370 ARM takes the Vector128 suppression, so no runner exercises the scalar suppression any more, and x64 never runs the Vector128 one (it has Vector256); the scalar resize and HSV run only where SIMD is off. Seconds per run, and every SIMD and scalar path stays checked against cv2 on every PR
-  - Status: Open
+  - Status: Done (2026-10-17): a step in ci.yml's build job runs PixelTests, HsvTests, ContentScorerTests and check-hash.sh under each setting (about 30 s); a broken comparison in the Vector128 suppression fails both the pixel test and the hash
 
 - benchmarks/micro on the films in the weekly benchmark (benchmark.yml, x64 and ARM)
   - Why: The per-frame resize and edge timings are measured only by hand (the 3.4.0/3.5.0 rounds, #370 on a throwaway workflow); a weekly table beside the whole-pipeline one shows a regression in them, and the CPU behind it, week to week

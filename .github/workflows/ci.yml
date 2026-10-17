@@ -152,6 +152,18 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: benchmarks/micro/check-hash.sh
 
+      # The other SIMD paths on x64: AVX2 off takes the Vector128 ones (ARM's: the edge suppression, the content score,
+      # the resize's vertical pass) and the scalar HSV; intrinsics off, every scalar loop. Against cv2 and the same hash.
+      - name: Pixel tests and hashes without AVX2, and without SIMD
+        if: needs.changes.outputs.docs_only != 'true'
+        run: |
+          for env in DOTNET_EnableAVX2=0 DOTNET_EnableHWIntrinsic=0; do
+            echo "== $env"
+            env "$env" dotnet test tests/ShotDetector.Tests --no-build \
+              --filter "FullyQualifiedName~PixelTests|FullyQualifiedName~HsvTests|FullyQualifiedName~ContentScorerTests"
+            env "$env" benchmarks/micro/check-hash.sh
+          done
+
       # The CLI's --waveform with audiowaveform's options gives audiowaveform's .dat, byte for byte (PCM input).
       - name: CLI --waveform is audiowaveform's
         if: needs.changes.outputs.docs_only != 'true' && env.AUDIOWAVEFORM != ''
