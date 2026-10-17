@@ -267,6 +267,18 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: The resize's and the edge detector's SIMD paths differ by CPU (SSE2 on x64, scalar on ARM, Vector256 or not): the pixel tests cover set sizes against cv2, but a recorded hash over the synthetic set fails a PR on any change in their output, on every runner
   - Status: Done (2026-10-17): benchmarks/micro/check-hash.sh in ci.yml's build (x64) and arm jobs against expected-hash.txt; the first runs gave the same pair on both
 
+- CI: x64 also runs benchmarks/micro/check-hash.sh and the PixelTests with DOTNET_EnableAVX2=0 and with DOTNET_EnableHWIntrinsic=0
+  - Why: Since #370 ARM takes the Vector128 suppression, so no runner exercises the scalar suppression any more, and x64 never runs the Vector128 one (it has Vector256); the scalar resize and HSV run only where SIMD is off. Seconds per run, and every SIMD and scalar path stays checked against cv2 on every PR
+  - Status: Open
+
+- benchmarks/micro on the films in the weekly benchmark (benchmark.yml, x64 and ARM)
+  - Why: The per-frame resize and edge timings are measured only by hand (the 3.4.0/3.5.0 rounds, #370 on a throwaway workflow); a weekly table beside the whole-pipeline one shows a regression in them, and the CPU behind it, week to week
+  - Status: Maybe
+
+- The resize on ARM with AdvSimd intrinsics (widening multiply-adds), not the portable vectors
+  - Why: The portable Vector128 resize measured twice as slow as the scalar loop on ARM (2026-10-17), but NEON's own widening multiply-accumulate (vmlal) fits the fixed-point weights; measure on CI's ARM runners as #370 did (main against the branch, interleaved, film frames) and drop it if it doesn't win
+  - Status: Maybe
+
 ## 3. Toward 1.0
 
 - API freeze review: detectors/ContentScorer/EdgeDetector internal, VideoReader trimmed, FrameTime raw fields hidden, DetectAsync (docs/decisions/)
