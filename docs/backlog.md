@@ -245,7 +245,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - 3.4.0 on 2-vCPU runners: check the weekly benchmark
   - Why: Moving the resize to the scoring thread added CPU on Tears of Steel (+13% on an 8-core desktop); on CPU-bound 2-vCPU runners the move could cost more than it gains. If it does, keep the SSE2 pass and move the resize back for few cores
-  - Status: Open
+  - Status: Done (2026-10-17): it doesn't cost them. benchmark.yml on main (run 39023756460) against the last run before 3.4.0 (38809873202, 2026-10-15), in-process wall time pinned to 2 CPUs: on ARM (the same hardware both times, scenedetect within 1%) Sintel 4.1 -> 4.1 s, Tears of Steel 30.6 -> 30.3 s, Big Buck Bunny 9.8 -> 9.7 s, Elephants Dream 7.7 -> 6.9 s; on x64 the runner's CPU was much faster this time (scenedetect's Tears of Steel 43.0 -> 25.3 s at 2 CPUs), so against scenedetect: Sintel 0.90 -> 0.92x (noise on a 4 s run), Tears of Steel 0.94 -> 0.93x, Big Buck Bunny 0.91 -> 0.90x, Elephants Dream 0.85 -> 0.78x. With all the runner's CPUs no film got slower on ARM, and on x64 only Sintel moved, 0.88 -> 0.90x. The resize stays on the scoring thread
 
 - --stats runs: find where the time goes beyond the edges
   - Why: A --stats run on Elephants Dream 426x240 takes about 9.5 s against 2.5 s for plain detection (in-process, 2026-10-17), and the edges are now about 2 s of it: something else (every detector's metrics, the stats rows, writing the CSV) takes the other 5 s
