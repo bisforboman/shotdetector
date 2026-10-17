@@ -21,6 +21,10 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+# The default token for every job: read the repository, nothing else (jobs that need more say so).
+permissions:
+  contents: read
+
 jobs:
   # Each product's version, and which still need releasing (most pushes to main: none, and nothing else runs).
   version:
@@ -34,7 +38,7 @@ jobs:
       release: ${{ steps.version.outputs.release }}
       environment: ${{ steps.version.outputs.environment }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - id: version
         run: |
@@ -72,7 +76,7 @@ jobs:
     permissions:
       issues: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Close the baseline issues for the props file's versions
         env:
           GH_TOKEN: ${{ github.token }}
@@ -105,9 +109,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: 10.0.x
 
@@ -129,9 +133,9 @@ jobs:
       id-token: write   # request the OIDC token that NuGet/login exchanges for a temporary API key
       attestations: write   # build provenance for the packages
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: 10.0.x
 
@@ -140,7 +144,7 @@ jobs:
           { echo "SD=${{ needs.version.outputs.shotdetector }}"; echo "FR=${{ needs.version.outputs.framereader }}"
             echo "SD_DUE=${{ needs.version.outputs.shotdetector-due }}"; echo "FR_DUE=${{ needs.version.outputs.framereader-due }}"; } >> "$GITHUB_ENV"
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           pattern: native-*
           path: native
@@ -164,13 +168,13 @@ jobs:
 
       # Signed provenance (built by this workflow from this commit): gh attestation verify <file> --repo bisforboman/shotdetector
       - name: Attest the packages
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: 'artifacts/*.nupkg, artifacts/*.snupkg'
 
       # Request the temporary key right before pushing: it is valid for one hour.
       - name: NuGet login
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
         id: login
         with:
           user: ${{ vars.NUGET_USER }}
@@ -285,7 +289,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Native toolchain (Alpine)
         if: matrix.rid == 'linux-musl-x64'
@@ -293,12 +297,12 @@ jobs:
         timeout-minutes: 10   # package mirrors sometimes hang
         run: apk add --no-cache clang build-base zlib-dev bash github-cli zip
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         if: matrix.rid != 'linux-musl-x64'
         with:
           dotnet-version: 10.0.x
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: native-${{ matrix.rid }}
           path: native/${{ matrix.rid }}
@@ -322,7 +326,7 @@ jobs:
           echo "ARCHIVE=$file" >> "$GITHUB_ENV"
 
       - name: Attest the binaries
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: ${{ env.ARCHIVE }}
 

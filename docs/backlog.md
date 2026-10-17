@@ -672,6 +672,10 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: ci.yml and release.yml's test job fetch BtbN's latest build, checked only as a valid archive; the publishing job no longer runs it (#328), so the risk is low, but a pin makes CI reproducible and a tampered build visible
   - Status: Done (2026-10-17): autobuild-2026-09-30-13-08 (month-end releases are kept; daily ones are pruned), FFmpeg 8.1.3 and 9.0.2, each archive's SHA-256 in the action
 
+- Workflows: read-only tokens by default, actions pinned by commit SHA
+  - Why: Eight workflows (benchmark, ci, frame-reader-bench, mutation, native, parity-os, realworld, and release's version and native jobs) ran with the repository's default token; and an action referenced by a tag (`@v7`) runs whatever that tag points to when the job starts, so a compromised or moved tag would run in CI and in the release workflow (security review with the advisor, 2026-10-17)
+  - Status: Done (2026-10-17): `permissions: contents: read` at the top of those workflows (jobs that need more already say so); every external action pinned to its tag's commit with the tag in a comment, which Dependabot's github-actions updates move together. Dependabot alerts are a repository setting for the owner
+
 - upstream.yml: an issue when BtbN has a newer month-end release with a newer FFmpeg point release
   - Why: The btbn-ffmpeg pin is moved by hand; without a reminder CI's ffmpeg falls behind the 8.1 and 9.0 point releases (their fixes) unnoticed
   - Status: Done (2026-10-17): upstream.yml's btbn job (newest month-end tag, its checksums.sha256 against the action's 8.1/9.0 pin); the issue lists the new tag and the action's table rows; up to date today (8.1.3, 9.0.2)
