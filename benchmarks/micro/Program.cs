@@ -189,19 +189,20 @@ namespace ShotDetector.Micro
     /// <summary>
     /// Real frames: keyframes from the public-domain films tools/realworld.py downloads into samples/realworld (one per
     /// source size), converted by ffmpeg as the pipelines convert them (scale=W:H:flags=bicubic,format=bgr24), and
-    /// cached next to this program (frames/), not in git. Keyframes decode fast and are whole pictures, not fades.
+    /// cached next to this program (frames/), not in git. Keyframes decode fast and are whole pictures, not fades; the
+    /// Sintel trailer has too few (9 after its titles), so it takes every 18th frame instead.
     /// </summary>
     static class Films
     {
         public static readonly (int W, int H)[] Sizes = [(426, 240), (640, 360), (1280, 534), (1920, 1080)];
 
-        // Name in tools/realworld.py, and where to start (past the titles).
-        static readonly (string Name, int Start)[] Known =
+        // Name in tools/realworld.py, where to start (past the titles), and every how many frames (0: keyframes).
+        static readonly (string Name, int Start, int Every)[] Known =
         [
-            ("elephants_dream_426x240_h264.mp4", 60),
-            ("bbb_640x360_h264.mp4", 60),
-            ("tears_of_steel_1280x534_h264.mov", 60),
-            ("sintel_trailer_1920x1080_h264.mp4", 5),
+            ("elephants_dream_426x240_h264.mp4", 60, 0),
+            ("bbb_640x360_h264.mp4", 60, 0),
+            ("tears_of_steel_1280x534_h264.mov", 60, 0),
+            ("sintel_trailer_1920x1080_h264.mp4", 5, 18),
         ];
 
         static string Ffmpeg(string tool) =>
@@ -210,20 +211,20 @@ namespace ShotDetector.Micro
         public static IEnumerable<Source> Load(Options o)
         {
             var films = o.Videos.Count > 0
-                ? o.Videos.Select(v => (Path: v, Start: 0)).ToList()
-                : Known.Select(k => (Path: Path.Combine(o.FilmsDir ?? Path.Combine(RepoRoot(), "samples", "realworld"), k.Name), k.Start)).ToList();
+                ? o.Videos.Select(v => (Path: v, Start: 0, Every: 0)).ToList()
+                : Known.Select(k => (Path: Path.Combine(o.FilmsDir ?? Path.Combine(RepoRoot(), "samples", "realworld"), k.Name), k.Start, k.Every)).ToList();
             var missing = films.Where(f => !File.Exists(f.Path)).Select(f => Path.GetFileName(f.Path)).ToList();
             if (missing.Count > 0)
             {
                 Console.Error.WriteLine($"real set: skipping {string.Join(", ", missing)} (python tools/realworld.py --download {string.Join(' ', missing)}, or --films DIR / --video FILE)");
             }
 
-            foreach (var (path, start) in films.Where(f => File.Exists(f.Path)))
+            foreach (var (path, start, every) in films.Where(f => File.Exists(f.Path)))
             {
                 var (w, h) = Size(path);
-                string cache = Path.Combine(AppContext.BaseDirectory, "frames", $"{Path.GetFileNameWithoutExtension(path)}-{w}x{h}-{start}s-{o.Frames}.bgr");
+                string cache = Path.Combine(AppContext.BaseDirectory, "frames", $"{Path.GetFileNameWithoutExtension(path)}-{w}x{h}-{start}s-{(every > 0 ? $"every{every}-" : "")}{o.Frames}.bgr");
                 if (!File.Exists(cache))
-                    Extract(path, start, w, h, o.Frames, cache);
+                    Extract(path, start, every, w, h, o.Frames, cache);
                 byte[] all = File.ReadAllBytes(cache);
                 int size = w * h * 3;
                 if (all.Length == 0 || all.Length % size != 0)
@@ -240,14 +241,15 @@ namespace ShotDetector.Micro
             return (int.Parse(wh[0], CultureInfo.InvariantCulture), int.Parse(wh[1], CultureInfo.InvariantCulture));
         }
 
-        static void Extract(string path, int start, int w, int h, int frames, string cache)
+        static void Extract(string path, int start, int every, int w, int h, int frames, string cache)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
             string partial = cache + ".partial";
             string[] args =
             [
-                "-v", "error", "-ss", start.ToString(CultureInfo.InvariantCulture), "-skip_frame", "nokey", "-i", path, "-an", "-sn",
-                "-vf", $"scale={w}:{h}:flags=bicubic,format=bgr24", "-fps_mode", "passthrough",
+                "-v", "error", "-ss", start.ToString(CultureInfo.InvariantCulture), .. every > 0 ? Array.Empty<string>() : new[] { "-skip_frame", "nokey" },
+                "-i", path, "-an", "-sn",
+                "-vf", (every > 0 ? $"select=not(mod(n\\,{every}))," : "") + $"scale={w}:{h}:flags=bicubic,format=bgr24", "-fps_mode", "passthrough",
                 "-frames:v", frames.ToString(CultureInfo.InvariantCulture), "-f", "rawvideo", "-y", partial,
             ];
             Run(Ffmpeg("ffmpeg"), args);
