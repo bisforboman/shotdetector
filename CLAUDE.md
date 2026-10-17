@@ -66,6 +66,9 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - **Where work runs**: long work (multi-step tasks, PRs, CI waits, releases, CI benchmarks) runs as cloud sessions; the
   user's own computer must stay free to restart or turn off. Work that needs it (timings on its Ryzen, Windows-only
   checks) is asked for, never started unasked; a cloud session that needs such a step says so in its PR.
+- **Asking the user**: whenever you need input from the user (a choice, an approval, whether to go on or take the
+  next step), ask with the multiple-choice prompt (AskUserQuestion), not with a question or an offer at the end of a
+  reply: the prompt is what reaches them in the app.
 - **Decisions**: when a design question needs the user, ask with the multiple-choice prompt and record the
   question, choices and answer as a new file, `docs/decisions/YYYY-MM-DD-what.md` (its README).
 - Every behaviour that reproduces a scenedetect quirk gets a unit test and a line in `tools/mutation/mutations.psd1`
