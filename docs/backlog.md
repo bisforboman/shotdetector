@@ -640,13 +640,13 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: Another local user could connect to the frame pipe first and break the run (a denial of service; the name is a GUID, so nothing leaks); CurrentUserOnly closes it (security review)
   - Status: Done (2026-10-17)
 
-- upstream.yml: an issue when BtbN has a newer month-end release with a newer FFmpeg point release
-  - Why: Since #347 CI's BtbN build is pinned to a month-end release (autobuild-2026-09-30-13-08) and moved by hand; an issue, like the native build's FFmpeg and library checks, keeps it current
-  - Status: Open
-
 - FrameReader.Native's Linux packages: runtimes/<rid>/native/ paths without the double slash
   - Why: The libraries are listed as runtimes/linux-x64/native//libavcodec.so.62 (PackagePath ends in a slash and the file name adds one); NuGet and the loader cope (2.3.0 shipped so), but a clean path is a one-character fix, checked by ci.yml's pack step
   - Status: Open
+
+- Warn when an https HLS playlist decodes through the ffmpeg executable
+  - Why: In-process, the segments a playlist names are opened with the certificate checked (FrameReader's io_open wrapper); the executable has no such hook and opens them unchecked. A one-line warning in the result says so when an https playlist goes that way (no FFmpeg libraries, or --decoder process)
+  - Status: Maybe
 
 ## 5. 2.0 (breaking; picked 2026-10-13)
 
@@ -708,6 +708,10 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - Deprecate the ShotDetector.Native 2.x packages on nuget.org, FrameReader.Native as the alternative
   - Why: 3.0 stopped publishing them; deprecation makes NuGet warn whoever still references them. Done on nuget.org by the user: steps in [deprecate-shotdetector-native.md](deprecate-shotdetector-native.md)
   - Status: Done (2026-10-17): all 128 versions of the six packages deprecated (legacy) on nuget.org, each with its FrameReader.Native counterpart as the alternate; checked on the website, version by version
+
+- FrameReader 2.6.1: the Linux packages' library paths without the double slash (#358)
+  - Why: FrameReader's only change since 2.6.0; a patch release ships it. Count the commits touching both products at that release (docs/frame-reader-product.md): 0 of 6 at 2.6.0 was the first under the 1-in-20 trigger, and a second in a row would raise the repository split
+  - Status: Open (after #358 merges)
 
 ## 7. 3.0 (picked 2026-10-14)
 
