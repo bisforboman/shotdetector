@@ -43,7 +43,8 @@ options and films.
 `expected-hash.txt` holds the synthetic set's `all inputs` and `all outputs` hashes (`--hash-only --set synthetic`),
 one pair for every platform: the SSE2 and scalar resize, the Vector256 and Vector128/scalar edge detector all give
 cv2's bytes, so they give the same hash. CI runs `check-hash.sh` on x64 (`build`) and ARM (`arm`) and fails on any
-difference. The recorded hashes change only in a PR that changes the synthetic set or the case list, in that same PR; a
+difference; `build` runs it again with `DOTNET_EnableAVX2=0` (the Vector128 paths) and `DOTNET_EnableHWIntrinsic=0`
+(the scalar loops). The recorded hashes change only in a PR that changes the synthetic set or the case list, in that same PR; a
 code change must never change them (a different `outputs` hash with the same `inputs` is a changed result, on that
 platform). The synthetic generator uses integer arithmetic only, so its frames are the same on every machine.
 
