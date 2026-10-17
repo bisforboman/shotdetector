@@ -61,6 +61,11 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - **Backlog**: `docs/backlog.md`. Take the next open item; update its status when work starts and lands. Add items
   when something turns up (a divergence, a gap), with why. Items are list entries (What, then Why: and Status:) with a
   blank line between them, so parallel PRs that edit neighbouring items merge cleanly, on GitHub too.
+- **Advisor**: when an advisor tool is available, call it before design decisions or recommendations, before splitting
+  work across agents or sessions, and before declaring a larger task done.
+- **Where work runs**: long work (multi-step tasks, PRs, CI waits, releases, CI benchmarks) runs as cloud sessions; the
+  user's own computer must stay free to restart or turn off. Work that needs it (timings on its Ryzen, Windows-only
+  checks) is asked for, never started unasked; a cloud session that needs such a step says so in its PR.
 - **Decisions**: when a design question needs the user, ask with the multiple-choice prompt and record the
   question, choices and answer as a new file, `docs/decisions/YYYY-MM-DD-what.md` (its README).
 - Every behaviour that reproduces a scenedetect quirk gets a unit test and a line in `tools/mutation/mutations.psd1`
