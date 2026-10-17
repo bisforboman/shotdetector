@@ -12,7 +12,7 @@ mkdir -p "$out"
 for clip in "$@"; do
   name=$(basename "$clip")
   # The video frames themselves, without ShotDetector (options before -- go before -i): decoded in their own format,
-  # single-threaded, converted to BGR as both decoders do, with swscale's C code only, and with +bitexact.
+  # single-threaded, with the C IDCT (-idct simple), converted to BGR as both decoders do, with swscale's C code only, and with +bitexact.
   frames() {
     local pre=()
     while [ "$1" != -- ]; do pre+=("$1"); shift; done
@@ -23,6 +23,7 @@ for clip in "$@"; do
   "$libs/ffprobe" -v error -select_streams v:0 -show_entries stream=codec_name,pix_fmt -of csv=p=0 "$clip" > "$out/$name.codec.md5"
   frames -- > "$out/$name.decoded.md5"
   frames -threads 1 -- > "$out/$name.decoded-1thread.md5"
+  frames -idct simple -- > "$out/$name.decoded-idctsimple.md5"
   frames -- -pix_fmt bgr24 > "$out/$name.bgr24.md5"
   frames -cpuflags 0 -- -pix_fmt bgr24 > "$out/$name.bgr24-c.md5"
   frames -- -sws_flags bicubic+bitexact -pix_fmt bgr24 > "$out/$name.bgr24-bitexact.md5"
