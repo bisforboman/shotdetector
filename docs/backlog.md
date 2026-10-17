@@ -259,17 +259,13 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: It measures plain detection only: the edge detector's work (--stats runs 0.68-0.74x in 3.5.0) has no CI tracking, so a regression there would go unseen
   - Status: Done (2026-10-17): bench.py --stats (scenedetect -s against shotdetect --stats in-process, content), all CPUs, the same four films; [first run](https://github.com/bisforboman/shotdetector/actions/runs/39027227136): shotdetect's wall time 0.59-0.78x scenedetect's on x64 (Tears of Steel 23.6 against 33.1 s) and 0.72-0.84x on ARM (18.4 against 25.5 s), with less CPU time on every film
 
-- Edges on ARM: the suppression and Sobel with Vector128
-  - Why: 3.5.0's suppression uses Vector256 where accelerated: on ARM (128-bit vectors) it falls back to the scalar loop. Measure on CI's ARM runners first: the resize's portable vector path measured twice as slow there
+- Edges on ARM: the non-maximum suppression with Vector128
+  - Why: 3.5.0's suppression (SuppressRow) needs Vector256, so on ARM (128-bit vectors) it runs the scalar loop; Sobel, the dilation and the 0/255 output already use Vector128 there. Measure on CI's ARM runners first: the resize's portable vector path measured twice as slow there
   - Status: Maybe
 
 - CI checks benchmarks/micro's output hashes (--hash-only --set synthetic) against recorded ones, on x64 and ARM
   - Why: The resize's and the edge detector's SIMD paths differ by CPU (SSE2 on x64, scalar on ARM, Vector256 or not): the pixel tests cover set sizes against cv2, but a recorded hash over the synthetic set fails a PR on any change in their output, on every runner
   - Status: Open
-
-- Baseline timings of benchmarks/micro on the owner's desktop (Ryzen 7 5800X), kept in benchmarks/
-  - Why: So the next performance round starts from recorded numbers on the machine the 3.4.0/3.5.0 work was measured on; a short local run, only when the owner says
-  - Status: Maybe
 
 ## 3. Toward 1.0
 
@@ -660,8 +656,8 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: #357 wasn't dispatched on its branch (the workflow's other jobs could open real issues), so its first real run is the check: the log should say the pin is up to date, or open one issue
   - Status: Open
 
-- File the x264 AVX-512 report with VideoLAN (x264-avx512-report.md in the main checkout)
-  - Why: CI's VideoWriter step needs DOTNET_TieredCompilation=0 because x264's AVX-512 code and .NET's tiered JIT differ about 1 run in 250 (CLAUDE.md); the report is written but not filed (it waited on a VideoLAN GitLab account; the reminder fired 2026-10-15)
+- The owner files the x264 AVX-512 report with VideoLAN (x264-avx512-report.md in the main checkout)
+  - Why: CI's VideoWriter step needs DOTNET_TieredCompilation=0 because x264's AVX-512 code and .NET's tiered JIT differ about 1 run in 250 (CLAUDE.md); the report was written but not filed as of the 2026-10-15 reminder (it waited on a VideoLAN GitLab account). A public post from the owner's account: theirs to file, never a session's
   - Status: Open
 
 ## 5. 2.0 (breaking; picked 2026-10-13)
