@@ -6,6 +6,16 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.6.0 – 2026-10-17
+
+Faster edge detection on ARM.
+
+### Faster
+
+- Edge detection on ARM (Linux arm64, Apple Silicon): the non-maximum suppression works on 4 pixels at a time with
+  128-bit vectors where it used to run one by one; the edge detector takes 0.72-0.88x the time on film frames on
+  GitHub's ARM runners, the edges the same byte for byte.
+
 ## 3.5.0 – 2026-10-17
 
 Faster --stats runs (edge detection), and hardening: a protocol whitelist for Stream input, a frame pipe only the user can open.
