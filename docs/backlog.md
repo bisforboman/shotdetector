@@ -213,7 +213,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - SIMD in the resize/HSV/score loops
   - Why: ~4% of the time; not worth it until the above are done
-  - Status: Maybe (measured 2026-10-13, in-process, content: resize 4% of the CPU on 1080p and 12% on 480p, HSV and score 2-5% and already vectorized (AVX2 HSV, 128-bit diffs), FFmpeg's decoding most of the rest; the sampled-pixel copy, 5-13%, went first: see the next row)
+  - Status: Done (2026-10-16): the resize's horizontal pass with SSE2 (3.4.0, #333; ARM: its own item); HSV and the scores were vectorised already
 
 - In-process: resize straight from the converter's rows, no copy of the sampled pixels (the decoding thread resizes, with its own CvResize)
   - Why: The copy was 5-13% of the CPU (profiled with dotnet-trace); pinned to 2 CPUs, CPU -16% on 480p and -5% on 1080p; byte-identical on all samples
@@ -234,6 +234,18 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 - Frame handoff in batches (or a single-producer ring) instead of BlockingCollection per frame
   - Why: Take/Add cost 30-40 us per frame on the producer in a trace, about 20% of its time on SD (estimated gain 5-10% once the resize moves)
   - Status: Dropped (2026-10-16): System.Threading.Channels (single reader and writer) instead of BlockingCollection measured 1.01-1.07x slower, stats identical; the review's 30-40 us per frame in Take/Add was mostly the decoding thread waiting for free buffers, not overhead
+
+- ARM: the resize's horizontal pass with AdvSimd
+  - Why: 3.4.0's SSE2 pass (pmaddwd) is x86 only: ARM (Apple Silicon, the ARM runners) still runs the scalar loop, the measured cost on the critical path (145 -> 80 us per frame at 426x240 on x64)
+  - Status: Open
+
+- Edges: the non-maximum suppression and hysteresis
+  - Why: After 3.4.0's Sobel and dilation, --stats runs still take about twice plain detection; the suppression and hysteresis are the scalar part left
+  - Status: Open
+
+- 3.4.0 on 2-vCPU runners: check the weekly benchmark
+  - Why: Moving the resize to the scoring thread added CPU on Tears of Steel (+13% on an 8-core desktop); on CPU-bound 2-vCPU runners the move could cost more than it gains. If it does, keep the SSE2 pass and move the resize back for few cores
+  - Status: Open
 
 ## 3. Toward 1.0
 
@@ -591,6 +603,22 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: What's inside each package, as security teams ask for it
   - Status: Done (2026-10-16): build-ffmpeg.sh writes sbom.spdx.json (SPDX 2.3, with CPEs), packed at the root of
     each FrameReader.Native package and in the shotdetect archives
+
+- Stream input (Detect(Stream), CLI -i -): a protocol whitelist
+  - Why: It passes no protocol_whitelist at all (VideoReader's InputOptions gives a Stream none); FFmpeg's HLS demuxer probably won't take pipe:0, so likely not exploitable (security review 2026-10-16, unverified), but a whitelist like a file's is cheap defence in depth
+  - Status: Open
+
+- A cap on the probe's packet-timestamp lists
+  - Why: An MP4 whose sample tables repeat chunk offsets could make the packet-pts lists (VideoReader, MediaProbe) grow to hundreds of millions of entries from a small file (security review, unverified: needs a crafted file to confirm)
+  - Status: Open
+
+- CI: BtbN's ffmpeg pinned to a dated release and its SHA-256
+  - Why: ci.yml and release.yml's test job fetch BtbN's latest build, checked only as a valid archive; the publishing job no longer runs it (#328), so the risk is low, but a pin makes CI reproducible and a tampered build visible
+  - Status: Maybe
+
+- Windows named pipe: PipeOptions.CurrentUserOnly
+  - Why: Another local user could connect to the frame pipe first and break the run (a denial of service; the name is a GUID, so nothing leaks); CurrentUserOnly closes it (security review)
+  - Status: Open
 
 ## 5. 2.0 (breaking; picked 2026-10-13)
 
