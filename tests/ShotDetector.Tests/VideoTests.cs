@@ -77,7 +77,7 @@ public sealed class Clips : IDisposable
         Run($"-v error -y -i {ThreeShots} -c copy {ThreeShotsMkv}");
         Run($"-v error -y -i {ThreeShots} -c copy -movflags +faststart {ThreeShotsFaststart}");
         Run($"-v error -y -i {ThreeShots} -c:v mpeg2video -q:v 3 {ThreeShotsMpegPs}");
-        Run($"-v error -y -i {ThreeShots} -c:v mpeg2video -q:v 3 -flags +ildct+ilme -top 1 {Interlaced}");
+        Run($"-v error -y -i {ThreeShots} -vf setfield=tff -c:v mpeg2video -q:v 3 -flags +ildct+ilme {Interlaced}");
         Run($"-v error -y -i {ThreeShots} {ThreeShotsImages}");
         var positions = VideoReader.Run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pos", "-of", "csv=p=0", ThreeShots], default)
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
