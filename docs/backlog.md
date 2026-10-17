@@ -229,7 +229,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Conversion (BgrConverter) off the decoding thread: av_frame_ref'd frames to converter threads, order restored
   - Why: 148 us per frame at 1280x534, serial with decoding (measured); after the resize move, large frames would be decode-bound; costs a decoded frame of memory per worker
-  - Status: Open (2026-10-16): swscale's own slice threads (the row context's threads option) keep the bytes but made Tears of Steel 1.43x (2 threads) to 1.84x (4) slower; doing it means handing decoded frames to other threads, a FrameReader API for frame references. Mostly HD (Tears of Steel 0.86x after the resize move)
+  - Status: In progress (2026-10-17): design reviewed (docs/frame-references.md): DecodedFrame from FrameDecoder.TakeFrame, BgrConverter overloads, workers on by default with a threshold
 
 - Frame handoff in batches (or a single-producer ring) instead of BlockingCollection per frame
   - Why: Take/Add cost 30-40 us per frame on the producer in a trace, about 20% of its time on SD (estimated gain 5-10% once the resize moves)
