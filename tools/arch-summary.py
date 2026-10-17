@@ -1,6 +1,6 @@
 """Summarises how tools/arch-outputs.sh's folders from two platforms differ (ci.yml's arch-diff; a = the reference, x64):
 per clip, detector and decoder, how many stats rows differ and by how much at most, and the cuts only one side has; the
-frame checksums (decoded, single-threaded, bgr24, bgr24 from swscale's C code, bgr24 +bitexact), as frames differing;
+frame checksums (decoded, single-threaded, b's -idct simple against a's default, bgr24, bgr24 from swscale's C code, bgr24 +bitexact), as frames differing;
 and whether b's FastYuv files equal a's default ones. Exits 1 unless they do on every 8-bit 4:2:0 clip (yuv420p or
 yuvj420p, decoders other than MPEG-2's and MJPEG's): the rest is FFmpeg's rounding on ARM, reported
 (docs/decisions/2026-10-17-arm-results.md).
@@ -71,12 +71,13 @@ def main() -> int:
             print(f"| {name} | | {' '.join(only) or 'cuts same, other cells differ'} |")
 
     failed, checked = [], 0
-    kinds = ["file", "decoded", "decoded-1thread", "bgr24", "bgr24-c", "bgr24-bitexact"]
+    kinds = ["file", "decoded", "decoded-1thread", "decoded-idctsimple", "bgr24", "bgr24-c", "bgr24-bitexact"]
     print("\n| clip | codec | " + " | ".join(kinds) + " | b's FastYuv = a's default |")
     print("|---|---|" + "---|" * len(kinds) + "---|")
     for codec in sorted(n for n in names if n.endswith(".codec.md5")):
         clip = codec[: -len(".codec.md5")]
-        cells = [frames(a / f"{clip}.{k}.md5", b / f"{clip}.{k}.md5") if k != "file"
+        cells = [frames(a / f"{clip}.decoded.md5", b / f"{clip}.{k}.md5") if k == "decoded-idctsimple"
+                 else frames(a / f"{clip}.{k}.md5", b / f"{clip}.{k}.md5") if k != "file"
                  else ("same" if same(a / f"{clip}.file.md5", b / f"{clip}.file.md5") else "differ") for k in kinds]
         fast = [n for n in outputs if n.startswith(clip + ".")]
         hits = sum(same(a / n, b / n.replace(".scenes.csv", ".fastyuv.scenes.csv").replace(".stats.csv", ".fastyuv.stats.csv"))
@@ -86,7 +87,9 @@ def main() -> int:
         checked += required
         if required and (not fast or hits != len(fast)):
             failed.append(clip)
-        print(f"| {clip} | {codec_name},{pix_fmt} | {' | '.join(cells)} | {hits}/{len(fast)}{' (required)' if required else ''} |")
+        split = " ".join(f"{d} {sum(same(a / n, b / n.replace('.scenes.csv', '.fastyuv.scenes.csv').replace('.stats.csv', '.fastyuv.stats.csv')) for n in fast if f'.{d}.' in n)}/{sum(f'.{d}.' in n for n in fast)}"
+                         for d in ("inprocess", "process"))
+        print(f"| {clip} | {codec_name},{pix_fmt} | {' | '.join(cells)} | {hits}/{len(fast)} ({split}){' (required)' if required else ''} |")
     if failed:
         print(f"\nARM with FastYuv differs from x64 on 8-bit 4:2:0: {', '.join(failed)}")
     if not checked:
