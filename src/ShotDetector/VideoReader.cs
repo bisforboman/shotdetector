@@ -356,7 +356,7 @@ internal sealed partial class VideoReader
         Fps? frameRate = o.FrameRate is not { } fr ? null
             : fr <= 0 ? throw new ArgumentException("FrameRate must be positive.")
             : Fps.FromFloat(fr);
-        _inputOptions = video is not null ? []
+        _inputOptions = video is not null ? StreamInputOptions
             : frameRate is { } r && path.Contains('%') && !IsUrl(path) ? ["-framerate", $"{r.Num}/{r.Den}", .. InputOptions(path)]
             : InputOptions(path);
 
@@ -614,6 +614,12 @@ internal sealed partial class VideoReader
     /// gets): a frame of more than 8192 x 8192 pixels fails to decode.
     /// </summary>
     internal static readonly string[] MaxPixels = ["-max_pixels", FrameReader.FrameDecoderOptions.DefaultMaxPixels.ToString(CultureInfo.InvariantCulture)];
+
+    /// <summary>
+    /// A Stream's input (pipe:0, or FrameReader's own I/O in-process): nothing it names may open another protocol (a
+    /// playlist piped in would otherwise reach files or the network), as a file reads only as a file.
+    /// </summary>
+    internal static readonly string[] StreamInputOptions = ["-protocol_whitelist", "pipe"];
 
     static bool IsUrl(string path) =>
         Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
@@ -902,7 +908,7 @@ internal sealed partial class VideoReader
                 PipeDirection.In,
                 1,
                 PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous,
+                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, // only this user (ffmpeg, started by us) can connect
                 inBufferSize: 8 << 20,
                 outBufferSize: 0)
             : null;

@@ -606,7 +606,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Stream input (Detect(Stream), CLI -i -): a protocol whitelist
   - Why: It passes no protocol_whitelist at all (VideoReader's InputOptions gives a Stream none); FFmpeg's HLS demuxer probably won't take pipe:0, so likely not exploitable (security review 2026-10-16, unverified), but a whitelist like a file's is cheap defence in depth
-  - Status: Open
+  - Status: Done (2026-10-17): protocol_whitelist pipe for a Stream, in-process and through the executable (defence in depth: no piped input was found that reaches another protocol)
 
 - A cap on the probe's packet-timestamp lists
   - Why: An MP4 whose sample tables repeat chunk offsets could make the packet-pts lists (VideoReader, MediaProbe) grow to hundreds of millions of entries from a small file (security review, unverified: needs a crafted file to confirm)
@@ -618,7 +618,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Windows named pipe: PipeOptions.CurrentUserOnly
   - Why: Another local user could connect to the frame pipe first and break the run (a denial of service; the name is a GUID, so nothing leaks); CurrentUserOnly closes it (security review)
-  - Status: Open
+  - Status: Done (2026-10-17)
 
 ## 5. 2.0 (breaking; picked 2026-10-13)
 
