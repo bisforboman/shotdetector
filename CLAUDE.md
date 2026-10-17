@@ -61,6 +61,11 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - **Backlog**: `docs/backlog.md`. Take the next open item; update its status when work starts and lands. Add items
   when something turns up (a divergence, a gap), with why. Items are list entries (What, then Why: and Status:) with a
   blank line between them, so parallel PRs that edit neighbouring items merge cleanly, on GitHub too.
+- **Advisor**: when an advisor tool is available, call it before design decisions or recommendations, before splitting
+  work across agents or sessions, and before declaring a larger task done.
+- **Where work runs**: long work (multi-step tasks, PRs, CI waits, releases, CI benchmarks) runs as cloud sessions; the
+  user's own computer must stay free to restart or turn off. Work that needs it (timings on its Ryzen, Windows-only
+  checks) is asked for, never started unasked; a cloud session that needs such a step says so in its PR.
 - **Decisions**: when a design question needs the user, ask with the multiple-choice prompt and record the
   question, choices and answer as a new file, `docs/decisions/YYYY-MM-DD-what.md` (its README).
 - Every behaviour that reproduces a scenedetect quirk gets a unit test and a line in `tools/mutation/mutations.psd1`
@@ -138,7 +143,8 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - 10-bit (any format without swscale's unscaled path to BGR): chroma is interpolated from where the samples sit. OpenCV's
   `sws_scale_frame` takes that from the frame (h264/HEVC 4:2:0: left); ffmpeg's command line drops it before its filters
   (center), so the executable path passes `in_chroma_loc` and BgrConverter's row context sets swscale's position. Linux
-  OpenCV can't decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments.
+  OpenCV can't decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments
+  (files for it outside a `debug/` folder: .gitignore ignores those, so they'd silently not be committed).
 - Frame labels (0.7.1): each decoded frame's showinfo time is matched to its packet (`PacketOf`), so frames
   the decoder drops make numbers skip as in OpenCV. Files always run with `-copyts` (absolute times); streamed
   times already start at 0 (ffmpeg shifts them), so `_startPts` must not be subtracted there.
