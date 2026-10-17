@@ -618,7 +618,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - CI: BtbN's ffmpeg pinned to a dated release and its SHA-256
   - Why: ci.yml and release.yml's test job fetch BtbN's latest build, checked only as a valid archive; the publishing job no longer runs it (#328), so the risk is low, but a pin makes CI reproducible and a tampered build visible
-  - Status: Maybe
+  - Status: Done (2026-10-17): autobuild-2026-09-30-13-08 (month-end releases are kept; daily ones are pruned), FFmpeg 8.1.3 and 9.0.2, each archive's SHA-256 in the action
 
 - Windows named pipe: PipeOptions.CurrentUserOnly
   - Why: Another local user could connect to the frame pipe first and break the run (a denial of service; the name is a GUID, so nothing leaks); CurrentUserOnly closes it (security review)

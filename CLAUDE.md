@@ -164,8 +164,8 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   so CI's VideoWriter step sets `DOTNET_TieredCompilation=0`. GitHub's runners are a mix of CPUs (EPYC 7763 without
   AVX-512, Xeons and EPYC 9V45/9V74 with it): log `/proc/cpuinfo` when a failure only shows up on some runners.
 - GitHub Actions queues can stall; re-run rather than diagnose when every job was cancelled at ~15 min.
-- CI downloads: BtbN's FFmpeg only through `.github/actions/btbn-ffmpeg` (retries, checked archive, daily cache with
-  fallback), never `curl | tar` (a reset mid-stream left tar a truncated archive); Docker images from
+- CI downloads: BtbN's FFmpeg only through `.github/actions/btbn-ffmpeg` (a pinned month-end release, each archive's
+  SHA-256 in the action, retries, cached; move the pin by hand: BtbN prunes daily releases), never `curl | tar` (a reset mid-stream left tar a truncated archive); Docker images from
   `public.ecr.aws/docker/library/` (Docker Hub's anonymous rate limit stopped a release).
 - CI load: a PR whose files are all docs, `.claude/`, `.githooks/`, `benchmarks/`, `tests/FrameReader.Tests/`,
   workflows CI never runs (release, benchmarks, upstream, Dependabot's, parity-os) or FrameReader source files
