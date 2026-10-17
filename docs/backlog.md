@@ -686,7 +686,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Warn when an https HLS playlist decodes through the ffmpeg executable
   - Why: In-process, the segments a playlist names are opened with the certificate checked (FrameReader's io_open wrapper); the executable has no such hook and opens them unchecked. A one-line warning in the result says so when an https playlist goes that way (no FFmpeg libraries, or --decoder process)
-  - Status: Maybe
+  - Status: Done (2026-10-17) in the CLI (a line on stderr) and README; a warning in the library's result would be new public API (the library has no warnings yet), left for the owner to decide
 
 - Check upstream.yml's BtbN job on its first scheduled run (Monday 2026-10-19)
   - Why: #357 wasn't dispatched on its branch (the workflow's other jobs could open real issues), so its first real run is the check: the log should say the pin is up to date, or open one issue
