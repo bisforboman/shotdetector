@@ -180,6 +180,9 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   so CI's VideoWriter step sets `DOTNET_TieredCompilation=0`. GitHub's runners are a mix of CPUs (EPYC 7763 without
   AVX-512, Xeons and EPYC 9V45/9V74 with it): log `/proc/cpuinfo` when a failure only shows up on some runners.
 - GitHub Actions queues can stall; re-run rather than diagnose when every job was cancelled at ~15 min.
+- Workflows: external actions are pinned by commit SHA with the tag in a comment (`uses: actions/checkout@<sha> # v7`;
+  Dependabot moves both), and each workflow's token defaults to `contents: read`: pin a new action the same way
+  (`git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>`) and give a job that needs more its own `permissions`.
 - CI downloads: BtbN's FFmpeg only through `.github/actions/btbn-ffmpeg` (a pinned month-end release, each archive's
   SHA-256 in the action, retries, cached; move the pin by hand: BtbN prunes daily releases), never `curl | tar` (a reset mid-stream left tar a truncated archive); Docker images from
   `public.ecr.aws/docker/library/` (Docker Hub's anonymous rate limit stopped a release).

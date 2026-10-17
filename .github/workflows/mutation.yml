@@ -10,6 +10,10 @@ concurrency:
   group: mutation-${{ github.ref }}
   cancel-in-progress: true
 
+# The token only reads the repository.
+permissions:
+  contents: read
+
 jobs:
   # Docs-only pull requests (docs/ and *.md): the jobs below still run, so their required checks report, but skip
   # their steps. Decided here, on a runner with git, from the PR's merge commit against its base.
@@ -21,12 +25,12 @@ jobs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
       light: ${{ steps.diff.outputs.light }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         if: github.event_name == 'pull_request'
         with:
           fetch-depth: 2
       # FrameReader's assemblies are built when only FrameReader source changed (tools/ci-changes.sh).
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         if: github.event_name == 'pull_request'
         with:
           dotnet-version: 10.0.x
@@ -46,9 +50,9 @@ jobs:
       matrix:
         shard: [0, 1, 2]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         if: needs.changes.outputs.docs_only != 'true'
         with:
           dotnet-version: 10.0.x

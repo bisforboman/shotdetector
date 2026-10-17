@@ -8,6 +8,10 @@ on:
   schedule:
     - cron: '13 4 * * 0'
 
+# The token only reads the repository.
+permissions:
+  contents: read
+
 jobs:
   native:
     uses: ./.github/workflows/native.yml
@@ -25,13 +29,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: 10.0.x
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
 
@@ -45,13 +49,13 @@ jobs:
 
       - run: echo "BENCH_FFMPEG=${{ steps.ffmpeg.outputs.bin }}" >> "$GITHUB_ENV"
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: native-${{ matrix.rid }}
           path: native/${{ matrix.rid }}
 
       - name: Cache the videos
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: samples/realworld
           key: realworld-films-${{ hashFiles('tools/realworld.py') }}
@@ -68,7 +72,7 @@ jobs:
             cat BenchmarkDotNet.Artifacts/results/*-report-github.md
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: frame-reader-bench-${{ matrix.rid }}

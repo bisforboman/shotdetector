@@ -15,6 +15,10 @@ on:
       - .github/workflows/parity-os.yml
       - .github/actions/btbn-ffmpeg/**
 
+# The token only reads the repository.
+permissions:
+  contents: read
+
 jobs:
   parity-os:
     runs-on: ${{ matrix.os }}
@@ -24,13 +28,13 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: 10.0.x
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
 
@@ -52,7 +56,7 @@ jobs:
 
       # main's samples job's clips (made on Linux), else made here.
       - id: samples
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: samples
           key: samples-${{ hashFiles('tools/make-samples.ps1') }}-ffmpeg9.0

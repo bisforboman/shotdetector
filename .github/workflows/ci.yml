@@ -11,6 +11,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The token only reads the repository.
+permissions:
+  contents: read
+
 jobs:
   # Docs-only pull requests (docs/ and *.md): the jobs below still run, so their required checks report, but skip
   # their steps. Decided here, on a runner with git, from the PR's merge commit against its base.
@@ -22,12 +26,12 @@ jobs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
       light: ${{ steps.diff.outputs.light }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         if: github.event_name == 'pull_request'
         with:
           fetch-depth: 2
       # FrameReader's assemblies are built when only FrameReader source changed (tools/ci-changes.sh).
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         if: github.event_name == 'pull_request'
         with:
           dotnet-version: 10.0.x
@@ -44,7 +48,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 2
       - name: No file's line endings rewritten
@@ -75,9 +79,9 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         if: needs.changes.outputs.docs_only != 'true'
         with:
           dotnet-version: 10.0.x
@@ -92,7 +96,7 @@ jobs:
 
       # In-process decoding with our FFmpeg build (FrameReader.Native's): InProcessTests compare it with FFmpeg
       # 8.1's executables, put beside it (BtbN's static build, so they don't load these libraries).
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         if: needs.changes.outputs.docs_only != 'true'
         with:
           name: native-linux-x64
@@ -253,7 +257,7 @@ jobs:
           dotnet build tests/FrameReader.Tests -v q > /dev/null
           for i in 1 2 3 4 5; do dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~VideoWriter"; done
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
           name: videowriter-differing
@@ -267,7 +271,7 @@ jobs:
           dotnet pack src/FrameReader --output artifacts
           dotnet pack src/ShotDetector.Cli --output artifacts
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: needs.changes.outputs.docs_only != 'true'
         with:
           name: nupkg
@@ -293,7 +297,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Native toolchain (Alpine)
         if: needs.changes.outputs.docs_only != 'true' && (matrix.rid == 'linux-musl-x64')
@@ -301,13 +305,13 @@ jobs:
         timeout-minutes: 10   # package mirrors sometimes hang
         run: apk add --no-cache clang build-base zlib-dev bash
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         if: needs.changes.outputs.docs_only != 'true' && (matrix.rid != 'linux-musl-x64')
         with:
           dotnet-version: 10.0.x
 
       # linux-x64 bundles our FFmpeg build next to the binary, as the release does: then it decodes in-process.
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         if: needs.changes.outputs.docs_only != 'true' && (matrix.rid == 'linux-x64')
         with:
           name: native-linux-x64
@@ -377,14 +381,14 @@ jobs:
     runs-on: ubuntu-26.04-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         if: needs.changes.outputs.docs_only != 'true'
         with:
           dotnet-version: 10.0.x
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         if: needs.changes.outputs.docs_only != 'true'
         with:
           name: native-linux-arm64
@@ -423,7 +427,7 @@ jobs:
     timeout-minutes: 30
     container: mcr.microsoft.com/dotnet/sdk:10.0-alpine
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install ffmpeg
         if: needs.changes.outputs.docs_only != 'true'
@@ -446,10 +450,10 @@ jobs:
     env:
       FFMPEG: '9.0'   # parity's
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - id: cache
-        uses: actions/cache@v6   # saves after the job when it missed
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6; saves after the job when it missed
         with:
           path: samples
           key: samples-${{ hashFiles('tools/make-samples.ps1') }}-ffmpeg${{ env.FFMPEG }}
@@ -500,14 +504,14 @@ jobs:
       # don't load, rather than falling back).
       SHOTDETECTOR_OURS_ARGS: --decoder ${{ matrix.decoder }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         if: needs.changes.outputs.docs_only != 'true'
         with:
           dotnet-version: 10.0.x
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         if: needs.changes.outputs.docs_only != 'true'
         with:
           python-version: '3.12'
@@ -524,7 +528,7 @@ jobs:
         run: ffmpeg -hide_banner -version | head -1
 
       # In-process: our FFmpeg build at native/linux-x64, which the CLI's build bundles (ShotDetector.Cli.csproj).
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         if: needs.changes.outputs.docs_only != 'true' && matrix.decoder == 'inprocess'
         with:
           name: native-linux-x64
@@ -544,7 +548,7 @@ jobs:
       # The clips, from the samples job's cache; made here only if that somehow missed.
       - id: samples
         if: needs.changes.outputs.docs_only != 'true'
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: samples
           key: samples-${{ hashFiles('tools/make-samples.ps1') }}-ffmpeg${{ env.FFMPEG }}
@@ -679,14 +683,14 @@ jobs:
     env:
       FFMPEG: '9.0'   # parity's, and the samples cache's key
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         if: needs.changes.outputs.docs_only != 'true'
         with:
           dotnet-version: 10.0.x
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         if: needs.changes.outputs.docs_only != 'true'
         with:
           name: native-${{ matrix.rid }}
@@ -708,7 +712,7 @@ jobs:
 
       - id: samples
         if: needs.changes.outputs.docs_only != 'true'
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: samples
           key: samples-${{ hashFiles('tools/make-samples.ps1') }}-ffmpeg${{ env.FFMPEG }}
@@ -723,7 +727,7 @@ jobs:
           FASTYUV=$PWD/fastyuv/shotdetect tools/arch-outputs.sh src/ShotDetector.Cli/bin/Release/net10.0/shotdetect "$PWD/native/${{ matrix.rid }}" out \
             samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: needs.changes.outputs.docs_only != 'true'
         with:
           name: arch-${{ matrix.rid }}
@@ -735,9 +739,9 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           pattern: arch-*
 
