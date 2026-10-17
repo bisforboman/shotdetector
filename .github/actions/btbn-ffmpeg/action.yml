@@ -80,7 +80,8 @@ runs:
           curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30 -o "$archive" \
             "https://github.com/BtbN/FFmpeg-Builds/releases/download/$RELEASE/$NAME.$ext" \
             || { echo "::error::BtbN's $NAME didn't download"; exit 1; }
-          got=$( { sha256sum "$archive" 2>/dev/null || shasum -a 256 "$archive"; } | cut -d' ' -f1)
+          # From stdin: with a file name, Windows' sha256sum prints "\<hash>" for a path with backslashes.
+          got=$( { sha256sum < "$archive" 2>/dev/null || shasum -a 256 < "$archive"; } | cut -d' ' -f1)
           [ "$got" = "$SUM" ] || { echo "::error::$NAME.$ext has SHA-256 $got, not the pinned $SUM"; exit 1; }
           rm -rf "$dir" && mkdir -p "$dir"
           if [ "$ext" = zip ]; then unzip -qq "$archive" -d "$dir"; else tar -xJf "$archive" -C "$dir"; fi
