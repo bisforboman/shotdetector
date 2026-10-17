@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 
 namespace ShotDetector;
@@ -215,6 +216,18 @@ internal sealed class CvResize
                             var pb = Sse2.UnpackLow(Vector128.CreateScalarUnsafe(Unsafe.ReadUnaligned<int>(sp + a1[dx])).AsByte(), zero).AsInt16();
                             var w = Vector128.Create((ushort)v0[dx] | (v1[dx] << 16)).AsInt16();
                             Sse2.MultiplyAddAdjacent(Sse2.UnpackLow(pa, pb), w).Store(dp + dx * 3);
+                        }
+                    }
+                    else if (AdvSimd.IsSupported)
+                    {
+                        // The same on ARM: the two pixels' bytes as words, a * wa (smull) + b * wb (smlal) per channel,
+                        // the scalar loop's integers; the same loads, overlapping stores and scalar tail as above.
+                        for (; dx < x0.Length - 1 && a1[dx] + 3 < s.Length; dx++)
+                        {
+                            var pa = AdvSimd.ZeroExtendWideningLower(Vector64.CreateScalarUnsafe(Unsafe.ReadUnaligned<int>(sp + a0[dx])).AsByte()).GetLower().AsInt16();
+                            var pb = AdvSimd.ZeroExtendWideningLower(Vector64.CreateScalarUnsafe(Unsafe.ReadUnaligned<int>(sp + a1[dx])).AsByte()).GetLower().AsInt16();
+                            var sum = AdvSimd.MultiplyWideningLower(pa, Vector64.Create(v0[dx]));
+                            AdvSimd.MultiplyWideningLowerAndAdd(sum, pb, Vector64.Create(v1[dx])).Store(dp + dx * 3);
                         }
                     }
 
