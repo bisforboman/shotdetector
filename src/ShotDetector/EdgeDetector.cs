@@ -88,32 +88,44 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
         // test. Neighbours outside the image have magnitude 0. Map: 0 = no, 1 = weak, 2 = edge.
         const int shift = 15;
         const int tg22 = 13573; // (int)(tan(22.5°) * (1 << 15) + 0.5)
-        int Mag(int x, int y) => _mag[(y + 1) * pw + x + 1];
         _stack.Clear();
+        Array.Clear(_map);
+        ref int mag0 = ref _mag[0];
+        var lowV = Vector256.Create(low);
         for (int y = 0; y < h; y++)
         {
+            // This row's magnitudes start at row y + 1, column 1 of the bordered array; a neighbour is at +-1 and +-pw.
+            ref int row = ref Unsafe.Add(ref mag0, (y + 1) * pw + 1);
             for (int x = 0; x < w; x++)
             {
-                int i = y * w + x, m = _mag[(y + 1) * pw + x + 1];
-                _map[i] = 0;
+                // Most pixels are at or under the low threshold: 8 at a time while none of them is above it.
+                if (Vector256.IsHardwareAccelerated && x + 8 <= w
+                    && !Vector256.GreaterThanAny(Vector256.LoadUnsafe(ref row, (nuint)x), lowV))
+                {
+                    x += 7;
+                    continue;
+                }
+
+                int i = y * w + x, m = Unsafe.Add(ref row, x);
                 if (m <= low)
                     continue;
                 int xs = _dx[i], ys = _dy[i];
                 int ax = Math.Abs(xs), ay = Math.Abs(ys) << shift;
                 int tg22x = ax * tg22;
                 bool isMax;
+                ref int at = ref Unsafe.Add(ref row, x);
                 if (ay < tg22x)
                 {
-                    isMax = m > Mag(x - 1, y) && m >= Mag(x + 1, y);
+                    isMax = m > Unsafe.Add(ref at, -1) && m >= Unsafe.Add(ref at, 1);
                 }
                 else if (ay > tg22x + (ax << (shift + 1)))
                 {
-                    isMax = m > Mag(x, y - 1) && m >= Mag(x, y + 1);
+                    isMax = m > Unsafe.Add(ref at, -pw) && m >= Unsafe.Add(ref at, pw);
                 }
                 else
                 {
                     int s = (xs ^ ys) < 0 ? -1 : 1;
-                    isMax = m > Mag(x - s, y - 1) && m > Mag(x + s, y + 1);
+                    isMax = m > Unsafe.Add(ref at, -pw - s) && m > Unsafe.Add(ref at, pw + s);
                 }
 
                 if (!isMax)
@@ -148,8 +160,19 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
             }
         }
 
-        for (int i = 0; i < output.Length; i++)
-            output[i] = _map[i] == 2 ? (byte)255 : (byte)0;
+        // Edges (2) to 255, the rest to 0: 16 at a time, then one by one.
+        int o = 0;
+        ref byte map = ref _map[0];
+        ref byte dst = ref MemoryMarshal.GetReference(output);
+        if (Vector128.IsHardwareAccelerated)
+        {
+            var two = Vector128.Create((byte)2);
+            for (; o <= output.Length - 16; o += 16)
+                Vector128.Equals(Vector128.LoadUnsafe(ref map, (nuint)o), two).StoreUnsafe(ref dst, (nuint)o);
+        }
+
+        for (; o < output.Length; o++)
+            Unsafe.Add(ref dst, o) = Unsafe.Add(ref map, o) == 2 ? (byte)255 : (byte)0;
     }
 
     /// <summary>cv2.dilate with a k×k square of ones: the maximum over the window, ignoring pixels outside.</summary>
