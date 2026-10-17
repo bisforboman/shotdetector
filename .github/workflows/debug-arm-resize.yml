@@ -1,8 +1,8 @@
-# Throwaway (debug/arm-edges only): the resize's AdvSimd horizontal pass against main's scalar one, on ARM.
+# Throwaway (debug/arm-resize only): the resize's AdvSimd horizontal pass against main's scalar one, on ARM.
 name: debug arm resize
 on:
   push:
-    branches: [debug/arm-edges]
+    branches: [debug/arm-resize]
 permissions:
   contents: read
 jobs:
