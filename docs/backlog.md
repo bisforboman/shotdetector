@@ -277,7 +277,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - The resize on ARM with AdvSimd intrinsics (widening multiply-adds), not the portable vectors
   - Why: The portable Vector128 resize measured twice as slow as the scalar loop on ARM (2026-10-17), but NEON's own widening multiply-accumulate (vmlal) fits the fixed-point weights; measure on CI's ARM runners as #370 did (main against the branch, interleaved, film frames) and drop it if it doesn't win
-  - Status: Dropped (2026-10-17): an AdvSimd horizontal pass (per pixel: the two pixels' bytes widened to words, smull by wa, smlal by wb, the SSE2 branch's loads and overlapping stores) gave identical output (the recorded hash on Linux ARM and Apple Silicon, the same real-frame hashes as main) but measured 1.5-1.6x the time of the scalar loop on CI's Linux ARM runner (Elephants Dream 184 -> 288 us, Sintel trailer 259 -> 408 us per frame, four interleaved rounds). One pixel per vector leaves too little work for the loads and lane moves: ARM's scalar loop stays
+  - Status: Dropped (2026-10-17): an AdvSimd horizontal pass (per pixel: the two pixels' bytes widened to words, smull by wa, smlal by wb, the SSE2 branch's loads and overlapping stores) gave identical output (the recorded hash on Linux ARM and Apple Silicon, on Linux ARM the same real-frame hashes as main) but measured 1.5-1.6x the time of the scalar loop on CI's Linux ARM runner (Elephants Dream 184 -> 288 us, Sintel trailer 259 -> 408 us per frame, four interleaved rounds). One pixel per vector leaves too little work for the loads and lane moves: ARM's scalar loop stays
 
 - compare.yml: a branch against a base on chosen runners (workflow_dispatch), instead of throwaway debug/** branches
   - Why: The two ARM measurements of 2026-10-17 each needed a push-triggered workflow on a debug/** branch, which this repository's sessions can't delete (the owner did by hand), and the second copy's test filter picked up a clip test that failed on macOS
@@ -406,6 +406,10 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 - Move to FFmpeg 9's libraries (FFmpeg.AutoGen 9, Native packages on 9.0.x) when opencv-python's Linux wheels bundle FFmpeg 9
   - Why: scenedetect's frames come from OpenCV's FFmpeg; moving earlier risks bytes OpenCV doesn't give, and drops system FFmpeg 8 in-process
   - Status: Maybe (2026-10-14: FFmpeg.AutoGen 9.0.1.1 is out; opencv-python 5.0.0.93 and 4.14.0.94 still bundle libavcodec 62, so the trigger hasn't fired; the user: wait for OpenCV)
+
+- The test clips with FFmpeg 9 on PATH: the interlaced clip's `-top 1`
+  - Why: FFmpeg 9 dropped the encoder option ("Codec AVOption top ... is not a encoding option"), so the Clips fixture failed and with it every VideoTests test, for anyone with FFmpeg 9 on PATH (Homebrew has 9.0.2); found on a macOS run 2026-10-17. A step toward the row above
+  - Status: Done (2026-10-17): `-vf setfield=tff` instead (the encoder takes the field order from the frames, as ClipMaker's TestMedia already did): the same bytes as before with BtbN's 8.1.3, and the whole ShotDetector.Tests suite passes with BtbN's 9.0.2 on PATH (391 of 391) as with 8.1.3
 
 - README performance: 1.0's x64 and ARM benchmark, 2-CPU figures and memory
   - Why: Issue #7 asked for 2-CPU numbers; the README table predates in-process decoding
