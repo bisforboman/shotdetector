@@ -16,9 +16,9 @@ Status: **Released** (on nuget.org), **Done** (on `main`, in the next release), 
   - Why: The promise is identical results
   - Status: Open (none known; MPEG-PS timestamps fixed 2026-10-06)
 
-- CI: x64 and ARM give the same results end to end: the arm job runs `shotdetect --stats` on the sample clips and diffs its CSVs against the build job's
+- CI: x64 and ARM give the same results end to end: every detector's scene lists and stats on the sample clips, both decoders, written on each and diffed
   - Why: Each piece is tested on ARM (the HSV conversion on all 2^24 colours, the content score, the microbenchmark hash, the in-process tests with the linux-arm64 build), but nothing compares a whole run: decoding goes through a different native build per platform, and scenedetect on ARM isn't the reference (opencv-python's ARM wheels use KleidiCV), so the parity matrix runs on x64 only
-  - Status: Open
+  - Status: Done (2026-10-17): ci.yml's arch job (x64 and ARM, our native build in-process and BtbN's ffmpeg 9.0 through the executable, tools/arch-outputs.sh on the main comparison's clips) and arch-diff, both in CI passed's needs; checked here first that two runs write the same files and that the two decoders agree
 
 - VideoWriter's rare CI mismatch: about 1 CI test run in 10-20, one file differs from `ffmpeg -c:v libx264`'s by a few hundred bytes (never locally, never in ffmpeg's own output). Ruled out (2026-10-10): x264 threads (1, both sides; the SEI settings match), filter-graph threads, frame padding (zeroed), the input frames (hashes identical), uninitialised heap (MALLOC_PERTURB_). Left: something in x264/FFmpeg inside a long-lived .NET process
   - Why: The exact-output promise; the check stays a hard failure (docs/decisions/), so every failure is a data point (the test prints both files' x264 settings and CI keeps both files)

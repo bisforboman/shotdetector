@@ -659,11 +659,101 @@ jobs:
           python tools/compare.py samples/informational/*.mov samples/informational/*.mxf --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### Interlaced 10-bit, AVC-Intra and ProRes (informational), ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
 
+  # x64 and ARM give the same results end to end: every detector's scene list and per-frame stats on the main
+  # comparison's clips, in-process (our FFmpeg build for each platform) and through BtbN's ffmpeg executable, written
+  # on each (tools/arch-outputs.sh) and diffed. The per-pixel tests run on ARM too, but only a whole run covers
+  # decoding through each platform's own native build. scenedetect on ARM isn't the reference (its OpenCV wheels use
+  # KleidiCV), so x64's output is.
+  arch:
+    needs: [changes, native, native-arm, samples]
+    if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-x64, os: ubuntu-26.04, btbn: linux64 }
+          - { rid: linux-arm64, os: ubuntu-26.04-arm, btbn: linuxarm64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      FFMPEG: '9.0'   # parity's, and the samples cache's key
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        if: needs.changes.outputs.docs_only != 'true'
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/download-artifact@v7
+        if: needs.changes.outputs.docs_only != 'true'
+        with:
+          name: native-${{ matrix.rid }}
+          path: native/${{ matrix.rid }}
+
+      - name: Install ffmpeg ${{ env.FFMPEG }}
+        id: ffmpeg
+        if: needs.changes.outputs.docs_only != 'true'
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          version: ${{ env.FFMPEG }}
+          platform: ${{ matrix.btbn }}
+
+      # --ffmpeg-dir is both: the libraries for in-process decoding, the executables for the other decoder.
+      - name: Its executables beside our libraries
+        if: needs.changes.outputs.docs_only != 'true'
+        run: cp "${{ steps.ffmpeg.outputs.bin }}/ffmpeg" "${{ steps.ffmpeg.outputs.bin }}/ffprobe" native/${{ matrix.rid }}/
+
+      - id: samples
+        if: needs.changes.outputs.docs_only != 'true'
+        uses: actions/cache/restore@v5
+        with:
+          path: samples
+          key: samples-${{ hashFiles('tools/make-samples.ps1') }}-ffmpeg${{ env.FFMPEG }}
+          fail-on-cache-miss: true
+
+      - name: Scene lists and stats
+        if: needs.changes.outputs.docs_only != 'true'
+        run: |
+          dotnet build -c Release -v q src/ShotDetector.Cli
+          tools/arch-outputs.sh src/ShotDetector.Cli/bin/Release/net10.0/shotdetect "$PWD/native/${{ matrix.rid }}" out \
+            samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg
+
+      - uses: actions/upload-artifact@v7
+        if: needs.changes.outputs.docs_only != 'true'
+        with:
+          name: arch-${{ matrix.rid }}
+          path: out
+
+  arch-diff:
+    needs: [changes, arch]
+    if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true' && needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: arch-*
+
+      # Not vacuous: both sides wrote the same, non-zero number of files.
+      - name: x64 and ARM give the same files
+        run: |
+          a=$(ls arch-linux-x64 | wc -l) b=$(ls arch-linux-arm64 | wc -l)
+          echo "x64: $a files, ARM: $b files"
+          if [ "$a" -eq 0 ] || [ "$a" -ne "$b" ]; then echo "::error::Expected the same, non-zero number of files"; exit 1; fi
+          if ! diff -rq arch-linux-x64 arch-linux-arm64 > differ.txt; then
+            echo "::error::$(wc -l < differ.txt) files differ between x64 and ARM"
+            cat differ.txt
+            diff -r arch-linux-x64 arch-linux-arm64 | head -40
+            exit 1
+          fi
+
   # The one check branch protection requires from this workflow: every job above passed or was skipped (a light PR
   # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
   passed:
     name: CI passed
-    needs: [changes, line-endings, native, build, aot, native-arm, arm, alpine, samples, parity]
+    needs: [changes, line-endings, native, build, aot, native-arm, arm, alpine, samples, parity, arch, arch-diff]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
