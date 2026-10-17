@@ -160,7 +160,9 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   1.5-1.6x the scalar loop). Time an ARM path on CI's ARM runners (`compare.yml`) before keeping it.
 - scenedetect on ARM isn't scenedetect on x86: opencv-python's ARM wheels use KleidiCV/Carotene for `cv2.resize`
   (downscales under 3x) and BGR2HSV, off by 1-2 on some pixels (user's choice: x86 stays the reference). macOS Intel
-  wheels have no FFmpeg. `getBuildInformation()`'s "Custom HAL" line names the library.
+  wheels have no FFmpeg. `getBuildInformation()`'s "Custom HAL" line names the library. Our own results differ on
+  ARM too: FFmpeg's yuv420p to BGR assembly rounds differently there; FastYuv gives x86's results on 8-bit 4:2:0
+  (ci.yml's arch-diff requires that, docs/decisions/2026-10-17-arm-results.md).
 - Benchmarks on this desktop: pin CPUs with `cmd /c start /affinity 3 ...` (children inherit), compare CPU time
   (more stable than wall time here), and interleave runs. The resize and edge detector alone: benchmarks/micro (real
   frames, an output hash: `--hash-only`).

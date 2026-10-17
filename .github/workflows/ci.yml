@@ -663,7 +663,8 @@ jobs:
   # comparison's clips, in-process (our FFmpeg build for each platform) and through BtbN's ffmpeg executable, written
   # on each (tools/arch-outputs.sh) and diffed. The per-pixel tests run on ARM too, but only a whole run covers
   # decoding through each platform's own native build. scenedetect on ARM isn't the reference (its OpenCV wheels use
-  # KleidiCV), so x64's output is.
+  # KleidiCV), so x64's output is. FFmpeg's yuv420p to BGR conversion rounds differently on ARM, so arch-diff requires
+  # ARM with FastYuv to equal x64 on 8-bit 4:2:0 and reports the rest (docs/decisions/2026-10-17-arm-results.md).
   arch:
     needs: [changes, native, native-arm, samples]
     if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
@@ -740,7 +741,8 @@ jobs:
         with:
           pattern: arch-*
 
-      # Not vacuous: both sides wrote the same, non-zero number of files. Then what differs, and how much, in the summary.
+      # Not vacuous: both sides wrote the same, non-zero number of files. Then what differs, and how much, in the summary;
+      # it fails unless ARM's FastYuv results equal x64's on every 8-bit 4:2:0 clip.
       - name: x64 and ARM give the same files
         run: |
           a=$(ls arch-linux-x64 | wc -l) b=$(ls arch-linux-arm64 | wc -l)

@@ -1,7 +1,9 @@
 """Summarises how tools/arch-outputs.sh's folders from two platforms differ (ci.yml's arch-diff; a = the reference, x64):
 per clip, detector and decoder, how many stats rows differ and by how much at most, and the cuts only one side has; the
 frame checksums (decoded, single-threaded, bgr24, bgr24 from swscale's C code, bgr24 +bitexact), as frames differing;
-and whether b's FastYuv files equal a's default ones. Exits 1 when any default scene list or stats file differs.
+and whether b's FastYuv files equal a's default ones. Exits 1 unless they do on every 8-bit 4:2:0 clip (yuv420p or
+yuvj420p, decoders other than MPEG-2's and MJPEG's): the rest is FFmpeg's rounding on ARM, reported
+(docs/decisions/2026-10-17-arm-results.md).
 Usage: python3 tools/arch-summary.py <a-dir> <b-dir>"""
 import csv
 import sys
@@ -54,13 +56,11 @@ def main() -> int:
     a, b = Path(sys.argv[1]), Path(sys.argv[2])
     names = sorted(p.name for p in a.iterdir())
     outputs = [n for n in names if n.endswith(".csv") and ".fastyuv." not in n]
-    differ = False
     print("| file | stats rows differing; largest difference per column | cuts only on one side |\n|---|---|---|")
     for name in outputs:
         pa, pb = a / name, b / name
         if same(pa, pb):
             continue
-        differ = True
         if not pb.exists():
             print(f"| {name} | missing on the second side | |")
         elif name.endswith(".stats.csv"):
@@ -70,6 +70,7 @@ def main() -> int:
             only = [f"-{c}" for c in ca if c not in cb] + [f"+{c}" for c in cb if c not in ca]
             print(f"| {name} | | {' '.join(only) or 'cuts same, other cells differ'} |")
 
+    failed, checked = [], 0
     kinds = ["file", "decoded", "decoded-1thread", "bgr24", "bgr24-c", "bgr24-bitexact"]
     print("\n| clip | codec | " + " | ".join(kinds) + " | b's FastYuv = a's default |")
     print("|---|---|" + "---|" * len(kinds) + "---|")
@@ -80,8 +81,17 @@ def main() -> int:
         fast = [n for n in outputs if n.startswith(clip + ".")]
         hits = sum(same(a / n, b / n.replace(".scenes.csv", ".fastyuv.scenes.csv").replace(".stats.csv", ".fastyuv.stats.csv"))
                    for n in fast)
-        print(f"| {clip} | {(a / codec).read_text().strip()} | {' | '.join(cells)} | {hits}/{len(fast)} |")
-    return 1 if differ else 0
+        codec_name, pix_fmt = ((a / codec).read_text().strip().split(",") + ["", ""])[:2]
+        required = pix_fmt in ("yuv420p", "yuvj420p") and codec_name not in ("mpeg2video", "mjpeg")
+        checked += required
+        if required and (not fast or hits != len(fast)):
+            failed.append(clip)
+        print(f"| {clip} | {codec_name},{pix_fmt} | {' | '.join(cells)} | {hits}/{len(fast)}{' (required)' if required else ''} |")
+    if failed:
+        print(f"\nARM with FastYuv differs from x64 on 8-bit 4:2:0: {', '.join(failed)}")
+    if not checked:
+        print("\nNo 8-bit 4:2:0 clip to check")
+    return 1 if failed or not checked else 0
 
 
 if __name__ == "__main__":
