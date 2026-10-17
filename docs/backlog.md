@@ -241,10 +241,14 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Edges: the non-maximum suppression and hysteresis
   - Why: After 3.4.0's Sobel and dilation, --stats runs still take about twice plain detection; the suppression and hysteresis are the scalar part left
-  - Status: Open
+  - Status: Done (2026-10-17): the suppression skips 8 pixels at a time under the low threshold and reads neighbours without bounds checks, the output 16 at a time: 145 -> 122 us per frame at 256x144 (edge maps hashed identical); --stats runs 0.87-0.98x. Hysteresis was 2% of it. Edges are now about 2 s of a 9.5 s --stats run on Elephants Dream (plain detection 2.5 s): the rest is elsewhere (next item)
 
 - 3.4.0 on 2-vCPU runners: check the weekly benchmark
   - Why: Moving the resize to the scoring thread added CPU on Tears of Steel (+13% on an 8-core desktop); on CPU-bound 2-vCPU runners the move could cost more than it gains. If it does, keep the SSE2 pass and move the resize back for few cores
+  - Status: Open
+
+- --stats runs: find where the time goes beyond the edges
+  - Why: A --stats run on Elephants Dream 426x240 takes about 9.5 s against 2.5 s for plain detection (in-process, 2026-10-17), and the edges are now about 2 s of it: something else (every detector's metrics, the stats rows, writing the CSV) takes the other 5 s
   - Status: Open
 
 ## 3. Toward 1.0
