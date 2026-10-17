@@ -11,7 +11,9 @@ for clip in "$@"; do
   name=$(basename "$clip")
   # The frames themselves, without ShotDetector: decoded, converted to BGR as both decoders do, and with +bitexact.
   md5() { "$libs/ffmpeg" -v error -i "$clip" "$@" -fflags +bitexact -f framemd5 -; }
+  sha256sum < "$clip" | cut -c1-64 > "$out/$name.file.md5"
   md5 -pix_fmt yuv420p > "$out/$name.yuv420p.md5"
+  md5 -threads 1 -pix_fmt yuv420p > "$out/$name.yuv420p-1thread.md5"
   md5 -pix_fmt bgr24 > "$out/$name.bgr24.md5"
   md5 -sws_flags bicubic+bitexact -pix_fmt bgr24 > "$out/$name.bgr24-bitexact.md5"
   for detector in adaptive content threshold hist hash; do

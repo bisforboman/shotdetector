@@ -53,11 +53,11 @@ def main() -> int:
             ca, cb = cuts(pa), cuts(pb)
             only = [f"-{c}" for c in ca if c not in cb] + [f"+{c}" for c in cb if c not in ca]
             print(f"| {name} | | {' '.join(only) or 'cuts same, other cells differ'} |")
-    print("\n| clip | yuv420p | bgr24 | bgr24 +bitexact |\n|---|---|---|---|")
+    print("\n| clip | file | yuv420p | yuv420p, 1 thread | bgr24 | bgr24 +bitexact |\n|---|---|---|---|---|---|")
     for md5 in sorted(n for n in names if n.endswith(".yuv420p.md5")):
         clip = md5[: -len(".yuv420p.md5")]
         cells = [("same" if (a / f"{clip}.{k}.md5").read_bytes() == (b / f"{clip}.{k}.md5").read_bytes() else "differ")
-                 for k in ("yuv420p", "bgr24", "bgr24-bitexact")]
+                 for k in ("file", "yuv420p", "yuv420p-1thread", "bgr24", "bgr24-bitexact")]
         print(f"| {clip} | {' | '.join(cells)} |")
     return 1 if differ else 0
 
