@@ -253,7 +253,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Microbenchmarks in the repository (benchmarks/micro): the resize and the edge detector, on real frames, with an output hash
   - Why: The 2026-10-16/17 performance work used scratch projects: one compiled a stale copy of the file (a no-gain result that was wrong), and the synthetic edge images hid the real cost (127 us per frame against 306 on Elephants Dream's frames). Committed ones, with real frames and a hash of the outputs, make the next round's numbers trustworthy
-  - Status: Open
+  - Status: Done (2026-10-17): CvResize.ResizeRows from 426x240, 640x360, 1280x534 and 1920x1080 to the processed size, and EdgeDetector.Detect on the resized frames' V plane; keyframes of the realworld.py films (cached under the build output) and a seeded synthetic set; best-of-N us per frame and a SHA-256 of the outputs, `--hash-only` for a quick check. In ShotDetector.slnx so CI builds it
 
 - --stats rows in the weekly benchmark (benchmark.yml)
   - Why: It measures plain detection only: the edge detector's work (--stats runs 0.68-0.74x in 3.5.0) has no CI tracking, so a regression there would go unseen
