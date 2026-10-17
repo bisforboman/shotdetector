@@ -641,8 +641,8 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Status: Done (2026-10-17)
 
 - FrameReader.Native's Linux packages: runtimes/<rid>/native/ paths without the double slash
-  - Why: The libraries are listed as runtimes/linux-x64/native//libavcodec.so.62 (PackagePath ends in a slash and the file name adds one); NuGet and the loader cope (2.3.0 shipped so), but a clean path is a one-character fix, checked by ci.yml's pack step
-  - Status: Open
+  - Why: Packed on Linux, the libraries were listed as `runtimes/linux-x64/native//libavcodec.so.62` (2.3.0 on nuget.org too); NuGet and the loader cope, but CI's pack check had to accept it
+  - Status: Done (2026-10-17): the csproj's `PackagePath="runtimes\$(Rid)\native\"` kept its backslashes on Linux (MSBuild only rewrites what looks like an existing path), so NuGet didn't see a trailing separator and joined the file name with another slash; forward slashes now, and ci.yml's pack check requires exactly one
 
 - Warn when an https HLS playlist decodes through the ffmpeg executable
   - Why: In-process, the segments a playlist names are opened with the certificate checked (FrameReader's io_open wrapper); the executable has no such hook and opens them unchecked. A one-line warning in the result says so when an https playlist goes that way (no FFmpeg libraries, or --decoder process)

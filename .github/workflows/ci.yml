@@ -105,7 +105,7 @@ jobs:
           dotnet pack src/FrameReader.Native -p:Rid=linux-x64 --output "$RUNNER_TEMP/native-pack"
           unzip -l "$RUNNER_TEMP"/native-pack/*.nupkg | tee "$RUNNER_TEMP/native-pack.txt"
           grep -q " sbom.spdx.json$" "$RUNNER_TEMP/native-pack.txt" && grep -q " configure.txt$" "$RUNNER_TEMP/native-pack.txt" &&
-            grep -Eq " runtimes/linux-x64/native/+libavcodec.so.62$" "$RUNNER_TEMP/native-pack.txt"
+            grep -q " runtimes/linux-x64/native/libavcodec.so.62$" "$RUNNER_TEMP/native-pack.txt"
 
       - name: FFmpeg 8.1 executables beside our libraries
         if: needs.changes.outputs.docs_only != 'true'

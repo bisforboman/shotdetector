@@ -25,7 +25,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="$(NativeDir)*" Exclude="$(NativeDir)configure.txt;$(NativeDir)sbom.spdx.json" Pack="true" PackagePath="runtimes\$(Rid)\native\" />
+    <None Include="$(NativeDir)*" Exclude="$(NativeDir)configure.txt;$(NativeDir)sbom.spdx.json" Pack="true" PackagePath="runtimes/$(Rid)/native/" />
     <None Include="$(NativeDir)configure.txt;$(NativeDir)sbom.spdx.json" Pack="true" PackagePath="\" />
     <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
     <None Include="README.md" Pack="true" PackagePath="\" />
