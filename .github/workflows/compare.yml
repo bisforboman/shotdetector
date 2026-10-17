@@ -4,7 +4,8 @@ name: Compare
 # recorded microbenchmark hash first (its new code may run nowhere else, e.g. an ARM-only path), then benchmarks/micro
 # on the films, base and branch interleaved, each its own build. Dispatch it on the branch ("Run workflow", or
 # `gh workflow run compare.yml --ref <branch>`); the tables go in the run summary. It replaces the throwaway debug/**
-# branches with push-triggered workflows, which left a branch to delete each time.
+# branches with push-triggered workflows, which left a branch to delete each time. Linux takes BtbN's FFmpeg 8.1 and
+# macOS Homebrew's, so the real frames' `inputs` hashes differ from benchmark.yml's (9.0): compare within one run.
 on:
   workflow_dispatch:
     inputs:
