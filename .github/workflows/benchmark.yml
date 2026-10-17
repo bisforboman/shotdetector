@@ -2,7 +2,8 @@ name: Benchmark
 
 # Wall time, frames per second, CPU time and peak memory (whole process tree) of scenedetect and shotdetect, in its
 # default mode (in-process, with our bundled FFmpeg libraries) and with the ffmpeg executable, on the real-world
-# films (tools/bench.py, best of 3), in the run summary; README "Performance" comes from it. On demand and weekly: a hosted runner is quieter than a
+# films (tools/bench.py, best of 3), in the run summary, plus both with --stats (the content detector then computes
+# edges for every frame, so EdgeDetector's speed is tracked); README "Performance" comes from it. On demand and weekly: a hosted runner is quieter than a
 # desktop, but numbers still vary by a few percent between runs.
 on:
   workflow_dispatch:
@@ -73,6 +74,9 @@ jobs:
             python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector $d --runs 3 --report bench.md
             { echo "### detect-$d, all $(nproc) CPUs"; cat bench.md; } >> "$GITHUB_STEP_SUMMARY"
           done
+          # Per-frame stats: scenedetect -s against shotdetect --stats in-process; edges on every frame.
+          python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --stats --runs 3 --report bench-stats.md
+          { echo "### detect-content --stats, all $(nproc) CPUs"; cat bench-stats.md; } >> "$GITHUB_STEP_SUMMARY"
           # A small container's view: both tools and their children pinned to 2 CPUs (issue #12).
           taskset -c 0,1 python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --runs 3 --report bench2.md
           { echo "### detect-content, 2 CPUs"; cat bench2.md; } >> "$GITHUB_STEP_SUMMARY"

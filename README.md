@@ -259,7 +259,8 @@ With `--ffmpeg-resize`, cuts on real footage differ (2–6 per trailer).
 `benchmark.yml` (`tools/bench.py`) measures it every week on GitHub-hosted Linux runners, x64 and ARM, with all 4
 CPUs and pinned to 2 (a small container, issue #7): wall time, CPU time and peak memory of the content detector on
 four Blender films (1080p down to 240p), for ShotDetector decoding in-process (the default), ShotDetector with the
-ffmpeg executable, and scenedetect. **The current numbers are in the summaries of the
+ffmpeg executable, and scenedetect; also with per-frame stats (`--stats`, scenedetect's `-s`), which compute
+edges for every frame. **The current numbers are in the summaries of the
 [latest benchmark runs](https://github.com/bisforboman/shotdetector/actions/workflows/benchmark.yml).** In them, in-process decoding has been faster than scenedetect on these films, on both runners
 and CPU counts, with less memory and similar or less CPU time; the ffmpeg executable costs more CPU and memory than
 decoding in-process (its own process and frame queues, issue #12). All give identical results.
