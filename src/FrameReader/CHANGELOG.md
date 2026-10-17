@@ -7,6 +7,14 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.6.1 – 2026-10-17
+
+A patch release: the Linux native packages' library paths without the double slash.
+
+### Fixed
+
+- FrameReader.Native's Linux packages: the libraries' paths no longer have a double slash (`runtimes/linux-x64/native/libavcodec.so.62`, not `native//`); the files and how they load are unchanged.
+
 ## 2.6.0 – 2026-10-17
 
 DecodedFrame: decoded frames that outlive the next one, converted to BGR on any thread.

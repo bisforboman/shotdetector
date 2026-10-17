@@ -711,7 +711,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 
 - FrameReader 2.6.1: the Linux packages' library paths without the double slash (#358)
   - Why: FrameReader's only change since 2.6.0; a patch release ships it. Count the commits touching both products at that release (docs/frame-reader-product.md): 0 of 6 at 2.6.0 was the first under the 1-in-20 trigger, and a second in a row would raise the repository split
-  - Status: Open (after #358 merges)
+  - Status: Done (2026-10-17): released by this PR (FrameReader 2.6.1). Split count since framereader-v2.6.0: 0 of 2 code commits touched both products (#358 FrameReader only, #360 ShotDetector only): the second release in a row under 1 in 20, on a small sample; splitting is the owner's call
 
 ## 7. 3.0 (picked 2026-10-14)
 
