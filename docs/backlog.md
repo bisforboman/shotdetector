@@ -263,6 +263,14 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
   - Why: 3.5.0's suppression uses Vector256 where accelerated: on ARM (128-bit vectors) it falls back to the scalar loop. Measure on CI's ARM runners first: the resize's portable vector path measured twice as slow there
   - Status: Maybe
 
+- CI checks benchmarks/micro's output hashes (--hash-only --set synthetic) against recorded ones, on x64 and ARM
+  - Why: The resize's and the edge detector's SIMD paths differ by CPU (SSE2 on x64, scalar on ARM, Vector256 or not): the pixel tests cover set sizes against cv2, but a recorded hash over the synthetic set fails a PR on any change in their output, on every runner
+  - Status: Open
+
+- Baseline timings of benchmarks/micro on the owner's desktop (Ryzen 7 5800X), kept in benchmarks/
+  - Why: So the next performance round starts from recorded numbers on the machine the 3.4.0/3.5.0 work was measured on; a short local run, only when the owner says
+  - Status: Maybe
+
 ## 3. Toward 1.0
 
 - API freeze review: detectors/ContentScorer/EdgeDetector internal, VideoReader trimmed, FrameTime raw fields hidden, DetectAsync (docs/decisions/)
@@ -647,6 +655,14 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 - Warn when an https HLS playlist decodes through the ffmpeg executable
   - Why: In-process, the segments a playlist names are opened with the certificate checked (FrameReader's io_open wrapper); the executable has no such hook and opens them unchecked. A one-line warning in the result says so when an https playlist goes that way (no FFmpeg libraries, or --decoder process)
   - Status: Maybe
+
+- Check upstream.yml's BtbN job on its first scheduled run (Monday 2026-10-19)
+  - Why: #357 wasn't dispatched on its branch (the workflow's other jobs could open real issues), so its first real run is the check: the log should say the pin is up to date, or open one issue
+  - Status: Open
+
+- File the x264 AVX-512 report with VideoLAN (x264-avx512-report.md in the main checkout)
+  - Why: CI's VideoWriter step needs DOTNET_TieredCompilation=0 because x264's AVX-512 code and .NET's tiered JIT differ about 1 run in 250 (CLAUDE.md); the report is written but not filed (it waited on a VideoLAN GitLab account; the reminder fired 2026-10-15)
+  - Status: Open
 
 ## 5. 2.0 (breaking; picked 2026-10-13)
 
