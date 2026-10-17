@@ -38,6 +38,10 @@ Propose 2-6 new items, each with a one-line why, from what turned up: follow-ups
 code comments ("later", "next", "not covered"), divergences or gaps found this session, flaky tests, open issues,
 the plan docs' remaining milestones. Don't propose what's already a row (search the file first).
 
+When an advisor tool is available, call it once the candidates are gathered and before asking: it checks the items'
+claims against the code, drops ones that can't pay off, and fixes wording (2026-10-17: it caught an ARM item that was
+wrong about Sobel, and a stored-timings item that couldn't be compared later). Ask with what survives.
+
 Ask with the multiple-choice prompt (multiSelect: true) which to add, recommended ones first marked "(Recommended)";
 include each one's proposed section and status (Open or Maybe) in its description.
 
@@ -53,4 +57,5 @@ include each one's proposed section and status (Open or Maybe) in its descriptio
   "Backlog: ...", PR body listing the added and changed rows; turn on auto-merge when the user asked for that kind of
   thing before in this conversation, otherwise say it's ready.
 
-If the user only asked to look (no ideas wanted), stop after step 2 and a one-line offer to suggest additions.
+If the user only asked to look (no ideas wanted), stop after step 2 and ask with the multiple-choice prompt
+whether to suggest additions (or start the item marked next).
