@@ -86,5 +86,7 @@ jobs:
       # frames from the same films and the synthetic set), so a regression there shows week to week.
       - name: Microbenchmarks
         run: |
-          dotnet run -c Release --project benchmarks/micro -- --films samples/realworld | tee micro.txt
+          set -o pipefail
+          dotnet build -c Release benchmarks/micro -v q
+          dotnet run -c Release --no-build --project benchmarks/micro -- --films samples/realworld | tee micro.txt
           { echo "### benchmarks/micro, us per frame"; echo '```text'; cat micro.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
