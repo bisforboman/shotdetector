@@ -100,7 +100,8 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
             // This row's magnitudes (and map) start at row y + 1, column 1 of the bordered arrays; a neighbour is at +-1
             // and +-pw.
             ref int row = ref Unsafe.Add(ref mag0, (y + 1) * pw + 1);
-            int x = Vector256.IsHardwareAccelerated ? SuppressRow(ref row, y, low, high) : 0;
+            int x = Vector256.IsHardwareAccelerated ? SuppressRow(ref row, y, low, high)
+                : Vector128.IsHardwareAccelerated ? SuppressRow4(ref row, y, low, high) : 0;
             for (; x < w; x++)
             {
                 int i = y * w + x, m = Unsafe.Add(ref row, x);
@@ -227,6 +228,62 @@ internal sealed class EdgeDetector(int width, int height, int? kernelSize = null
 
         return x;
     }
+
+    /// <summary><see cref="SuppressRow"/> 4 pixels at a time, for CPUs with 128-bit vectors only (ARM's AdvSimd).</summary>
+    int SuppressRow4(ref int row, int y, int low, int high)
+    {
+        const int shift = 15, tg22 = 13573;
+        int w = width, pw = w + 2, x = 0;
+        var lowV = Vector128.Create(low);
+        var highV = Vector128.Create(high);
+        var tg = Vector128.Create(tg22);
+        var one = Vector128.Create(1);
+        ref short rdx = ref _dx[0];
+        ref short rdy = ref _dy[0];
+        ref byte map = ref _map[0];
+        for (; x + 4 <= w; x += 4)
+        {
+            ref int at = ref Unsafe.Add(ref row, x);
+            var m = Vector128.LoadUnsafe(ref at);
+            var candidate = Vector128.GreaterThan(m, lowV);
+            if (candidate == Vector128<int>.Zero)
+                continue;
+            int i = y * w + x;
+            var xs = Load4(ref rdx, i);
+            var ys = Load4(ref rdy, i);
+            var ax = Vector128.Abs(xs);
+            var ay = Vector128.Abs(ys) << shift;
+            var tg22x = ax * tg;
+            var horizontal = Vector128.LessThan(ay, tg22x);
+            var vertical = Vector128.GreaterThan(ay, tg22x + (ax << (shift + 1)));
+            var byRow = Vector128.GreaterThan(m, Load128(ref at, -1)) & Vector128.GreaterThanOrEqual(m, Load128(ref at, 1));
+            var byColumn = Vector128.GreaterThan(m, Load128(ref at, -pw)) & Vector128.GreaterThanOrEqual(m, Load128(ref at, pw));
+            var down = Vector128.GreaterThan(m, Load128(ref at, -pw - 1)) & Vector128.GreaterThan(m, Load128(ref at, pw + 1));   // s = 1
+            var up = Vector128.GreaterThan(m, Load128(ref at, -pw + 1)) & Vector128.GreaterThan(m, Load128(ref at, pw - 1));     // s = -1
+            var diagonal = Vector128.ConditionalSelect(Vector128.LessThan(xs ^ ys, Vector128<int>.Zero), up, down);
+            var isMax = candidate & Vector128.ConditionalSelect(horizontal, byRow, Vector128.ConditionalSelect(vertical, byColumn, diagonal));
+            if (isMax == Vector128<int>.Zero)
+                continue;
+            var label = (isMax & one) + (isMax & Vector128.GreaterThan(m, highV) & one);
+            int p = (y + 1) * pw + x + 1;
+            for (int k = 0; k < 4; k++)
+            {
+                int l = label.GetElement(k);
+                if (l == 0)
+                    continue;
+                Unsafe.Add(ref map, p + k) = (byte)l;
+                if (l == 2)
+                    _stack.Push(p + k);
+            }
+        }
+
+        return x;
+    }
+
+    static Vector128<int> Load128(ref int at, int offset) => Vector128.LoadUnsafe(ref Unsafe.Add(ref at, offset));
+
+    static Vector128<int> Load4(ref short s, int at) =>
+        Vector128.WidenLower(Vector128.CreateScalarUnsafe(Unsafe.ReadUnaligned<ulong>(ref Unsafe.As<short, byte>(ref Unsafe.Add(ref s, at)))).AsInt16());
 
     static Vector256<int> Load(ref int at, int offset) => Vector256.LoadUnsafe(ref Unsafe.Add(ref at, offset));
 
