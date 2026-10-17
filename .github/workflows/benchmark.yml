@@ -3,7 +3,8 @@ name: Benchmark
 # Wall time, frames per second, CPU time and peak memory (whole process tree) of scenedetect and shotdetect, in its
 # default mode (in-process, with our bundled FFmpeg libraries) and with the ffmpeg executable, on the real-world
 # films (tools/bench.py, best of 3), in the run summary, plus both with --stats (the content detector then computes
-# edges for every frame, so EdgeDetector's speed is tracked); README "Performance" comes from it. On demand and weekly: a hosted runner is quieter than a
+# edges for every frame, so EdgeDetector's speed is tracked); README "Performance" comes from it. Then
+# benchmarks/micro, the resize and edge detector alone. On demand and weekly: a hosted runner is quieter than a
 # desktop, but numbers still vary by a few percent between runs.
 on:
   workflow_dispatch:
@@ -80,3 +81,10 @@ jobs:
           # A small container's view: both tools and their children pinned to 2 CPUs (issue #12).
           taskset -c 0,1 python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --runs 3 --report bench2.md
           { echo "### detect-content, 2 CPUs"; cat bench2.md; } >> "$GITHUB_STEP_SUMMARY"
+
+      # The per-frame pixel work alone (benchmarks/micro: the resize and the edge detector, best of 15 rounds, real
+      # frames from the same films and the synthetic set), so a regression there shows week to week.
+      - name: Microbenchmarks
+        run: |
+          dotnet run -c Release --project benchmarks/micro -- --films samples/realworld | tee micro.txt
+          { echo "### benchmarks/micro, us per frame"; echo '```text'; cat micro.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
