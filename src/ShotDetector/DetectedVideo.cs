@@ -71,7 +71,7 @@ public sealed class DetectedVideo
     /// </summary>
     public bool Streamed => Reader.Streaming;
 
-    /// <summary>How many chunks were scored at once (<see cref="DetectionOptions.Parallel"/>); 1 when read sequentially.</summary>
+    /// <summary>How many chunks were scored at once (<see cref="DetectionOptions.Mode"/>); 1 when read sequentially.</summary>
     public int Chunks { get; internal init; } = 1;
 
     /// <summary>
