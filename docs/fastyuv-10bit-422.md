@@ -2,9 +2,10 @@
 
 Status: 4:2:2 done (2026-10-18): FastYuv converts yuv422p and yuvj422p through `IYuv422Converter`, rotated frames
 included, and arch-diff requires ARM to equal x64 on them. 10-bit 4:2:0 (2026-10-18): a port reproduces x86's bytes
-(`IYuv420P10Converter`, "As built (10-bit)" below), and arch-diff requires ARM to equal x64 on it; on x64 it is
+(`IYuv420P10Converter`, "As built (10-bit)" below), and arch-diff requires ARM to equal x64 on it; on x64 it was
 slower than the default path on small video, merged anyway with a speed-up to follow
-(docs/decisions/2026-10-18-fastyuv-10bit-x64.md).
+(docs/decisions/2026-10-18-fastyuv-10bit-x64.md), which landed the same day (`IYuv420P10FrameConverter`: about the
+default path's speed).
 The owner's answers to the open questions at the end: docs/decisions/2026-10-18-fastyuv-422.md. Backlog: "ARM's
 results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video".
 
@@ -60,6 +61,15 @@ results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video".
   interface (additive: a new interface beside `IYuv420P10Converter`) and CvResize's YUV path reworked. The owner chose
   to merge as is, a converter set being used as set, and to make it faster later
   (docs/decisions/2026-10-18-fastyuv-10bit-x64.md; the backlog's Next).
+- Faster (2026-10-18): `IYuv420P10FrameConverter` (ShotDetector, additive), which `SwscaleYuv420P10` implements and
+  the pipelines prefer: `FrameToBgr` converts the resize's rows × columns into a packed buffer, filtering each chroma
+  row the rows' vertical filters read once (at the columns' chroma samples, four at a time with `pmaddwd` on x86),
+  then per row the vertical filter (four pairs at a time, the same 16-bit wrapping) and the output (saturation
+  without branches). `RowToBgr` is its one-row case. CvResize calls it once per frame: unturned into `ResizeSampled`'s
+  layout, turned into its own rows × columns. On 4 shared x64 vCPUs (another session; synthetic clips, so the "before"
+  ratio is smaller than sintel's above), 30 s of 854x480 10-bit h264: 3.9 s instead of 5.8 s through the executable, 3.8 s instead of 5.1 s in-process (the default path 3.5 s both); 1080p 11.6 s and
+  10.3 s instead of 12.6 s and 12.3 s (default 12.9 s and 12.1 s). The CLI's CSV and stats are byte-identical before
+  and after, both decoders, on four 10-bit clips (left, BT.709, topleft, 1080p).
 
 The sections below are the scoping written before 4:2:2 was built. Where they describe the code (4:2:2 still
 differing, rotation turning the planes first, `WriteYuv420`, the only 4:2:2 sample being turned), the list above

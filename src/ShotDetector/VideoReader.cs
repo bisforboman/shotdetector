@@ -307,7 +307,7 @@ internal sealed partial class VideoReader
     readonly (int W, int H) _codedSize; // the stream's size from its headers, before rotation
     readonly string? _chromaLocation;
     readonly bool? _xvidIdct;          // MPEG-4 Part 2: whether FFmpeg's decoder takes the Xvid IDCT (Mpeg4Idct); null if not known
-    readonly YuvRowConverter? _yuvForVideo;       // _yuv420 configured for this video's layout and colours (4:2:0 or 4:2:2)
+    readonly YuvConversion? _yuvForVideo;         // _yuv420 configured for this video's layout and colours (4:2:0 or 4:2:2)
 
     /// <param name="path">Video file, or a URL (http(s), rtsp, ... ; read as a stream).</param>
     /// <param name="options">Uses FfmpegResize, DecodeThreads, Yuv420Converter, Compatibility, Crop, FfmpegDirectory, Streaming and ProbeBytes.</param>
@@ -549,10 +549,12 @@ internal sealed partial class VideoReader
         // size and chroma location as well, and declines sizes it doesn't reproduce.
         _yuvForVideo = _pixelFormat switch
         {
-            "yuv420p" or "yuvj420p" => _yuv420?.ForColor(colorSpace, fullRange) is { } c420 ? c420.RowToBgr : null,
-            "yuv422p" or "yuvj422p" => (_yuv420 as IYuv422Converter)?.ForColor(colorSpace, fullRange) is { } c422 ? c422.RowToBgr : null,
+            "yuv420p" or "yuvj420p" => _yuv420?.ForColor(colorSpace, fullRange) is { } c420 ? new(c420.RowToBgr) : null,
+            "yuv422p" or "yuvj422p" => (_yuv420 as IYuv422Converter)?.ForColor(colorSpace, fullRange) is { } c422 ? new(c422.RowToBgr) : null,
+
+            // A frame at a time when the converter does that too (FastYuv's does): each chroma row filtered once per frame.
             "yuv420p10le" => (_yuv420 as IYuv420P10Converter)?.ForVideo(colorSpace, fullRange, _chromaLocation, _codedSize.W, _codedSize.H) is { } c10
-                ? c10.RowToBgr
+                ? new(c10.RowToBgr, c10 as IYuv420P10FrameConverter)
                 : null,
             _ => null,
         };
@@ -937,8 +939,9 @@ internal sealed partial class VideoReader
 
     /// <summary>
     /// ffmpeg's filters for <see cref="Turn"/>, on bgr24: a pure rearrangement, as cv::rotate. The YUV pipelines send the
-    /// planes as decoded and turn after converting (<see cref="CvResize.ResizeYuv"/>), as turning the planes first would
-    /// differ where the chroma layout doesn't survive the turn (4:2:2 at 90 and 270, odd sizes).
+    /// planes as decoded and turn after converting
+    /// (<see cref="CvResize.ResizeYuv(byte[], byte[], YuvConversion, int, int, int, int, int)"/>), as turning the planes
+    /// first would differ where the chroma layout doesn't survive the turn (4:2:2 at 90 and 270, odd sizes).
     /// </summary>
     string TurnFilters => Turn switch { 90 => ",transpose=clock", 180 => ",hflip,vflip", 270 => ",transpose=cclock", _ => "" };
 

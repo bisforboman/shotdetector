@@ -125,10 +125,130 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
             }
 
             Assert.Equal(expected, some);
+
+            // A frame at a time (IYuv420P10FrameConverter): every pixel, and some rows at some columns, packed.
+            var frameConverter = (IYuv420P10FrameConverter)converter;
+            var whole = new byte[width * height * 3];
+            frameConverter.FrameToBgr(yuv, width, height, Enumerable.Range(0, height).ToArray(), all, whole);
+            Assert.Equal(expected, whole);
+            int[] rows = Enumerable.Range(0, height).Where(y => y % 3 != 1).ToArray();
+            var packed = new byte[rows.Length * even.Length * 3];
+            frameConverter.FrameToBgr(yuv, width, height, rows, even, packed);
+            for (int i = 0; i < rows.Length; i++)
+            {
+                for (int j = 0; j < even.Length; j++)
+                    Assert.Equal(expected.AsSpan((rows[i] * width + even[j]) * 3, 3), packed.AsSpan((i * even.Length + j) * 3, 3));
+            }
         }
         finally
         {
             Directory.Delete(dir, true);
+        }
+    }
+
+    // The 10-bit resize a frame at a time (each chroma row filtered once) against row by row: the same bytes, on any
+    // CPU, for each chroma siting, odd heights, turned or not, cropped, in row chunks on several cores (400 x 380), and
+    // again with the plan kept for the next frame.
+    [Theory]
+    [InlineData(64, 47, null)]
+    [InlineData(70, 21, "left")]
+    [InlineData(40, 26, "center")]
+    [InlineData(66, 34, "topleft")]
+    [InlineData(62, 31, "top")]
+    [InlineData(48, 30, "bottomleft")]
+    [InlineData(856, 11, "bottom")]
+    public void TenBitFrameAtATimeEqualsRowByRow(int width, int height, string? chromaLocation)
+    {
+        var yuv = new byte[IYuv420P10Converter.FrameSize(width, height)];
+        var samples = MemoryMarshal.Cast<byte, ushort>(yuv.AsSpan());
+        var random = new Random(width * height);
+        for (int i = 0; i < samples.Length; i++)
+            samples[i] = (ushort)(i % 7 == 0 ? random.Next(2) * 1023 : random.Next(1024));
+        var converter = (IYuv420P10FrameConverter)((IYuv420P10Converter)new SwscaleYuv420()).ForVideo("bt709", false, chromaLocation, width, height)!;
+        var rowByRow = new YuvConversion(converter.RowToBgr);
+        var frameAtATime = new YuvConversion(converter.RowToBgr, converter);
+        foreach (int turn in new[] { 0, 90, 180, 270 })
+        {
+            int tw = turn is 90 or 270 ? height : width, th = turn is 90 or 270 ? width : height;
+            foreach (var (cropX, cropY, cw, ch) in new[] { (0, 0, tw, th), (3, 2, tw - 4, th - 3) })
+            {
+                foreach (var (dw, dh) in new[] { (7, 9), (Math.Max(cw / 3, 1), Math.Max(ch / 3, 1)), (cw * 2, ch + 5), (400, 380) })
+                {
+                    byte[] expected = new byte[dw * dh * 3], actual = new byte[dw * dh * 3];
+                    new CvResize(cw, ch, dw, dh).ResizeYuv(yuv, expected, rowByRow, width, height, turn, cropX, cropY);
+                    var resize = new CvResize(cw, ch, dw, dh);
+                    resize.ResizeYuv(yuv, actual, frameAtATime, width, height, turn, cropX, cropY);
+                    Assert.Equal(expected, actual);
+                    Array.Clear(actual);
+                    resize.ResizeYuv(yuv, actual, frameAtATime, width, height, turn, cropX, cropY);
+                    Assert.Equal(expected, actual);
+                }
+            }
+        }
+    }
+
+    // The pipelines take a 10-bit converter's frame-at-a-time conversion when it has one (one call per frame), through
+    // both decoders, with the same frames.
+    [Fact]
+    public void PipelinesConvertTenBitAFrameAtATime()
+    {
+        string dir = Directory.CreateTempSubdirectory("shotdetector-fastyuv-frame-").FullName;
+        try
+        {
+            string video = Path.Combine(dir, "video.mkv");
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-frames:v", "12", "-pix_fmt", "yuv420p10le", "-c:v", "ffv1", video], default);
+            var options = new DetectionOptions { FfmpegDirectory = Libs };
+            foreach (var decoder in Libs is null ? [VideoDecoder.FfmpegProcess] : new[] { VideoDecoder.FfmpegProcess, VideoDecoder.InProcess })
+            {
+                var counting = new CountingTenBit();
+                var reader = new VideoReader(video, options with { Decoder = decoder, Yuv420Converter = counting });
+                Assert.Equal(FramePipeline.Yuv420P10Sampled, reader.Pipeline);
+                var frames = reader.Frames().Select(f => Convert.ToHexString(SHA256.HashData(f))).ToList();
+                Assert.Equal(12, frames.Count);
+                Assert.Equal(12, counting.Frames);
+                Assert.Equal(0, counting.Rows);
+                var plain = new VideoReader(video, options with { Decoder = decoder, Yuv420Converter = new SwscaleYuv420() });
+                Assert.Equal(frames, plain.Frames().Select(f => Convert.ToHexString(SHA256.HashData(f))).ToList());
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    /// <summary>FastYuv's converter, counting its 10-bit converters' calls: frames, and single rows.</summary>
+    sealed class CountingTenBit : IYuv420Converter, IYuv420P10Converter
+    {
+        readonly SwscaleYuv420 _fast = new();
+        public int Frames, Rows;
+
+        public IYuv420Converter? ForColor(string colorSpace, bool fullRange) => _fast.ForColor(colorSpace, fullRange);
+
+        public void RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow) =>
+            _fast.RowToBgr(yuv, width, height, y, cols, bgrRow);
+
+        public IYuv420P10Converter? ForVideo(string colorSpace, bool fullRange, string? chromaLocation, int width, int height) =>
+            ((IYuv420P10Converter)_fast).ForVideo(colorSpace, fullRange, chromaLocation, width, height) is IYuv420P10FrameConverter c
+                ? new Counted(c, this)
+                : null;
+
+        sealed class Counted(IYuv420P10FrameConverter converter, CountingTenBit counts) : IYuv420P10FrameConverter
+        {
+            public IYuv420P10Converter? ForVideo(string colorSpace, bool fullRange, string? chromaLocation, int width, int height) =>
+                counts.ForVideo(colorSpace, fullRange, chromaLocation, width, height);
+
+            public void RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow)
+            {
+                Interlocked.Increment(ref counts.Rows);
+                converter.RowToBgr(yuv, width, height, y, cols, bgrRow);
+            }
+
+            public void FrameToBgr(ReadOnlySpan<byte> yuv, int width, int height, ReadOnlySpan<int> rows, ReadOnlySpan<int> cols, Span<byte> bgr)
+            {
+                Interlocked.Increment(ref counts.Frames);
+                converter.FrameToBgr(yuv, width, height, rows, cols, bgr);
+            }
         }
     }
 
