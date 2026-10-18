@@ -23,6 +23,9 @@ internal enum FramePipeline
 
     /// <summary>ffmpeg sends raw yuv420p; only the pixels the resize reads are converted (needs an <see cref="IYuv420Converter"/>).</summary>
     Yuv420Sampled,
+
+    /// <summary>As <see cref="Yuv420Sampled"/> for yuv422p (needs an <see cref="IYuv420Converter"/> that is an <see cref="IYuv422Converter"/> too).</summary>
+    Yuv422Sampled,
 }
 
 /// <summary>Frame rate as an exact fraction (e.g. 30000/1001).</summary>
@@ -300,7 +303,7 @@ internal sealed partial class VideoReader
     readonly string _pixelFormat;
     readonly (int W, int H) _codedSize; // the stream's size from its headers, before rotation
     readonly string? _chromaLocation;
-    readonly IYuv420Converter? _yuv420ForVideo;   // _yuv420 configured for this video's colours
+    readonly YuvRowConverter? _yuvForVideo;       // _yuv420 configured for this video's layout and colours (4:2:0 or 4:2:2)
 
     /// <param name="path">Video file, or a URL (http(s), rtsp, ... ; read as a stream).</param>
     /// <param name="options">Uses FfmpegResize, DecodeThreads, Yuv420Converter, Compatibility, Crop, FfmpegDirectory, Streaming and ProbeBytes.</param>
@@ -529,8 +532,16 @@ internal sealed partial class VideoReader
             || (o.Deinterlace == DeinterlaceMode.Auto && FieldOrder is not (FieldOrder.Progressive or FieldOrder.Unknown));
 
         // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
-        bool fullRange = _pixelFormat == "yuvj420p" || stream.GetValueOrDefault("color_range") == "pc";
-        _yuv420ForVideo = _yuv420?.ForColor(_alwaysBt601 ? "bt470bg" : stream.GetValueOrDefault("color_space", ""), fullRange);
+        bool fullRange = _pixelFormat is "yuvj420p" or "yuvj422p" || stream.GetValueOrDefault("color_range") == "pc";
+        string colorSpace = _alwaysBt601 ? "bt470bg" : stream.GetValueOrDefault("color_space", "");
+
+        // 4:2:2 when the converter does that too (FastYuv's does): swscale takes the same unscaled converter for it.
+        _yuvForVideo = _pixelFormat switch
+        {
+            "yuv420p" or "yuvj420p" => _yuv420?.ForColor(colorSpace, fullRange) is { } c420 ? c420.RowToBgr : null,
+            "yuv422p" or "yuvj422p" => (_yuv420 as IYuv422Converter)?.ForColor(colorSpace, fullRange) is { } c422 ? c422.RowToBgr : null,
+            _ => null,
+        };
 
         var tb = Fps.Parse(stream["time_base"]);
         _timeBase = tb.Num / (double)tb.Den;
@@ -843,19 +854,26 @@ internal sealed partial class VideoReader
     internal int Turn => ((-_rotation) % 360 + 360) % 360;
 
     /// <summary>
-    /// ffmpeg's filters for <see cref="Turn"/>: on bgr24 a pure rearrangement, as cv::rotate; on the yuv420p pipeline's
-    /// planes too, where converting interpolates nothing (nearest chroma), so turning before or after is the same.
+    /// ffmpeg's filters for <see cref="Turn"/>, on bgr24: a pure rearrangement, as cv::rotate. The YUV pipelines send the
+    /// planes as decoded and turn after converting (<see cref="CvResize.ResizeYuv"/>), as turning the planes first would
+    /// differ where the chroma layout doesn't survive the turn (4:2:2 at 90 and 270, odd sizes).
     /// </summary>
     string TurnFilters => Turn switch { 90 => ",transpose=clock", 180 => ",hflip,vflip", 270 => ",transpose=cclock", _ => "" };
 
     /// <summary>How frames get from ffmpeg to the downscaled BGR the detectors see.</summary>
     public FramePipeline Pipeline => !_ffmpegResize && (Width, Height) != (CropRegion.Width, CropRegion.Height)
 
-        // swscale's unscaled yuv420p converter (what OpenCV gets) needs an even height.
-        ? (_yuv420ForVideo is not null && !_sizeChanges && _pixelFormat is "yuv420p" or "yuvj420p" && SourceHeight % 2 == 0 ? FramePipeline.Yuv420Sampled
+        // swscale's unscaled yuv420p/yuv422p converter (what OpenCV gets) needs an even decoded height.
+        ? (_yuvForVideo is not null && !_sizeChanges && _codedSize.H % 2 == 0 ? (Yuv422 ? FramePipeline.Yuv422Sampled : FramePipeline.Yuv420Sampled)
             : _fullFrames || (!DecodesInProcess && !SampledPays(CropRegion.Width, CropRegion.Height, Width, Height))
                 ? FramePipeline.FullFrameResize : FramePipeline.SampledBgr)
         : FramePipeline.FfmpegScale;
+
+    /// <summary>Whether the video is 4:2:2 (yuv422p or yuvj422p): a chroma row for every row.</summary>
+    bool Yuv422 => _pixelFormat is "yuv422p" or "yuvj422p";
+
+    /// <summary>Size in bytes of one of the YUV pipelines' frames: tightly packed planes, at the decoded size.</summary>
+    int YuvFrameSize => Yuv422 ? IYuv422Converter.FrameSize(_codedSize.W, _codedSize.H) : IYuv420Converter.FrameSize(_codedSize.W, _codedSize.H);
 
     /// <summary>
     /// Whether the ffmpeg executable should send only the pixels the resize reads (its remap filter) rather than whole
@@ -871,8 +889,8 @@ internal sealed partial class VideoReader
     /// processes the current frame, so a yielded buffer is only valid until the next one.
     /// Cancelling <paramref name="cancellationToken"/> kills ffmpeg and throws OperationCanceledException.
     /// Pipelines: "yuv420p+sampled" (with a yuv420 converter) has ffmpeg send raw yuv420p (no conversion, half the bytes of BGR)
-    /// and converts only the pixels cv2.resize reads; "bgr24+resize" has ffmpeg convert whole frames;
-    /// "ffmpeg-scale" has ffmpeg downscale (--ffmpeg-resize, or when no resize is needed).
+    /// and converts only the pixels cv2.resize reads (yuv422p the same way, with a converter for it); "bgr24+resize" has
+    /// ffmpeg convert whole frames; "ffmpeg-scale" has ffmpeg downscale (--ffmpeg-resize, or when no resize is needed).
     /// </summary>
     internal IEnumerable<byte[]> Frames(CancellationToken cancellationToken = default) => Frames(0, null, cancellationToken);
 
@@ -915,7 +933,7 @@ internal sealed partial class VideoReader
         }
 
         var pipeline = Pipeline;
-        bool resizeHere = pipeline != FramePipeline.FfmpegScale, yuv = pipeline == FramePipeline.Yuv420Sampled;
+        bool resizeHere = pipeline != FramePipeline.FfmpegScale, yuv = pipeline is FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled;
 
         // On Windows, stdout redirection uses a 4 KB pipe, which makes full-size frames crawl
         // (19 s vs 12 s for 5000 1080p frames), so ffmpeg writes to a named pipe with a big buffer.
@@ -994,8 +1012,8 @@ internal sealed partial class VideoReader
             + (_alwaysBt601 ? ":in_color_matrix=bt601" : "") + ",format=bgr24" + TurnFilters;
         args = pipeline switch
         {
-            // The source's own format, so ffmpeg passes the samples through untouched.
-            FramePipeline.Yuv420Sampled => [.. args, "-vf", select[1] + TurnFilters, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
+            // The source's own format, so ffmpeg passes the samples through untouched; turned after converting.
+            FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled => [.. args, "-vf", select[1], "-f", "rawvideo", "-pix_fmt", _pixelFormat],
 
             // Like OpenCV: SWS_BICUBIC, colour matrix and range from the stream's tags (BT.601 if untagged).
             FramePipeline.FullFrameResize => [.. args, "-vf", prefix + toBgr + crop,
@@ -1089,7 +1107,7 @@ internal sealed partial class VideoReader
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var free = new BlockingCollection<byte[]>();
         using var full = new BlockingCollection<byte[]>();
-        int readSize = yuv ? IYuv420Converter.FrameSize(SourceWidth, SourceHeight)
+        int readSize = yuv ? YuvFrameSize
             : sampled ? resizer!.SourceCols.Length * resizer.SourceRows.Length * 3
             : resizeHere ? CropRegion.Width * CropRegion.Height * 3
             : Width * Height * 3;
@@ -1149,7 +1167,7 @@ internal sealed partial class VideoReader
                     break;
                 }
 
-                // A new size on the yuv420p pipeline: read again on a BGR pipeline (after the finally below). Files
+                // A new size on a YUV pipeline: read again on a BGR pipeline (after the finally below). Files
                 // only: a stream can't be read twice.
                 if (yuv && info.NewSize && _stream is null && !Streaming)
                 {
@@ -1170,7 +1188,7 @@ internal sealed partial class VideoReader
                 }
 
                 if (yuv)
-                    resizer.ResizeYuv420(buffer, small, _yuv420ForVideo!, SourceWidth, SourceHeight, CropRegion.X, CropRegion.Y);
+                    resizer.ResizeYuv(buffer, small, _yuvForVideo!, _codedSize.W, _codedSize.H, Turn, CropRegion.X, CropRegion.Y);
                 else if (sampled)
                     resizer.ResizeSampled(buffer, small);
                 else

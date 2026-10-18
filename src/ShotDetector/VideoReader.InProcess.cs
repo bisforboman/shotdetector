@@ -38,7 +38,7 @@ internal sealed partial class VideoReader
         int size = pipeline switch
         {
             // Frames of a new size come resized already (below), so room for those too.
-            FramePipeline.Yuv420Sampled => Math.Max(IYuv420Converter.FrameSize(SourceWidth, SourceHeight), Width * Height * 3),
+            FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled => Math.Max(YuvFrameSize, Width * Height * 3),
             FramePipeline.FullFrameResize => CropRegion.Width * CropRegion.Height * 3,
             FramePipeline.SampledBgr => resizer!.SourceRows.Length * CropRegion.Width * 3,
             _ => Width * Height * 3,
@@ -115,11 +115,11 @@ internal sealed partial class VideoReader
                     // A frame of another size than the stream's first: OpenCV scales it to that size inside its one
                     // conversion to BGR, which FastYuv's conversion at the stream's size can't reproduce. The core
                     // path's conversion for those frames instead (exact; only they are slower).
-                    bool bgr = pipeline == FramePipeline.Yuv420Sampled && !writer.HasFirstSize;
+                    bool bgr = pipeline is FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled && !writer.HasFirstSize;
                     switch (bgr ? FramePipeline.SampledBgr : pipeline)
                     {
-                        case FramePipeline.Yuv420Sampled:
-                            writer.WriteYuv420(buffer);
+                        case FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled:
+                            writer.WriteYuv(buffer, chroma422: pipeline == FramePipeline.Yuv422Sampled);
                             break;
                         case FramePipeline.SampledBgr when bgr:
                             writer.WriteResized(buffer, decoderResizer!, rows!, (CropRegion.X, CropRegion.Y));
@@ -175,7 +175,7 @@ internal sealed partial class VideoReader
                     _livePackets.Add(PacketOf(pts * timeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
                 }
 
-                // Resized already, in a buffer sized for yuv420p: the frame's own bytes (scores count its pixels).
+                // Resized already, in a buffer sized for the YUV planes: the frame's own bytes (scores count its pixels).
                 if (bgr)
                 {
                     buffer.AsSpan(0, small.Length).CopyTo(small);
@@ -189,8 +189,8 @@ internal sealed partial class VideoReader
                     case FramePipeline.SampledBgr:
                         resizer!.ResizePackedRows(buffer, small);
                         break;
-                    case FramePipeline.Yuv420Sampled:
-                        resizer!.ResizeYuv420(buffer, small, _yuv420ForVideo!, SourceWidth, SourceHeight, CropRegion.X, CropRegion.Y);
+                    case FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled:
+                        resizer!.ResizeYuv(buffer, small, _yuvForVideo!, _codedSize.W, _codedSize.H, Turn, CropRegion.X, CropRegion.Y);
                         break;
                     case FramePipeline.FullFrameResize:
                         resizer!.Resize(buffer, small);
