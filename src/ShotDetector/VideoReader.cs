@@ -528,8 +528,8 @@ internal sealed partial class VideoReader
         Container = stream.GetValueOrDefault("format_name", "");
 
         // MPEG-4 Part 2: whether FFmpeg's decoder takes the Xvid IDCT, from the codec tag, the extradata and the first
-        // packet (one more short probe). Not for a URL (a second connection: its decoder's default IDCT, as before).
-        if (Codec == "mpeg4" && !headersOnly && (video is not null || !IsUrl(path)))
+        // packet (one more short probe; for a URL a second connection, so a URL decodes as its file does on ARM too).
+        if (Codec == "mpeg4" && !headersOnly)
             _xvidIdct = XvidIdct(path, ffprobe, cancellationToken);
         Duration = double.TryParse(stream.GetValueOrDefault("duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out double length)
             ? TimeSpan.FromSeconds(length)

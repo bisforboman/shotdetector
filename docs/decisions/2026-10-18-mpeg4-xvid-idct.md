@@ -26,7 +26,8 @@ profile. What should ShotDetector do?
 **1**. ShotDetector's `Mpeg4Idct` reproduces the rule (sscanf's semantics included, checked against the decoder's own
 `-debug bugs` output on crafted user data); the executable path reads the bytes with `ffprobe -show_data -read_intervals
 %+#1`, the in-process one with FrameReader's `MediaProbe` (new: `VideoStreamInfo.ExtraData`, `MediaInfo.FirstVideoPacket`,
-so also a FrameReader release); a Stream's come from its first bytes. Not covered: a URL's MPEG-4 (a second connection;
-the default IDCT, as before), and a signature that first appears in a later packet (the decoder would switch then).
+so also a FrameReader release); a Stream's come from its first bytes, a URL's from a second connection (ARM's CI showed
+that without it a URL's MPEG-4 differed from its file). Not covered: a signature that first appears in a later packet
+(the decoder would switch then).
 x64's results are unchanged (byte-identical CSVs and stats on FMP4, DX50, Xvid and XVID-tagged clips in avi, mkv and mp4,
 both decoders).

@@ -69,7 +69,9 @@ public class DeinterlaceTests(Clips clips) : IClassFixture<Clips>
     public void SameAsALosslessYadifCopy(string name)
     {
         string copy = Path.Combine(Path.GetTempPath(), $"shotdetector-yadif-{Guid.NewGuid():N}.mkv");
-        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-vf", "yadif", "-c:v", "ffv1", copy], default);
+
+        // With the C IDCT, as ShotDetector decodes this MPEG-4 (on ARM, ffmpeg's default IDCT gives other frames).
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-idct", "simple", "-i", clips.ThreeShots, "-vf", "yadif", "-c:v", "ffv1", copy], default);
         try
         {
             var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true };
