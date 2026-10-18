@@ -87,8 +87,10 @@ def main() -> int:
         codec_name, pix_fmt = info.get("codec_name", ""), info.get("pix_fmt", "")
         width, height = int(info.get("width") or 0), int(info.get("height") or 0)
         # FastYuv converts what swscale's unscaled converter takes (an even decoded height); odd widths reported only
-        # until their first ARM table is read (docs/decisions/2026-10-18-fastyuv-422.md).
-        required = pix_fmt in ("yuv420p", "yuvj420p", "yuv422p", "yuvj422p") and width % 2 == 0 and height % 2 == 0
+        # until their first ARM table is read (docs/decisions/2026-10-18-fastyuv-422.md). 10-bit 4:2:0: even widths,
+        # any height (swscale's scaled path, docs/fastyuv-10bit-422.md).
+        required = (pix_fmt in ("yuv420p", "yuvj420p", "yuv422p", "yuvj422p") and width % 2 == 0 and height % 2 == 0
+                    or pix_fmt == "yuv420p10le" and width % 2 == 0 and width >= 8 and height > 8)
         checked += required
         if required and (not fast or hits != len(fast)):
             failed.append(clip)
@@ -96,7 +98,7 @@ def main() -> int:
                          for d in ("inprocess", "process"))
         print(f"| {clip} | {codec_name},{pix_fmt} | {' | '.join(cells)} | {hits}/{len(fast)} ({split}){' (required)' if required else ''} |")
     if failed:
-        print(f"\nARM with FastYuv differs from x64 on 8-bit 4:2:0 or 4:2:2: {', '.join(failed)}")
+        print(f"\nARM with FastYuv differs from x64 on 8-bit 4:2:0 or 4:2:2, or 10-bit 4:2:0: {', '.join(failed)}")
     if not checked:
         print("\nNo 8-bit 4:2:0 or 4:2:2 clip to check")
     return 1 if failed or not checked else 0

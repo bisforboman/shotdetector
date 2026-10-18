@@ -27,6 +27,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: `Demuxer.Open` passes `FrameDecoderOptions.InputOptions` to avformat_open_input and drops what's left, so a misspelt demuxer option is ignored without a word (the release-candidate security review, 2026-10-18), though FrameReader's README says unknown option names are an `ArgumentException`. `CodecOptions` checks its leftovers since 2026-10-18. Changing it could break callers passing options some demuxers lack (ShotDetector passes the image sequences' `framerate`), so it needs a look per caller
   - Status: Open
 
+- FastYuv 10-bit: filter each chroma row once per frame
+  - Why: On x64, FastYuv for 10-bit 4:2:0 is about 2.5-3.5x slower than the default path at 854x480 (1080p about even; docs/decisions/2026-10-18-fastyuv-10bit-x64.md), because each chroma row is filtered horizontally again for every output row that reads it. A per-frame chroma pass would remove that: a batch method (the needed chroma rows filtered once, then the rows converted), additive as a new interface beside `IYuv420P10Converter` that the pipeline type-tests for, and CvResize's YUV path reworked to call it per frame
+  - Status: Open
+
 ## Waiting
 
 - Move to FFmpeg 9's libraries (FFmpeg.AutoGen 9, Native packages on 9.0.x) when opencv-python's Linux wheels bundle FFmpeg 9
@@ -42,10 +46,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Open
 
 ## Maybe
-
-- ARM's results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video (MPEG-2 and MJPEG done)
-  - Why: FastYuv gives x86's results on ARM for 8-bit 4:2:0 only (arch-diff's table, 2026-10-17): 10-bit and 4:2:2 take other swscale paths, and MPEG-2's and MJPEG's decoded frames already differ (their IDCTs round per platform), so those still differ on ARM
-  - Status: 4:2:2 done (2026-10-18, #404): FastYuv converts yuv422p/yuvj422p (`IYuv422Converter`; rotated frames converted before turning), arch-diff requires them (docs/decisions/2026-10-18-fastyuv-422.md). Maybe for 10-bit (swscale's MMXEXT vertical scaler and output, docs/fastyuv-10bit-422.md), until a prototype reproduces x86's bytes; MPEG-1/2 and MJPEG done (2026-10-17): ShotDetector decodes them with FFmpeg's C IDCT (`-idct simple`; in-process FrameReader's new `FrameDecoderOptions.CodecOptions`, so FrameReader itself still gives ffmpeg's default bytes), which x64's default already gives (checked with FFmpeg 8.1 and 9.0) and ARM's NEON IDCT doesn't (#384's checksums); arch-diff requires them too
 
 - Warn for a local playlist whose segments are https
   - Why: DetectionResult.Warnings (2026-10-18) covers an https playlist decoded by the ffmpeg executable; a local .m3u8 naming https segments takes the same unchecked path, but the decision left it undecided (docs/decisions/2026-10-18-library-warnings.md)
