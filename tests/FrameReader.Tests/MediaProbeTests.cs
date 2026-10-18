@@ -108,6 +108,67 @@ public class MediaProbeTests
         }
     }
 
+    // The codec's extradata and the first video packet's bytes, as ffprobe dumps them (-show_data): from a file, and from
+    // a Stream; an audio stream first doesn't matter.
+    [Theory]
+    [InlineData("mpeg4.avi", "-c:v mpeg4 -vtag XVID -an")]
+    [InlineData("mpeg4.mkv", "-c:v mpeg4 -c:a flac -map 1:a -map 0:v")]
+    [InlineData("h264.mp4", "-c:v libx264 -an")]
+    public void ExtraDataAndTheFirstPacketAreFfprobes(string name, string encode)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-probe-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            Run("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=1", "-f", "lavfi", "-i", "sine=d=1", .. encode.Split(' '), path]);
+            string dumps = Run("ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=extradata:packet=data",
+                "-show_data",
+                "-read_intervals",
+                "%+#1",
+                "-of",
+                "default=nw=1",
+                path);
+            byte[] Dump(string key)
+            {
+                var bytes = new List<byte>();
+                var lines = dumps.Split('\n').SkipWhile(l => l.Trim() != key + "=").Skip(1).TakeWhile(l => l.Length > 10 && l[8] == ':');
+                foreach (var line in lines)
+                {
+                    foreach (var group in line.Substring(10, Math.Min(39, line.Length - 10)).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                        bytes.AddRange(Convert.FromHexString(group));
+                }
+
+                return [.. bytes];
+            }
+
+            var info = MediaProbe.Probe(path, new ProbeOptions { FirstVideoPacket = true });
+            Assert.NotEmpty(Dump("extradata"));
+            Assert.Equal(Dump("extradata"), info.Video!.ExtraData.ToArray());
+            Assert.Equal(Dump("data"), info.FirstVideoPacket!.Value.ToArray());
+            Assert.Null(info.PacketTimestamps);
+            Assert.Null(MediaProbe.Probe(path).FirstVideoPacket);
+
+            // Along with every packet's timestamp, and from a Stream.
+            var all = MediaProbe.Probe(path, new ProbeOptions { FirstVideoPacket = true, PacketTimestamps = true });
+            Assert.Equal(Dump("data"), all.FirstVideoPacket!.Value.ToArray());
+            Assert.Equal(25, all.PacketTimestamps!.Count);
+            using var stream = File.OpenRead(path);
+            Assert.Equal(Dump("data"), MediaProbe.Probe(stream, new ProbeOptions { FirstVideoPacket = true }).FirstVideoPacket!.Value.ToArray());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void UnreadableInputHasAReason()
     {

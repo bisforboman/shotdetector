@@ -303,6 +303,7 @@ internal sealed partial class VideoReader
     readonly string _pixelFormat;
     readonly (int W, int H) _codedSize; // the stream's size from its headers, before rotation
     readonly string? _chromaLocation;
+    readonly bool? _xvidIdct;          // MPEG-4 Part 2: whether FFmpeg's decoder takes the Xvid IDCT (Mpeg4Idct); null if not known
     readonly YuvRowConverter? _yuvForVideo;       // _yuv420 configured for this video's layout and colours (4:2:0 or 4:2:2)
 
     /// <param name="path">Video file, or a URL (http(s), rtsp, ... ; read as a stream).</param>
@@ -525,6 +526,11 @@ internal sealed partial class VideoReader
         };
         Codec = stream.GetValueOrDefault("codec_name", "");
         Container = stream.GetValueOrDefault("format_name", "");
+
+        // MPEG-4 Part 2: whether FFmpeg's decoder takes the Xvid IDCT, from the codec tag, the extradata and the first
+        // packet (one more short probe; for a URL a second connection, so a URL decodes as its file does on ARM too).
+        if (Codec == "mpeg4" && !headersOnly)
+            _xvidIdct = XvidIdct(path, ffprobe, cancellationToken);
         Duration = double.TryParse(stream.GetValueOrDefault("duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out double length)
             ? TimeSpan.FromSeconds(length)
             : null;
@@ -625,10 +631,78 @@ internal sealed partial class VideoReader
     /// gets): a frame of more than 8192 x 8192 pixels fails to decode.
     /// </summary>
     /// <summary>
-    /// MPEG-1/2 and MJPEG with FFmpeg's C IDCT (in-process too, FrameDecoderOptions.CodecOptions): x86's default, its SIMD IDCT,
-    /// gives the same frames, ARM's NEON one rounds differently, so every platform decodes these as x86 (and OpenCV there) does.
+    /// MPEG-1/2, MJPEG and MPEG-4 Part 2 with FFmpeg's C IDCT (in-process too, FrameDecoderOptions.CodecOptions): x86's
+    /// default, its SIMD IDCT, gives the same frames, ARM's NEON one rounds differently, so every platform decodes these as
+    /// x86 (and OpenCV there) does. Not MPEG-4 that FFmpeg decodes with the Xvid IDCT (<paramref name="xvidIdct"/>, see
+    /// <see cref="Mpeg4Idct"/>), the same on every platform and not the C one; nor MPEG-4 not known to be either (null).
     /// </summary>
-    internal static string[] IdctOptions(string codec) => codec is "mpeg1video" or "mpeg2video" or "mjpeg" ? ["-idct", "simple"] : [];
+    internal static string[] IdctOptions(string codec, bool? xvidIdct = null) =>
+        codec is "mpeg1video" or "mpeg2video" or "mjpeg" || (codec == "mpeg4" && xvidIdct == false) ? ["-idct", "simple"] : [];
+
+    /// <summary>MPEG-4 Part 2: whether FFmpeg's decoder takes the Xvid IDCT for this input; null for other codecs or when not known.</summary>
+    internal bool? UsesXvidIdct => _xvidIdct;
+
+    /// <summary>
+    /// <see cref="Mpeg4Idct.UsesXvidIdct"/> for this input: the codec tag, extradata and first video packet from FFmpeg's
+    /// libraries when they probed it, else from ffprobe (<see cref="XvidIdctArgs"/>); a Stream's from its first bytes.
+    /// Null when they can't be read (the decoder's default IDCT then).
+    /// </summary>
+    bool? XvidIdct(string path, string ffprobe, CancellationToken cancellationToken)
+    {
+        byte[]? prefix = _stream is null ? null : _prefix;
+        try
+        {
+            return _probesInProcess
+                ? InProcessProbe.XvidIdct(path, _ffmpegDirectory, _inputOptions, prefix, cancellationToken)
+                : XvidIdct(Run(ffprobe, XvidIdctArgs(path, _inputOptions), cancellationToken, stdin: prefix));
+        }
+        catch (Exception e) when (e is ShotDetectionException or FrameReader.FrameReaderException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>ffprobe's arguments for the codec tag, extradata and first packet of the first video stream (hex dumps).</summary>
+    internal static string[] XvidIdctArgs(string path, string[] inputOptions) =>
+        ["-v", "error", .. inputOptions, "-select_streams", "v:0", "-show_entries", "stream=codec_tag_string,extradata:packet=data",
+            "-show_data", "-read_intervals", "%+#1", "-of", "default=nw=1", "-i", path];
+
+    /// <summary><see cref="Mpeg4Idct.UsesXvidIdct"/> from <see cref="XvidIdctArgs"/>' output; null without a packet.</summary>
+    internal static bool? XvidIdct(string probed)
+    {
+        string tag = "";
+        List<byte> extradata = [];
+        List<byte>? packet = null, into = null;
+        foreach (var raw in probed.Split('\n'))
+        {
+            string line = raw.TrimEnd('\r');
+
+            // A hex dump line: "00000010: 0120 00bc 0406 ...  . ......", the bytes in the 39 characters after the offset.
+            if (into is not null && line.Length > 10 && line[8] == ':' && line[9] == ' ')
+            {
+                var hex = line.AsSpan(10, Math.Min(39, line.Length - 10));
+                for (int i = 0; i + 1 < hex.Length; i++)
+                {
+                    if (hex[i] == ' ')
+                        continue;
+                    into.Add(byte.Parse(hex.Slice(i, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
+                    i++;
+                }
+
+                continue;
+            }
+
+            into = null;
+            if (line.StartsWith("codec_tag_string=", StringComparison.Ordinal))
+                tag = line["codec_tag_string=".Length..];
+            else if (line == "extradata=")
+                into = extradata;
+            else if (line == "data=" && packet is null)
+                into = packet = [];
+        }
+
+        return packet is null ? null : Mpeg4Idct.UsesXvidIdct(tag, [.. extradata], [.. packet]);
+    }
 
     internal static readonly string[] MaxPixels = ["-max_pixels", FrameReader.FrameDecoderOptions.DefaultMaxPixels.ToString(CultureInfo.InvariantCulture)];
 
@@ -997,7 +1071,7 @@ internal sealed partial class VideoReader
 
         // Rotated as OpenCV does (Turn), not by ffmpeg's autorotate.
         string[] args = ["-v", "info", "-nostats", .. noStdin, "-y",
-            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount)}", .. seek, .. _inputOptions, .. IdctOptions(Codec), .. MaxPixels, "-noautorotate", "-i", _path,
+            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount)}", .. seek, .. _inputOptions, .. IdctOptions(Codec, _xvidIdct), .. MaxPixels, "-noautorotate", "-i", _path,
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
         select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
 

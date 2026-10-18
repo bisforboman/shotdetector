@@ -417,6 +417,9 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             var expected = ShotDetection.Detect(clips.ThreeShots, new() { CollectStats = true });
             var r = ShotDetection.Detect($"http://localhost:{port}/{name}", new() { CollectStats = true });
             Assert.True(r.Video.Streamed);
+
+            // MPEG-4 from FFmpeg's encoder: the C IDCT, as for the file (on ARM its default IDCT differs).
+            Assert.False(r.Video.Reader.UsesXvidIdct);
             Assert.Equal([0L, 50L, 100L], r.Shots.Select(s => s.Start.FrameNum));
             Assert.Equal(expected.Stats!.Csv(expected.Video.Position), r.Stats!.Csv(r.Video.Position));
 

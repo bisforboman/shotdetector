@@ -75,6 +75,23 @@ internal static unsafe class InProcessProbe
     }
 
     /// <summary>
+    /// <see cref="Mpeg4Idct.UsesXvidIdct"/> from the video stream's codec tag, extradata and first packet (a probe that
+    /// reads up to that packet; with <paramref name="streamPrefix"/>, a Stream's first bytes); null without a packet.
+    /// </summary>
+    public static bool? XvidIdct(string path,
+        string? libraryDirectory,
+        string[]? inputOptions,
+        byte[]? streamPrefix,
+        CancellationToken cancellationToken)
+    {
+        var options = new ProbeOptions { FirstVideoPacket = true, InputOptions = Options(inputOptions), CancellationToken = cancellationToken };
+        var info = Probe(() => streamPrefix is null ? MediaProbe.Probe(path, options) : MediaProbe.Probe(new MemoryStream(streamPrefix), options), libraryDirectory);
+        return info.Video is { } v && info.FirstVideoPacket is { } packet
+            ? Mpeg4Idct.UsesXvidIdct(info.Streams[v.Index].CodecTag, v.ExtraData.Span, packet.Span)
+            : null;
+    }
+
+    /// <summary>
     /// Every stream: FrameReader's, as <see cref="VideoReader"/> fills them from ffprobe's <c>-show_entries</c>
     /// (VideoReader.StreamEntries) without the libraries.
     /// </summary>
