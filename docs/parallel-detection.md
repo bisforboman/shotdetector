@@ -1,8 +1,22 @@
 # Parallel detection of long files
 
-Status: built (2026-10-16), opt-in: `DetectionOptions.Parallel`, `--parallel`, `DetectedVideo.Chunks`. The user's
-choices: docs/decisions/ ("Parallel detection: opt-in, in-process files, automatic chunks, a prototype first" and
-"Parallel detection: build it, `Parallel` and `--parallel`, half the CPUs up to 4").
+Status: built (2026-10-16), opt-in at first (`DetectionOptions.Parallel`, `--parallel`); the default for `Detect`
+since 2026-10-18: `DetectionOptions.Mode`, `--sequential`, `DetectedVideo.Chunks`. The user's choices: docs/decisions/
+("Parallel detection: opt-in, in-process files, automatic chunks, a prototype first", "Parallel detection: build it,
+`Parallel` and `--parallel`, half the CPUs up to 4" and "Parallel detection as the default").
+
+## Turning it on and off
+
+`DetectionOptions.Mode` (`DetectionMode`):
+
+- `Auto`, the default: parallel for `Detect` and `DetectAsync` (and so the CLI), sequential for `DetectStreamAsync`,
+  which would otherwise deliver every shot at the end. Every condition below still applies: a file that can't be
+  chunked reads sequentially.
+- `Sequential`: one pass, never chunks (CLI `--sequential`).
+- `Parallel`: chunks wherever it can, `DetectStreamAsync` too.
+
+`DetectionOptions.Parallel` is obsolete and still works: true is `Parallel`, false `Sequential`. The CLI still accepts
+`--parallel` (now the default, out of `--help`); its hidden `--chunks <n>` forces a chunk count for CI.
 
 ## Goal
 
@@ -83,7 +97,9 @@ give; past 4 chunks nothing measured gained.
 - Unit tests: chunked scores equal sequential scores, chunk boundaries on and off keyframes, the overlap check
   triggering on a crafted open-GOP clip.
 - CI: the parity and real-world jobs run each case both ways and require byte-identical output.
-- The weekly benchmark (tools/bench.py) reports both, `shotdetect --parallel` beside the sequential default.
+- The weekly benchmark (tools/bench.py) reports both, the parallel default beside `shotdetect --sequential`.
+- CI's comparisons with scenedetect (compare.py) run the default, so long in-process files there run in chunks;
+  compare-parallel.py's reference asks for `--sequential`.
 - CI also compares it on ARM (ci.yml's arch job) and on Windows and macOS (parity-os.yml, nightly), in-process.
 
 ## Risks

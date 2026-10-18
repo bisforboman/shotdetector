@@ -280,14 +280,17 @@ How it keeps up while computing exactly what OpenCV and scenedetect compute:
 - the resize, BGR to HSV and the frame differences are vectorised (AVX2), with the same integer arithmetic;
 - decoding overlaps scoring, with all the CPUs (at most 16) as decoder threads, as OpenCV (`--threads` to change).
 
-**Parallel detection** (`Parallel = true`, `--parallel`) scores a long local file in chunks on several cores at once
-(half the CPUs, at most 4 chunks, for files of two minutes or more), then runs the cut decisions once over all the
+**Parallel detection**, the default for `Detect` and the CLI, scores a long local file in chunks on several cores at
+once (half the CPUs, at most 4 chunks, for files of two minutes or more), then runs the cut decisions once over all the
 scores, so the result is exactly the sequential one; CI compares the two byte for byte on every sample and on three
 films. On a 16-thread desktop it ran 1.5x (Tears of Steel, 1280x534, whose decoding already keeps 5 cores busy) to
 2.3x (Elephants Dream, 426x240) faster, on 4-CPU runners 1.1x to 1.6x, with the same CPU time. It needs in-process
 decoding of a file: streams, URLs, a time range, frame skip and MPEG-PS read sequentially, and so does any file a chunk
-can't reproduce (a seek that lands late, dropped frames, a size change). `DetectedVideo.Chunks` says which ran. The
-shots then all come at the end, and each chunk has its own decoder ([docs/parallel-detection.md](docs/parallel-detection.md)).
+can't reproduce (a seek that lands late, dropped frames, a size change). `DetectedVideo.Chunks` says which ran. Each
+chunk has its own decoder. `DetectionOptions.Mode` chooses: `Auto` (the default) chunks for `Detect` but not for
+`DetectStreamAsync`, so its shots still come as they are found; `Sequential` never chunks (CLI `--sequential`);
+`Parallel` chunks `DetectStreamAsync` too, whose shots then all come at the end. The older `Parallel = true` still
+works and is obsolete ([docs/parallel-detection.md](docs/parallel-detection.md)).
 
 The FastYuv package (LGPL) is an alternative for the executable path: ffmpeg sends raw yuv420p and a bit-exact
 port of swscale's converter converts only the pixels the resize reads. Files in other pixel formats (10-bit,
