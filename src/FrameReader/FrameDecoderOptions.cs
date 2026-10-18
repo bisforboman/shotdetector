@@ -18,7 +18,9 @@ public sealed record FrameDecoderOptions
     /// <summary>
     /// FFmpeg decoder options, as ffmpeg's decoder options before <c>-i</c> without the dash. <c>idct</c> = <c>simple</c>
     /// decodes MPEG-1/2 and MJPEG with the C IDCT: x86's default IDCT gives the same frames, ARM's rounds differently, so
-    /// with it ARM gives x86's frames (and ffmpeg's with <c>-idct simple</c>, not its default ones there).
+    /// with it ARM gives x86's frames (and ffmpeg's with <c>-idct simple</c>, not its default ones there). A name the
+    /// decoder doesn't have is an <see cref="ArgumentException"/>, as are <c>max_pixels</c> and <c>threads</c>: those
+    /// are <see cref="MaxPixels"/> and <see cref="Threads"/>, which an option here could otherwise loosen.
     /// </summary>
     public IReadOnlyDictionary<string, string>? CodecOptions { get; init; }
 

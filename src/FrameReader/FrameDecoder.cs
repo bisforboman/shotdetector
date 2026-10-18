@@ -142,11 +142,29 @@ public sealed unsafe class FrameDecoder : IDisposable
             if (o.MaxPixels > 0)
                 _dec->max_pixels = o.MaxPixels;
             AVDictionary* codecOptions = null;
-            foreach (var (name, value) in o.CodecOptions ?? new Dictionary<string, string>())
-                ffmpeg.av_dict_set(&codecOptions, name, value, 0);
-            int opened = ffmpeg.avcodec_open2(_dec, codec, &codecOptions);
-            ffmpeg.av_dict_free(&codecOptions);
-            Check(opened, "open decoder");
+            try
+            {
+                foreach (var (name, value) in o.CodecOptions ?? new Dictionary<string, string>())
+                {
+                    // Our own settings stay ours: max_pixels is the crafted-file guard, threads the caller's count.
+                    if (name is "max_pixels" or "threads")
+                        throw new ArgumentException($"Set \"{name}\" through FrameDecoderOptions.{(name == "threads" ? "Threads" : "MaxPixels")}, not CodecOptions.", "options");
+                    ffmpeg.av_dict_set(&codecOptions, name, value, 0);
+                }
+
+                Check(ffmpeg.avcodec_open2(_dec, codec, &codecOptions), "open decoder");
+                AVDictionaryEntry* unused = ffmpeg.av_dict_get(codecOptions, "", null, ffmpeg.AV_DICT_IGNORE_SUFFIX);
+                if (unused != null)
+                {
+                    throw new ArgumentException(
+                        $"The {Marshal.PtrToStringAnsi((nint)codec->name)} decoder has no option \"{Marshal.PtrToStringAnsi((nint)unused->key)}\".", "options");
+                }
+            }
+            finally
+            {
+                ffmpeg.av_dict_free(&codecOptions);
+            }
+
             _pkt = ffmpeg.av_packet_alloc();
             _frame = ffmpeg.av_frame_alloc();
             if (deinterlace)

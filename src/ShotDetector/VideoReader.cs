@@ -627,10 +627,6 @@ internal sealed partial class VideoReader
             : new ShotDetectionException(reason, message, inner);
 
     /// <summary>
-    /// ffmpeg's decoder option against crafted files claiming huge frames (FrameReader's default, which in-process decoding
-    /// gets): a frame of more than 8192 x 8192 pixels fails to decode.
-    /// </summary>
-    /// <summary>
     /// MPEG-1/2, MJPEG and MPEG-4 Part 2 with FFmpeg's C IDCT (in-process too, FrameDecoderOptions.CodecOptions): x86's
     /// default, its SIMD IDCT, gives the same frames, ARM's NEON one rounds differently, so every platform decodes these as
     /// x86 (and OpenCV there) does. Not MPEG-4 that FFmpeg decodes with the Xvid IDCT (<paramref name="xvidIdct"/>, see
@@ -704,6 +700,10 @@ internal sealed partial class VideoReader
         return packet is null ? null : Mpeg4Idct.UsesXvidIdct(tag, [.. extradata], [.. packet]);
     }
 
+    /// <summary>
+    /// ffmpeg's decoder option against crafted files claiming huge frames (FrameReader's default, which in-process decoding
+    /// gets): a frame of more than 8192 x 8192 pixels fails to decode.
+    /// </summary>
     internal static readonly string[] MaxPixels = ["-max_pixels", FrameReader.FrameDecoderOptions.DefaultMaxPixels.ToString(CultureInfo.InvariantCulture)];
 
     /// <summary>

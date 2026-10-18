@@ -166,6 +166,33 @@ public class SeekTests
         }
     }
 
+    // A CodecOptions name the decoder doesn't have fails, as Encoding's options do (a misspelt idct would otherwise
+    // silently give ARM's own frames); max_pixels and threads would loosen MaxPixels and Threads, so they fail too.
+    [Theory]
+    [InlineData("idtc", "simple")]
+    [InlineData("max_pixels", "100000000")]
+    [InlineData("threads", "64")]
+    public void CodecOptionsRejectUnknownAndGuardNames(string name, string value)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-codecopts-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "clip.mp4");
+            Ffmpeg("-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=64x48:r=25:d=0.2", "-c:v", "mpeg4", path);
+            var options = new FrameDecoderOptions { CodecOptions = new Dictionary<string, string> { [name] = value } };
+            var e = Assert.Throws<ArgumentException>(() => new FrameDecoder(path, options).Dispose());
+            Assert.Contains(name, e.Message, StringComparison.Ordinal);
+            using var decoder = new FrameDecoder(path, new FrameDecoderOptions { CodecOptions = new Dictionary<string, string> { ["idct"] = "simple" } });
+            Assert.True(decoder.Next());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // CodecOptions are ffmpeg's decoder options: MPEG-2 with idct=simple is ffmpeg's -idct simple (on ARM, where the
     // default IDCT differs, a real difference).
     [Fact]
