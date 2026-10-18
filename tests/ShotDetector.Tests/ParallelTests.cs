@@ -71,7 +71,8 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
 
     // Dropped frames (positions that aren't the probe's), MPEG-PS (no cheap seek), a time range and frame skip: read
     // sequentially, with the same result. Two chunks: the dropped frames (60, 61) then shift the second chunk's frames by
-    // two, while the boundary (75) is in a still shot, where the overlap scores agree; only the positions tell.
+    // two, while the boundary (75) is in a still shot, where the overlap scores agree; only the positions tell. Dropped
+    // frames fall back after chunking (ChunkFallback says why); the others never chunk; either way a warning says why.
     [Theory]
     [InlineData("dropped")]
     [InlineData("mpegps")]
@@ -94,7 +95,61 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
         var parallel = ShotDetection.Detect(path, options with { Mode = DetectionMode.Parallel, Chunks = 2 });
         Assert.Equal(1, parallel.Video.Chunks);
         AssertSame(ShotDetection.Detect(path, options), parallel);
+        if (name == "dropped")
+        {
+            Assert.Matches(@"^chunk \d: ", parallel.Video.ChunkFallback);
+            Assert.Equal("read sequentially, from the start, as scoring in chunks fell back: " + parallel.Video.ChunkFallback, Assert.Single(parallel.Warnings));
+        }
+        else
+        {
+            Assert.Null(parallel.Video.ChunkFallback);
+            string why = name switch
+            {
+                "mpegps" => "packets without timestamps (MPEG-PS)",
+                "start" => "a time range",
+                "skip" => "frame skip",
+                _ => "decoded by the ffmpeg executable",
+            };
+            Assert.Equal("read sequentially, not in chunks: " + why, Assert.Single(parallel.Warnings));
+        }
     }
+
+    // Auto reads sequentially without a word (its own choice); chunks that run warn about nothing.
+    [Fact]
+    public void WarnsOnlyWhenParallelWasAskedFor()
+    {
+        if (Libs is null)
+            return;
+        var options = Options(DetectorKind.Content) with { CollectStats = false };
+        Assert.Empty(ShotDetection.Detect(clips.ThreeShots, options with { Mode = DetectionMode.Auto }).Warnings);
+        Assert.Empty(ShotDetection.Detect(clips.ThreeShots, options with { Mode = DetectionMode.Parallel, Chunks = 3 }).Warnings);
+        var parallel = ShotDetection.Detect(clips.ThreeShots, options with { Mode = DetectionMode.Parallel });
+        Assert.Equal(1, parallel.Video.Chunks);
+        Assert.Null(parallel.Video.ChunkFallback);
+        Assert.StartsWith("read sequentially, not in chunks: ", Assert.Single(parallel.Warnings));
+    }
+
+    // Why the automatic count is 1, for the same arguments as AutoChunks; null when it's more.
+    [Theory]
+    [InlineData(2, 100_000, 1920 * 1080, true, null, "fewer than 4 CPUs (2)")]
+    [InlineData(4, 100_000, 1920 * 1080, false, null, "fewer than 8 CPUs (4)")]
+    [InlineData(16, 100_000, 4096 * 4096, false, null, "frames larger than 3840 x 2160")]
+    [InlineData(16, 100_000, 1920 * 1080, false, 1, "one decoder thread")]
+    [InlineData(16, 2999, 1920 * 1080, false, null, "shorter than two minutes")]
+    [InlineData(4, 100_000, 1920 * 1080, true, null, null)]
+    [InlineData(16, 100_000, 4096 * 4096, true, null, null)]
+    public void SaysWhyOneChunk(int cpus, int frames, long pixels, bool forced, int? threads, string? expected) =>
+        Assert.Equal(expected, ShotDetection.WhyOneChunk(cpus, frames, new Fps(25, 1), pixels, forced, threads));
+
+    // A chunk's decoder threads: the total shared out, the remainder to the first chunks, at least 1 each.
+    [Theory]
+    [InlineData(4, 2, new[] { 2, 2 })]
+    [InlineData(5, 2, new[] { 3, 2 })]
+    [InlineData(3, 2, new[] { 2, 1 })]
+    [InlineData(16, 3, new[] { 6, 5, 5 })]
+    [InlineData(2, 4, new[] { 1, 1, 1, 1 })]
+    public void DecoderThreadsSharedOut(int threads, int chunks, int[] expected) =>
+        Assert.Equal(expected, Enumerable.Range(0, chunks).Select(i => ShotDetection.ChunkThreads(threads, chunks, i)));
 
     // A larger second half (from frame 100) with timestamps that carry on: scenedetect scales its frames to the first
     // size, which the last of four chunks (from 111) would take from them instead. The overlap scores and the first

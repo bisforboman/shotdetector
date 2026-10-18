@@ -75,6 +75,13 @@ public sealed class DetectedVideo
     public int Chunks { get; internal init; } = 1;
 
     /// <summary>
+    /// Why scoring in chunks fell back to reading the file sequentially, from the start (a chunk's frame at another
+    /// position than the probe's, an overlap score or a first frame size that differs, an error in a chunk); null when
+    /// it didn't fall back, or didn't chunk. Also one of <see cref="DetectionResult.Warnings"/>.
+    /// </summary>
+    public string? ChunkFallback { get; internal init; }
+
+    /// <summary>
     /// A frame's position as PySceneDetect's OpenCV backend reports it (CAP_PROP_POS_MSEC, rounded to µs), which its
     /// scene lists and stats print: what <see cref="Stats.Csv"/> and the exports take.
     /// </summary>

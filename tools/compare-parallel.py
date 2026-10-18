@@ -29,7 +29,12 @@ def run(exe: Path, video: str, args: list[str], out: Path) -> tuple[str, str]:
                         *os.environ.get("SHOTDETECTOR_OURS_ARGS", "").split()], capture_output=True, text=True)
     if p.returncode:
         sys.exit(f"{video}: shotdetect {' '.join(args)} failed: {p.stderr.strip()}")
-    return hashlib.sha256(csv.read_bytes() + b"\0" + stats.read_bytes()).hexdigest(), p.stderr.strip().splitlines()[-1]
+    # The summary line, not the last one: warnings (why it read sequentially) follow it.
+    summary = next((line for line in p.stderr.splitlines() if " decoded " in line), "")
+    for line in p.stderr.splitlines():
+        if line.startswith("Warning: read sequentially"):
+            print(f"  {Path(video).name}: {line}", flush=True)
+    return hashlib.sha256(csv.read_bytes() + b"\0" + stats.read_bytes()).hexdigest(), summary
 
 
 def main() -> int:

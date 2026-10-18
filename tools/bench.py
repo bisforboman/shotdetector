@@ -2,10 +2,10 @@
 
 shotdetect runs in its default mode (in-process decoding when FFmpeg's libraries are found, e.g. bundled from
 native/, and from 8 CPUs on a long file in chunks on several cores, docs/parallel-detection.md), with --parallel (chunks
-from 4 CPUs on), with --sequential (one pass) and with
---decoder process (the ffmpeg executable). CPU time is the user + system time of the finished
-child processes (Unix: getrusage(RUSAGE_CHILDREN), which counts ffmpeg too once shotdetect has waited for it);
-memory is the peak RSS of the process tree, polled with psutil (`pip install psutil`). With --stats both tools also
+from 4 CPUs on), with --sequential (one pass) and with --decoder process (the ffmpeg executable); with fewer than 4
+CPUs available (taskset) the --parallel and --sequential rows are left out, as nothing chunks there. CPU time is the
+user + system time of the finished child processes (Unix: getrusage(RUSAGE_CHILDREN), which counts ffmpeg too once
+shotdetect has waited for it); memory is the peak RSS of the process tree, polled with psutil (`pip install psutil`). With --stats both tools also
 write per-frame metrics (scenedetect -s, shotdetect --stats; content computes edges for every frame then), and
 --decoder process doesn't run.
 
@@ -13,6 +13,7 @@ Usage: python tools/bench.py <video>... [--detector adaptive|content|threshold|h
                              [--threads N] [--fast-yuv] [--stats] [--report bench.md]
 Builds first: dotnet build src/ShotDetector.Cli -c Release (and compare.py's --fast-yuv build for --fast-yuv)."""
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -98,6 +99,11 @@ def main():
         (f"shotdetect --parallel{suffix}", [exe, "-i", "{v}", "-d", a.detector, "--parallel", *sh_stats, *threads]),
         (f"shotdetect --sequential{suffix}", [exe, "-i", "{v}", "-d", a.detector, "--sequential", *sh_stats, *threads]),
     ]
+    # The CPUs this process may use (taskset's mask, as .NET's ProcessorCount): below 4 nothing chunks.
+    cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count() or 1
+    if cpus < 4:
+        tools = [t for t in tools if not t[0].startswith(("shotdetect --parallel", "shotdetect --sequential"))]
+        print(f"{cpus} CPUs: no --parallel or --sequential rows (chunks need 4 CPUs)", flush=True)
     if not a.stats:
         tools.append(("shotdetect --decoder process", [exe, "-i", "{v}", "-d", a.detector, "--decoder", "process", *threads]))
     table = ["| Video | Frames | Tool | Wall | fps | CPU | Peak MB | vs scenedetect |", "|---|---|---|---|---|---|---|---|"]

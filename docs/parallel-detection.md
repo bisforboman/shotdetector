@@ -66,14 +66,18 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
   unchanged decision, in frame order); `ProcessFrame` is the two in a row. Threshold's stats dedupe by position stays
   in `Decide`, so threshold with stats runs in chunks too.
 - `ShotDetection.ScoreChunked`: chunks split evenly by the probe's frame count (not on keyframes: the exact seek starts
-  anywhere), each on its own `VideoReader` with `DecodeThreads / chunks` decoder threads. Checked: every frame's
+  anywhere), each on its own `VideoReader` with its share of the decoder threads (the remainder to the first chunks,
+  so 5 in 2 chunks are 3 and 2; with 0, FFmpeg's choice, the default count is shared out). Checked: every frame's
   position equals the probe's for its index, each chunk gives its frames, the overlap frame's score equals the next
   chunk's, every chunk's first frame has the first chunk's size, and nothing threw. Otherwise the file is read
-  sequentially from the start (a real error comes from there) and `DetectedVideo.Chunks` is 1.
+  sequentially from the start (a real error comes from there), `DetectedVideo.Chunks` is 1 and
+  `DetectedVideo.ChunkFallback` says why (also a `DetectionResult.Warnings` entry, which the CLI prints).
 - `AutoChunks`: half the CPUs, at most 4, each chunk at least a minute, never more chunks than the decoder threads
   the caller set; `Auto` from 8 CPUs on and for frames up to 3840 x 2160 pixels, `Parallel` from 4 CPUs on at any size.
 - Sequential, always: streams and URLs, the executable path, MPEG-PS without packet pts, a time range, frame skip.
-  Progress counts all chunks' frames; a fallback starts it over.
+  Progress counts all chunks' frames; a fallback starts it over. When `Parallel` was asked for (`--parallel`,
+  `--chunks`) and the file is read sequentially all the same, a warning says why: one of those, fewer than 4 CPUs,
+  frames over the cap, one decoder thread or shorter than two minutes. `Auto` reading sequentially says nothing.
 - Damaged video: frame-threaded decoders conceal damage differently from run to run (`samples/broken/corrupt.mp4` gave
   three different stats files in three sequential runs), so chunks can't be compared there; dropped frames are caught
   by the positions.
