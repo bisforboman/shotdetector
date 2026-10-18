@@ -65,12 +65,12 @@ try {
     # 10-bit h264: its conversion interpolates chroma, from where the stream says the samples sit (left for h264), as
     # OpenCV does; compared exactly. (Informational until 2026-10-11: ffmpeg's command line drops that siting.)
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libx264 -pix_fmt yuv420p10le -crf 18 sintel_10bit.mp4
-    New-Item -ItemType Directory -Force informational | Out-Null
 
-    # MPEG-4 Part 2 (the DivX/Xvid era), from FFmpeg's encoder and from Xvid: the decoder picks its IDCT from the
-    # encoder's signature, so both. Informational until ARM's results on them are known (docs/backlog.md).
-    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mpeg4 -q:v 3 informational/sintel_mpeg4.avi
-    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libxvid -q:v 3 informational/sintel_xvid.avi
+    # MPEG-4 Part 2 (the DivX/Xvid era), from FFmpeg's encoder and from Xvid: FFmpeg's decoder takes the Xvid IDCT for
+    # Xvid's (by its signature) and the platform's for the rest, which we replace with the C IDCT (Mpeg4Idct), so both.
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mpeg4 -q:v 3 sintel_mpeg4.avi
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libxvid -q:v 3 sintel_xvid.avi
+    New-Item -ItemType Directory -Force informational | Out-Null
     # An odd width (853x480; VP9, as libx264 refuses odd widths in subsampled formats): x86's swscale converts it as even
     # widths. Reported on ARM until its first table is read (docs/decisions/2026-10-18-fastyuv-422.md).
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -vf scale=853:480 -c:v libvpx-vp9 -crf 32 -b:v 0 -row-mt 1 `
