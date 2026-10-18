@@ -33,3 +33,5 @@ Which Maybe items should be dropped (marked Dropped with today's date)? (Several
 ### Answer
 
 **All four**, each now Dropped (2026-10-18) and moved to docs/backlog-done.md with the rest of its row.
+
+Correction: choice 4 came from a stale row. The shared base had already landed in 3.0 (`MediaException`, 2026-10-14, #290), so that row's part is marked Done there instead of Dropped; the other three are Dropped.

@@ -582,7 +582,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Exceptions (issue #239): document which exception each method throws now; a shared base for ShotDetectionException and FrameReaderException in a 3.0 (a base-class change is breaking)
   - Why: Two catch blocks where both packages are used; unclear which surfaces from detection
-  - Status: Docs done (2026-10-13, #248); the shared base: Dropped (2026-10-18, the owner). A non-breaking shape exists (a MediaException : InvalidOperationException in FrameReader under both; only change, catch (InvalidOperationException) would also catch FrameReader's), but the user keeps it for 3.0
+  - Status: Docs done (2026-10-13, #248); the shared base: Done in 3.0 (2026-10-14, #290; the row under section 7). A non-breaking shape exists (a MediaException : InvalidOperationException in FrameReader under both; only change, catch (InvalidOperationException) would also catch FrameReader's), but the user keeps it for 3.0
 
 - Async overloads for FrameReader's whole-file jobs (issue #243): ConvertAsync, CopyAsync, ReadAsync, FindAsync, ProbeJsonAsync
   - Why: Async workers wrapped each in Task.Run
