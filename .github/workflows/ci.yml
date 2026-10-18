@@ -680,7 +680,7 @@ jobs:
           - { rid: linux-x64, os: ubuntu-26.04, btbn: linux64 }
           - { rid: linux-arm64, os: ubuntu-26.04-arm, btbn: linuxarm64 }
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       FFMPEG: '9.0'   # parity's, and the samples cache's key
     steps:
@@ -727,6 +727,21 @@ jobs:
           dotnet build -c Release -v q -p:WithFastYuv=true -o fastyuv src/ShotDetector.Cli
           FASTYUV=$PWD/fastyuv/shotdetect tools/arch-outputs.sh src/ShotDetector.Cli/bin/Release/net10.0/shotdetect "$PWD/native/${{ matrix.rid }}" out \
             samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg
+
+      # Parallel detection on ARM, as the parity job checks it on x64: three chunks on every sample, byte for byte the
+      # sequential result (all five detectors, stats, 0.7.2 and 0.7.1 mode), core and FastYuv paths, in-process.
+      - name: Parallel against sequential (ARM)
+        if: needs.changes.outputs.docs_only != 'true' && matrix.rid == 'linux-arm64'
+        env:
+          SHOTDETECTOR_OURS_ARGS: --ffmpeg-dir ${{ github.workspace }}/native/${{ matrix.rid }} --decoder inprocess
+        run: |
+          status=0
+          for path in core fast-yuv; do
+            python3 tools/compare-parallel.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
+              --chunks 3 --report parallel-$path.md $([ $path = fast-yuv ] && echo --fast-yuv) || status=1
+            { echo "### Parallel against sequential on ARM, $path path"; cat parallel-$path.md; } >> "$GITHUB_STEP_SUMMARY"
+          done
+          exit $status
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: needs.changes.outputs.docs_only != 'true'

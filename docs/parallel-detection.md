@@ -83,7 +83,8 @@ give; past 4 chunks nothing measured gained.
 - Unit tests: chunked scores equal sequential scores, chunk boundaries on and off keyframes, the overlap check
   triggering on a crafted open-GOP clip.
 - CI: the parity and real-world jobs run each case both ways and require byte-identical output.
-- The benchmark reports both, so the default can be decided on numbers.
+- The weekly benchmark (tools/bench.py) reports both, `shotdetect --parallel` beside the sequential default.
+- CI also compares it on ARM (ci.yml's arch job) and on Windows and macOS (parity-os.yml, nightly), in-process.
 
 ## Risks
 

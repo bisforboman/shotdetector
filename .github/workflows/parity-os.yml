@@ -5,6 +5,7 @@ name: Parity on Windows and macOS
 # compare.py passes --always-bt601 there, as README says users must. macOS's ARM wheel uses KleidiCV and Carotene,
 # which round resize and HSV differently (README, docs/decisions/). Nightly rather than on every pull request: it
 # fails nothing, and runners are CI's limit (concurrent jobs count per account; this takes one of the 5 macOS slots).
+# Parallel detection against sequential runs here too, in-process with our FFmpeg build, and that step does fail.
 on:
   workflow_dispatch:
   schedule:
@@ -20,13 +21,22 @@ permissions:
   contents: read
 
 jobs:
+  # Our FFmpeg build for these platforms (native.yml, cached), for the in-process parallel check.
+  native:
+    uses: ./.github/workflows/native.yml
+    with:
+      rids: '["win-x64","osx-arm64"]'
+
   parity-os:
+    needs: native
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        include:
+          - { os: windows-latest, rid: win-x64 }
+          - { os: macos-latest, rid: osx-arm64 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -73,3 +83,22 @@ jobs:
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
             --detector all --stats --report parity.md || true
           { echo "### scenedetect 0.7.2 on ${{ matrix.os }} (informational)"; cat parity.md 2>/dev/null || echo "No report."; } >> "$GITHUB_STEP_SUMMARY"
+
+      # Outside native/, so the comparison above keeps its decoder; only the parallel check gets them (--ffmpeg-dir).
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: native-${{ matrix.rid }}
+          path: ffmpeg-libs/${{ matrix.rid }}
+
+      # Parallel detection (DetectionOptions.Parallel) as ci.yml checks it on Linux: three chunks on every sample, byte
+      # for byte the sequential result, in-process.
+      - name: Parallel against sequential
+        shell: bash
+        env:
+          SHOTDETECTOR_OURS_ARGS: --ffmpeg-dir ${{ github.workspace }}/ffmpeg-libs/${{ matrix.rid }} --decoder inprocess
+        run: |
+          status=0
+          python tools/compare-parallel.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
+            --chunks 3 --report parallel.md || status=$?
+          { echo "### Parallel against sequential on ${{ matrix.os }}"; cat parallel.md 2>/dev/null || echo "No report."; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
