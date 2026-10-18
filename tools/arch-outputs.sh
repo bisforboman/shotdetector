@@ -20,7 +20,7 @@ for clip in "$@"; do
     "$libs/ffmpeg" -v error "${pre[@]}" -i "$clip" -map 0:v:0 "$@" -fflags +bitexact -f framemd5 -
   }
   sha256sum < "$clip" | cut -c1-64 > "$out/$name.file.md5"
-  "$libs/ffprobe" -v error -select_streams v:0 -show_entries stream=codec_name,pix_fmt -of csv=p=0 "$clip" > "$out/$name.codec.md5"
+  "$libs/ffprobe" -v error -select_streams v:0 -show_entries stream=codec_name,pix_fmt,width,height -of default=nw=1 "$clip" > "$out/$name.codec.md5"
   frames -- > "$out/$name.decoded.md5"
   frames -threads 1 -- > "$out/$name.decoded-1thread.md5"
   frames -idct simple -- > "$out/$name.decoded-idctsimple.md5"
