@@ -32,7 +32,8 @@ continues at the next release. A met trigger means asking the user, not splittin
 History (until 2.6.1 counted without tests): since 2.1.0, 3 of 9 (FrameReader.Native, the clips made by FrameReader,
 the Alpine fix); 2.4.0, 2 of 9; 2.5.0, 2 of 4 (the security fixes, OpenSSL); 2.6.0, 0 of 6; 2.6.1, 0 of 2. Under
 the old rule 2.6.0 and 2.6.1 met the trigger on 8 commits in two days; the user's choice was not to split and to add
-the sample and the tests (docs/decisions/2026-10-17-split-trigger-sample.md).
+the sample and the tests (docs/decisions/2026-10-17-split-trigger-sample.md). 2.7.0 (with tests): 4 of 29 (the IDCT options, the MPEG-4
+probe's extradata and first packet, `BgrConverter.Size`, the CodecOptions guards), not met.
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
