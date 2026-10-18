@@ -2,7 +2,7 @@
 per clip, detector and decoder, how many stats rows differ and by how much at most, and the cuts only one side has; the
 frame checksums (decoded, single-threaded, b's -idct simple against a's default, bgr24, bgr24 from swscale's C code, bgr24 +bitexact), as frames differing;
 and whether b's FastYuv files equal a's default ones. Exits 1 unless they do on every 8-bit 4:2:0 clip (yuv420p or
-yuvj420p; MPEG-2 and MJPEG too, which decode with the C IDCT): the rest is FFmpeg's rounding on ARM, reported
+yuvj420p; MPEG-1/2 and MJPEG too, which decode with the C IDCT; MPEG-4 Part 2 reported for now): the rest is FFmpeg's rounding on ARM, reported
 (docs/decisions/2026-10-17-arm-results.md).
 Usage: python3 tools/arch-summary.py <a-dir> <b-dir>"""
 import csv
@@ -83,7 +83,8 @@ def main() -> int:
         hits = sum(same(a / n, b / n.replace(".scenes.csv", ".fastyuv.scenes.csv").replace(".stats.csv", ".fastyuv.stats.csv"))
                    for n in fast)
         codec_name, pix_fmt = ((a / codec).read_text().strip().split(",") + ["", ""])[:2]
-        required = pix_fmt in ("yuv420p", "yuvj420p")
+        # MPEG-4 Part 2 reported only until its first ARM table is read (docs/backlog.md).
+        required = pix_fmt in ("yuv420p", "yuvj420p") and codec_name != "mpeg4"
         checked += required
         if required and (not fast or hits != len(fast)):
             failed.append(clip)
