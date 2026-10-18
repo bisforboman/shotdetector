@@ -393,7 +393,7 @@ public sealed record DetectionOptions
     /// makes it read the file sequentially instead, from the start. <see cref="DetectedVideo.Chunks"/> says which ran,
     /// <see cref="DetectedVideo.ChunkFallback"/> why it fell back (also in <see cref="DetectionResult.Warnings"/>, as is
     /// why <see cref="DetectionMode.Parallel"/> read sequentially). The decoder threads are shared out among the chunks.
-    /// Memory grows by a decoder and its frame buffers per chunk. <see cref="DetectionMode.Auto"/> (the default) chunks
+    /// Memory grows by a decoder per chunk (they share the frame buffers). <see cref="DetectionMode.Auto"/> chunks
     /// for Detect from 4 CPUs on and for frames up to 3840 x 2160, but not for DetectStreamAsync, whose shots would
     /// otherwise all come once the whole file is scored; <see cref="DetectionMode.Parallel"/> chunks from 4 CPUs on, at
     /// any frame size, and DetectStreamAsync too; <see cref="DetectionMode.Sequential"/> never does.

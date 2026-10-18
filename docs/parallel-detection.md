@@ -77,6 +77,25 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
   `DetectedVideo.ChunkFallback` says why (also a `DetectionResult.Warnings` entry, which the CLI prints).
 - `AutoChunks`: half the CPUs, at most 4, each chunk at least a minute, never more chunks than the decoder threads
   the caller set (so none below 4 CPUs); `Auto` for frames up to 3840 x 2160 pixels, `Parallel` at any size.
+- Frame buffers (between a reader's decoding thread and the scoring): a sequential run's 8 shared out,
+  `ChunkBuffers` = max(2, 8 / chunks), so 4 each in 2 chunks and 2 in 3 or 4 (2026-10-18; it was 8 each). Measured
+  on this 4-CPU container, content detector, with and without stats, 3 interleaved rounds (the table below): CPU time
+  unchanged everywhere; wall time varied up to 4x between runs of one case on this machine, and no count's median
+  stayed outside 8's range (a recheck of 2 chunks at 4 buffers, 5 rounds when quieter: 2.82 s against 2.93 s at 360p,
+  8.45 s against 8.85 s at 720p). Even 2 buffers in 2 chunks kept the speed; 8 / chunks was kept so a chunked run
+  holds no more buffers than a sequential one. What it saves is the buffers' size: the sampled rows on the default
+  path (a few MB per chunk), whole frames with FastYuv.
+
+  | Clip | Path | Sequential | 2 chunks, 8 / 4 each | 4 chunks, 8 / 2 each |
+  |---|---|---|---|---|
+  | 426x240 | default | 89 MB | 99 / 97 MB | 111 / 105 MB |
+  | 1280x534 | default | 107 MB | 131 / 124 MB | 165 / 143 MB |
+  | 1280x720 | default | 115 MB | 142 / 133 MB | 183 / 155 MB |
+  | 1920x1080 | default | 147 MB | 187 / 175 MB | 259 / 218 MB |
+  | 1920x1080 | FastYuv | 154 MB | 202 / 178 MB | 292 / 221 MB |
+  | 3840x2160 | FastYuv | 366 MB | 553 / 458 MB | 868 / 583 MB |
+
+  Peak RSS, medians of 3; with stats the same within a few MB.
 - Sequential, always: streams and URLs, the executable path, MPEG-PS without packet pts, a time range, frame skip.
   Progress counts all chunks' frames; a fallback starts it over. When `Parallel` was asked for (`--parallel`,
   `--chunks`) and the file is read sequentially all the same, a warning says why: one of those, fewer than 4 CPUs,
@@ -124,6 +143,6 @@ takes half the CPUs (the user's choice: 4 chunks cost about 65 MB more at 1080p 
 
 - Decoding is already multi-threaded, so the gain may be smaller than the core count; the prototype measures it before
   anything else is built.
-- Memory: one decoder and its buffers per chunk.
+- Memory: one decoder per chunk; the frame buffers are shared out (since 2026-10-18).
 - Edge cases in the frame-to-index mapping (repeated pts, joined encodes): they go to the sequential list rather than
   being guessed.

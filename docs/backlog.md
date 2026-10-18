@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-18: on x86 none known; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- Parallel detection: fewer frame buffers per chunk (8 / chunks instead of 8 each)
-  - Why: Each chunk's in-process reader keeps 8 full-frame buffers (VideoReader.InProcess.cs), which is most of the memory growth per chunk (the release-candidate security review, 2026-10-18: a 4096x4096 clip with FastYuv peaked at 525 MB sequential, 836 MB in 2 chunks, 1197 MB in 4). Sharing the 8 between the chunks would keep a parallel run near a sequential one's memory; the 3840x2160 cap on Auto (docs/decisions/2026-10-18-parallel-auto-threshold.md) limits it meanwhile. Since 3.8.0 Auto chunks from 4 CPUs (docs/decisions/2026-10-18-parallel-auto-4cpus.md), so this is the default's cost: +10 to 54 MB peak per 2 chunks on GitHub's 4-CPU runners up to 1080p
-  - Status: Open
-
 - FrameReader: unknown `InputOptions` names fail, as `CodecOptions` and the encoders' do
   - Why: `Demuxer.Open` passes `FrameDecoderOptions.InputOptions` to avformat_open_input and drops what's left, so a misspelt demuxer option is ignored without a word (the release-candidate security review, 2026-10-18), though FrameReader's README says unknown option names are an `ArgumentException`. `CodecOptions` checks its leftovers since 2026-10-18. Changing it could break callers passing options some demuxers lack (ShotDetector passes the image sequences' `framerate`), so it needs a look per caller
   - Status: Open
