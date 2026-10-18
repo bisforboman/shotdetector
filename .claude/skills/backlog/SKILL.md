@@ -5,14 +5,18 @@ description: Preview and extend ShotDetector's backlog (docs/backlog.md). Use wh
 
 # Backlog: preview and extend
 
-The backlog is `docs/backlog.md`: numbered sections in priority order, then `## Done`. Each item is a list entry,
-`- What` with `  - Why: ...` and `  - Status: ...` under it and a blank line before the next (so edits to neighbouring
-items merge cleanly), status one of **Open**, **In progress**, **Maybe**, **Done (date)**, **Released**. Design
-answers live in `docs/decisions/`; larger plans in their own docs (e.g. `docs/frame-reader-library.md`).
+The backlog is `docs/backlog.md`, three sections: `## Next` (Open and In progress rows in priority order, the first
+one next), `## Waiting` (rows that wait on the owner or an outside event) and `## Maybe` (ideas not committed to).
+Finished rows (**Done (date)**, **Released**, **Dropped (date)**, **Won't do (date)**) live in `docs/backlog-done.md`,
+grouped by the old sections they were in; rows finished since 2026-10-18 go at its end under `## Since 2026-10-18`
+(create the heading the first time). Each item is a list entry, `- What` with `  - Why: ...` and `  - Status: ...`
+under it and a blank line before the next (so edits to neighbouring items merge cleanly). Design answers live in
+`docs/decisions/` (docs/decisions/2026-10-18-backlog-shape.md for this shape); larger plans in their own docs (e.g.
+`docs/frame-reader-library.md`).
 
 ## 1. Gather (read-only, in parallel)
 
-- `docs/backlog.md`: every row whose status isn't Done/Released, with its section and order. Note rows that say
+- `docs/backlog.md`: every row, with its section (Next, Waiting, Maybe) and order. Note rows that say
   "Milestones ... open" or name a plan doc, and read that doc's status line.
 - What's in flight: `gh pr list --state open --json number,title,headRefName`, the linked sessions (if any), and
   background work this conversation started.
@@ -24,8 +28,9 @@ answers live in `docs/decisions/`; larger plans in their own docs (e.g. `docs/fr
 Answer in this shape, short:
 
 - **In flight**: open PRs and running sessions, one line each, linked.
-- **Up next**: Open and In progress rows in backlog order (section by section), one line each with the why in a few
-  words. Mark the first one as next unless the user has said otherwise in this conversation.
+- **Up next**: the Next rows in order, one line each with the why in a few words. Mark the first one as next unless
+  the user has said otherwise in this conversation.
+- **Waiting**: one line each, with what it waits on.
 - **Maybe**: one line listing them.
 - **Stale**: rows whose status no longer matches git history or merged PRs (say what you'd change).
 - **Open issues** not on the backlog yet.
@@ -43,14 +48,15 @@ claims against the code, drops ones that can't pay off, and fixes wording (2026-
 wrong about Sobel, and a stored-timings item that couldn't be compared later). Ask with what survives.
 
 Ask with the multiple-choice prompt (multiSelect: true) which to add, recommended ones first marked "(Recommended)";
-include each one's proposed section and status (Open or Maybe) in its description.
+include each one's proposed section (Next or Maybe) and place in it in its description.
 
 ## 4. Extend (only what the user picked)
 
-- Add each picked item as an entry in the right section (new ideas usually go in the latest ideas section), in the
-  existing style: `- What, concretely`, `  - Why: why it matters, with numbers or the issue if any`, `  - Status: Open`,
-  then a blank line.
-- Fix stale statuses the user agreed to (`Done (YYYY-MM-DD)`, absolute dates).
+- Add each picked item as an entry in the section its status says (Open in Next, at its priority; Maybe in Maybe; a
+  row that waits on the owner or an outside event in Waiting), in the existing style: `- What, concretely`,
+  `  - Why: why it matters, with numbers or the issue if any`, `  - Status: Open`, then a blank line.
+- Fix stale statuses the user agreed to (`Done (YYYY-MM-DD)`, absolute dates); a row that is now Done, Dropped or
+  Won't do moves, unchanged otherwise, to the end of `docs/backlog-done.md` (under `## Since 2026-10-18`).
 - Keep the file's line endings (most files here are CRLF; see CLAUDE.md's scripted-edit gotcha) and check
   `git diff --stat` shows only the lines you meant.
 - Ship it as a small docs-only PR from a fresh branch off `origin/main` (main is protected): commit message
