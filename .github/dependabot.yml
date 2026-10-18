@@ -18,7 +18,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    # The analyzers (Directory.Packages.props) and the format tool (.config/dotnet-tools.json) move together.
+    # The analyzers (Directory.Packages.props) and the format tool (.config/dotnet-tools.json) move together. While
+    # StyleBro is a prerelease (0.x.0-alpha.N) Dependabot never proposes its next version: from a prerelease, NuGet's
+    # updater only offers prereleases of the same version (0.7.0-alpha.2) or a stable release, and no setting here
+    # changes that. upstream.yml's weekly check files an issue for those instead.
     groups:
       stylebro:
         patterns: ["StyleBro.*"]

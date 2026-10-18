@@ -317,8 +317,8 @@ jobs:
           name: native-linux-x64
           path: native/linux-x64
 
-      # On Windows: dotnet format on Linux wants LF after '=>' before a comment even in CRLF files; Windows, where the
-      # code is written and formatted, accepts the file's own line endings.
+      # On Windows, where the code is written. Since StyleBro 0.6.0 the check passes on Linux too (format keeps each
+      # file's own line ending, stylebro#133), so it could move to any runner.
       - name: Code style (StyleBro)
         if: needs.changes.outputs.docs_only != 'true' && matrix.rid == 'win-x64'
         run: |
