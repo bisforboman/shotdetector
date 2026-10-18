@@ -49,6 +49,9 @@ results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video".
   executable; whole clips (left, topleft, BT.709, full range, cropped, odd height, turned 90/180/270, a seek) equal to
   the default path's frames through both decoders. The CLI's CSV and stats are identical with and without FastYuv on
   10-bit sintel clips (plain and turned), a 1080p clip and ten.mp4, both decoders, adaptive and content.
+- ARM: in #412's CI, arch-diff's table had ARM with FastYuv equal to x64's default on `sintel_10bit.mp4` and the
+  turned `sintel_rotated_10bit.mp4`, 20/20 outputs each (in-process 10/10, executable 10/10), where ARM's own
+  conversion differs on every frame (bgr24 1253/1253 and 480/480); arch-summary.py then made both required.
 - Speed on x64 (4 shared vCPUs; not the owner's Ryzen): the 854x480 sintel clip took about 7.5 s instead of 3.1 s
   through the executable and 9.3 s instead of 2.6 s in-process; 1080p about the same either way. Each chroma sample
   the resize reads is filtered horizontally again for every output row that reads it (about 32 multiply-adds per pixel
