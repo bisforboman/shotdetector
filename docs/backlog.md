@@ -41,11 +41,11 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: CI's VideoWriter step needs DOTNET_TieredCompilation=0 because x264's AVX-512 code and .NET's tiered JIT differ about 1 run in 250 (CLAUDE.md); the report was written but not filed as of the 2026-10-15 reminder (it waited on a VideoLAN GitLab account). A public post from the owner's account: theirs to file, never a session's
   - Status: Open
 
-## Maybe
-
 - ARM's results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video (MPEG-2 and MJPEG done)
   - Why: FastYuv gives x86's results on ARM for 8-bit 4:2:0 only (arch-diff's table, 2026-10-17): 10-bit and 4:2:2 take other swscale paths, and MPEG-2's and MJPEG's decoded frames already differ (their IDCTs round per platform), so those still differ on ARM
-  - Status: 4:2:2 done (2026-10-18, #404): FastYuv converts yuv422p/yuvj422p (`IYuv422Converter`; rotated frames converted before turning), arch-diff requires them (docs/decisions/2026-10-18-fastyuv-422.md). Maybe for 10-bit (swscale's MMXEXT vertical scaler and output, docs/fastyuv-10bit-422.md), until a prototype reproduces x86's bytes; MPEG-1/2 and MJPEG done (2026-10-17): ShotDetector decodes them with FFmpeg's C IDCT (`-idct simple`; in-process FrameReader's new `FrameDecoderOptions.CodecOptions`, so FrameReader itself still gives ffmpeg's default bytes), which x64's default already gives (checked with FFmpeg 8.1 and 9.0) and ARM's NEON IDCT doesn't (#384's checksums); arch-diff requires them too
+  - Status: 4:2:2 done (2026-10-18, #404): FastYuv converts yuv422p/yuvj422p (`IYuv422Converter`; rotated frames converted before turning), arch-diff requires them (docs/decisions/2026-10-18-fastyuv-422.md). 10-bit 4:2:0: a port reproduces x86's bytes (2026-10-18, #412: `IYuv420P10Converter`, swscale's bicubic filters, MMXEXT vertical scaler and output, the C output for the last two rows; docs/fastyuv-10bit-422.md "As built (10-bit)"), waiting on ARM == x64 in #412's arch-diff and on the owner's choice for x64, where it gives the same bytes as the default path but slower on small video (on every CPU, off x86 only, or a frame-scoped conversion first); MPEG-1/2 and MJPEG done (2026-10-17): ShotDetector decodes them with FFmpeg's C IDCT (`-idct simple`; in-process FrameReader's new `FrameDecoderOptions.CodecOptions`, so FrameReader itself still gives ffmpeg's default bytes), which x64's default already gives (checked with FFmpeg 8.1 and 9.0) and ARM's NEON IDCT doesn't (#384's checksums); arch-diff requires them too
+
+## Maybe
 
 - Warn for a local playlist whose segments are https
   - Why: DetectionResult.Warnings (2026-10-18) covers an https playlist decoded by the ffmpeg executable; a local .m3u8 naming https segments takes the same unchecked path, but the decision left it undecided (docs/decisions/2026-10-18-library-warnings.md)
