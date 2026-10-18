@@ -27,7 +27,8 @@ paths (10-bit h264 too), 0.7.2 both through the ffmpeg executable and in-process
 adds `SHOTDETECTOR_OURS_ARGS` to every run, CI sets `--decoder`). `Detect` chunks long in-process files on several
 cores by default from 8 CPUs on (docs/parallel-detection.md; `--sequential` one pass, `--parallel` from 4 CPUs on,
 hidden `--chunks N`; CI's 4-CPU runners use those); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
-weekly. `docs/backlog.md` has what's next, in order; `docs/decisions/` what the user decided and why.
+weekly. `docs/backlog.md` has what's next, in order (Next, Waiting, Maybe; finished rows in `docs/backlog-done.md`);
+`docs/decisions/` what the user decided and why.
 
 **Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Two products,
 released separately since 2.1.0 (docs/frame-reader-product.md): ShotDetector (with FastYuv and the CLI;
@@ -61,9 +62,11 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 - **Changelog**: a PR with a change users of the packages notice adds `changes/shotdetector/<branch>.md` or
 `changes/framereader/<branch>.md`, one to each when it changes both (changes/README.md: `### Fixed` / `### New` / ...
 and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
-- **Backlog**: `docs/backlog.md`. Take the next open item; update its status when work starts and lands. Add items
-  when something turns up (a divergence, a gap), with why. Items are list entries (What, then Why: and Status:) with a
-  blank line between them, so parallel PRs that edit neighbouring items merge cleanly, on GitHub too.
+- **Backlog**: `docs/backlog.md`: Next (in priority order), Waiting (on the owner or an outside event), Maybe. Take
+  the first Next item; update its status when work starts, and when it is Done (or Dropped, Won't do) move the row
+  to the end of `docs/backlog-done.md` (under "Since 2026-10-18"). Add items when something turns up (a divergence,
+  a gap), with why, in Next or Maybe by status, at their priority. Items are list entries (What, then Why: and
+  Status:) with a blank line between them, so parallel PRs that edit neighbouring items merge cleanly, on GitHub too.
 - **Advisor**: when an advisor tool is available, call it before design decisions or recommendations, before splitting
   work across agents or sessions, and before declaring a larger task done.
 - **Where work runs**: long work (multi-step tasks, PRs, CI waits, releases, CI benchmarks) runs as cloud sessions; the
