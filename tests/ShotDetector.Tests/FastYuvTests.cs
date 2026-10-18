@@ -169,6 +169,11 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
                 // is what FastYuv is there for; ci.yml's arch-diff compares ARM's FastYuv results with x64's.
                 if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
                     Assert.Equal(Hashes(core), Hashes(fast));
+
+                // No frame left the fast path: its frames' size and pixel format are the stream's (a false "other
+                // format" would read on a BGR pipeline with the same bytes, only slower).
+                Assert.Equal(pipeline.Length > 0 ? Enum.Parse<FramePipeline>(pipeline) : core.Pipeline, fast.Pipeline);
+                Assert.Equal(0, fast.BgrFallbackFrames);
             }
         }
         finally
