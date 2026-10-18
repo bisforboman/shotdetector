@@ -451,6 +451,14 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             var lateCore = ShotDetection.Detect(joined, late);
             var lateFast = ShotDetection.Detect(joined, late with { Yuv420Converter = new SwscaleYuv420() });
             Assert.Equal(lateCore.Stats!.Csv(lateCore.Video.Position), lateFast.Stats!.Csv(lateFast.Video.Position));
+
+            // In-process from there too: the first frame read is the second half's (another size), and still scaled to
+            // the stream's size, as the executable's scale= does (it once sized the buffer by that frame and crashed).
+            var lateInProcess = ShotDetection.Detect(joined, late with { Decoder = VideoDecoder.InProcess });
+            Assert.True(lateInProcess.Video.DecodedInProcess);
+            Assert.Equal(lateCore.Stats.Csv(lateCore.Video.Position), lateInProcess.Stats!.Csv(lateInProcess.Video.Position));
+            var lateFastInProcess = ShotDetection.Detect(joined, late with { Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() });
+            Assert.Equal(lateCore.Stats.Csv(lateCore.Video.Position), lateFastInProcess.Stats!.Csv(lateFastInProcess.Video.Position));
             var halfCore = ShotDetection.Detect(joined, options with { Downscale = 2 });
             var halfFast = ShotDetection.Detect(joined, options with { Downscale = 2, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() });
             Assert.Equal(halfCore.Stats!.Csv(halfCore.Video.Position), halfFast.Stats!.Csv(halfFast.Video.Position));

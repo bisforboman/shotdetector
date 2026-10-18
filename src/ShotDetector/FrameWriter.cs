@@ -8,34 +8,19 @@ namespace ShotDetector;
 /// <see cref="FramePipeline"/>: the same swscale conversion (FrameReader's <see cref="BgrConverter"/>: bicubic flag,
 /// the frame's colour tags), so the same bytes, without a second process or a pipe. With <paramref name="turn"/>, the
 /// converted frame is rotated clockwise by it (90, 180 or 270), as the executable's transpose/hflip,vflip on bgr24 and
-/// OpenCV's cv::rotate do.
+/// OpenCV's cv::rotate do. Every frame is converted at <paramref name="size"/>, the stream's size from its headers
+/// (OpenCV's buffer, as the executable's scale=): a frame of another size is scaled to it in the same conversion.
 /// </summary>
-internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : IDisposable
+internal sealed unsafe class FrameWriter(FrameDecoder decoder, (int Width, int Height) size, int turn = 0) : IDisposable
 {
     readonly FrameDecoder _d = decoder;
-    readonly BgrConverter _bgr = new(decoder) { KeepFirstSize = true }; // OpenCV's buffer: the stream's size
+    readonly BgrConverter _bgr = new(decoder) { Size = size };
     readonly int _turn = turn;
     byte[] _turned = [];
     SwsContext* _toSize;
-    int _firstWidth = -1, _firstHeight;
 
-    /// <summary>Whether the current frame has the first frame's size (the stream's size, to OpenCV).</summary>
-    public bool HasFirstSize
-    {
-        get
-        {
-            if (_firstWidth < 0)
-            {
-                (_firstWidth, _firstHeight) = (_d.Width, _d.Height);
-
-                // The converter takes its size from the first frame it converts; on the YUV path that may be a later
-                // frame of another size, so it sees this one now (no rows converted).
-                _bgr.Convert([], out _);
-            }
-
-            return _d.Width == _firstWidth && _d.Height == _firstHeight;
-        }
-    }
+    /// <summary>Whether the current frame has the stream's size (the YUV pipelines' layout).</summary>
+    public bool HasStreamSize => (_d.Width, _d.Height) == size;
 
     /// <summary>The whole converted frame, turned: its bytes and row stride.</summary>
     ReadOnlySpan<byte> Converted(out int stride)
@@ -47,10 +32,9 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : I
             return bgr;
         }
 
-        // The converter scales every frame to the first one's size (KeepFirstSize): read it at that size, not at the
-        // current frame's, which a stream changing size mid-way would make larger than the buffer.
-        _ = HasFirstSize;
-        int w = _firstWidth, h = _firstHeight, ow = _turn == 180 ? w : h, oh = _turn == 180 ? h : w;
+        // The converter scales every frame to the stream's size: read it at that size, not at the current frame's,
+        // which a stream changing size mid-way would make larger than the buffer.
+        int w = size.Width, h = size.Height, ow = _turn == 180 ? w : h, oh = _turn == 180 ? h : w;
         if (_turned.Length != ow * oh * 3)
             _turned = new byte[ow * oh * 3];
         fixed (byte* src = bgr)

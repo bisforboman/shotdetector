@@ -40,7 +40,7 @@
 
         # Timestamps starting over (two encodes joined): labelled by time, cuts sorted, stats one row per number
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'seconds < _pts[previous] * _timeBase - tolerance)'; Replace = 'false)'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
-        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '&& !(writer.HasFirstSize && (decoder.Width, decoder.Height) == _codedSize && decoder.PixelFormat == _pixelFormat);'; Replace = '&& false;'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '&& !(writer.HasStreamSize && decoder.PixelFormat == _pixelFormat);'; Replace = '&& false;'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (yuv && info.NewLayout && _stream is null && !Streaming)'; Replace = 'if (false)'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
 
         # A frame in another pixel format than the stream's (4:2:2 and 4:2:0 joined): OpenCV converts it from its own,
