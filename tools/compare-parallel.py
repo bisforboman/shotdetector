@@ -2,8 +2,8 @@
 
 Usage: python tools/compare-parallel.py <video>... [--chunks N] [--require-chunks] [--report summary.md] [--fast-yuv]
 
-Each video runs with all five detectors at once and --stats, in 0.7.2 and 0.7.1 mode, once sequentially and once with
---chunks N (default: --parallel, the automatic count). A run that fell back to sequential (the CLI's summary doesn't
+Each video runs with all five detectors at once and --stats, in 0.7.2 and 0.7.1 mode, once with --sequential and once
+with --chunks N (default: the CLI's default, parallel with the automatic count). A run that fell back to sequential (the CLI's summary doesn't
 say "in N chunks") is reported; with --require-chunks it fails. Extra shotdetect options: SHOTDETECTOR_OURS_ARGS.
 """
 
@@ -34,7 +34,7 @@ def run(exe: Path, video: str, args: list[str], out: Path) -> tuple[str, str]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("videos", nargs="+")
-    ap.add_argument("--chunks", type=int, help="this many chunks (the CLI's hidden --chunks); default: --parallel")
+    ap.add_argument("--chunks", type=int, help="this many chunks (the CLI's hidden --chunks); default: the CLI's default, parallel")
     ap.add_argument("--require-chunks", action="store_true", help="fail when a run fell back to sequential")
     ap.add_argument("--fast-yuv", action="store_true", help="use the ShotDetector.FastYuv path")
     ap.add_argument("--report", help="also write a Markdown table to this file")
@@ -46,14 +46,14 @@ def main() -> int:
         exe = ROOT / "artifacts" / "cli-fastyuv" / EXE_NAME  # compare.py's
         build += ["-p:WithFastYuv=true", "-o", str(exe.parent)]
     subprocess.run(build, check=True, stdout=subprocess.DEVNULL)
-    parallel = ["--chunks", str(a.chunks)] if a.chunks else ["--parallel"]
+    parallel = ["--chunks", str(a.chunks)] if a.chunks else []
 
     rows, failed = [], False
     with tempfile.TemporaryDirectory() as tmp:
         for video in a.videos:
             for compat in ("0.7.2", "0.7.1"):
                 mode = ["--compat", compat]
-                ref, _ = run(exe, video, mode, Path(tmp) / "seq")
+                ref, _ = run(exe, video, mode + ["--sequential"], Path(tmp) / "seq")
                 got, summary = run(exe, video, mode + parallel, Path(tmp) / "par")
                 chunks = int(m.group(1)) if (m := re.search(r" in (\d+) chunks$", summary)) else 1
                 same = got == ref

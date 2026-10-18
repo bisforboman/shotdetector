@@ -90,7 +90,7 @@ jobs:
           name: native-${{ matrix.rid }}
           path: ffmpeg-libs/${{ matrix.rid }}
 
-      # Parallel detection (DetectionOptions.Parallel) as ci.yml checks it on Linux: three chunks on every sample, byte
+      # Parallel detection (DetectionOptions.Mode) as ci.yml checks it on Linux: three chunks on every sample, byte
       # for byte the sequential result, in-process.
       - name: Parallel against sequential
         shell: bash

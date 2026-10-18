@@ -1,15 +1,24 @@
 using ShotDetector;
 
 /// <summary>
-/// DetectionOptions.Parallel: chunks scored at once give exactly the sequential result, and what a chunk can't reproduce
-/// falls back to a sequential read. Decodes in-process, so like InProcessTests it needs SHOTDETECTOR_FFMPEG_LIBS.
+/// DetectionOptions.Mode: chunks scored at once give exactly the sequential result, and what a chunk can't reproduce
+/// falls back to a sequential read. Decodes in-process, so like InProcessTests it needs SHOTDETECTOR_FFMPEG_LIBS (but
+/// not the mode's own tests).
 /// </summary>
 public class ParallelTests(Clips clips) : IClassFixture<Clips>
 {
     static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
 
-    static DetectionOptions Options(DetectorKind kind, PySceneDetectVersion version = PySceneDetectVersion.V0_7_2) =>
-        new() { Detector = kind, Compatibility = version, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess };
+    // Sequential, the reference; each test asks for the chunks it checks.
+    static DetectionOptions Options(DetectorKind kind, PySceneDetectVersion version = PySceneDetectVersion.V0_7_2) => new()
+    {
+        Detector = kind,
+        Compatibility = version,
+        CollectStats = true,
+        FfmpegDirectory = Libs,
+        Decoder = VideoDecoder.InProcess,
+        Mode = DetectionMode.Sequential,
+    };
 
     static void AssertSame(DetectionResult sequential, DetectionResult parallel)
     {
@@ -39,7 +48,7 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
             return;
         var options = Options(kind, version);
         var sequential = ShotDetection.Detect(clips.ThreeShots, options);
-        var parallel = ShotDetection.Detect(clips.ThreeShots, options with { Parallel = true, Chunks = chunks });
+        var parallel = ShotDetection.Detect(clips.ThreeShots, options with { Mode = DetectionMode.Parallel, Chunks = chunks });
         Assert.Equal(1, sequential.Video.Chunks);
         Assert.Equal(chunks, parallel.Video.Chunks);
         AssertSame(sequential, parallel);
@@ -55,7 +64,7 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
             CollectStats = false,
             Detectors = [new(DetectorKind.Content), new(DetectorKind.Threshold) { Threshold = 30 }, new(DetectorKind.Hash)],
         };
-        var parallel = ShotDetection.Detect(clips.ThreeShots, options with { Parallel = true, Chunks = 3 });
+        var parallel = ShotDetection.Detect(clips.ThreeShots, options with { Mode = DetectionMode.Parallel, Chunks = 3 });
         Assert.Equal(3, parallel.Video.Chunks);
         AssertSame(ShotDetection.Detect(clips.ThreeShots, options), parallel);
     }
@@ -82,7 +91,7 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
             _ => options,
         };
         string path = name switch { "dropped" => clips.ThreeShotsDropped, "mpegps" => clips.ThreeShotsMpegPs, _ => clips.ThreeShots };
-        var parallel = ShotDetection.Detect(path, options with { Parallel = true, Chunks = 2 });
+        var parallel = ShotDetection.Detect(path, options with { Mode = DetectionMode.Parallel, Chunks = 2 });
         Assert.Equal(1, parallel.Video.Chunks);
         AssertSame(ShotDetection.Detect(path, options), parallel);
     }
@@ -104,7 +113,7 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
             VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "4", "-i", clips.ThreeShots, "-vf", "scale=480:360", .. h264, "-output_ts_offset", "4", b], default);
             File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
             var options = Options(DetectorKind.Content);
-            var parallel = ShotDetection.Detect(joined, options with { Parallel = true, Chunks = 4 });
+            var parallel = ShotDetection.Detect(joined, options with { Mode = DetectionMode.Parallel, Chunks = 4 });
             Assert.Equal(1, parallel.Video.Chunks);
             AssertSame(ShotDetection.Detect(joined, options), parallel);
         }
@@ -129,7 +138,7 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
             VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "1", "-i", clips.ThreeShots, "-vf", "scale=240:180", "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb", b], default);
             File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
             var options = Options(DetectorKind.Content);
-            var parallel = ShotDetection.Detect(joined, options with { Parallel = true, Chunks = 3 });
+            var parallel = ShotDetection.Detect(joined, options with { Mode = DetectionMode.Parallel, Chunks = 3 });
             Assert.Equal(1, parallel.Video.Chunks);
             AssertSame(ShotDetection.Detect(joined, options), parallel);
         }
@@ -151,7 +160,7 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
             lock (reports)
                 reports.Add(p);
         });
-        var result = ShotDetection.Detect(clips.ThreeShots, Options(DetectorKind.Content) with { Parallel = true, Chunks = 3, Progress = progress, ProgressStep = 0.25 });
+        var result = ShotDetection.Detect(clips.ThreeShots, Options(DetectorKind.Content) with { Mode = DetectionMode.Parallel, Chunks = 3, Progress = progress, ProgressStep = 0.25 });
         Assert.Equal(3, result.Video.Chunks);
         Assert.Equal([0, 38, 75, 113, 150], reports.Select(r => r.FramesProcessed));
     }
@@ -163,7 +172,52 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
             return;
         using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
         Assert.ThrowsAny<OperationCanceledException>(() =>
-            ShotDetection.Detect(clips.Long, Options(DetectorKind.Content) with { CollectStats = false, Parallel = true, Chunks = 4 }, cancel.Token));
+            ShotDetection.Detect(clips.Long, Options(DetectorKind.Content) with { CollectStats = false, Mode = DetectionMode.Parallel, Chunks = 4 }, cancel.Token));
+    }
+
+    // Auto (the default) chunks for Detect, not when the shots are streamed (DetectStreamAsync delivers them as they come).
+    [Theory]
+    [InlineData(DetectionMode.Auto, false, DetectionMode.Parallel)]
+    [InlineData(DetectionMode.Auto, true, DetectionMode.Sequential)]
+    [InlineData(DetectionMode.Sequential, false, DetectionMode.Sequential)]
+    [InlineData(DetectionMode.Sequential, true, DetectionMode.Sequential)]
+    [InlineData(DetectionMode.Parallel, false, DetectionMode.Parallel)]
+    [InlineData(DetectionMode.Parallel, true, DetectionMode.Parallel)]
+    public void ResolvesTheMode(DetectionMode mode, bool streaming, DetectionMode expected) =>
+        Assert.Equal(expected, new DetectionOptions { Mode = mode }.ResolvedMode(streaming));
+
+    [Fact]
+    public void AutoIsTheDefault() => Assert.Equal(DetectionMode.Auto, new DetectionOptions().Mode);
+
+    // The obsolete opt-in switch sets the mode: true Parallel, false Sequential (what it meant before Auto).
+    [Fact]
+    public void ObsoleteParallelSetsTheMode()
+    {
+#pragma warning disable CS0618
+        Assert.Equal(DetectionMode.Parallel, new DetectionOptions { Parallel = true }.Mode);
+        Assert.Equal(DetectionMode.Sequential, new DetectionOptions { Parallel = false }.Mode);
+        Assert.True(new DetectionOptions { Mode = DetectionMode.Parallel }.Parallel);
+        Assert.False(new DetectionOptions().Parallel);
+#pragma warning restore CS0618
+    }
+
+    // Detect with the default mode chunks (a forced count, the clip being short); Sequential doesn't; the obsolete
+    // switch still does.
+    [Fact]
+    public void DetectChunksByDefault()
+    {
+        if (Libs is null)
+            return;
+        var options = Options(DetectorKind.Content) with { Chunks = 3 };
+        var auto = ShotDetection.Detect(clips.ThreeShots, options with { Mode = DetectionMode.Auto });
+        var sequential = ShotDetection.Detect(clips.ThreeShots, options);
+#pragma warning disable CS0618
+        var obsolete = ShotDetection.Detect(clips.ThreeShots, options with { Parallel = true });
+#pragma warning restore CS0618
+        Assert.Equal(3, auto.Video.Chunks);
+        Assert.Equal(1, sequential.Video.Chunks);
+        Assert.Equal(3, obsolete.Video.Chunks);
+        AssertSame(sequential, auto);
     }
 
     // Half the CPUs, at most 4, from 4 CPUs on; none shorter than a minute.

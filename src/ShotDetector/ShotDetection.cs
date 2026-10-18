@@ -57,6 +57,25 @@ public enum DeinterlaceMode
     Auto,
 }
 
+/// <summary>Whether a file is scored in chunks on several cores at once (<see cref="DetectionOptions.Mode"/>).</summary>
+public enum DetectionMode
+{
+    /// <summary>
+    /// Parallel for <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/> and DetectAsync,
+    /// sequential for DetectStreamAsync, so its shots still come as they are found (the default).
+    /// </summary>
+    Auto,
+
+    /// <summary>One pass from the start: one decoder, shots as they come.</summary>
+    Sequential,
+
+    /// <summary>
+    /// In chunks wherever it can (see <see cref="DetectionOptions.Mode"/>), DetectStreamAsync too, whose shots then all
+    /// come at the end.
+    /// </summary>
+    Parallel,
+}
+
 /// <summary>
 /// A video's properties from its headers (<see cref="ShotDetection.Probe(string, DetectionOptions?, CancellationToken)"/>):
 /// fast, without reading the packets.
@@ -365,18 +384,37 @@ public sealed record DetectionOptions
     public int? DecodeThreads { get; init; }
 
     /// <summary>
-    /// Detect a long local file on several cores at once, with exactly the result of a sequential run: chunks of it are
-    /// scored at the same time, each from one frame early, then the cut decisions run once over all scores. Half the CPUs,
-    /// at most 4 chunks, from 4 CPUs on and for files of two minutes or more (each chunk at least a minute). Only for
-    /// files decoded in-process, without a time range or frame skip and not MPEG-PS; anything a chunk can't reproduce
-    /// (a seek that lands late, dropped frames, a size change) makes it read the file sequentially instead,
-    /// from the start. <see cref="DetectedVideo.Chunks"/> says which ran. Shots then all come once the whole file is
-    /// scored, and memory grows by a decoder per chunk.
+    /// Whether a long local file is detected on several cores at once, with exactly the result of a sequential run:
+    /// chunks of it are scored at the same time, each from one frame early, then the cut decisions run once over all
+    /// scores. Half the CPUs, at most 4 chunks, from 4 CPUs on and for files of two minutes or more (each chunk at least
+    /// a minute). Only for files decoded in-process, without a time range or frame skip and not MPEG-PS; anything a chunk
+    /// can't reproduce (a seek that lands late, dropped frames, a size change) makes it read the file sequentially
+    /// instead, from the start. <see cref="DetectedVideo.Chunks"/> says which ran. Memory grows by a decoder per chunk.
+    /// <see cref="DetectionMode.Auto"/> (the default) chunks for Detect but not for DetectStreamAsync, whose shots would
+    /// otherwise all come once the whole file is scored; <see cref="DetectionMode.Sequential"/> never does.
     /// </summary>
-    public bool Parallel { get; init; }
+    public DetectionMode Mode { get; init; }
 
-    /// <summary>With <see cref="Parallel"/>: this many chunks instead of the automatic count (tests, the CLI's hidden --chunks).</summary>
+    /// <summary>
+    /// The opt-in switch from before parallel detection became the default: true is <see cref="DetectionMode.Parallel"/>,
+    /// false <see cref="DetectionMode.Sequential"/>; it reads true only for <see cref="DetectionMode.Parallel"/>.
+    /// </summary>
+    [Obsolete("Use Mode = DetectionMode.Parallel.")]
+    public bool Parallel
+    {
+        get => Mode == DetectionMode.Parallel;
+        init => Mode = value ? DetectionMode.Parallel : DetectionMode.Sequential;
+    }
+
+    /// <summary>When chunking: this many chunks instead of the automatic count (tests, the CLI's hidden --chunks).</summary>
     internal int? Chunks { get; init; }
+
+    /// <summary><see cref="Mode"/> for a run: Auto is parallel, except when the shots are streamed.</summary>
+    internal DetectionMode ResolvedMode(bool streaming) => Mode switch
+    {
+        DetectionMode.Auto => streaming ? DetectionMode.Sequential : DetectionMode.Parallel,
+        var mode => mode,
+    };
 
     /// <summary>
     /// Enables the yuv420p fast path: much faster on large video, same results. Use SwscaleYuv420
@@ -958,7 +996,7 @@ public static class ShotDetection
         }
 
         // Parallel: the scores in chunks at once, then the decisions over them in frame order (docs/parallel-detection.md).
-        int chunks = o.Parallel && videoPath is not null && spilled is null && !video.Streaming && video.DecodesInProcess
+        int chunks = o.ResolvedMode(streaming: onShot is not null) == DetectionMode.Parallel && videoPath is not null && spilled is null && !video.Streaming && video.DecodesInProcess
             && !video.PtsFromFrames && startFrame == 0 && endFrame is null && stride == 1
             ? o.Chunks ?? AutoChunks(Environment.ProcessorCount, video.ExpectedFrames, video.Fps)
             : 1;
@@ -1087,7 +1125,7 @@ public static class ShotDetection
     }
 
     /// <summary>
-    /// <see cref="DetectionOptions.Parallel"/>'s chunk count: half the CPUs, at most 4, from 4 CPUs on (measured: 2 chunks
+    /// <see cref="DetectionMode.Parallel"/>'s chunk count: half the CPUs, at most 4, from 4 CPUs on (measured: 2 chunks
     /// pay on 4 cores, more than 4 don't), and none shorter than a minute.
     /// </summary>
     internal static int AutoChunks(int cpus, int frames, Fps fps) =>

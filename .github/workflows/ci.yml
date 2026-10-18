@@ -569,7 +569,7 @@ jobs:
           { echo "### scenedetect ${{ matrix.scenedetect }}, ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat parity.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
-      # Parallel detection (DetectionOptions.Parallel): three chunks on every sample, byte for byte the sequential
+      # Parallel detection (DetectionOptions.Mode): three chunks on every sample, byte for byte the sequential
       # result (all five detectors, stats, 0.7.2 and 0.7.1 mode); what a chunk can't reproduce (MPEG-PS) reads sequentially.
       - name: Parallel against sequential
         if: needs.changes.outputs.docs_only != 'true' && matrix.decoder == 'inprocess' && matrix.part == 'compare'
