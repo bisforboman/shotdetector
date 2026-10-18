@@ -75,6 +75,79 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // 10-bit 4:2:0 frames converted by the ffmpeg executable as VideoReader asks (bicubic, the chroma location given
+    // with in_chroma_loc, the colour tags set on the frames) on x64, where swscale scales yuv420p10le with its MMXEXT
+    // vertical scaler and output (the C output for the last two rows): every pixel. Noise, and extremes whose bicubic
+    // chroma overshoots; widths of each even residue mod 8, odd heights, each chroma siting, matrices and both ranges.
+    [Theory]
+    [InlineData(64, 48, "left", "", "tv", "noise")]
+    [InlineData(66, 34, "left", "bt709", "tv", "extreme")]
+    [InlineData(70, 21, "topleft", "", "tv", "noise")]
+    [InlineData(68, 17, "center", "bt709", "pc", "extreme")]
+    [InlineData(62, 30, "", "bt2020nc", "tv", "extreme")]
+    [InlineData(856, 10, "left", "smpte240m", "pc", "noise")]
+    [InlineData(40, 26, "bottomleft", "fcc", "tv", "extreme")]
+    [InlineData(40, 26, "top", "smpte170m", "tv", "noise")]
+    public void Converts10BitAsSwscaleOnX64(int width, int height, string chromaLocation, string colorSpace, string range, string pattern)
+    {
+        if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
+            return;
+        var yuv = new byte[IYuv420P10Converter.FrameSize(width, height)];
+        var samples = MemoryMarshal.Cast<byte, ushort>(yuv.AsSpan());
+        var random = new Random(width * height);
+        for (int i = 0; i < samples.Length; i++)
+            samples[i] = (ushort)(pattern == "noise" ? random.Next(1024) : random.Next(2) * 1023);
+        string dir = Directory.CreateTempSubdirectory("shotdetector-fastyuv10-").FullName;
+        try
+        {
+            string input = Path.Combine(dir, "in.yuv"), output = Path.Combine(dir, "out.bgr");
+            File.WriteAllBytes(input, yuv);
+            string cs = colorSpace.Length > 0 ? colorSpace : "unknown";
+            string loc = chromaLocation.Length > 0 ? ":in_chroma_loc=" + chromaLocation : "";
+            VideoReader.Run("ffmpeg",
+                ["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "yuv420p10le", "-s", $"{width}x{height}", "-i", input,
+                    "-vf", $"setparams=colorspace={cs}:range={range},scale={width}:{height}:flags=bicubic{loc},format=bgr24", "-f", "rawvideo", output],
+                default);
+            byte[] expected = File.ReadAllBytes(output), actual = new byte[width * height * 3];
+            int[] all = Enumerable.Range(0, width).ToArray();
+            var converter = ((IYuv420P10Converter)new SwscaleYuv420()).ForVideo(cs, range == "pc", chromaLocation.Length > 0 ? chromaLocation : null, width, height)!;
+            for (int y = 0; y < height; y++)
+                converter.RowToBgr(yuv, width, height, y, all, actual.AsSpan(y * width * 3, width * 3));
+            Assert.Equal(expected, actual);
+
+            // Some columns only, in two calls per row (the pipelines convert only what the resize reads): the same.
+            var some = new byte[width * height * 3];
+            int[] even = all.Where(x => x % 3 != 1).ToArray(), odd = all.Where(x => x % 3 == 1).ToArray();
+            for (int y = height - 1; y >= 0; y--)
+            {
+                converter.RowToBgr(yuv, width, height, y, odd, some.AsSpan(y * width * 3, width * 3));
+                converter.RowToBgr(yuv, width, height, y, even, some.AsSpan(y * width * 3, width * 3));
+            }
+
+            Assert.Equal(expected, some);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // What the 10-bit converter declines, so the default path converts: odd widths (swscale's full chroma
+    // interpolation, C code), frames too small for its filters, chroma locations and matrices it doesn't know.
+    [Fact]
+    public void TenBitDeclinesWhatItDoesNotReproduce()
+    {
+        IYuv420P10Converter converter = new SwscaleYuv420();
+        Assert.NotNull(converter.ForVideo("unknown", false, null, 64, 48));
+        Assert.NotNull(converter.ForVideo("bt709", true, "left", 8, 10));
+        Assert.Null(converter.ForVideo("unknown", false, null, 63, 48));
+        Assert.Null(converter.ForVideo("unknown", false, null, 64, 8)); // a two-tap vertical filter: yuv2packed1/2
+        Assert.Null(converter.ForVideo("unknown", false, null, 6, 48)); // chroma narrower than the filter
+        Assert.Null(converter.ForVideo("unknown", false, "elsewhere", 64, 48));
+        Assert.Null(converter.ForVideo("ycgco", false, null, 64, 48));
+        Assert.Equal(2 * (6 + 2 * 2 * 1), IYuv420P10Converter.FrameSize(3, 2));
+    }
+
     // A turned frame: converted where the pixels sit in the decoded frame, then turned, then cropped and resized.
     [Theory]
     [InlineData(90)]
@@ -143,6 +216,19 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
     [InlineData("420-left", "-pix_fmt yuv420p -chroma_sample_location left", "", "", "Yuv420Sampled")]
     [InlineData("420-topleft", "-pix_fmt yuv420p -chroma_sample_location topleft", "", "", "Yuv420Sampled")]
     [InlineData("422-left", "-pix_fmt yuv422p -chroma_sample_location left", "", "", "Yuv422Sampled")]
+
+    // 10-bit 4:2:0: swscale scales it, interpolating chroma from where the tags say it sits; FastYuv reproduces x86's
+    // scaled path for even widths (odd heights too), turned or not, the default path takes odd widths.
+    [InlineData("420p10", "-pix_fmt yuv420p10le", "", "", "Yuv420P10Sampled")]
+    [InlineData("420p10-left", "-pix_fmt yuv420p10le -chroma_sample_location left", "", "", "Yuv420P10Sampled")]
+    [InlineData("420p10-topleft-bt709", "-pix_fmt yuv420p10le -chroma_sample_location topleft -colorspace bt709", "", "", "Yuv420P10Sampled")]
+    [InlineData("420p10-pc", "-pix_fmt yuv420p10le -color_range pc -chroma_sample_location left", "", "", "Yuv420P10Sampled")]
+    [InlineData("420p10-crop", "-pix_fmt yuv420p10le -chroma_sample_location left", "", "crop", "Yuv420P10Sampled")]
+    [InlineData("420p10-oddheight", "-vf format=yuv444p,crop=320:237:0:0,format=yuv420p10le -chroma_sample_location left", "", "", "Yuv420P10Sampled")]
+    [InlineData("420p10-oddwidth", "-vf format=yuv444p,crop=319:240:0:0,format=yuv420p10le", "", "", "")]
+    [InlineData("420p10-90", "-pix_fmt yuv420p10le -chroma_sample_location left", "-display_rotation 90", "", "Yuv420P10Sampled")]
+    [InlineData("420p10-180", "-pix_fmt yuv420p10le -chroma_sample_location left", "-display_rotation 180", "", "Yuv420P10Sampled")]
+    [InlineData("420p10-270-crop", "-pix_fmt yuv420p10le", "-display_rotation -90", "turned-crop", "Yuv420P10Sampled")]
     public void SameFramesAsTheDefaultPath(string name, string format, string display, string variant, string pipeline)
     {
         string dir = Directory.CreateTempSubdirectory($"shotdetector-fastyuv-{name}-").FullName;
@@ -189,6 +275,7 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
     [Theory]
     [InlineData("-pix_fmt yuv422p", "-display_rotation 90")]
     [InlineData("-pix_fmt yuv420p", "-display_rotation -90")]
+    [InlineData("-pix_fmt yuv420p10le", "-display_rotation 90")]
     public void TurnedYuvSeekGivesTheSameFrames(string format, string display)
     {
         string dir = Directory.CreateTempSubdirectory("shotdetector-fastyuv-seek-").FullName;
@@ -203,7 +290,7 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
             {
                 var all = Hashes(new VideoReader(video, options with { Decoder = decoder, Yuv420Converter = new SwscaleYuv420() }).Frames());
                 var fast = new VideoReader(video, options with { Decoder = decoder, Yuv420Converter = new SwscaleYuv420() });
-                Assert.True(fast.Pipeline is FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled);
+                Assert.True(VideoReader.IsYuv(fast.Pipeline));
                 Assert.Equal(all[start..], Hashes(fast.Frames(start, null)));
                 if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
                     Assert.Equal(Hashes(new VideoReader(video, options with { Decoder = decoder }).Frames(start, null)), Hashes(fast.Frames(start, null)));

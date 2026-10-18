@@ -41,7 +41,7 @@ internal sealed partial class VideoReader
         int size = pipeline switch
         {
             // Frames of a new size come resized already (below), so room for those too.
-            FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled => Math.Max(YuvFrameSize, Width * Height * 3),
+            FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled or FramePipeline.Yuv420P10Sampled => Math.Max(YuvFrameSize, Width * Height * 3),
             FramePipeline.FullFrameResize => CropRegion.Width * CropRegion.Height * 3,
             FramePipeline.SampledBgr => resizer!.SourceRows.Length * CropRegion.Width * 3,
             _ => Width * Height * 3,
@@ -119,14 +119,14 @@ internal sealed partial class VideoReader
                     // reverse): OpenCV scales or converts it inside its one conversion to BGR, which FastYuv's conversion
                     // of the stream's layout can't reproduce. The core path's conversion for those frames instead (exact;
                     // only they are slower).
-                    bool bgr = pipeline is FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled
+                    bool bgr = IsYuv(pipeline)
                         && !(writer.HasStreamSize && decoder.PixelFormat == _pixelFormat);
                     if (bgr)
                         BgrFallbackFrames++;
                     switch (bgr ? FramePipeline.SampledBgr : pipeline)
                     {
-                        case FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled:
-                            writer.WriteYuv(buffer, chroma422: pipeline == FramePipeline.Yuv422Sampled);
+                        case FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled or FramePipeline.Yuv420P10Sampled:
+                            writer.WriteYuv(buffer, chroma422: pipeline == FramePipeline.Yuv422Sampled, bytesPerSample: pipeline == FramePipeline.Yuv420P10Sampled ? 2 : 1);
                             break;
                         case FramePipeline.SampledBgr when bgr:
                             writer.WriteResized(buffer, decoderResizer!, rows!, (CropRegion.X, CropRegion.Y));
@@ -196,7 +196,7 @@ internal sealed partial class VideoReader
                     case FramePipeline.SampledBgr:
                         resizer!.ResizePackedRows(buffer, small);
                         break;
-                    case FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled:
+                    case FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled or FramePipeline.Yuv420P10Sampled:
                         resizer!.ResizeYuv(buffer, small, _yuvForVideo!, _codedSize.W, _codedSize.H, Turn, CropRegion.X, CropRegion.Y);
                         break;
                     case FramePipeline.FullFrameResize:

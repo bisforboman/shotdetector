@@ -34,7 +34,17 @@
         # FastYuv as x86's swscale: 4:2:2 reads its own row's chroma (YUV2RGB_LOOP's vshift), only where
         # swscale takes the unscaled converter (even decoded height), converted before turning (cv::rotate)
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.cs'; Find = 'RowToBgr(yuv, width, height, height, y, y, cols, bgrRow);'; Replace = 'RowToBgr(yuv, width, height, height, y, y >> 1, cols, bgrRow);'; Tests = 'FastYuvTests' }
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '!_sizeChanges && _codedSize.H % 2 == 0'; Replace = '!_sizeChanges'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '!_sizeChanges && (TenBit || _codedSize.H % 2 == 0)'; Replace = '!_sizeChanges'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
+
+        # FastYuv for 10-bit 4:2:0 as x86's swscale scales it: any height, even widths, MMXEXT's vertical scaler (from
+        # vRounder) and output except the last two rows (C, chroma clipped), chroma interpolated from where it sits
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(TenBit || _codedSize.H % 2 == 0)'; Replace = '(_codedSize.H % 2 == 0)'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'bool asm = y < height - 2;'; Replace = 'bool asm = true;'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'int ua = 4, va = 4;'; Replace = 'int ua = 0, va = 0;'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'Math.Clamp(uc >> 19, 0, 255)'; Replace = '((uc >> 19) & 255)'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'SwscaleFilter.LocalPos(1, hChrPos)'; Replace = 'SwscaleFilter.LocalPos(1, -513)'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'if (width % 2 != 0 || width < 2'; Replace = 'if (width < 2'; Tests = 'FastYuvTests.TenBitDeclinesWhatItDoesNotReproduce' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'h.Size <= cw && v.Size > 2'; Replace = 'h.Size <= cw'; Tests = 'FastYuvTests.TenBitDeclinesWhatItDoesNotReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '_codedSize.W, _codedSize.H, Turn, CropRegion.X'; Replace = '_codedSize.W, _codedSize.H, 0, CropRegion.X'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '_codedSize.W, _codedSize.H, Turn, CropRegion.X'; Replace = '_codedSize.W, _codedSize.H, 0, CropRegion.X'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
 

@@ -59,15 +59,16 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, (int Width, int H
     }
 
     /// <summary>
-    /// The frame's yuv420p (or, with <paramref name="chroma422"/>, yuv422p) planes, packed (Y, then U, then V), as
-    /// ffmpeg's rawvideo sends them. Not turned: the YUV pipelines turn after converting (CvResize.ResizeYuv).
+    /// The frame's yuv420p (or, with <paramref name="chroma422"/>, yuv422p; with <paramref name="bytesPerSample"/> 2,
+    /// yuv420p10le) planes, packed (Y, then U, then V), as ffmpeg's rawvideo sends them. Not turned: the YUV pipelines
+    /// turn after converting (CvResize.ResizeYuv).
     /// </summary>
-    public void WriteYuv(byte[] dst, bool chroma422)
+    public void WriteYuv(byte[] dst, bool chroma422, int bytesPerSample = 1)
     {
         int w = _d.Width, h = _d.Height, cw = (w + 1) / 2, ch = chroma422 ? h : (h + 1) / 2, o = 0;
         for (int p = 0; p < 3; p++)
         {
-            int pw = p == 0 ? w : cw, ph = p == 0 ? h : ch;
+            int pw = (p == 0 ? w : cw) * bytesPerSample, ph = p == 0 ? h : ch;
             var plane = _d.GetPlane(p, out int stride);
             for (int y = 0; y < ph; y++, o += pw)
                 plane.Slice(y * stride, pw).CopyTo(dst.AsSpan(o));

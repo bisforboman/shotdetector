@@ -16,11 +16,13 @@ namespace ShotDetector.FastYuv;
 /// pass an instance as <see cref="DetectionOptions.Yuv420Converter"/>.
 /// It converts yuv422p (and yuvj422p) as well (<see cref="IYuv422Converter"/>): swscale takes the same converter for
 /// even-height yuv422p, the same function on x86, reading chroma row y rather than y / 2 (YUV2RGB_LOOP's vshift).
+/// And 10-bit 4:2:0, yuv420p10le (<see cref="IYuv420P10Converter"/>): swscale scales that one (no unscaled converter),
+/// so the port follows x86's scaled path, its MMXEXT vertical scaler and output, for even widths.
 /// </summary>
-public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter
+public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, IYuv420P10Converter
 {
     /// <summary>ff_yuv2rgb_coeffs (crv, cbu, cgu, cgv), indexed by AVColorSpace.</summary>
-    static readonly int[][] Coeffs =
+    internal static readonly int[][] Coeffs =
     [
         [104597, 132201, 25675, 53279], // 0 no sequence_display_extension
         [117489, 138438, 13975, 34925], // 1 BT.709
@@ -36,7 +38,7 @@ public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter
     ];
 
     /// <summary>ffprobe's color_space names → AVColorSpace.</summary>
-    static readonly Dictionary<string, int> ColorSpaces = new()
+    internal static readonly Dictionary<string, int> ColorSpaces = new()
     {
         ["bt709"] = 1,
         ["unknown"] = 2,
@@ -100,7 +102,7 @@ public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter
     IYuv422Converter? IYuv422Converter.ForColor(string colorSpace, bool fullRange) =>
         ColorSpaces.TryGetValue(colorSpace, out int cs) ? new SwscaleYuv420(cs, fullRange) : null;
 
-    static int RoundToInt16(long f) => (short)Math.Clamp((f + (1 << 15)) >> 16, -0x8000, 0x7FFF);
+    internal static int RoundToInt16(long f) => (short)Math.Clamp((f + (1 << 15)) >> 16, -0x8000, 0x7FFF);
 
     static int Sat16(int v) => Math.Clamp(v, short.MinValue, short.MaxValue);
 
@@ -114,6 +116,17 @@ public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter
     // 4:2:2: a chroma row for every row (vshift 0 in YUV2RGB_LOOP); the rest is the 4:2:0 conversion.
     void IYuv422Converter.RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow) =>
         RowToBgr(yuv, width, height, height, y, y, cols, bgrRow);
+
+    /// <inheritdoc/>
+    IYuv420P10Converter? IYuv420P10Converter.ForVideo(string colorSpace, bool fullRange, string? chromaLocation, int width, int height) =>
+        SwscaleYuv420P10.For(colorSpace, fullRange, chromaLocation, width, height);
+
+    SwscaleYuv420P10? _untagged10;
+
+    /// <inheritdoc/>
+    // Untagged 10-bit (BT.601, limited range, centred chroma), set up for the frame's size on first use.
+    void IYuv420P10Converter.RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow) =>
+        (_untagged10 ??= SwscaleYuv420P10.Untagged(width, height)).RowToBgr(yuv, width, height, y, cols, bgrRow);
 
     void RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int chromaHeight, int y, int chromaRow, ReadOnlySpan<int> cols, Span<byte> bgrRow)
     {

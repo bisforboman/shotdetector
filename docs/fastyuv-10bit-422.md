@@ -1,7 +1,10 @@
 # FastYuv for 10-bit and 4:2:2 (ARM = x86)
 
 Status: 4:2:2 done (2026-10-18): FastYuv converts yuv422p and yuvj422p through `IYuv422Converter`, rotated frames
-included, and arch-diff requires ARM to equal x64 on them. 10-bit: Maybe, until a prototype reproduces x86's bytes.
+included, and arch-diff requires ARM to equal x64 on them. 10-bit 4:2:0 (2026-10-18): a port reproduces x86's bytes
+(`IYuv420P10Converter`, "As built (10-bit)" below), and arch-diff requires ARM to equal x64 on it; on x64 it is
+slower than the default path on small video, merged anyway with a speed-up to follow
+(docs/decisions/2026-10-18-fastyuv-10bit-x64.md).
 The owner's answers to the open questions at the end: docs/decisions/2026-10-18-fastyuv-422.md. Backlog: "ARM's
 results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video".
 
@@ -20,6 +23,43 @@ results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video".
   BGR pipeline.
 - Proof: FastYuvTests and InProcessTests against the default path; arch-diff requires ARM with FastYuv to equal x64 on
   the unturned `sintel_422.mp4` and the turned `sintel_rotated_422.mp4`.
+
+## As built (10-bit 4:2:0)
+
+- `IYuv420P10Converter` (ShotDetector), beside the other two; `SwscaleYuv420` implements it. Its `ForVideo` takes the
+  colour tags, the chroma location (ffprobe's name, null as center) and the frame size, since swscale interpolates
+  chroma here, and returns null for what it doesn't reproduce: odd widths (full chroma interpolation, C on x86),
+  frames whose chroma is narrower than the 4-tap filter or whose vertical chroma filter has fewer than 3 taps (swscale's
+  `yuv2packed1`/`yuv2packed2`; heights up to 8), unknown chroma locations and matrices.
+- `SwscaleFilter` (FastYuv) ports initFilter's bicubic case with x86's alignment (horizontal 4, vertical 2, one tap
+  unaligned); `SwscaleYuv420P10` per row: `hScale16To15` of the chroma (luma is `Y << 5`), then for rows above the
+  last two the MMXEXT vertical scaler and output (from `vRounder` 4, `pmulhw` per tap added with 16-bit wrapping
+  `paddw`, `YSCALEYUV2RGBX`, `packuswb`) and for the last two `yuv2rgb_X_c_template` with the 24-bit tables
+  (chroma clipped to 0..255). The "large differences" above came from that: the asm doesn't clip chroma that the
+  bicubic filter makes overshoot, C's tables do; the model reproduces both, so nothing was left unexplained.
+- Plumbing as 4:2:2: `FramePipeline.Yuv420P10Sampled`, `-pix_fmt yuv420p10le` through the executable, 16-bit planes
+  from `FrameWriter.WriteYuv` in-process; any height (the even-height rule is the 8-bit unscaled converter's); turned
+  frames are converted before turning, so they take it too. Both FastYuv paths take the stream's `chroma_location`,
+  as the executable's `in_chroma_loc` does (FrameDecoder doesn't expose a frame's own; a frame tagged otherwise than
+  its stream would differ in-process, as the default paths would differ from each other).
+- Proof on x64 (FFmpeg 8.1.3 executable and libraries, an AVX-512 Xeon): the prototype and the converter give
+  ffmpeg's bytes, 0 differing, for noise and 0/1023 extremes at widths of every even residue mod 8, odd heights,
+  chroma left, center, topleft, top, bottomleft and unspecified, every supported matrix and both ranges, and on all
+  frames of 10-bit h264 clips at 854x480 and 1920x1080 (against `-cpuflags -mmxext`, i.e. C, 3188 of 6144 bytes
+  differ on a 64x32 noise frame, so the oracle is the MMXEXT path). FastYuvTests: generated frames against the
+  executable; whole clips (left, topleft, BT.709, full range, cropped, odd height, turned 90/180/270, a seek) equal to
+  the default path's frames through both decoders. The CLI's CSV and stats are identical with and without FastYuv on
+  10-bit sintel clips (plain and turned), a 1080p clip and ten.mp4, both decoders, adaptive and content.
+- ARM: in #412's CI, arch-diff's table had ARM with FastYuv equal to x64's default on `sintel_10bit.mp4` and the
+  turned `sintel_rotated_10bit.mp4`, 20/20 outputs each (in-process 10/10, executable 10/10), where ARM's own
+  conversion differs on every frame (bgr24 1253/1253 and 480/480); arch-summary.py then made both required.
+- Speed on x64 (4 shared vCPUs; not the owner's Ryzen): the 854x480 sintel clip took about 7.5 s instead of 3.1 s
+  through the executable and 9.3 s instead of 2.6 s in-process; 1080p about the same either way. Each chroma sample
+  the resize reads is filtered horizontally again for every output row that reads it (about 32 multiply-adds per pixel
+  pair, scalar); a frame-scoped conversion (filter each needed chroma row once) would need a batch method on the
+  interface (additive: a new interface beside `IYuv420P10Converter`) and CvResize's YUV path reworked. The owner chose
+  to merge as is, a converter set being used as set, and to make it faster later
+  (docs/decisions/2026-10-18-fastyuv-10bit-x64.md; the backlog's Next).
 
 The sections below are the scoping written before 4:2:2 was built. Where they describe the code (4:2:2 still
 differing, rotation turning the planes first, `WriteYuv420`, the only 4:2:2 sample being turned), the list above
