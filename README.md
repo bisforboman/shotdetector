@@ -289,9 +289,9 @@ decoding of a file: streams, URLs, a time range, frame skip and MPEG-PS read seq
 can't reproduce (a seek that lands late, dropped frames, a size change). `DetectedVideo.Chunks` says which ran. The
 shots then all come at the end, and each chunk has its own decoder ([docs/parallel-detection.md](docs/parallel-detection.md)).
 
-The FastYuv package (LGPL) is an alternative for the executable path: ffmpeg sends raw yuv420p and a bit-exact
-port of swscale's converter converts only the pixels the resize reads. Files in other pixel formats (10-bit,
-4:2:2/4:4:4, full-range MJPEG) or with an odd height convert whole frames, still with identical results.
+The FastYuv package (LGPL) is an alternative for the executable path: ffmpeg sends raw yuv420p (or yuv422p) and a
+bit-exact port of swscale's converter converts only the pixels the resize reads. Files in other pixel formats (10-bit,
+4:4:4) or with an odd height convert whole frames, still with identical results.
 
 ## Where this differs from PySceneDetect
 
@@ -315,9 +315,10 @@ port of swscale's converter converts only the pixels the resize reads. Files in 
   conversion of the decoded frames to BGR rounds differently on ARM (its x86 and ARM assembly differ), so by default
   per-frame stats differ slightly from x86's and now and then a cut moves. For x86's results on ARM, add
   ShotDetector.FastYuv (`Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420()`), a port of the x86
-  conversion: CI checks that ARM then gives x64's results exactly on 8-bit 4:2:0 video (nearly all video), through
-  both decoders (MPEG-1/2 and MJPEG included: they decode with FFmpeg's C IDCT, which x86's default matches and
-  ARM's doesn't). 10-bit and 4:2:2 still differ on ARM (other conversion paths). The `shotdetect` binaries don't include FastYuv (LGPL), so on ARM they give the default results
+  conversion: CI checks that ARM then gives x64's results exactly on 8-bit 4:2:0 and 4:2:2 video (nearly all video),
+  through both decoders (MPEG-1/2 and MJPEG included: they decode with FFmpeg's C IDCT, which x86's default matches and
+  ARM's doesn't). 10-bit still differs on ARM (another conversion path,
+  [docs/fastyuv-10bit-422.md](docs/fastyuv-10bit-422.md)). The `shotdetect` binaries don't include FastYuv (LGPL), so on ARM they give the default results
   ([docs/decisions/2026-10-17-arm-results.md](docs/decisions/2026-10-17-arm-results.md)).
   scenedetect itself differs on ARM, because opencv-python's ARM wheels replace parts of OpenCV with Arm's
   KleidiCV and Carotene libraries: `cv2.resize` for downscales under 3x (scenedetect's usual ones) and BGR to HSV

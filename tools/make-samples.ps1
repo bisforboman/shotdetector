@@ -54,6 +54,8 @@ try {
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -c:v libx264 -pix_fmt yuv422p -crf 18 rot_422.mp4
     ffmpeg -v error -y -display_rotation -90 -i rot_422.mp4 -c copy sintel_rotated_422.mp4
     Remove-Item rot_10bit.mp4, rot_422.mp4
+    # 4:2:2 unturned: FastYuv converts it as x86's swscale does, so ARM with FastYuv must equal x64 on it (arch-diff).
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -c:v libx264 -pix_fmt yuv422p -crf 18 sintel_422.mp4
 
     # MPEG-2 in a program stream: most packets carry no pts (timestamps come from a decoding pass).
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mpeg2video -q:v 3 sintel_mpeg2.mpg
@@ -69,6 +71,10 @@ try {
     # encoder's signature, so both. Informational until ARM's results on them are known (docs/backlog.md).
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mpeg4 -q:v 3 informational/sintel_mpeg4.avi
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libxvid -q:v 3 informational/sintel_xvid.avi
+    # An odd width (853x480; VP9, as libx264 refuses odd widths in subsampled formats): x86's swscale converts it as even
+    # widths. Reported on ARM until its first table is read (docs/decisions/2026-10-18-fastyuv-422.md).
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -vf scale=853:480 -c:v libvpx-vp9 -crf 32 -b:v 0 -row-mt 1 `
+      -cpu-used 4 informational/sintel_oddwidth.mkv
 
     # Interlaced broadcast video (issue #42): 10 s of 1080i25, top field first, made from the 1080p trailer
     # (50p woven into fields). XDCAM HD (MPEG-2 4:2:2, 50 Mbit/s, in MXF) is compared exactly (samples/broadcast/);

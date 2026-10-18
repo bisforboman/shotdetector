@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Port of FFmpeg libswscale's yuv420p -> BGR24 conversion (libswscale/yuv2rgb.c,
-// libswscale/x86/yuv_2_rgb.asm). Copyright (C) 2001-2007 Michael Niedermayer,
+// Port of FFmpeg libswscale's yuv420p and yuv422p -> BGR24 conversion (libswscale/yuv2rgb.c,
+// libswscale/x86/yuv2rgb.c, libswscale/x86/yuv_2_rgb.asm). Copyright (C) 2001-2007 Michael Niedermayer,
 // (C) 2009-2010 Konstantin Shishkov. Licensed under the GNU Lesser General Public License,
 // version 2.1 or (at your option) any later version; see COPYING.LGPL.
 
@@ -14,8 +14,10 @@ namespace ShotDetector.FastYuv;
 /// (Y, U, V) and every supported matrix and range.
 /// Lets ffmpeg skip colour conversion and lets ShotDetector convert only the pixels cv2.resize reads:
 /// pass an instance as <see cref="DetectionOptions.Yuv420Converter"/>.
+/// It converts yuv422p (and yuvj422p) as well (<see cref="IYuv422Converter"/>): swscale takes the same converter for
+/// even-height yuv422p, the same function on x86, reading chroma row y rather than y / 2 (YUV2RGB_LOOP's vshift).
 /// </summary>
-public sealed class SwscaleYuv420 : IYuv420Converter
+public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter
 {
     /// <summary>ff_yuv2rgb_coeffs (crv, cbu, cgu, cgv), indexed by AVColorSpace.</summary>
     static readonly int[][] Coeffs =
@@ -94,6 +96,10 @@ public sealed class SwscaleYuv420 : IYuv420Converter
     public IYuv420Converter? ForColor(string colorSpace, bool fullRange) =>
         ColorSpaces.TryGetValue(colorSpace, out int cs) ? new SwscaleYuv420(cs, fullRange) : null;
 
+    /// <inheritdoc/>
+    IYuv422Converter? IYuv422Converter.ForColor(string colorSpace, bool fullRange) =>
+        ColorSpaces.TryGetValue(colorSpace, out int cs) ? new SwscaleYuv420(cs, fullRange) : null;
+
     static int RoundToInt16(long f) => (short)Math.Clamp((f + (1 << 15)) >> 16, -0x8000, 0x7FFF);
 
     static int Sat16(int v) => Math.Clamp(v, short.MinValue, short.MaxValue);
@@ -101,12 +107,20 @@ public sealed class SwscaleYuv420 : IYuv420Converter
     static int MulHi(int a, int b) => (short)a * (short)b >> 16; // pmulhw
 
     /// <inheritdoc/>
-    public void RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow)
+    public void RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow) =>
+        RowToBgr(yuv, width, height, (height + 1) / 2, y, y >> 1, cols, bgrRow);
+
+    /// <inheritdoc/>
+    // 4:2:2: a chroma row for every row (vshift 0 in YUV2RGB_LOOP); the rest is the 4:2:0 conversion.
+    void IYuv422Converter.RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow) =>
+        RowToBgr(yuv, width, height, height, y, y, cols, bgrRow);
+
+    void RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int chromaHeight, int y, int chromaRow, ReadOnlySpan<int> cols, Span<byte> bgrRow)
     {
-        int chromaWidth = (width + 1) / 2, chromaSize = chromaWidth * ((height + 1) / 2);
+        int chromaWidth = (width + 1) / 2, chromaSize = chromaWidth * chromaHeight;
         var luma = yuv.Slice(y * width, width);
-        var u = yuv.Slice(width * height + (y >> 1) * chromaWidth, chromaWidth);
-        var v = yuv.Slice(width * height + chromaSize + (y >> 1) * chromaWidth, chromaWidth);
+        var u = yuv.Slice(width * height + chromaRow * chromaWidth, chromaWidth);
+        var v = yuv.Slice(width * height + chromaSize + chromaRow * chromaWidth, chromaWidth);
 
         // The asm saturates to 16 bits after each add, but every term here is within ±300, so
         // saturation never triggers and plain adds are exact; the final clamp to 0..255 is a lookup.

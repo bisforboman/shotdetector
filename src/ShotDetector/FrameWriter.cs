@@ -62,7 +62,7 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : I
                     byte* d = dst + (long)y * ow * 3;
                     for (int x = 0; x < ow; x++, d += 3)
                     {
-                        var (sx, sy) = Source(x, y, w, h);
+                        var (sx, sy) = CvResize.TurnedSource(_turn, x, y, w, h);
                         byte* p = src + (long)sy * s + sx * 3;
                         (d[0], d[1], d[2]) = (p[0], p[1], p[2]);
                     }
@@ -75,45 +75,20 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, int turn = 0) : I
     }
 
     /// <summary>
-    /// The frame's yuv420p planes, packed (Y, then U, then V), as -pix_fmt yuv420p rawvideo sends them; turned, each
-    /// plane as ffmpeg's transpose/hflip,vflip turns it.
+    /// The frame's yuv420p (or, with <paramref name="chroma422"/>, yuv422p) planes, packed (Y, then U, then V), as
+    /// ffmpeg's rawvideo sends them. Not turned: the YUV pipelines turn after converting (CvResize.ResizeYuv).
     /// </summary>
-    public void WriteYuv420(byte[] dst)
+    public void WriteYuv(byte[] dst, bool chroma422)
     {
-        int w = _d.Width, h = _d.Height, cw = (w + 1) / 2, ch = (h + 1) / 2, o = 0;
+        int w = _d.Width, h = _d.Height, cw = (w + 1) / 2, ch = chroma422 ? h : (h + 1) / 2, o = 0;
         for (int p = 0; p < 3; p++)
         {
             int pw = p == 0 ? w : cw, ph = p == 0 ? h : ch;
             var plane = _d.GetPlane(p, out int stride);
-            if (_turn == 0)
-            {
-                for (int y = 0; y < ph; y++, o += pw)
-                    plane.Slice(y * stride, pw).CopyTo(dst.AsSpan(o));
-                continue;
-            }
-
-            int ow = _turn == 180 ? pw : ph, oh = _turn == 180 ? ph : pw;
-            for (int y = 0; y < oh; y++)
-            {
-                for (int x = 0; x < ow; x++)
-                {
-                    var (sx, sy) = Source(x, y, pw, ph);
-                    dst[o++] = plane[sy * stride + sx];
-                }
-            }
+            for (int y = 0; y < ph; y++, o += pw)
+                plane.Slice(y * stride, pw).CopyTo(dst.AsSpan(o));
         }
     }
-
-    /// <summary>
-    /// The source pixel of output (x, y) turned by _turn, as ffmpeg's filters do: transpose=clock (output row y is source
-    /// column y, read bottom up), transpose=cclock (source column w-1-y, top down), hflip,vflip (the opposite pixel).
-    /// </summary>
-    (int X, int Y) Source(int x, int y, int w, int h) => _turn switch
-    {
-        90 => (y, h - 1 - x),
-        270 => (w - 1 - y, x),
-        _ => (w - 1 - x, h - 1 - y),
-    };
 
     /// <summary>
     /// The converted frame resized by <paramref name="resizer"/> (its source the crop at <paramref name="crop"/>), read
