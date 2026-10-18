@@ -1,7 +1,8 @@
 """Time scenedetect and shotdetect on the same videos: wall time, CPU time and peak memory of the whole process tree.
 
 shotdetect runs in its default mode (in-process decoding when FFmpeg's libraries are found, e.g. bundled from
-native/) and with --decoder process (the ffmpeg executable). CPU time is the user + system time of the finished
+native/), with --parallel (chunks on several cores, docs/parallel-detection.md) and with --decoder process (the ffmpeg
+executable). CPU time is the user + system time of the finished
 child processes (Unix: getrusage(RUSAGE_CHILDREN), which counts ffmpeg too once shotdetect has waited for it);
 memory is the peak RSS of the process tree, polled with psutil (`pip install psutil`). With --stats both tools also
 write per-frame metrics (scenedetect -s, shotdetect --stats; content computes edges for every frame then), and only
@@ -11,6 +12,7 @@ Usage: python tools/bench.py <video>... [--detector adaptive|content|threshold|h
                              [--threads N] [--fast-yuv] [--stats] [--report bench.md]
 Builds first: dotnet build src/ShotDetector.Cli -c Release (and compare.py's --fast-yuv build for --fast-yuv)."""
 import argparse
+import re
 import subprocess
 import sys
 import tempfile
@@ -92,6 +94,7 @@ def main():
         (f"scenedetect 0.7.2{suffix}",
          [sys.executable, "-m", "scenedetect", "-q", "-i", "{v}", *sd_stats, sd_cmd, "list-scenes", "-n"]),
         (f"shotdetect{suffix}", [exe, "-i", "{v}", "-d", a.detector, *sh_stats, *threads]),
+        (f"shotdetect --parallel{suffix}", [exe, "-i", "{v}", "-d", a.detector, "--parallel", *sh_stats, *threads]),
     ]
     if not a.stats:
         tools.append(("shotdetect --decoder process", [exe, "-i", "{v}", "-d", a.detector, "--decoder", "process", *threads]))
@@ -108,6 +111,8 @@ def main():
             peak = max(r[2] for r in results)
             if name.startswith("shotdetect") and "decoded in-process" in err:
                 name += " (in-process)"
+            if m := re.search(r" in (\d+) chunks", err):
+                name += f", {m.group(1)} chunks"
             base = base or wall
             cpu_s = f"{cpu:.1f} s" if resource else "-"
             table.append(f"| {Path(video).name} | {n} | {name} | {wall:.1f} s | {n / wall:.0f} | {cpu_s} | {peak:.0f} | "
