@@ -111,9 +111,8 @@ public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter
         RowToBgr(yuv, width, height, (height + 1) / 2, y, y >> 1, cols, bgrRow);
 
     /// <inheritdoc/>
+    // 4:2:2: a chroma row for every row (vshift 0 in YUV2RGB_LOOP); the rest is the 4:2:0 conversion.
     void IYuv422Converter.RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow) =>
-
-        // 4:2:2: a chroma row for every row (vshift 0 in YUV2RGB_LOOP); the rest is the 4:2:0 conversion.
         RowToBgr(yuv, width, height, height, y, y, cols, bgrRow);
 
     void RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int chromaHeight, int y, int chromaRow, ReadOnlySpan<int> cols, Span<byte> bgrRow)
