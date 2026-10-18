@@ -7,6 +7,23 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.7.0 – 2026-10-18
+
+Decoder options (CodecOptions), the codec's extradata and first packet from MediaProbe, and BgrConverter.Size.
+
+### New
+
+- `FrameDecoderOptions.CodecOptions`: FFmpeg decoder options, as ffmpeg's before `-i`. `idct` = `simple` decodes
+  MPEG-1/2 and MJPEG with the C IDCT, so ARM gives x86's frames (ARM's default IDCT rounds differently). A name the
+  decoder doesn't have is an `ArgumentException`, as are `max_pixels` and `threads` (set through `MaxPixels` and
+  `Threads`, which they would otherwise override).
+- `VideoStreamInfo.ExtraData` (the codec's extradata, as ffprobe's `-show_data` prints it) and
+  `ProbeOptions.FirstVideoPacket` / `MediaInfo.FirstVideoPacket` (the first video packet's bytes, reading up to that
+  packet only): what a decoder sees first, e.g. an MPEG-4 Part 2 stream's encoder signature.
+- `BgrConverter.Size`: convert every frame to a given size (the stream's, from its headers), whichever frame comes
+  first: after a seek into a part of another size, frames still come at the stream's size, as OpenCV's buffer and
+  ffmpeg's `scale=` give them.
+
 ## 2.6.1 – 2026-10-17
 
 A patch release: the Linux native packages' library paths without the double slash.

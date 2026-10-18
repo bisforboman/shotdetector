@@ -6,6 +6,49 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.7.0 – 2026-10-18
+
+Parallel detection by default on 8+ CPUs, FastYuv for 4:2:2, ARM decodes MPEG-1/2, MJPEG and MPEG-4 as x86, and library warnings.
+
+### New
+
+- **Parallel detection is now the default** for `Detect`/`DetectAsync` and `shotdetect` on machines with 8 CPUs or
+  more. A local file of two minutes or more, decoded in-process (no time range, frame skip or MPEG-PS), with frames up
+  to 3840x2160, is scored in up to 4 chunks at once (half the CPUs), with exactly the sequential result. More cores are
+  busy at once, for about the same total CPU time. Memory grows by one decoder and its frame buffers per chunk. If a
+  chunk can't reproduce the file, it is read sequentially instead, and progress starts over. Services that run several
+  detections at once can set `Mode = DetectionMode.Sequential` (CLI `--sequential`). `DetectStreamAsync` stays
+  sequential.
+- `DetectionOptions.Mode` (`DetectionMode`): `Auto`, the default, as above; `Sequential` never chunks; `Parallel`
+  chunks from 4 CPUs on and at any frame size, `DetectStreamAsync` too (its shots then all come at the end). Chunks
+  never outnumber the decoder threads you set (`DecodeThreads`, `--threads`).
+- `shotdetect --sequential` scores the file in one pass; `--parallel` is `Mode = DetectionMode.Parallel`.
+- `DetectionOptions.Parallel` is obsolete (use `Mode = DetectionMode.Parallel`). It still works, but it raises warning
+  CS0618, which breaks builds that treat warnings as errors.
+- ShotDetector.FastYuv converts 4:2:2 (yuv422p, yuvj422p) too, through the new `IYuv422Converter` interface, which
+  `SwscaleYuv420` implements: 8-bit 4:2:2 video takes the fast path, and on ARM gives x86's results as 4:2:0 does.
+- `DetectionResult.Warnings`: what the caller should know about how the video was read; `shotdetect` prints them on
+  stderr. So far one: an https HLS playlist decoded by the ffmpeg executable, whose segment downloads don't check
+  certificates (in-process decoding checks them).
+
+### Fixed
+
+- ARM: MPEG-1/2 and MJPEG video decode as on x86 (FFmpeg's C IDCT; ARM's own rounds differently), through the
+  ffmpeg executable too, so with ShotDetector.FastYuv their results equal x86's. Unchanged on x86.
+- ARM: MPEG-4 Part 2 video not from Xvid (FFmpeg's encoder, DivX, ...) now decodes as on x86 (FFmpeg's C IDCT), through
+  both decoders. Xvid video already did: FFmpeg decodes it with the Xvid IDCT on every platform, and which streams are
+  Xvid follows FFmpeg's own rule (the encoder's signature, else the FourCC). Unchanged on x86.
+- FastYuv on rotated video converts the frames before turning them, as OpenCV does: turned 4:2:2 takes the fast path,
+  and turned 4:2:0 with an odd width or height gives the default path's results (turned 4:2:0 whose width is odd, an
+  odd height once turned, used to differ).
+- FastYuv: video whose pixel format changes part-way (4:2:0 frames in a 4:2:2 stream, or the reverse) gives the default
+  path's results, through both decoders: those frames are converted from their own format, as OpenCV does. Before,
+  they were converted as the stream's format, so their colours were wrong. (A stream read through the ffmpeg
+  executable still converts them as the stream's format: it can't be read again.)
+- In-process decoding from a start time inside a part of the video at another size (a resolution change) failed with
+  "Specified argument was out of the range of valid values": the frames are now scaled to the stream's size, as the
+  ffmpeg executable path does.
+
 ## 3.6.0 – 2026-10-17
 
 Faster edge detection on ARM.
