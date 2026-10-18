@@ -515,6 +515,14 @@ public sealed record DetectionResult
 
     /// <summary>The reference tone found with <see cref="DetectionOptions.TrimReferenceTone"/>, else null.</summary>
     public IReadOnlyList<FrameReader.ToneSegment>? ReferenceTone { get; init; }
+
+    /// <summary>
+    /// What the caller should know about how the video was read, one sentence each; empty when nothing (never null).
+    /// So far one: an https HLS playlist decoded by the ffmpeg executable, which fetches its segments without checking
+    /// their certificates (in-process decoding checks them). <see cref="ShotDetection.DetectStreamAsync(string, DetectionOptions?, CancellationToken)"/>
+    /// has no result, so streaming callers don't get these.
+    /// </summary>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
 }
 
 /// <summary>
@@ -1054,6 +1062,7 @@ public static class ShotDetection
             Stats = stats,
             Cuts = Unique(cuts),
             ReferenceTone = tone,
+            Warnings = VideoReader.ExecutableHlsWarning(videoPath, video.Container, video.DecodesInProcess) is { } warning ? [warning] : [],
         };
     }
 

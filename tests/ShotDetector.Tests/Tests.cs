@@ -768,6 +768,25 @@ public class UrlOptionTests
     public void MpegAndMjpegDecodeWithTheCIdct(string codec, string expected) =>
         Assert.Equal(expected, string.Join(' ', VideoReader.IdctOptions(codec)));
 
+    // DetectionResult.Warnings: an https HLS playlist through the executable, whose segments go unchecked, and nothing else.
+    [Theory]
+    [InlineData("https://example.com/play.m3u8", "hls", false, true)]
+    [InlineData("HTTPS://example.com/play.m3u8", "hls", false, true)]
+    [InlineData("https://example.com/play.m3u8", "hls", true, false)]
+    [InlineData("http://example.com/play.m3u8", "hls", false, false)]
+    [InlineData("https://example.com/a.mp4", "mov,mp4,m4a,3gp,3g2,mj2", false, false)]
+    [InlineData("/videos/play.m3u8", "hls", false, false)]
+    [InlineData(@"C:\videos\play.m3u8", "hls", false, false)]
+    [InlineData(null, "hls", false, false)]
+    public void AnHttpsPlaylistThroughTheExecutableWarns(string? path, string container, bool inProcess, bool warns)
+    {
+        var warning = VideoReader.ExecutableHlsWarning(path, container, inProcess);
+        if (warns)
+            Assert.StartsWith("decoded by ffmpeg, which fetched the playlist's segments without checking", warning);
+        else
+            Assert.Null(warning);
+    }
+
     // ffmpeg and ffprobe are started by full path (next to the app, else from PATH), never by a bare name, which would
     // also find one in the current folder.
     [Fact]
