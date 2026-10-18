@@ -422,7 +422,9 @@ public sealed record DetectionOptions
     /// <summary>
     /// Enables the YUV fast path for yuv420p, and for yuv422p when the converter is also an
     /// <see cref="IYuv422Converter"/>: much faster on large video through the ffmpeg executable, same results, and x86's
-    /// results on ARM. Use SwscaleYuv420 from the ShotDetector.FastYuv package (LGPL).
+    /// results on ARM. Also for yuv420p10le when it is an <see cref="IYuv420P10Converter"/>: x86's results on ARM, the
+    /// same results on x64 (where it is slower than the default path on small video). Use SwscaleYuv420 from the
+    /// ShotDetector.FastYuv package (LGPL), which implements all three.
     /// </summary>
     public IYuv420Converter? Yuv420Converter { get; init; }
 
