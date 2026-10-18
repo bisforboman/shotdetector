@@ -66,3 +66,6 @@ dotnet_diagnostic.BRO1142.severity = none
 dotnet_diagnostic.BRO1114.severity = none
 # Multi-line bodies without braces are kept (in the SIMD code, 'fixed (a) fixed (b) { }' pins several arrays)
 dotnet_diagnostic.BRO1515.severity = none
+# Usings: System first, one sorted group, as StyleBro's preset had it until 0.6.0 (which stopped setting these)
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
