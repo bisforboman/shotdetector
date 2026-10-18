@@ -103,7 +103,7 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
             }
         }
 
-        foreach (var (dw, dh) in new[] { (7, 9), (cw * 2, ch + 5) })
+        foreach (var (dw, dh) in new[] { (7, 9), (cw * 2, ch + 5), (400, 380) }) // the last in row chunks on several cores
         {
             byte[] expected = new byte[dw * dh * 3], actual = new byte[dw * dh * 3];
             new CvResize(cw, ch, dw, dh).Resize(cropped, expected);
@@ -137,6 +137,12 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
     [InlineData("420-90-oddwidth", "-vf format=yuv444p,crop=319:240:0:0,format=yuv420p", "-display_rotation 90", "", "Yuv420Sampled")]
     [InlineData("420-180-oddwidth", "-vf format=yuv444p,crop=319:240:0:0,format=yuv420p", "-display_rotation 180", "", "Yuv420Sampled")]
     [InlineData("420-90-oddheight", "-vf format=yuv444p,crop=320:237:0:0,format=yuv420p", "-display_rotation 90", "", "")]
+
+    // Chroma siting tags (Matroska keeps them): the default path tells swscale where the samples sit (in_chroma_loc,
+    // BgrConverter's position), which the unscaled 8-bit converter FastYuv ports doesn't read.
+    [InlineData("420-left", "-pix_fmt yuv420p -chroma_sample_location left", "", "", "Yuv420Sampled")]
+    [InlineData("420-topleft", "-pix_fmt yuv420p -chroma_sample_location topleft", "", "", "Yuv420Sampled")]
+    [InlineData("422-left", "-pix_fmt yuv422p -chroma_sample_location left", "", "", "Yuv422Sampled")]
     public void SameFramesAsTheDefaultPath(string name, string format, string display, string variant, string pipeline)
     {
         string dir = Directory.CreateTempSubdirectory($"shotdetector-fastyuv-{name}-").FullName;
@@ -171,5 +177,38 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
         }
 
         static List<string> Hashes(VideoReader reader) => [.. reader.Frames().Select(f => Convert.ToHexString(SHA256.HashData(f)))];
+    }
+
+    // A turned clip read from a start frame (the exact seek) gives the frames a read from the start gives there, with
+    // FastYuv as without, through both decoders.
+    [Theory]
+    [InlineData("-pix_fmt yuv422p", "-display_rotation 90")]
+    [InlineData("-pix_fmt yuv420p", "-display_rotation -90")]
+    public void TurnedYuvSeekGivesTheSameFrames(string format, string display)
+    {
+        string dir = Directory.CreateTempSubdirectory("shotdetector-fastyuv-seek-").FullName;
+        try
+        {
+            string plain = Path.Combine(dir, "plain.mkv"), video = Path.Combine(dir, "video.mov");
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-frames:v", "80", .. format.Split(' '), "-c:v", "ffv1", "-g", "10", plain], default);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", .. display.Split(' '), "-i", plain, "-c", "copy", video], default);
+            var options = new DetectionOptions { FfmpegDirectory = Libs };
+            const int start = 47;
+            foreach (var decoder in Libs is null ? [VideoDecoder.FfmpegProcess] : new[] { VideoDecoder.FfmpegProcess, VideoDecoder.InProcess })
+            {
+                var all = Hashes(new VideoReader(video, options with { Decoder = decoder, Yuv420Converter = new SwscaleYuv420() }).Frames());
+                var fast = new VideoReader(video, options with { Decoder = decoder, Yuv420Converter = new SwscaleYuv420() });
+                Assert.True(fast.Pipeline is FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled);
+                Assert.Equal(all[start..], Hashes(fast.Frames(start, null)));
+                if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
+                    Assert.Equal(Hashes(new VideoReader(video, options with { Decoder = decoder }).Frames(start, null)), Hashes(fast.Frames(start, null)));
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+
+        static List<string> Hashes(IEnumerable<byte[]> frames) => [.. frames.Select(f => Convert.ToHexString(SHA256.HashData(f)))];
     }
 }
