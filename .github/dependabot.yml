@@ -5,6 +5,15 @@ updates:
     directories: ["/", "/.github/actions/*"]
     schedule:
       interval: weekly
+    # One PR a week instead of one per action (each is a full CI run): minor and patch updates together, which
+    # dependabot-auto-merge.yml merges once green, and majors together, which wait for a look.
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
+      actions-major:
+        patterns: ["*"]
+        update-types: [major]
   - package-ecosystem: nuget
     directory: /
     schedule:
