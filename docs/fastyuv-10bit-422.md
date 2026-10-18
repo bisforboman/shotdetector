@@ -32,7 +32,7 @@ the frame) and what OpenCV's `sws_scale_frame` does. Each was hashed (framemd5) 
 
 Removing SSE2, SSSE3, SSE4, AVX, AVX2 and AVX-512 together changes nothing on 10-bit, so the SIMD horizontal scalers
 (`ff_hscale10to15_*`) are bit-exact with C there; only the MMXEXT inline assembly matters. FFmpeg 9.0.2 gave the same
-hashes in every case, with the same paths.
+hashes and paths as 8.1.3 for every row of the table and for center-sited 10-bit.
 
 **4:2:2 (even height).** libswscale/swscale_unscaled.c (`ff_get_unscaled_swscale`) takes the special yuv→RGB converter for
 `YUV420P`, `YUV422P` and `YUVA420P` when the height is even and `SWS_ACCURATE_RND` is off; `yuvj422p` is mapped to
@@ -62,7 +62,7 @@ default bytes, 0 pixels off. `-cpuflags -ssse3` (the C table converter, yuv2rgb.
    `ff_yuv2rgb_c_init_tables` (libswscale/yuv2rgb.c). **Verified**: against `-cpuflags -mmxext`, every row differs
    except rows 478 and 479.
 
-Default against `-mmxext` (C) on one 10-bit frame: 44% of bytes differ, mostly by 1-3, about 0.03% by more than 4
+Default against `-mmxext` (C) on one 10-bit frame: about 42% of bytes differ, mostly by 1-3, about 0.03% by more than 4
 and a few by up to 25-30. The small differences fit per-tap truncation; **the large ones are not explained yet**
 (chroma overshoot at strong edges, clipped by C's tables and not by the asm, is a guess). So the model above is read
 from the source and not yet reproduced by a prototype, unlike 4:2:2's.
@@ -110,8 +110,9 @@ variants (ShotDetector never sets them).
 
 ## Proof
 
-- **Unit tests.** 4:2:2: FastYuv's exhaustive check (all 2^24 Y/U/V for every matrix and range) carries over, since
-  each pixel is the same map of its own Y, U, V. 10-bit can't be exhaustive (each pixel depends on neighbours):
+- **Unit tests.** 4:2:2: the README's verification of FastYuv (all 2^24 Y/U/V for every matrix and range, against
+  ffmpeg; done by hand, the tests keep spot values) carries over, since each pixel is the same map of its own Y, U, V;
+  a 4:2:2 test would add spot values with different chroma on neighbouring rows. 10-bit can't be exhaustive (each pixel depends on neighbours):
   generated noise and edge frames against BgrConverter (in-process, with SHOTDETECTOR_FFMPEG_LIBS) at widths of
   every residue mod 8, heights that exercise the last-two-rows switch, chroma locations left, center and topleft,
   every supported matrix, both ranges; on x64 only, where x64 is the reference. Each new quirk gets its mutation line.
@@ -121,6 +122,14 @@ variants (ShotDetector never sets them).
   4:2:2 row needs an unturned 4:2:2 sample (a new sample changes the samples cache key, so CI regenerates them once).
 - **Parity.** compare.py's FastYuv runs (`--fast-yuv`, core and FastYuv paths on Linux x64) already cover these clips
   against scenedetect; they'd then go through the new converter instead of the BGR path.
+
+## Effort
+
+- 4:2:2, even height: small. 100-150 lines with plumbing and tests; the arithmetic is verified, the work is the API
+  and the pipelines.
+- 10-bit 4:2:0, even width: 350-500 lines, three to four times FastYuv's converter. Prototype first (a C# model
+  checked against BgrConverter on a few frames): the large differences above aren't explained yet.
+- Odd-height 4:2:2 comes with the 10-bit work (same output code, 8-bit input); odd widths need nothing on x86.
 
 ## Performance
 
