@@ -661,7 +661,7 @@ jobs:
       - name: Compare interlaced 10-bit video with scenedetect (informational)
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.2' && matrix.part == 'more')
         run: |
-          python tools/compare.py samples/informational/*.mov samples/informational/*.mxf samples/informational/*.avi --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
+          python tools/compare.py samples/informational/*.mov samples/informational/*.mxf samples/informational/*.avi samples/informational/*.mkv --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### Interlaced 10-bit, AVC-Intra and ProRes (informational), ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
 
   # x64 and ARM give the same results end to end: every detector's scene list and per-frame stats on the main
@@ -669,7 +669,8 @@ jobs:
   # on each (tools/arch-outputs.sh) and diffed. The per-pixel tests run on ARM too, but only a whole run covers
   # decoding through each platform's own native build. scenedetect on ARM isn't the reference (its OpenCV wheels use
   # KleidiCV), so x64's output is. FFmpeg's yuv420p to BGR conversion rounds differently on ARM, so arch-diff requires
-  # ARM with FastYuv to equal x64 on 8-bit 4:2:0 and reports the rest (docs/decisions/2026-10-17-arm-results.md).
+  # ARM with FastYuv to equal x64 on 8-bit 4:2:0 and 4:2:2 and reports the rest (docs/decisions/2026-10-17-arm-results.md,
+  # 2026-10-18-fastyuv-422.md).
   arch:
     needs: [changes, native, native-arm, samples]
     if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
@@ -726,7 +727,8 @@ jobs:
           # The LGPL converter too (dev-only build, as compare.py --fast-yuv): does it give x64's results on ARM?
           dotnet build -c Release -v q -p:WithFastYuv=true -o fastyuv src/ShotDetector.Cli
           FASTYUV=$PWD/fastyuv/shotdetect tools/arch-outputs.sh src/ShotDetector.Cli/bin/Release/net10.0/shotdetect "$PWD/native/${{ matrix.rid }}" out \
-            samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg samples/informational/*.avi
+            samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg samples/informational/*.avi \
+            samples/informational/*.mkv
 
       # Parallel detection on ARM, as the parity job checks it on x64: three chunks on every sample, byte for byte the
       # sequential result (all five detectors, stats, 0.7.2 and 0.7.1 mode), core and FastYuv paths, in-process.
@@ -762,7 +764,7 @@ jobs:
           pattern: arch-*
 
       # Not vacuous: both sides wrote the same, non-zero number of files. Then what differs, and how much, in the summary;
-      # it fails unless ARM's FastYuv results equal x64's on every 8-bit 4:2:0 clip.
+      # it fails unless ARM's FastYuv results equal x64's on every even-sized 8-bit 4:2:0 and 4:2:2 clip.
       - name: x64 and ARM give the same files
         run: |
           a=$(ls arch-linux-x64 | wc -l) b=$(ls arch-linux-arm64 | wc -l)
