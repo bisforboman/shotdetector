@@ -74,6 +74,7 @@ internal sealed partial class VideoReader
                     Deinterlace = _deinterlace,
                     RowDeinterlacer = _yadif,
                     InputOptions = InProcessProbe.Options(_inputOptions),
+                    CodecOptions = IdctOptions(Codec) is [var name, var value] ? new Dictionary<string, string> { [name[1..]] = value } : null,
                     CancellationToken = cancel.Token, // the caller's, and ours when the caller stops iterating
 
                     // Rotated as OpenCV rotates (FrameWriter): by the display matrix's angle alone, after converting.

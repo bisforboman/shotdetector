@@ -141,7 +141,12 @@ public sealed unsafe class FrameDecoder : IDisposable
                 _dec->skip_frame = AVDiscard.AVDISCARD_NONKEY;
             if (o.MaxPixels > 0)
                 _dec->max_pixels = o.MaxPixels;
-            Check(ffmpeg.avcodec_open2(_dec, codec, null), "open decoder");
+            AVDictionary* codecOptions = null;
+            foreach (var (name, value) in o.CodecOptions ?? new Dictionary<string, string>())
+                ffmpeg.av_dict_set(&codecOptions, name, value, 0);
+            int opened = ffmpeg.avcodec_open2(_dec, codec, &codecOptions);
+            ffmpeg.av_dict_free(&codecOptions);
+            Check(opened, "open decoder");
             _pkt = ffmpeg.av_packet_alloc();
             _frame = ffmpeg.av_frame_alloc();
             if (deinterlace)

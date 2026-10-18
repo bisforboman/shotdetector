@@ -613,6 +613,12 @@ internal sealed partial class VideoReader
     /// ffmpeg's decoder option against crafted files claiming huge frames (FrameReader's default, which in-process decoding
     /// gets): a frame of more than 8192 x 8192 pixels fails to decode.
     /// </summary>
+    /// <summary>
+    /// MPEG-1/2 and MJPEG with FFmpeg's C IDCT (in-process too, FrameDecoderOptions.CodecOptions): x86's default, its SIMD IDCT,
+    /// gives the same frames, ARM's NEON one rounds differently, so every platform decodes these as x86 (and OpenCV there) does.
+    /// </summary>
+    internal static string[] IdctOptions(string codec) => codec is "mpeg1video" or "mpeg2video" or "mjpeg" ? ["-idct", "simple"] : [];
+
     internal static readonly string[] MaxPixels = ["-max_pixels", FrameReader.FrameDecoderOptions.DefaultMaxPixels.ToString(CultureInfo.InvariantCulture)];
 
     /// <summary>
@@ -962,7 +968,7 @@ internal sealed partial class VideoReader
 
         // Rotated as OpenCV does (Turn), not by ffmpeg's autorotate.
         string[] args = ["-v", "info", "-nostats", .. noStdin, "-y",
-            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount)}", .. seek, .. _inputOptions, .. MaxPixels, "-noautorotate", "-i", _path,
+            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount)}", .. seek, .. _inputOptions, .. IdctOptions(Codec), .. MaxPixels, "-noautorotate", "-i", _path,
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
         select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
 

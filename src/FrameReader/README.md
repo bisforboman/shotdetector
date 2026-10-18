@@ -343,6 +343,8 @@ nothing per frame (frames are views of FFmpeg's buffers); the pipe readers alloc
   mkv, webm, ts, mov or a faststart mp4).
 - Deinterlacing (`FrameDecoderOptions.Deinterlace`, yadif as `-vf yadif`), the display matrix applied as ffmpeg's
   autorotate does, decoder threads.
+- Decoder options (`FrameDecoderOptions.CodecOptions`, as ffmpeg's before `-i`): `idct` = `simple` gives x86's
+  frames on ARM for MPEG-1/2 and MJPEG, whose default IDCT rounds differently there.
 - Errors as `FrameReaderException` with a `Reason`: the libraries missing, an input FFmpeg can't open (or without
   video), a decoding failure.
 
