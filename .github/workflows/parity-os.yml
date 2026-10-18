@@ -85,7 +85,7 @@ jobs:
           { echo "### scenedetect 0.7.2 on ${{ matrix.os }} (informational)"; cat parity.md 2>/dev/null || echo "No report."; } >> "$GITHUB_STEP_SUMMARY"
 
       # Outside native/, so the comparison above keeps its decoder; only the parallel check gets them (--ffmpeg-dir).
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-${{ matrix.rid }}
           path: ffmpeg-libs/${{ matrix.rid }}
