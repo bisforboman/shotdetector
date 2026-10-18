@@ -162,7 +162,9 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   (downscales under 3x) and BGR2HSV, off by 1-2 on some pixels (user's choice: x86 stays the reference). macOS Intel
   wheels have no FFmpeg. `getBuildInformation()`'s "Custom HAL" line names the library. Our own results differ on
   ARM too: FFmpeg's yuv420p to BGR assembly rounds differently there; FastYuv gives x86's results on 8-bit 4:2:0 and
-  4:2:2 (ci.yml's arch-diff requires that, docs/decisions/2026-10-17-arm-results.md, 2026-10-18-fastyuv-422.md).
+  4:2:2 (ci.yml's arch-diff requires that, docs/decisions/2026-10-17-arm-results.md, 2026-10-18-fastyuv-422.md). The
+  IDCTs too: MPEG-1/2, MJPEG and MPEG-4 Part 2 decode with the C one (`VideoReader.IdctOptions`), except MPEG-4 that
+  FFmpeg gives the Xvid IDCT (`Mpeg4Idct`, its own rule: signature, else FourCC; 2026-10-18-mpeg4-xvid-idct.md).
 - Benchmarks on this desktop: pin CPUs with `cmd /c start /affinity 3 ...` (children inherit), compare CPU time
   (more stable than wall time here), and interleave runs. The resize and edge detector alone: benchmarks/micro (real
   frames, an output hash: `--hash-only`).
