@@ -24,6 +24,10 @@ Status: **Released** (on nuget.org), **Done** (on `main`, in the next release), 
   - Why: FastYuv gives x86's results on ARM for 8-bit 4:2:0 only (arch-diff's table, 2026-10-17): 10-bit and 4:2:2 take other swscale paths, and MPEG-2's and MJPEG's decoded frames already differ (their IDCTs round per platform), so those still differ on ARM
   - Status: Maybe for 10-bit and 4:2:2 (a FastYuv port of those swscale paths); MPEG-1/2 and MJPEG done (2026-10-17): ShotDetector decodes them with FFmpeg's C IDCT (`-idct simple`; in-process FrameReader's new `FrameDecoderOptions.CodecOptions`, so FrameReader itself still gives ffmpeg's default bytes), which x64's default already gives (checked with FFmpeg 8.1 and 9.0) and ARM's NEON IDCT doesn't (#384's checksums); arch-diff requires them too
 
+- ARM against x64 on MPEG-4 Part 2 (Xvid/DivX) and MPEG-1: a sample of each in the arch comparison
+  - Why: No sample is MPEG-4 Part 2 or MPEG-1 (tools/make-samples.ps1), so whether ARM decodes them as x64 is unknown; MPEG-4 Part 2's default IDCT on x64 equals `-idct simple` but not the C one (#384), so the MPEG-2 fix may not carry over. A new sample changes the samples cache key, so CI regenerates them once
+  - Status: Open
+
 - VideoWriter's rare CI mismatch: about 1 CI test run in 10-20, one file differs from `ffmpeg -c:v libx264`'s by a few hundred bytes (never locally, never in ffmpeg's own output). Ruled out (2026-10-10): x264 threads (1, both sides; the SEI settings match), filter-graph threads, frame padding (zeroed), the input frames (hashes identical), uninitialised heap (MALLOC_PERTURB_). Left: something in x264/FFmpeg inside a long-lived .NET process
   - Why: The exact-output promise; the check stays a hard failure (docs/decisions/), so every failure is a data point (the test prints both files' x264 settings and CI keeps both files)
   - Status: Done (2026-10-12): stress runs on Linux (200 runs per runner, CPU logged): only AVX-512 CPUs differ (about 0.4%; 0 in 1,800 on EPYC 7763s). Not padding or the stack, not .NET's own AVX-512 code, not the GC. Tiered JIT off: 0 in 3,200; x264 capped at AVX2 on both sides: 0 in 2,000. So x264's AVX-512 code with the JIT thread in one process (likely an over-read into memory that thread writes). CI's step turns tiered compilation off; FrameReader's README and VideoWriter's docs give the workarounds
@@ -691,6 +695,18 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 - Warn when an https HLS playlist decodes through the ffmpeg executable
   - Why: In-process, the segments a playlist names are opened with the certificate checked (FrameReader's io_open wrapper); the executable has no such hook and opens them unchecked. A one-line warning in the result says so when an https playlist goes that way (no FFmpeg libraries, or --decoder process)
   - Status: Done (2026-10-17) in the CLI (a line on stderr) and README; Done (2026-10-18) in the library too: `DetectionResult.Warnings` (new public API, the owner's choice: docs/decisions/2026-10-18-library-warnings.md), which the CLI prints. Not covered: a local playlist whose segments are https, and DetectStreamAsync (no result)
+
+- Warn for a local playlist whose segments are https
+  - Why: DetectionResult.Warnings (2026-10-18) covers an https playlist decoded by the ffmpeg executable; a local .m3u8 naming https segments takes the same unchecked path, but the decision left it undecided (docs/decisions/2026-10-18-library-warnings.md)
+  - Status: Maybe
+
+- Warnings for streaming callers (DetectStreamAsync)
+  - Why: DetectStreamAsync yields shots and has no result object, so it can't carry DetectionResult.Warnings; a streaming caller decoding an https playlist through the executable gets no warning
+  - Status: Maybe
+
+- Dependabot: one grouped PR for the GitHub Actions updates
+  - Why: Since actions are pinned by SHA (2026-10-17) every action update is its own PR and its own full CI run (six on 2026-10-18, #388-#394); a `groups` entry for the github-actions ecosystem in .github/dependabot.yml makes it one PR a week
+  - Status: Open
 
 - Check upstream.yml's BtbN job on its first scheduled run (Monday 2026-10-19)
   - Why: #357 wasn't dispatched on its branch (the workflow's other jobs could open real issues), so its first real run is the check: the log should say the pin is up to date, or open one issue
