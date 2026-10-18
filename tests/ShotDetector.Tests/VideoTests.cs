@@ -537,11 +537,9 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
 
         public int Port { get; }
 
-        public void Dispose()
-        {
-            _server.Stop();
-            _server.Close();
-        }
+        // Close alone: on Linux, Stop then Close each unregister the prefix, and the second one binds the port again to
+        // remove it, which can fail with "Address already in use" (seen on ARM CI, 2026-10-18).
+        public void Dispose() => _server.Close();
 
         // A random port can be taken or reserved (Windows excludes ranges for Hyper-V and the like, about 4% of
         // 20000-60000 here), and Start then throws: try another.
