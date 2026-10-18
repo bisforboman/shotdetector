@@ -669,7 +669,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - FastYuv in-process: prefer the default path where it is cheaper on x64
   - Why: In-process on x64, FastYuv isn't needed for exactness (the default path converts only the rows the resize reads with FFmpeg's own swscale), and 4:2:2 through FastYuv costs ~9-12% more CPU than that (4:2:0 ~4%; the release-candidate performance review, 2026-10-18), since `WriteYuv` copies the whole frame's planes first. Its point in-process is ARM, where it gives x86's results. README says so; choosing the path by platform is a design question for the owner
-  - Status: Open
+  - Status: Won't do (2026-10-18, the owner: an explicit converter is used as set; the README says FastYuv isn't needed for exactness in-process on x64; docs/decisions/2026-10-18-fastyuv-x64-in-process.md)
 
 - FrameReader: unknown `InputOptions` names fail, as `CodecOptions` and the encoders' do
   - Why: `Demuxer.Open` passes `FrameDecoderOptions.InputOptions` to avformat_open_input and drops what's left, so a misspelt demuxer option is ignored without a word (the release-candidate security review, 2026-10-18), though FrameReader's README says unknown option names are an `ArgumentException`. `CodecOptions` checks its leftovers since 2026-10-18. Changing it could break callers passing options some demuxers lack (ShotDetector passes the image sequences' `framerate`), so it needs a look per caller
