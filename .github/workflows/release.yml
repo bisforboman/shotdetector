@@ -273,9 +273,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # The Alpine SDK image by digest (10.0-alpine; Dependabot doesn't update container images: move it by hand,
+        # with ci.yml's two).
         include:
           - { rid: linux-x64, os: ubuntu-26.04 }
-          - { rid: linux-musl-x64, os: ubuntu-26.04, container: 'mcr.microsoft.com/dotnet/sdk:10.0-alpine' }
+          - { rid: linux-musl-x64, os: ubuntu-26.04, container: 'mcr.microsoft.com/dotnet/sdk:10.0-alpine@sha256:230c3fbae0ceedc70bca04eed2bfb5694e8b248cadbb81010f41b7a993601f55' }
           - { rid: win-x64, os: windows-latest }
           - { rid: osx-arm64, os: macos-latest }
     runs-on: ${{ matrix.os }}
