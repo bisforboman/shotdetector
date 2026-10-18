@@ -133,17 +133,17 @@ jobs:
           build: gpl-shared
           add-to-path: 'false'
 
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: samples/realworld
           key: realworld-bbb_640x360_h264.mp4-${{ hashFiles('tools/realworld.py') }}
 
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: samples/realworld
           key: realworld-elephants_dream_426x240_h264.mp4-${{ hashFiles('tools/realworld.py') }}
 
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: samples/realworld
           key: realworld-tears_of_steel_1280x534_h264.mov-${{ hashFiles('tools/realworld.py') }}
@@ -189,7 +189,7 @@ jobs:
       # The Opus files, cached here (restored and saved before the films join the folder); the films from the caches the
       # jobs above keep (downloaded on a miss, not saved again here).
       - id: opus
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: samples/realworld
           key: realworld-opus-${{ hashFiles('tools/realworld.py') }}
@@ -204,17 +204,17 @@ jobs:
           path: samples/realworld
           key: ${{ steps.opus.outputs.cache-primary-key }}
 
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: samples/realworld
           key: realworld-bbb_640x360_h264.mp4-${{ hashFiles('tools/realworld.py') }}
 
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: samples/realworld
           key: realworld-elephants_dream_426x240_h264.mp4-${{ hashFiles('tools/realworld.py') }}
 
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: samples/realworld
           key: realworld-tears_of_steel_1280x534_h264.mov-${{ hashFiles('tools/realworld.py') }}
