@@ -116,9 +116,10 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
-    // Whole videos: with FastYuv, the frames the detectors see are the default path's, byte for byte, through the ffmpeg
-    // executable and (with SHOTDETECTOR_FFMPEG_LIBS) in-process; and FastYuv is used where swscale's unscaled converter
-    // is (even decoded height), the BGR path elsewhere. Lossless ffv1 copies of the test clip; turned by a display matrix.
+    // Whole videos: with FastYuv, the frames the detectors see are the default path's, byte for byte (on x64), through
+    // the ffmpeg executable and (with SHOTDETECTOR_FFMPEG_LIBS) in-process; and FastYuv is used where swscale's unscaled
+    // converter is (even decoded height), the BGR path elsewhere. Lossless ffv1 copies of the test clip; turned by a
+    // display matrix.
     [Theory]
     [InlineData("422", "-pix_fmt yuv422p", "", "", "Yuv422Sampled")]
     [InlineData("yuvj422", "-pix_fmt yuvj422p", "", "", "Yuv422Sampled")]
@@ -157,7 +158,11 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
                 Assert.Equal(pipeline.Length > 0 ? Enum.Parse<FramePipeline>(pipeline) : core.Pipeline, fast.Pipeline);
                 Assert.True(core.Pipeline is FramePipeline.SampledBgr or FramePipeline.FullFrameResize);
                 Assert.Equal(decoder == VideoDecoder.InProcess, fast.DecodesInProcess);
-                Assert.Equal(Hashes(core), Hashes(fast));
+
+                // The bytes on x64 only: elsewhere FFmpeg's own conversion rounds differently (ARM: its NEON code), which
+                // is what FastYuv is there for; ci.yml's arch-diff compares ARM's FastYuv results with x64's.
+                if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
+                    Assert.Equal(Hashes(core), Hashes(fast));
             }
         }
         finally
