@@ -23,8 +23,8 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: `Demuxer.Open` passes `FrameDecoderOptions.InputOptions` to avformat_open_input and drops what's left, so a misspelt demuxer option is ignored without a word (the release-candidate security review, 2026-10-18), though FrameReader's README says unknown option names are an `ArgumentException`. `CodecOptions` checks its leftovers since 2026-10-18. Changing it could break callers passing options some demuxers lack (ShotDetector passes the image sequences' `framerate`), so it needs a look per caller
   - Status: Open
 
-- FastYuv 10-bit: filter each chroma row once per frame
-  - Why: On x64, FastYuv for 10-bit 4:2:0 is about 2.5-3.5x slower than the default path at 854x480 (1080p about even; docs/decisions/2026-10-18-fastyuv-10bit-x64.md), because each chroma row is filtered horizontally again for every output row that reads it. A per-frame chroma pass would remove that: a batch method (the needed chroma rows filtered once, then the rows converted), additive as a new interface beside `IYuv420P10Converter` that the pipeline type-tests for, and CvResize's YUV path reworked to call it per frame
+- In-process default path vs the executable on 10-bit h264 with top-left chroma: different stats
+  - Why: Found 2026-10-18 measuring FastYuv's 10-bit speed-up: a 854x480 yuv420p10le h264 clip in mkv encoded with `-x264-params chromaloc=2` (ffprobe: chroma_location topleft) gives other stats in-process with the default path than through the ffmpeg executable (every frame's values; the cuts happen to agree), on main before that change too, while FastYuv through both decoders equals the executable. The left-sited h264 clips and FastYuvTests' ffv1 topleft clip agree. Likely where BgrConverter's chroma position comes from for this stream (the h264 VUI against the container), so which one OpenCV matches needs checking against scenedetect
   - Status: Open
 
 ## Waiting

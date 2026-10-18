@@ -33,8 +33,9 @@ FFmpeg's own conversion rounds differently, it gives x86's results.
 swscale, so x86 scales it: the port follows that path (the bicubic chroma filters, interpolating from where the
 stream says the chroma sits; the MMXEXT vertical scaler and output; the C output for the last two rows), for even
 widths and any height, and gives x86's bytes there (checked against FFmpeg 8.1 on x86-64, generated and decoded
-frames). It exists for other CPUs' results: on x64 it gives the same results as the normal path but, filtering each
-chroma sample the resize reads again for every row, is slower on small video.
+frames). It exists for other CPUs' results; on x64 it gives the same results as the normal path at about the same
+speed. It converts a frame's pixels in one pass (`IYuv420P10FrameConverter`), filtering each chroma row once, as
+swscale does.
 
 Copyright (C) 2001-2012 Michael Niedermayer, (C) 2009-2010 Konstantin Shishkov, (C) 2024 Niklas Haas (FFmpeg); yadif (C) 2006-2011
 Michael Niedermayer, 2010 James Darnley (FFmpeg);

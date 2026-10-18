@@ -276,11 +276,24 @@ internal sealed class CvResize
     /// resize reads are converted. The chroma stays aligned to the decoded frame, as converting before cropping and
     /// turning keeps it.
     /// </summary>
-    public void ResizeYuv(byte[] yuv, byte[] dst, YuvRowConverter convert, int width, int height, int turn, int cropX, int cropY)
+    public void ResizeYuv(byte[] yuv, byte[] dst, YuvRowConverter convert, int width, int height, int turn, int cropX, int cropY) =>
+        ResizeYuv(yuv, dst, new YuvConversion(convert), width, height, turn, cropX, cropY);
+
+    /// <summary>
+    /// <see cref="ResizeYuv(byte[], byte[], YuvRowConverter, int, int, int, int, int)"/> with the pipeline's conversion:
+    /// a frame at a time when it converts that way (the same bytes, the work rows share done once), else row by row.
+    /// </summary>
+    public void ResizeYuv(byte[] yuv, byte[] dst, YuvConversion convert, int width, int height, int turn, int cropX, int cropY)
     {
         if (turn != 0)
         {
             ResizeYuvTurned(yuv, dst, convert, width, height, turn, cropX, cropY);
+            return;
+        }
+
+        if (convert.Frame is { } frame)
+        {
+            ResizeYuvFrame(yuv, dst, frame, width, height, cropX, cropY);
             return;
         }
 
@@ -299,19 +312,65 @@ internal sealed class CvResize
                 var (need0, need1) = c.Need(r0, r1);
                 if (need0)
                 {
-                    convert(yuv, width, height, r0 + cropY, cols, c.BgrRow0);
+                    convert.Row(yuv, width, height, r0 + cropY, cols, c.BgrRow0);
                     HResize(c.BgrRow0.AsSpan(cropX * 3), c.Row0);
                 }
 
                 if (need1)
                 {
-                    convert(yuv, width, height, r1 + cropY, cols, c.BgrRow1);
+                    convert.Row(yuv, width, height, r1 + cropY, cols, c.BgrRow1);
                     HResize(c.BgrRow1.AsSpan(cropX * 3), c.Row1);
                 }
 
                 VResize(dy, c, dst);
             }
         });
+    }
+
+    // ResizeYuvFrame's plan: the decoded frame's rows and columns the resize reads (SourceRows and SourceCols offset by
+    // the crop), and the converted pixels there (rows x columns x 3: ResizeSampled's layout).
+    (int CropX, int CropY)? _frameFor;
+    int[] _frameRows = [], _frameCols = [];
+    byte[] _frameBgr = [];
+
+    /// <summary>
+    /// <see cref="ResizeYuv(byte[], byte[], YuvConversion, int, int, int, int, int)"/> for a frame converter, not turned:
+    /// the pixels the resize reads converted in one pass, then resized from them.
+    /// </summary>
+    void ResizeYuvFrame(byte[] yuv, byte[] dst, IYuv420P10FrameConverter frame, int width, int height, int cropX, int cropY)
+    {
+        if (_frameFor != (cropX, cropY))
+        {
+            _frameRows = SourceRows.Select(r => r + cropY).ToArray();
+            _frameCols = SourceCols.Select(x => x + cropX).ToArray();
+            _frameBgr = new byte[_frameRows.Length * _frameCols.Length * 3];
+            _frameFor = (cropX, cropY);
+        }
+
+        ConvertFrame(frame, yuv, width, height, _frameRows, _frameCols, _frameBgr);
+        ResizeSampled(_frameBgr, dst);
+    }
+
+    /// <summary>
+    /// <paramref name="rows"/> × <paramref name="cols"/> converted by a frame converter into <paramref name="bgr"/>
+    /// (packed): in one call, or, for outputs resized in chunks, in as many runs of rows, in parallel.
+    /// </summary>
+    void ConvertFrame(IYuv420P10FrameConverter frame, byte[] yuv, int width, int height, int[] rows, int[] cols, byte[] bgr)
+    {
+        if (_chunks.Length == 1)
+        {
+            frame.FrameToBgr(yuv, width, height, rows, cols, bgr);
+            return;
+        }
+
+        int parts = _chunks.Length, n = cols.Length * 3;
+        Parallel.For(0,
+            parts,
+            p =>
+            {
+                int first = p * rows.Length / parts, end = (p + 1) * rows.Length / parts;
+                frame.FrameToBgr(yuv, width, height, rows.AsSpan(first, end - first), cols, bgr.AsSpan(first * n, (end - first) * n));
+            });
     }
 
     /// <summary>
@@ -334,12 +393,12 @@ internal sealed class CvResize
     byte[] _turnedBgr = [], _turnedScratch = [];
 
     /// <summary>
-    /// <see cref="ResizeYuv"/> for a turned frame: as OpenCV, which turns the converted image (cv::rotate), and as the
+    /// <see cref="ResizeYuv(byte[], byte[], YuvConversion, int, int, int, int, int)"/> for a turned frame: as OpenCV, which turns the converted image (cv::rotate), and as the
     /// ffmpeg executable's transpose or hflip,vflip after format=bgr24, the pixels are converted where they sit in the
     /// decoded frame and then turned. Turning the planes first would differ wherever the chroma layout doesn't survive
     /// the turn (4:2:2 at 90 and 270, odd sizes).
     /// </summary>
-    void ResizeYuvTurned(byte[] yuv, byte[] dst, YuvRowConverter convert, int width, int height, int turn, int cropX, int cropY)
+    void ResizeYuvTurned(byte[] yuv, byte[] dst, YuvConversion convert, int width, int height, int turn, int cropX, int cropY)
     {
         if (_turnedFor != (turn, width, height, cropX, cropY))
         {
@@ -363,7 +422,7 @@ internal sealed class CvResize
         // only the columns read kept, packed.
         void ConvertRow(int i, byte[] scratch)
         {
-            convert(yuv, width, height, rows[i], cols, scratch);
+            convert.Row(yuv, width, height, rows[i], cols, scratch);
             var packed = bgr.AsSpan(i * n * 3, n * 3);
             for (int j = 0; j < n; j++)
             {
@@ -372,7 +431,12 @@ internal sealed class CvResize
             }
         }
 
-        if (_chunks.Length == 1)
+        if (convert.Frame is { } frame)
+        {
+            // A frame converter packs them itself.
+            ConvertFrame(frame, yuv, width, height, rows, cols, bgr);
+        }
+        else if (_chunks.Length == 1)
         {
             for (int i = 0; i < rows.Length; i++)
                 ConvertRow(i, _turnedScratch);

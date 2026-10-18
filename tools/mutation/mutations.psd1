@@ -40,13 +40,19 @@
         # vRounder) and output except the last two rows (C, chroma clipped), chroma interpolated from where it sits
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(TenBit || _codedSize.H % 2 == 0)'; Replace = '(_codedSize.H % 2 == 0)'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'bool asm = y < height - 2;'; Replace = 'bool asm = true;'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
-        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'int ua = 4, va = 4;'; Replace = 'int ua = 0, va = 0;'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'const int VRounder = 4;'; Replace = 'const int VRounder = 0;'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'Math.Clamp(uc >> 19, 0, 255)'; Replace = '((uc >> 19) & 255)'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'SwscaleFilter.LocalPos(1, hChrPos)'; Replace = 'SwscaleFilter.LocalPos(1, -513)'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'if (width % 2 != 0 || width < 2'; Replace = 'if (width < 2'; Tests = 'FastYuvTests.TenBitDeclinesWhatItDoesNotReproduce' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'h.Size <= cw && v.Size > 2'; Replace = 'h.Size <= cw'; Tests = 'FastYuvTests.TenBitDeclinesWhatItDoesNotReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '_codedSize.W, _codedSize.H, Turn, CropRegion.X'; Replace = '_codedSize.W, _codedSize.H, 0, CropRegion.X'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '_codedSize.W, _codedSize.H, Turn, CropRegion.X'; Replace = '_codedSize.W, _codedSize.H, 0, CropRegion.X'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
+        # ... a frame at a time (each chroma row filtered once): taken when the converter has it, packed rows x columns,
+        # the crop's rows, runs of rows in parallel for chunked outputs
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'c10 as IYuv420P10FrameConverter'; Replace = 'null'; Tests = 'FastYuvTests.PipelinesConvertTenBitAFrameAtATime' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'packed ? j * 3 : x * 3;'; Replace = 'packed ? 0 : x * 3;'; Tests = 'FastYuvTests.TenBitFrameAtATimeEqualsRowByRow' }
+        @{ File = 'src/ShotDetector/CvResize.cs'; Find = '_frameRows = SourceRows.Select(r => r + cropY).ToArray();'; Replace = '_frameRows = SourceRows.ToArray();'; Tests = 'FastYuvTests.TenBitFrameAtATimeEqualsRowByRow' }
+        @{ File = 'src/ShotDetector/CvResize.cs'; Find = 'bgr.AsSpan(first * n, (end - first) * n)'; Replace = 'bgr.AsSpan(0, (end - first) * n)'; Tests = 'FastYuvTests.TenBitFrameAtATimeEqualsRowByRow' }
 
         # Timestamps starting over (two encodes joined): labelled by time, cuts sorted, stats one row per number
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'seconds < _pts[previous] * _timeBase - tolerance)'; Replace = 'false)'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
