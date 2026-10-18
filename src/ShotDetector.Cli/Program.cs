@@ -48,7 +48,9 @@ const string Usage = """
           --threads <n>                  Decoder threads (0 = FFmpeg's choice; default: the CPUs, at most 16, as
                                          OpenCV, which damaged video needs to match). ~20 MB each at 1080p
           --sequential                   Score the file in one pass instead of in chunks (parallel, with the
-                                         same result, is the default for long local files)
+                                         same result, is the default for long local files from 8 CPUs on and
+                                         for frames up to 3840x2160)
+          --parallel                     Score a long local file in chunks from 4 CPUs on, at any frame size
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
                                          cv2.resize (faster, but cuts can differ from PySceneDetect)
           --csv <file>                   Write shot list as CSV
@@ -222,7 +224,7 @@ try
             case "--sequential":
                 options = options with { Mode = DetectionMode.Sequential };
                 break;
-            case "--parallel": // not in --help: the default now, kept for scripts that ask for it
+            case "--parallel":
                 options = options with { Mode = DetectionMode.Parallel };
                 break;
             case "--chunks": // not in --help: CI forces a chunk count on short samples

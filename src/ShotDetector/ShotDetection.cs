@@ -61,8 +61,9 @@ public enum DeinterlaceMode
 public enum DetectionMode
 {
     /// <summary>
-    /// Parallel for <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/> and DetectAsync,
-    /// sequential for DetectStreamAsync, so its shots still come as they are found (the default).
+    /// Parallel for <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/> and DetectAsync from
+    /// 8 CPUs on and for frames up to 3840 x 2160, sequential otherwise and for DetectStreamAsync, so its shots still
+    /// come as they are found (the default).
     /// </summary>
     Auto,
 
@@ -386,12 +387,14 @@ public sealed record DetectionOptions
     /// <summary>
     /// Whether a long local file is detected on several cores at once, with exactly the result of a sequential run:
     /// chunks of it are scored at the same time, each from one frame early, then the cut decisions run once over all
-    /// scores. Half the CPUs, at most 4 chunks, from 4 CPUs on and for files of two minutes or more (each chunk at least
-    /// a minute). Only for files decoded in-process, without a time range or frame skip and not MPEG-PS; anything a chunk
-    /// can't reproduce (a seek that lands late, dropped frames, a size change) makes it read the file sequentially
-    /// instead, from the start. <see cref="DetectedVideo.Chunks"/> says which ran. Memory grows by a decoder per chunk.
-    /// <see cref="DetectionMode.Auto"/> (the default) chunks for Detect but not for DetectStreamAsync, whose shots would
-    /// otherwise all come once the whole file is scored; <see cref="DetectionMode.Sequential"/> never does.
+    /// scores. Half the CPUs, at most 4 chunks (no more than <see cref="DecodeThreads"/> when set), for files of two
+    /// minutes or more (each chunk at least a minute). Only for files decoded in-process, without a time range or frame
+    /// skip and not MPEG-PS; anything a chunk can't reproduce (a seek that lands late, dropped frames, a size change)
+    /// makes it read the file sequentially instead, from the start. <see cref="DetectedVideo.Chunks"/> says which ran.
+    /// Memory grows by a decoder and its frame buffers per chunk. <see cref="DetectionMode.Auto"/> (the default) chunks
+    /// for Detect from 8 CPUs on and for frames up to 3840 x 2160, but not for DetectStreamAsync, whose shots would
+    /// otherwise all come once the whole file is scored; <see cref="DetectionMode.Parallel"/> chunks from 4 CPUs on, at
+    /// any frame size, and DetectStreamAsync too; <see cref="DetectionMode.Sequential"/> never does.
     /// </summary>
     public DetectionMode Mode { get; init; }
 
@@ -998,7 +1001,7 @@ public static class ShotDetection
         // Parallel: the scores in chunks at once, then the decisions over them in frame order (docs/parallel-detection.md).
         int chunks = o.ResolvedMode(streaming: onShot is not null) == DetectionMode.Parallel && videoPath is not null && spilled is null && !video.Streaming && video.DecodesInProcess
             && !video.PtsFromFrames && startFrame == 0 && endFrame is null && stride == 1
-            ? o.Chunks ?? AutoChunks(Environment.ProcessorCount, video.ExpectedFrames, video.Fps)
+            ? o.Chunks ?? AutoChunks(Environment.ProcessorCount, video.ExpectedFrames, video.Fps, (long)video.SourceWidth * video.SourceHeight, o.Mode == DetectionMode.Parallel, o.DecodeThreads)
             : 1;
         var gate = new object();
         int scoredFrames = 0;
@@ -1124,12 +1127,23 @@ public static class ShotDetection
         return o;
     }
 
+    /// <summary>The largest frame <see cref="DetectionMode.Auto"/> chunks: 3840 x 2160 pixels (4K UHD).</summary>
+    internal const long AutoChunksMaxPixels = 3840L * 2160;
+
     /// <summary>
-    /// <see cref="DetectionMode.Parallel"/>'s chunk count: half the CPUs, at most 4, from 4 CPUs on (measured: 2 chunks
-    /// pay on 4 cores, more than 4 don't), and none shorter than a minute.
+    /// The chunk count when chunking: half the CPUs, at most 4, and none shorter than a minute; never more than the
+    /// decoder threads the caller set (<paramref name="threads"/>, 0 = FFmpeg's choice: no limit). <see cref="DetectionMode.Auto"/>
+    /// only from 8 CPUs on and for frames up to <see cref="AutoChunksMaxPixels"/> (docs/decisions/2026-10-18-parallel-auto-threshold.md:
+    /// on 4 CPUs a sequential run already kept the cores busy and 2 chunks were ~15% slower; memory grows per chunk with
+    /// the frame size); <see cref="DetectionMode.Parallel"/> (<paramref name="forced"/>) from 4 CPUs on, at any size.
     /// </summary>
-    internal static int AutoChunks(int cpus, int frames, Fps fps) =>
-        cpus < 4 ? 1 : Math.Max(1, Math.Min(Math.Min(4, cpus / 2), (int)(frames / (60 * fps.Value))));
+    internal static int AutoChunks(int cpus, int frames, Fps fps, long pixels = 0, bool forced = false, int? threads = null)
+    {
+        if (cpus < (forced ? 4 : 8) || (!forced && pixels > AutoChunksMaxPixels))
+            return 1;
+        int chunks = Math.Max(1, Math.Min(Math.Min(4, cpus / 2), (int)(frames / (60 * fps.Value))));
+        return threads > 0 ? Math.Min(chunks, threads.Value) : chunks;
+    }
 
     /// <summary>
     /// Each detector's per-frame metrics, scored in chunks of the file at once: each chunk on its own reader, from one

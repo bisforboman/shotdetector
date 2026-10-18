@@ -103,8 +103,9 @@ jobs:
           { echo "### ${{ matrix.video }}"; cat realworld.md; } >> "$GITHUB_STEP_SUMMARY"
           exit ${status:-0}
 
-  # Parallel detection (DetectionOptions.Mode) on the long films: the default's automatic count (2 chunks on these
-  # 4-CPU runners) and 4 chunks, byte for byte the sequential result, and never falling back to sequential. In-process,
+  # Parallel detection (DetectionOptions.Mode) on the long films: --parallel's automatic count (2 chunks on these
+  # 4-CPU runners, where the default stays sequential: it chunks from 8 CPUs on) and 4 chunks, byte for byte the
+  # sequential result, and never falling back to sequential. In-process,
   # with FFmpeg 8.1's libraries.
   parallel:
     if: needs.changes.outputs.light != 'true'
@@ -156,7 +157,7 @@ jobs:
           status=0
           python3 tools/compare-parallel.py $films --require-chunks --report auto.md || status=$?
           python3 tools/compare-parallel.py $films --require-chunks --chunks 4 --report four.md || status=$?
-          { echo "### Parallel against sequential, the default ($(nproc) CPUs)"; cat auto.md; echo "### 4 chunks"; cat four.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Parallel against sequential, --parallel ($(nproc) CPUs)"; cat auto.md; echo "### 4 chunks"; cat four.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
   # FrameReader's AudioReader and SpectralStats on the films' own audio (AAC at 44.1 and 48 kHz, MP3, Opus, Vorbis) against
