@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Port of FFmpeg libswscale's yuv420p and yuv422p -> BGR24 conversion (libswscale/yuv2rgb.c,
-// libswscale/x86/yuv_2_rgb.asm). Copyright (C) 2001-2007 Michael Niedermayer,
+// libswscale/x86/yuv2rgb.c, libswscale/x86/yuv_2_rgb.asm). Copyright (C) 2001-2007 Michael Niedermayer,
 // (C) 2009-2010 Konstantin Shishkov. Licensed under the GNU Lesser General Public License,
 // version 2.1 or (at your option) any later version; see COPYING.LGPL.
 
