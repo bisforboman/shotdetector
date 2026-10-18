@@ -62,7 +62,7 @@ public enum DetectionMode
 {
     /// <summary>
     /// Parallel for <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/> and DetectAsync from
-    /// 8 CPUs on and for frames up to 3840 x 2160, sequential otherwise and for DetectStreamAsync, so its shots still
+    /// 4 CPUs on and for frames up to 3840 x 2160, sequential otherwise and for DetectStreamAsync, so its shots still
     /// come as they are found (the default).
     /// </summary>
     Auto,
@@ -394,7 +394,7 @@ public sealed record DetectionOptions
     /// <see cref="DetectedVideo.ChunkFallback"/> why it fell back (also in <see cref="DetectionResult.Warnings"/>, as is
     /// why <see cref="DetectionMode.Parallel"/> read sequentially). The decoder threads are shared out among the chunks.
     /// Memory grows by a decoder and its frame buffers per chunk. <see cref="DetectionMode.Auto"/> (the default) chunks
-    /// for Detect from 8 CPUs on and for frames up to 3840 x 2160, but not for DetectStreamAsync, whose shots would
+    /// for Detect from 4 CPUs on and for frames up to 3840 x 2160, but not for DetectStreamAsync, whose shots would
     /// otherwise all come once the whole file is scored; <see cref="DetectionMode.Parallel"/> chunks from 4 CPUs on, at
     /// any frame size, and DetectStreamAsync too; <see cref="DetectionMode.Sequential"/> never does.
     /// </summary>
@@ -1153,15 +1153,15 @@ public static class ShotDetection
     internal const long AutoChunksMaxPixels = 3840L * 2160;
 
     /// <summary>
-    /// The chunk count when chunking: half the CPUs, at most 4, and none shorter than a minute; never more than the
-    /// decoder threads the caller set (<paramref name="threads"/>, 0 = FFmpeg's choice: no limit). <see cref="DetectionMode.Auto"/>
-    /// only from 8 CPUs on and for frames up to <see cref="AutoChunksMaxPixels"/> (docs/decisions/2026-10-18-parallel-auto-threshold.md:
-    /// on 4 CPUs a sequential run already kept the cores busy and 2 chunks were ~15% slower; memory grows per chunk with
-    /// the frame size); <see cref="DetectionMode.Parallel"/> (<paramref name="forced"/>) from 4 CPUs on, at any size.
+    /// The chunk count when chunking: half the CPUs (so none below 4), at most 4, and none shorter than a minute; never
+    /// more than the decoder threads the caller set (<paramref name="threads"/>, 0 = FFmpeg's choice: no limit).
+    /// <see cref="DetectionMode.Auto"/> only for frames up to <see cref="AutoChunksMaxPixels"/>, as memory grows per chunk
+    /// with the frame size; <see cref="DetectionMode.Parallel"/> (<paramref name="forced"/>) at any size. 2 chunks on 4
+    /// CPUs gained on every film and clip measured, 1080p included (docs/decisions/2026-10-18-parallel-auto-4cpus.md).
     /// </summary>
     internal static int AutoChunks(int cpus, int frames, Fps fps, long pixels = 0, bool forced = false, int? threads = null)
     {
-        if (cpus < (forced ? 4 : 8) || (!forced && pixels > AutoChunksMaxPixels))
+        if (!forced && pixels > AutoChunksMaxPixels)
             return 1;
         int chunks = Math.Max(1, Math.Min(Math.Min(4, cpus / 2), (int)(frames / (60 * fps.Value))));
         return threads > 0 ? Math.Min(chunks, threads.Value) : chunks;
@@ -1170,7 +1170,7 @@ public static class ShotDetection
     /// <summary>Why <see cref="AutoChunks"/> gave one chunk, for the same arguments; null when it gave more.</summary>
     internal static string? WhyOneChunk(int cpus, int frames, Fps fps, long pixels = 0, bool forced = false, int? threads = null) =>
         AutoChunks(cpus, frames, fps, pixels, forced, threads) > 1 ? null
-        : (forced ? 4 : 8) is var least && cpus < least ? $"fewer than {least} CPUs ({cpus})"
+        : cpus < 4 ? $"fewer than 4 CPUs ({cpus})"
         : !forced && pixels > AutoChunksMaxPixels ? "frames larger than 3840 x 2160"
         : threads == 1 ? "one decoder thread"
         : "shorter than two minutes";

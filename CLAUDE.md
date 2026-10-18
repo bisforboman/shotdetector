@@ -25,8 +25,8 @@ dropped in 0.9.0), exports
 CLI `-i -`). CI compares every sample clip against scenedetect 0.7.2 and 0.7.1 on Linux for the core and FastYuv
 paths (10-bit h264 too), 0.7.2 both through the ffmpeg executable and in-process (our FFmpeg build; `compare.py`
 adds `SHOTDETECTOR_OURS_ARGS` to every run, CI sets `--decoder`). `Detect` chunks long in-process files on several
-cores by default from 8 CPUs on (docs/parallel-detection.md; `--sequential` one pass, `--parallel` from 4 CPUs on,
-hidden `--chunks N`; CI's 4-CPU runners use those); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
+cores by default from 4 CPUs on (docs/parallel-detection.md; `--sequential` one pass, `--parallel` also above 4K and
+says why it couldn't, hidden `--chunks N`); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
 weekly. `docs/backlog.md` has what's next, in order (Next, Waiting, Maybe; finished rows in `docs/backlog-done.md`);
 `docs/decisions/` what the user decided and why.
 

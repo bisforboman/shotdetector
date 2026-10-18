@@ -1,8 +1,8 @@
 """Time scenedetect and shotdetect on the same videos: wall time, CPU time and peak memory of the whole process tree.
 
 shotdetect runs in its default mode (in-process decoding when FFmpeg's libraries are found, e.g. bundled from
-native/, and from 8 CPUs on a long file in chunks on several cores, docs/parallel-detection.md), with --parallel (chunks
-from 4 CPUs on), with --sequential (one pass) and with --decoder process (the ffmpeg executable); with fewer than 4
+native/, and from 4 CPUs on a long file in chunks on several cores, docs/parallel-detection.md), with --parallel (also
+above 4K), with --sequential (one pass) and with --decoder process (the ffmpeg executable); with fewer than 4
 CPUs available (taskset) the --parallel and --sequential rows are left out, as nothing chunks there. CPU time is the
 user + system time of the finished child processes (Unix: getrusage(RUSAGE_CHILDREN), which counts ffmpeg too once
 shotdetect has waited for it); memory is the peak RSS of the process tree, polled with psutil (`pip install psutil`). With --stats both tools also
