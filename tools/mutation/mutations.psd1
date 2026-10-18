@@ -56,6 +56,11 @@
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (k >= a && reader.Position(k).Key != video.Position(k).Key)'; Replace = 'if (false)'; Tests = 'ParallelTests.FallsBackToSequential' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'for (int i = 0; i + 1 < chunks && problem is null; i++)'; Replace = 'for (int i = 0; false; i++)'; Tests = 'ParallelTests.SizeChangeFallsBack' }
 
+        # Parallel detection says why it read sequentially, and shares the decoder threads out without losing one
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = '        fallback = problem;'; Replace = '        fallback = null;'; Tests = 'ParallelTests.FallsBackToSequential' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'o.Mode == DetectionMode.Parallel && notChunked is not null ?'; Replace = 'false ?'; Tests = 'ParallelTests.FallsBackToSequential' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ' + (chunk < threads % chunks ? 1 : 0)'; Replace = ''; Tests = 'ParallelTests.DecoderThreadsSharedOut' }
+
         # Auto chunks from 8 CPUs on and for frames up to 3840 x 2160 (docs/decisions/2026-10-18-parallel-auto-threshold.md)
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'cpus < (forced ? 4 : 8)'; Replace = 'cpus < 4'; Tests = 'ParallelTests.AutomaticChunks' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ' || (!forced && pixels > AutoChunksMaxPixels)'; Replace = ''; Tests = 'ParallelTests.AutomaticChunksBySizeModeAndThreads' }

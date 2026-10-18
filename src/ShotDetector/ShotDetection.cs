@@ -390,7 +390,9 @@ public sealed record DetectionOptions
     /// scores. Half the CPUs, at most 4 chunks (no more than <see cref="DecodeThreads"/> when set), for files of two
     /// minutes or more (each chunk at least a minute). Only for files decoded in-process, without a time range or frame
     /// skip and not MPEG-PS; anything a chunk can't reproduce (a seek that lands late, dropped frames, a size change)
-    /// makes it read the file sequentially instead, from the start. <see cref="DetectedVideo.Chunks"/> says which ran.
+    /// makes it read the file sequentially instead, from the start. <see cref="DetectedVideo.Chunks"/> says which ran,
+    /// <see cref="DetectedVideo.ChunkFallback"/> why it fell back (also in <see cref="DetectionResult.Warnings"/>, as is
+    /// why <see cref="DetectionMode.Parallel"/> read sequentially). The decoder threads are shared out among the chunks.
     /// Memory grows by a decoder and its frame buffers per chunk. <see cref="DetectionMode.Auto"/> (the default) chunks
     /// for Detect from 8 CPUs on and for frames up to 3840 x 2160, but not for DetectStreamAsync, whose shots would
     /// otherwise all come once the whole file is scored; <see cref="DetectionMode.Parallel"/> chunks from 4 CPUs on, at
@@ -560,8 +562,11 @@ public sealed record DetectionResult
 
     /// <summary>
     /// What the caller should know about how the video was read, one sentence each; empty when nothing (never null).
-    /// So far one: an https HLS playlist decoded by the ffmpeg executable, which fetches its segments without checking
-    /// their certificates (in-process decoding checks them). <see cref="ShotDetection.DetectStreamAsync(string, DetectionOptions?, CancellationToken)"/>
+    /// So far: an https HLS playlist decoded by the ffmpeg executable, which fetches its segments without checking
+    /// their certificates (in-process decoding checks them); scoring in chunks that fell back to a sequential read
+    /// (<see cref="DetectedVideo.ChunkFallback"/>); <see cref="DetectionMode.Parallel"/> asked for and the file read
+    /// sequentially all the same, and why (fewer than 4 CPUs, shorter than two minutes, a time range, ...).
+    /// <see cref="ShotDetection.DetectStreamAsync(string, DetectionOptions?, CancellationToken)"/>
     /// has no result, so streaming callers don't get these.
     /// </summary>
     public IReadOnlyList<string> Warnings { get; init; } = [];
@@ -1000,10 +1005,18 @@ public static class ShotDetection
         }
 
         // Parallel: the scores in chunks at once, then the decisions over them in frame order (docs/parallel-detection.md).
-        int chunks = o.ResolvedMode(streaming: onShot is not null) == DetectionMode.Parallel && videoPath is not null && spilled is null && !video.Streaming && video.DecodesInProcess
-            && !video.PtsFromFrames && startFrame == 0 && endFrame is null && stride == 1
-            ? o.Chunks ?? AutoChunks(Environment.ProcessorCount, video.ExpectedFrames, video.Fps, (long)video.SourceWidth * video.SourceHeight, o.Mode == DetectionMode.Parallel, o.DecodeThreads)
+        // Why not, when it can't: reported (Warnings) when the caller asked for Parallel.
+        bool parallel = o.ResolvedMode(streaming: onShot is not null) == DetectionMode.Parallel;
+        long pixels = (long)video.SourceWidth * video.SourceHeight;
+        string? notChunked = !parallel
+            ? null
+            : NotChunkable(videoPath is null || spilled is not null || video.Streaming, video.DecodesInProcess, video.PtsFromFrames, startFrame != 0 || endFrame is not null, stride != 1);
+        int chunks = parallel && notChunked is null
+            ? o.Chunks ?? AutoChunks(Environment.ProcessorCount, video.ExpectedFrames, video.Fps, pixels, o.Mode == DetectionMode.Parallel, o.DecodeThreads)
             : 1;
+        if (parallel && notChunked is null && chunks < 2)
+            notChunked = o.Chunks is not null ? "one chunk asked for" : WhyOneChunk(Environment.ProcessorCount, video.ExpectedFrames, video.Fps, pixels, o.Mode == DetectionMode.Parallel, o.DecodeThreads);
+        string? fallback = null;
         var gate = new object();
         int scoredFrames = 0;
         var chunked = chunks > 1
@@ -1015,6 +1028,7 @@ public static class ShotDetection
                 stats is not null,
                 chunks,
                 o.Progress is null ? null : () => { lock (gate) Advance(++scoredFrames); },
+                out fallback,
                 cancellationToken)
             : null;
         if (chunked is { } scored)
@@ -1097,14 +1111,19 @@ public static class ShotDetection
         return new()
         {
             VideoPath = videoPath,
-            Video = new DetectedVideo(video) { Chunks = chunks },
+            Video = new DetectedVideo(video) { Chunks = chunks, ChunkFallback = fallback },
             Shots = shots,
             FrameCount = frameCount,
             MinSceneLengthFrames = minSceneLen,
             Stats = stats,
             Cuts = Unique(cuts),
             ReferenceTone = tone,
-            Warnings = VideoReader.ExecutableHlsWarning(videoPath, video.Container, video.DecodesInProcess) is { } warning ? [warning] : [],
+            Warnings = [.. new[]
+            {
+                VideoReader.ExecutableHlsWarning(videoPath, video.Container, video.DecodesInProcess),
+                fallback is not null ? "read sequentially, from the start, as scoring in chunks fell back: " + fallback : null,
+                o.Mode == DetectionMode.Parallel && notChunked is not null ? "read sequentially, not in chunks: " + notChunked : null,
+            }.OfType<string>()],
         };
     }
 
@@ -1146,6 +1165,30 @@ public static class ShotDetection
         return threads > 0 ? Math.Min(chunks, threads.Value) : chunks;
     }
 
+    /// <summary>Why <see cref="AutoChunks"/> gave one chunk, for the same arguments; null when it gave more.</summary>
+    internal static string? WhyOneChunk(int cpus, int frames, Fps fps, long pixels = 0, bool forced = false, int? threads = null) =>
+        AutoChunks(cpus, frames, fps, pixels, forced, threads) > 1 ? null
+        : cpus < (forced ? 4 : 8) ? $"fewer than {(forced ? 4 : 8)} CPUs ({cpus})"
+        : !forced && pixels > AutoChunksMaxPixels ? "frames larger than 3840 x 2160"
+        : threads == 1 ? "one decoder thread"
+        : "shorter than two minutes";
+
+    /// <summary>Why a file can't be scored in chunks at all, whatever the CPUs; null when it can.</summary>
+    internal static string? NotChunkable(bool streamed, bool inProcess, bool ptsFromFrames, bool timeRange, bool frameSkip) =>
+        streamed ? "a stream, a URL or streaming mode"
+        : !inProcess ? "decoded by the ffmpeg executable"
+        : ptsFromFrames ? "packets without timestamps (MPEG-PS)"
+        : timeRange ? "a time range"
+        : frameSkip ? "frame skip"
+        : null;
+
+    /// <summary>
+    /// A chunk's share of <paramref name="threads"/> decoder threads, the remainder going to the first chunks so none
+    /// is lost (5 in 2 chunks: 3 and 2); at least 1 each. 0 (FFmpeg's choice) stays 0 for every chunk.
+    /// </summary>
+    internal static int ChunkThreads(int threads, int chunks, int chunk) =>
+        threads <= 0 ? threads : Math.Max(1, threads / chunks + (chunk < threads % chunks ? 1 : 0));
+
     /// <summary>
     /// Each detector's per-frame metrics, scored in chunks of the file at once: each chunk on its own reader, from one
     /// frame before its first (metrics compare with the previous frame) to one past its last, whose score must equal the
@@ -1162,13 +1205,14 @@ public static class ShotDetection
         bool collectStats,
         int chunks,
         Action? onFrame,
+        out string? fallback,
         CancellationToken cancellationToken)
     {
         using var activity = Tracing.StartActivity("ShotDetection.ScoreChunked");
         int total = video.ExpectedFrames;
 
-        // The decoder threads shared out, so the total stays near a sequential run's.
-        var co = o with { DecodeThreads = Math.Max(1, (o.DecodeThreads ?? VideoReader.DefaultDecodeThreads(Environment.ProcessorCount)) / chunks) };
+        // The decoder threads shared out, so the total stays a sequential run's.
+        int threads = o.DecodeThreads ?? VideoReader.DefaultDecodeThreads(Environment.ProcessorCount);
         var metrics = new List<double?>[chunks, settings.Count];
         var overlap = new double?[chunks, settings.Count];
         var sizes = new (int, int)?[chunks];
@@ -1181,6 +1225,7 @@ public static class ShotDetection
         {
             int a = bounds[i], b = bounds[i + 1], from = Math.Max(0, a - 1), k = from;
             bool last = i == chunks - 1;
+            var co = o with { DecodeThreads = ChunkThreads(threads, chunks, i) };
             try
             {
                 var reader = new VideoReader(path, co, stop.Token);
@@ -1248,6 +1293,7 @@ public static class ShotDetection
             }
         }
 
+        fallback = problem;
         if (problem is not null)
         {
             activity?.SetTag("shotdetector.chunks.fallback", problem);

@@ -82,9 +82,10 @@ jobs:
           # Per-frame stats: scenedetect -s against shotdetect --stats in-process; edges on every frame.
           python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --stats --runs 3 --report bench-stats.md
           { echo "### detect-content --stats, all $(nproc) CPUs"; cat bench-stats.md; } >> "$GITHUB_STEP_SUMMARY"
-          # A small container's view: both tools and their children pinned to 2 CPUs (issue #12).
+          # A small container's view: both tools and their children pinned to 2 CPUs (issue #12). bench.py leaves out
+          # --parallel and --sequential there: chunks need 4 CPUs, so they'd repeat the default's row.
           taskset -c 0,1 python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --runs 3 --report bench2.md
-          { echo "### detect-content, 2 CPUs"; cat bench2.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### detect-content, 2 CPUs (sequential: chunks need 4)"; cat bench2.md; } >> "$GITHUB_STEP_SUMMARY"
 
       # The per-frame pixel work alone (benchmarks/micro: the resize and the edge detector, best of 15 rounds, real
       # frames from the same films and the synthetic set), so a regression there shows week to week.
