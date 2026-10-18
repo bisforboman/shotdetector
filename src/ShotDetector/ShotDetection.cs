@@ -1186,10 +1186,10 @@ public static class ShotDetection
 
     /// <summary>
     /// A chunk's share of <paramref name="threads"/> decoder threads, the remainder going to the first chunks so none
-    /// is lost (5 in 2 chunks: 3 and 2); at least 1 each. 0 (FFmpeg's choice) stays 0 for every chunk.
+    /// is lost (5 in 2 chunks: 3 and 2); at least 1 each.
     /// </summary>
     internal static int ChunkThreads(int threads, int chunks, int chunk) =>
-        threads <= 0 ? threads : Math.Max(1, threads / chunks + (chunk < threads % chunks ? 1 : 0));
+        Math.Max(1, threads / chunks + (chunk < threads % chunks ? 1 : 0));
 
     /// <summary>
     /// Each detector's per-frame metrics, scored in chunks of the file at once: each chunk on its own reader, from one
@@ -1213,8 +1213,9 @@ public static class ShotDetection
         using var activity = Tracing.StartActivity("ShotDetection.ScoreChunked");
         int total = video.ExpectedFrames;
 
-        // The decoder threads shared out, so the total stays a sequential run's.
-        int threads = o.DecodeThreads ?? VideoReader.DefaultDecodeThreads(Environment.ProcessorCount);
+        // The decoder threads shared out, so the total stays a sequential run's (FFmpeg's choice, 0, would give each
+        // chunk about one per CPU: the default count is shared out instead).
+        int threads = o.DecodeThreads is > 0 and var set ? set : VideoReader.DefaultDecodeThreads(Environment.ProcessorCount);
         var metrics = new List<double?>[chunks, settings.Count];
         var overlap = new double?[chunks, settings.Count];
         var sizes = new (int, int)?[chunks];

@@ -67,7 +67,7 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
   in `Decide`, so threshold with stats runs in chunks too.
 - `ShotDetection.ScoreChunked`: chunks split evenly by the probe's frame count (not on keyframes: the exact seek starts
   anywhere), each on its own `VideoReader` with its share of the decoder threads (the remainder to the first chunks,
-  so 5 in 2 chunks are 3 and 2; 0, FFmpeg's choice, stays 0). Checked: every frame's
+  so 5 in 2 chunks are 3 and 2; with 0, FFmpeg's choice, the default count is shared out). Checked: every frame's
   position equals the probe's for its index, each chunk gives its frames, the overlap frame's score equals the next
   chunk's, every chunk's first frame has the first chunk's size, and nothing threw. Otherwise the file is read
   sequentially from the start (a real error comes from there), `DetectedVideo.Chunks` is 1 and

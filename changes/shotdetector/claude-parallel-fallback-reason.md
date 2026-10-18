@@ -10,5 +10,5 @@
 ### Fixed
 
 - Parallel detection: decoder threads that don't divide evenly among the chunks are no longer lost (`--threads 5` in 2
-  chunks decoded with 2 + 2, now 3 + 2), and `DecodeThreads = 0` (FFmpeg's choice) stays FFmpeg's choice in each chunk
-  instead of becoming 1 thread.
+  chunks decoded with 2 + 2, now 3 + 2), and `DecodeThreads = 0` (FFmpeg's choice) shares out the default count
+  instead of giving each chunk 1 thread.

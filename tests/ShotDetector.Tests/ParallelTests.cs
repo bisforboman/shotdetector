@@ -141,15 +141,13 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
     public void SaysWhyOneChunk(int cpus, int frames, long pixels, bool forced, int? threads, string? expected) =>
         Assert.Equal(expected, ShotDetection.WhyOneChunk(cpus, frames, new Fps(25, 1), pixels, forced, threads));
 
-    // A chunk's decoder threads: the total shared out, the remainder to the first chunks, at least 1 each; 0 (FFmpeg's
-    // choice) for every chunk.
+    // A chunk's decoder threads: the total shared out, the remainder to the first chunks, at least 1 each.
     [Theory]
     [InlineData(4, 2, new[] { 2, 2 })]
     [InlineData(5, 2, new[] { 3, 2 })]
     [InlineData(3, 2, new[] { 2, 1 })]
     [InlineData(16, 3, new[] { 6, 5, 5 })]
     [InlineData(2, 4, new[] { 1, 1, 1, 1 })]
-    [InlineData(0, 2, new[] { 0, 0 })]
     public void DecoderThreadsSharedOut(int threads, int chunks, int[] expected) =>
         Assert.Equal(expected, Enumerable.Range(0, chunks).Select(i => ShotDetection.ChunkThreads(threads, chunks, i)));
 
