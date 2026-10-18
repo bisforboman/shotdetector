@@ -323,11 +323,11 @@ less CPU); there its point is ARM, where it gives x86's results.
   conversion of the decoded frames to BGR rounds differently on ARM (its x86 and ARM assembly differ), so by default
   per-frame stats differ slightly from x86's and now and then a cut moves. For x86's results on ARM, add
   ShotDetector.FastYuv (`Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420()`), a port of the x86
-  conversion: CI checks that ARM then gives x64's results exactly on even-sized 8-bit 4:2:0 and 4:2:2 video (nearly
-  all video), through both decoders. ShotDetector decodes MPEG-1/2, MJPEG and MPEG-4 Part 2 with FFmpeg's C IDCT on
+  conversion: CI checks that ARM then gives x64's results exactly on even-sized 8-bit 4:2:0 and 4:2:2 video and on
+  10-bit 4:2:0 of even width (nearly all video), through both decoders. ShotDetector decodes MPEG-1/2, MJPEG and MPEG-4 Part 2 with FFmpeg's C IDCT on
   every platform, which gives x86's default frames; ARM's own IDCT doesn't (Xvid's MPEG-4 aside, which FFmpeg decodes
-  with the Xvid IDCT everywhere). 10-bit still differs on ARM (another conversion path,
-  [docs/fastyuv-10bit-422.md](docs/fastyuv-10bit-422.md)). The `shotdetect` binaries don't include FastYuv (LGPL), so on ARM they give the default results
+  with the Xvid IDCT everywhere). Other formats (10-bit 4:2:2, odd sizes FastYuv leaves to FFmpeg) can still differ
+  on ARM ([docs/fastyuv-10bit-422.md](docs/fastyuv-10bit-422.md)). The `shotdetect` binaries don't include FastYuv (LGPL), so on ARM they give the default results
   ([docs/decisions/2026-10-17-arm-results.md](docs/decisions/2026-10-17-arm-results.md)).
   scenedetect itself differs on ARM, because opencv-python's ARM wheels replace parts of OpenCV with Arm's
   KleidiCV and Carotene libraries: `cv2.resize` for downscales under 3x (scenedetect's usual ones) and BGR to HSV
