@@ -88,7 +88,9 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   when .cs files are staged; it stops a commit whose .cs files also have unstaged changes, and one that rewrites a file's line endings, as CI's
   line-endings job does). By hand: `dotnet tool run
   stylebro-migrate format ShotDetector.slnx` (the version is in .config/dotnet-tools.json, with the analyzers' in
-  Directory.Packages.props; Dependabot updates both in one PR); CI checks it with `--verify-no-changes`. Feedback on StyleBro goes to its GitHub issues.
+  Directory.Packages.props; both move in one PR, by hand: Dependabot's NuGet updater only moves a prerelease to
+  prereleases of the same version or a stable, so upstream.yml files an issue for a newer StyleBro); CI checks it
+  with `--verify-no-changes` (clean on Linux too since StyleBro 0.6.0). Feedback on StyleBro goes to its GitHub issues.
 - Docs don't copy benchmark numbers: speed and memory figures go stale with every change. READMEs link the weekly
   runs (`benchmark.yml`, `frame-reader-bench.yml`; their summaries have the tables) and keep only claims that hold.
 - Dependabot: its patch and minor PRs auto-merge once green (`dependabot-auto-merge.yml`); majors wait for a look.

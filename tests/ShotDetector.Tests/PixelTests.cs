@@ -35,7 +35,6 @@ public class PixelTests
                     CvResize.Linear(Image(q, 5, w, h, 3), w, h, dst, dw, dh);
                     return Digest(dst);
                 }
-
             case "A":
                 {
                     int dw = int.Parse(q[3]), dh = int.Parse(q[4]);
@@ -43,7 +42,6 @@ public class PixelTests
                     AreaResize.Resize(Image(q, 5, w, h, 1), w, h, dst, dw, dh);
                     return Digest(dst);
                 }
-
             case "H":
                 {
                     byte[] hsv = new byte[w * h * 3];
@@ -51,21 +49,18 @@ public class PixelTests
                     Hsv.Convert(Image(q, 3, w, h, 3), planes[..(w * h)], planes.Slice(w * h, w * h), planes[(2 * w * h)..]);
                     return Digest(hsv);
                 }
-
             case "G":
                 {
                     var gray = new byte[w * h];
                     HashDetector.Gray(Image(q, 3, w, h, 3), gray);
                     return Digest(gray);
                 }
-
             case "E":
                 {
                     var edges = new byte[w * h];
                     new EdgeDetector(w, h).Detect(Image(q, 3, w, h, 1), edges);
                     return Digest(edges);
                 }
-
             default:
                 {
                     var scorer = new ContentScorer(1, 1, 1, 1) { Edges = new EdgeDetector(w, h) };

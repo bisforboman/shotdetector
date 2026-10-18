@@ -1,6 +1,7 @@
 name: Upstream releases
 
-# Weekly: an issue when something ShotDetector matches or builds on has a newer release than the one it uses: scenedetect
+# Weekly: an issue when something ShotDetector matches or builds on has a newer release than the one it uses: StyleBro
+# (prereleases, which Dependabot doesn't propose), scenedetect
 # (a new compatibility mode), FFmpeg's point releases in our native build's series, zlib and dav1d, which that build
 # links in, BtbN's month-end builds (CI's ffmpeg, pinned in .github/actions/btbn-ffmpeg), and the FFmpeg opencv-python's Linux wheel bundles (scenedetect's frames come from it) (security and decoder fixes reach FrameReader.Native and the CLI only when the build moves). One issue per
 # release (none if one exists, open or closed).
@@ -237,5 +238,48 @@ jobs:
           - [ ] Run the parity and real-world comparisons with \`opencv-python-headless==$latest\` (and the scenedetect release that's current).
           - [ ] If the FFmpeg major changed (libavcodec 63 = FFmpeg 9): the backlog's "Move to FFmpeg 9's libraries" (FFmpeg.AutoGen 9, the Native packages on 9.0.x), and re-check the colour (BT.709) and 10-bit notes in the README.
           - [ ] Move the \`opencv-python-headless==\` pins (ci.yml, realworld.yml, benchmark.yml) once results match.
+          EOF
+          )"
+
+  # StyleBro (the analyzers and the format tool, one version) is a prerelease: Dependabot's NuGet updater only moves a
+  # prerelease to prereleases of the same version or a stable one, so it never proposes 0.x.0-alpha.1 -> 0.y.0-alpha.1.
+  stylebro:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: A newer StyleBro on nuget.org?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ours=$(grep -oE 'Include="StyleBro.Analyzers" Version="[^"]+"' Directory.Packages.props | cut -d'"' -f4)
+          # NuGet's index lists listed versions in SemVer order, prereleases included.
+          latest=$(curl -fsSL --retry 3 https://api.nuget.org/v3-flatcontainer/stylebro.analyzers/index.json | jq -r '.versions[-1]')
+          echo "ShotDetector uses StyleBro $ours; nuget.org's newest is $latest."
+          [ -n "$ours" ] && [ -n "$latest" ] && [ "$latest" != "$ours" ] || exit 0
+          # Newer only (SemVer: a release sorts after its prereleases).
+          newer=$(python3 -c '
+          import sys
+          def key(s):
+              core, _, pre = s.partition("-")
+              ids = [(0, int(x), "") if x.isdigit() else (1, 0, x) for x in pre.split(".")] if pre else []
+              return (tuple(int(x) for x in core.split(".")), not pre, ids)
+          print(key(sys.argv[2]) > key(sys.argv[1]))' "$ours" "$latest" 2>/dev/null || echo False)
+          [ "$newer" = True ] || exit 0
+          title="StyleBro $latest released"
+          if gh issue list --state all --search "\"$title\" in:title" --json title --jq '.[].title' | grep -qxF "$title"; then
+            echo "Already filed: $title"
+            exit 0
+          fi
+          gh issue create --title "$title" --body "$(cat <<EOF
+          nuget.org has StyleBro $latest; ShotDetector uses $ours (found by the weekly upstream check: Dependabot doesn't propose a prerelease's next version).
+
+          Release notes: https://github.com/bisforboman/stylebro/blob/main/CHANGELOG.md (each version's "Upgrading from" section).
+
+          To move to it (one PR):
+          - [ ] The analyzers' version in \`Directory.Packages.props\` and the tool's in \`.config/dotnet-tools.json\`.
+          - [ ] \`dotnet tool restore\`, \`dotnet tool run stylebro-migrate format ShotDetector.slnx\`, then \`--verify-no-changes\` and a build with warnings as errors.
+          - [ ] Keep today's style where a new rule or setting would change it across the code (\`.editorconfig\`), and list the files the formatter changed in the PR.
           EOF
           )"

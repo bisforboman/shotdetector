@@ -41,10 +41,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: CI's VideoWriter step needs DOTNET_TieredCompilation=0 because x264's AVX-512 code and .NET's tiered JIT differ about 1 run in 250 (CLAUDE.md); the report was written but not filed as of the 2026-10-15 reminder (it waited on a VideoLAN GitLab account). A public post from the owner's account: theirs to file, never a session's
   - Status: Open
 
-- The owner files a StyleBro issue: `--verify-no-changes` on Linux flags untouched files
-  - Why: In a Linux cloud container, `dotnet tool run stylebro-migrate format ShotDetector.slnx --verify-no-changes` reports WHITESPACE errors on main as it is (2026-10-18): src/ShotDetector/Detectors.cs(298,115 and 300,68), FrameTime.cs(69-71), VideoReader.cs(946,112 and 948,119), VideoReader.InProcess.cs(17,31 and 19,95), tests/ShotDetector.Tests/Tests.cs(213-214), each "Replace N characters with '\n...'" around comments in expression-bodied members of these CRLF files, while Windows CI's check passes. Every cloud session and the daily triage see them; CLAUDE.md sends StyleBro feedback to its issues, a repository outside this one's sessions
-  - Status: Open
-
 ## Maybe
 
 - Parallel detection: hand the outer reader's packet list to the chunks' readers
