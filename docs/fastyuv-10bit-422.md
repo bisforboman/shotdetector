@@ -2,8 +2,9 @@
 
 Status: 4:2:2 done (2026-10-18): FastYuv converts yuv422p and yuvj422p through `IYuv422Converter`, rotated frames
 included, and arch-diff requires ARM to equal x64 on them. 10-bit 4:2:0 (2026-10-18): a port reproduces x86's bytes
-(`IYuv420P10Converter`, "As built (10-bit)" below); on x64 it is slower than the default path on small video, an open
-question for the owner.
+(`IYuv420P10Converter`, "As built (10-bit)" below), and arch-diff requires ARM to equal x64 on it; on x64 it is
+slower than the default path on small video, merged anyway with a speed-up to follow
+(docs/decisions/2026-10-18-fastyuv-10bit-x64.md).
 The owner's answers to the open questions at the end: docs/decisions/2026-10-18-fastyuv-422.md. Backlog: "ARM's
 results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video".
 
@@ -56,8 +57,9 @@ results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video".
   through the executable and 9.3 s instead of 2.6 s in-process; 1080p about the same either way. Each chroma sample
   the resize reads is filtered horizontally again for every output row that reads it (about 32 multiply-adds per pixel
   pair, scalar); a frame-scoped conversion (filter each needed chroma row once) would need a batch method on the
-  interface and CvResize's YUV path reworked. Whether 10-bit should take FastYuv on x64 at all (the same bytes as the
-  default path there) is the owner's call.
+  interface (additive: a new interface beside `IYuv420P10Converter`) and CvResize's YUV path reworked. The owner chose
+  to merge as is, a converter set being used as set, and to make it faster later
+  (docs/decisions/2026-10-18-fastyuv-10bit-x64.md; the backlog's Next).
 
 The sections below are the scoping written before 4:2:2 was built. Where they describe the code (4:2:2 still
 differing, rotation turning the planes first, `WriteYuv420`, the only 4:2:2 sample being turned), the list above

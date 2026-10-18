@@ -788,3 +788,9 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 
 - 0.6.4 compatibility mode, VFR, edges (`delta_edges`), exports, FastYuv package, release pipeline
   - Landed: 0.1.0–0.2.0
+
+## Since 2026-10-18
+
+- ARM's results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video
+  - Why: FastYuv gives x86's results on ARM for 8-bit 4:2:0 only (arch-diff's table, 2026-10-17): 10-bit and 4:2:2 take other swscale paths, and MPEG-2's and MJPEG's decoded frames already differ (their IDCTs round per platform), so those still differ on ARM
+  - Status: Done (2026-10-18, #412): 10-bit 4:2:0: FastYuv converts yuv420p10le with x86's bytes (`IYuv420P10Converter`, a port of swscale's bicubic filters, MMXEXT vertical scaler and output and the C output for the last two rows; docs/fastyuv-10bit-422.md "As built (10-bit)"), arch-diff requires ARM to equal x64 on both 10-bit samples; on x64 slower than the default path on small video, merged anyway (docs/decisions/2026-10-18-fastyuv-10bit-x64.md; the speed-up is in Next). 4:2:2 done (2026-10-18, #404): yuv422p/yuvj422p (`IYuv422Converter`; rotated frames converted before turning), arch-diff requires them (docs/decisions/2026-10-18-fastyuv-422.md). MPEG-1/2 and MJPEG done (2026-10-17): ShotDetector decodes them with FFmpeg's C IDCT (`-idct simple`; in-process FrameReader's `FrameDecoderOptions.CodecOptions`), which x64's default already gives and ARM's NEON IDCT doesn't (#384's checksums); arch-diff requires them too
