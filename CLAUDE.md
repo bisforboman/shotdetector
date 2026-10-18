@@ -48,7 +48,7 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
 
 ## Working on this repository
 
-- **PR pipeline**: `main` is protected; work on a branch, push, `gh pr create`, merge when the checks are green.
+- **PR pipeline**: `main` is protected; work on a branch, push, `gh pr create`, and turn auto-merge on at once (the owner's preference, 2026-10-18; drafts excepted, and a PR the owner must decide on says so in its body and waits for the answer).
   Branch protection requires `build`, `CI passed`, `Real world passed` and `mutation`; the two "passed" jobs are gates
   that need every other job in their workflow (passed or skipped: light PRs skip the heavy ones, and a skipped matrix
   job never reports its per-matrix names). A new job in ci.yml or realworld.yml goes in its gate's `needs`. Don't push
