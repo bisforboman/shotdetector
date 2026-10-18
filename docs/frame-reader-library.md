@@ -9,7 +9,7 @@ ShotDetector keeps its conversions (FrameWriter: the pipelines' exact layouts) a
 VideoFrameReader (a size and FrameFormat, the bytes of ffmpeg's `scale=W:H:flags=bicubic,format=F`, checked byte for
 byte) and the library's README. ShotDetector uses only FrameReader's public API since 2026-10-09 (no InternalsVisibleTo):
 its conversions go through `BgrConverter` (the frame as ffmpeg's scale,format=bgr24 gives it, whole or only some rows)
-and its prefixed Stream is its own wrapper. Milestone 5 (benchmarks) done: FrameReader's README has the numbers (x64 and ARM). Milestone 6: exact seeking and thumbnails done (VideoFrameReader.Seek/TryReadAt, the frame `ffmpeg -ss T` gives, byte for byte; with deinterlacing only before the first read); audio done (AudioReader: the samples of `ffmpeg -ar R -ac C -f f32le`, seeking as -ss); hardware decoding skipped for now (docs/decisions/). All six milestones done apart from that. Answers to "Before writing code" 1-3 and
+and its prefixed Stream is its own wrapper. Milestone 5 (benchmarks) done: FrameReader's README links the weekly runs (x64 and ARM). Milestone 6: exact seeking and thumbnails done (VideoFrameReader.Seek/TryReadAt, the frame `ffmpeg -ss T` gives, byte for byte; with deinterlacing only before the first read); audio done (AudioReader: the samples of `ffmpeg -ar R -ac C -f f32le`, seeking as -ss); hardware decoding skipped for now (docs/decisions/). All six milestones done apart from that. Answers to "Before writing code" 1-3 and
 build-vs-contribute in docs/decisions/. For Claude Code: read this file and CLAUDE.md, then start at
 "Before writing code". Record every answer the user gives in `docs/decisions/` as usual.
 

@@ -2,9 +2,10 @@ namespace ShotDetector;
 
 /// <summary>
 /// Converts yuv420p pixels to BGR exactly as OpenCV gets them from ffmpeg (swscale). When one is
-/// given (<see cref="DetectionOptions.Yuv420Converter"/>), ffmpeg sends raw yuv420p and only the
-/// pixels the resize reads are converted, which is much faster on large video. Without one,
-/// ffmpeg converts whole frames; results are identical either way.
+/// given (<see cref="DetectionOptions.Yuv420Converter"/>), the decoder's yuv420p planes (ffmpeg's
+/// rawvideo, or decoded in-process) are converted where the resize reads, which is much faster on
+/// large video through the executable. Without one, FFmpeg's own conversion is used; results are
+/// identical either way.
 /// The ShotDetector.FastYuv package (LGPL) provides one: SwscaleYuv420.
 /// </summary>
 public interface IYuv420Converter

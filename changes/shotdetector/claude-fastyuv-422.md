@@ -6,4 +6,5 @@
 ### Fixed
 
 - FastYuv on rotated video converts the frames before turning them, as OpenCV does: turned 4:2:2 takes the fast path,
-  and turned 4:2:0 with an odd width or height gives the default path's results (an odd height used to differ).
+  and turned 4:2:0 with an odd width or height gives the default path's results (turned 4:2:0 whose width is odd, an
+  odd height once turned, used to differ).

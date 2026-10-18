@@ -80,24 +80,24 @@ const string Usage = """
       -o, --output <dir>                 Folder for outputs given as relative paths; $VIDEO_NAME works in every output path
           --config <file>                scenedetect's config file (scenedetect.cfg): its values are the defaults; keys
                                          ShotDetector doesn't have are listed on stderr
-      --load-scenes <csv>                Take the shots from a scene list CSV instead of detecting (scenedetect load-scenes)
-      --load-scenes-column <name>        Its column with each shot's start (default "Start Frame")
+          --load-scenes <csv>            Take the shots from a scene list CSV instead of detecting (scenedetect load-scenes)
+          --load-scenes-column <name>    Its column with each shot's start (default "Start Frame")
           --split-copy                   Copy streams instead of re-encoding (fast; cuts on keyframes)
           --split-high-quality           CRF 17, preset slow (instead of 22, veryfast)
           --split-crf <n>, --split-preset <name>, --split-args "<ffmpeg args>"
           --split-expand                 Stretch the first/last clip to the video's start/end (with -s/-e)
           --probe                        Only describe the input (container, video, every stream), then stop
           --probe-json                   The same as JSON on standard output
-      --waveform <file.dat>          Only write the audio's waveform peaks as BBC audiowaveform's .dat (for
-                                     peaks.js and other viewers), then stop; video or audio-only input
-      --waveform-zoom <n>            Samples per point (audiowaveform --zoom; default 256)
-      --waveform-pixels-per-second <n>  Points per second instead
-      --waveform-bits <8|16>         Resolution of the .dat (default 16)
-      --waveform-split-channels      One waveform per channel (default: the channels averaged)
-      --audio-filter <graph>         Only run an ffmpeg -af filter graph over the audio, then stop: analysis
-                                     filters' results (silencedetect, ebur128=metadata=1, astats=metadata=1)
-                                     go to standard output with their times
-      --audio-out <file>             Write the (filtered) audio, encoded by the extension (.mp3, .m4a, .wav, ...)
+          --waveform <file.dat>          Only write the audio's waveform peaks as BBC audiowaveform's .dat (for
+                                         peaks.js and other viewers), then stop; video or audio-only input
+          --waveform-zoom <n>            Samples per point (audiowaveform --zoom; default 256)
+          --waveform-pixels-per-second <n>  Points per second instead
+          --waveform-bits <8|16>         Resolution of the .dat (default 16)
+          --waveform-split-channels      One waveform per channel (default: the channels averaged)
+          --audio-filter <graph>         Only run an ffmpeg -af filter graph over the audio, then stop: analysis
+                                         filters' results (silencedetect, ebur128=metadata=1, astats=metadata=1)
+                                         go to standard output with their times
+          --audio-out <file>             Write the (filtered) audio, encoded by the extension (.mp3, .m4a, .wav, ...)
           --find-tone                    Only list reference tone (1 kHz line-up tone) in the audio, then stop;
                                          video or audio-only input. Not in scenedetect
           --trim-tone                    Leave reference tone at the start and end out of detection
