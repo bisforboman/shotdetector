@@ -1,5 +1,7 @@
 # Parallel by default only from 8 CPUs, with a frame-size cap (2026-10-18)
 
+The 8-CPU gate was replaced the same day: from 4 CPUs on, the cap kept (2026-10-18-parallel-auto-4cpus.md).
+
 ### Question
 
 The release-candidate performance and security reviews of parallel detection as the default (#398) measured it on a

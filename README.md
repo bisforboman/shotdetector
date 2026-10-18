@@ -280,7 +280,7 @@ How it keeps up while computing exactly what OpenCV and scenedetect compute:
 - the resize, BGR to HSV and the frame differences are vectorised (AVX2), with the same integer arithmetic;
 - decoding overlaps scoring, with all the CPUs (at most 16) as decoder threads, as OpenCV (`--threads` to change).
 
-**Parallel detection**, the default for `Detect` and the CLI from 8 CPUs on, scores a long local file in chunks on
+**Parallel detection**, the default for `Detect` and the CLI from 4 CPUs on, scores a long local file in chunks on
 several cores at once (half the CPUs, at most 4 chunks, for files of two minutes or more), then runs the cut decisions
 once over all the scores, so the result is exactly the sequential one; CI compares the two byte for byte on every
 sample and on three films. It pays where one decoder can't keep the cores busy: more cores work at once for about the
@@ -289,7 +289,7 @@ same CPU time (the
 in-process decoding of a file: streams, URLs, a time range, frame skip and MPEG-PS read sequentially, and so does any
 file a chunk can't reproduce (a seek that lands late, dropped frames, a size change). `DetectedVideo.Chunks` says which
 ran. Each chunk has its own decoder and frame buffers, so memory grows with the chunks; frames larger than 3840x2160
-read sequentially by default. `DetectionOptions.Mode` chooses: `Auto` (the default) chunks for `Detect` from 8 CPUs on
+read sequentially by default. `DetectionOptions.Mode` chooses: `Auto` (the default) chunks for `Detect` from 4 CPUs on
 but not for `DetectStreamAsync`, so its shots still come as they are found; `Sequential` never chunks (CLI
 `--sequential`; services running several detections at once may want it); `Parallel` chunks from 4 CPUs on and at any
 frame size (CLI `--parallel`), `DetectStreamAsync` too, whose shots then all come at the end. The older

@@ -132,7 +132,8 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
     // Why the automatic count is 1, for the same arguments as AutoChunks; null when it's more.
     [Theory]
     [InlineData(2, 100_000, 1920 * 1080, true, null, "fewer than 4 CPUs (2)")]
-    [InlineData(4, 100_000, 1920 * 1080, false, null, "fewer than 8 CPUs (4)")]
+    [InlineData(3, 100_000, 1920 * 1080, false, null, "fewer than 4 CPUs (3)")]
+    [InlineData(4, 100_000, 1920 * 1080, false, null, null)]
     [InlineData(16, 100_000, 4096 * 4096, false, null, "frames larger than 3840 x 2160")]
     [InlineData(16, 100_000, 1920 * 1080, false, 1, "one decoder thread")]
     [InlineData(16, 2999, 1920 * 1080, false, null, "shorter than two minutes")]
@@ -275,12 +276,14 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
         AssertSame(sequential, auto);
     }
 
-    // Auto: half the CPUs, at most 4, from 8 CPUs on and for frames up to 3840 x 2160; none shorter than a minute; no
+    // Auto: half the CPUs (none below 4), at most 4, for frames up to 3840 x 2160; none shorter than a minute; no
     // more than the decoder threads set. Parallel (forced): from 4 CPUs on, at any size.
     [Theory]
     [InlineData(1, 100_000, 1)]
-    [InlineData(4, 100_000, 1)]
-    [InlineData(7, 100_000, 1)]
+    [InlineData(3, 100_000, 1)]
+    [InlineData(4, 100_000, 2)]
+    [InlineData(5, 100_000, 2)]
+    [InlineData(7, 100_000, 3)]
     [InlineData(8, 100_000, 4)]
     [InlineData(64, 100_000, 4)]
     [InlineData(16, 3000, 2)]  // 2 minutes at 25 fps
@@ -294,7 +297,11 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
     [InlineData(16, 3840 * 2160 + 1, false, null, 1)] // larger than 4K UHD: sequential
     [InlineData(16, 4096 * 4096, true, null, 4)]      // forced: any size
     [InlineData(3, 1920 * 1080, true, null, 1)]
-    [InlineData(4, 1920 * 1080, true, null, 2)]       // forced: from 4 CPUs on
+    [InlineData(3, 1920 * 1080, false, null, 1)]
+    [InlineData(4, 1920 * 1080, true, null, 2)]       // from 4 CPUs on, forced or not
+    [InlineData(4, 1920 * 1080, false, null, 2)]
+    [InlineData(4, 3840 * 2160 + 1, false, null, 1)]
+    [InlineData(4, 3840 * 2160 + 1, true, null, 2)]
     [InlineData(6, 1920 * 1080, true, null, 3)]
     [InlineData(16, 1920 * 1080, false, 1, 1)]        // --threads 1: one decoder
     [InlineData(16, 1920 * 1080, false, 2, 2)]

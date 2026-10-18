@@ -1,22 +1,25 @@
 # Parallel detection of long files
 
 Status: built (2026-10-16), opt-in at first (`DetectionOptions.Parallel`, `--parallel`); the default for `Detect`
-since 2026-10-18 from 8 CPUs on and for frames up to 3840 x 2160: `DetectionOptions.Mode`, `--sequential`,
+since 2026-10-18 from 4 CPUs on and for frames up to 3840 x 2160: `DetectionOptions.Mode`, `--sequential`,
 `DetectedVideo.Chunks`. The user's choices: docs/decisions/ ("Parallel detection: opt-in, in-process files, automatic
 chunks, a prototype first", "Parallel detection: build it, `Parallel` and `--parallel`, half the CPUs up to 4",
-"Parallel detection as the default" and "Parallel by default only from 8 CPUs, with a frame-size cap").
+"Parallel detection as the default", "Parallel by default only from 8 CPUs, with a frame-size cap" and "Parallel by
+default from 4 CPUs", which replaced the 8-CPU gate the same day after runner measurements).
 
 ## Turning it on and off
 
 `DetectionOptions.Mode` (`DetectionMode`):
 
-- `Auto`, the default: parallel for `Detect` and `DetectAsync` (and so the CLI) from 8 CPUs on and for frames up to
-  3840 x 2160, sequential for `DetectStreamAsync`, which would otherwise deliver every shot at the end. On 4 CPUs a
-  sequential run already keeps the cores busy (2 chunks were ~15% slower there), and memory grows per chunk with the
-  frame size. Every condition below still applies: a file that can't be chunked reads sequentially.
+- `Auto`, the default: parallel for `Detect` and `DetectAsync` (and so the CLI) from 4 CPUs on and for frames up to
+  3840 x 2160, sequential for `DetectStreamAsync`, which would otherwise deliver every shot at the end. 2 chunks on 4
+  CPUs gained 1.07x to 1.8x on every film and clip measured on GitHub's x64 (2 cores with SMT) and ARM runners, 1080p
+  included, for 10 to 54 MB more and up to 8% more CPU time on x64 (17% at low resolution with stats); memory grows
+  per chunk with the frame size, hence the cap. Every condition below still applies: a file that can't be chunked
+  reads sequentially.
 - `Sequential`: one pass, never chunks (CLI `--sequential`).
 - `Parallel`: chunks wherever it can, from 4 CPUs on and at any frame size, `DetectStreamAsync` too (CLI
-  `--parallel`).
+  `--parallel`), and says why in `DetectionResult.Warnings` when it can't.
 
 `DetectionOptions.Parallel` is obsolete and still works: true is `Parallel`, false `Sequential`. The CLI's hidden
 `--chunks <n>` forces a chunk count for CI; CI's runners have 4 CPUs, so its comparisons ask for `--parallel` or
@@ -73,7 +76,7 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
   sequentially from the start (a real error comes from there), `DetectedVideo.Chunks` is 1 and
   `DetectedVideo.ChunkFallback` says why (also a `DetectionResult.Warnings` entry, which the CLI prints).
 - `AutoChunks`: half the CPUs, at most 4, each chunk at least a minute, never more chunks than the decoder threads
-  the caller set; `Auto` from 8 CPUs on and for frames up to 3840 x 2160 pixels, `Parallel` from 4 CPUs on at any size.
+  the caller set (so none below 4 CPUs); `Auto` for frames up to 3840 x 2160 pixels, `Parallel` at any size.
 - Sequential, always: streams and URLs, the executable path, MPEG-PS without packet pts, a time range, frame skip.
   Progress counts all chunks' frames; a fallback starts it over. When `Parallel` was asked for (`--parallel`,
   `--chunks`) and the file is read sequentially all the same, a warning says why: one of those, fewer than 4 CPUs,
@@ -100,6 +103,12 @@ Speed, adaptive, median wall time (CPU time the same throughout):
 
 Decoding already uses several cores (Tears of Steel keeps ~5 busy sequentially), so the gain is what the idle cores
 give; past 4 chunks nothing measured gained.
+
+Measured again on 2026-10-18 for the default's CPU threshold (docs/decisions/2026-10-18-parallel-auto-4cpus.md;
+content detector, 3 interleaved rounds, within 1-2%), the 4-vCPU rows above don't hold any more: on both runners 4
+chunks beat 2 on every film (Elephants Dream 1.38x against 1.28x on x64, 1.75x against 1.46x on ARM; Tears of Steel
+1.17x against 1.07x, 1.24x against 1.11x), and 1080p at 17-22 Mbps gained 1.07x to 1.15x in 2 chunks. `Auto` still
+takes half the CPUs (the user's choice: 4 chunks cost about 65 MB more at 1080p for little more there).
 
 ## Proof
 

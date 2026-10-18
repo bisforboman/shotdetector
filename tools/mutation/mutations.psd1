@@ -71,9 +71,9 @@
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'o.Mode == DetectionMode.Parallel && notChunked is not null ?'; Replace = 'false ?'; Tests = 'ParallelTests.FallsBackToSequential' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ' + (chunk < threads % chunks ? 1 : 0)'; Replace = ''; Tests = 'ParallelTests.DecoderThreadsSharedOut' }
 
-        # Auto chunks from 8 CPUs on and for frames up to 3840 x 2160 (docs/decisions/2026-10-18-parallel-auto-threshold.md)
-        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'cpus < (forced ? 4 : 8)'; Replace = 'cpus < 4'; Tests = 'ParallelTests.AutomaticChunks' }
-        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ' || (!forced && pixels > AutoChunksMaxPixels)'; Replace = ''; Tests = 'ParallelTests.AutomaticChunksBySizeModeAndThreads' }
+        # Auto chunks with half the CPUs (none below 4) and for frames up to 3840 x 2160 (docs/decisions/2026-10-18-parallel-auto-4cpus.md)
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'Math.Min(4, cpus / 2)'; Replace = 'Math.Min(4, cpus)'; Tests = 'ParallelTests.AutomaticChunks' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (!forced && pixels > AutoChunksMaxPixels)'; Replace = 'if (false)'; Tests = 'ParallelTests.AutomaticChunksBySizeModeAndThreads' }
 
         # Streamed input
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (o.StartTime is not null && video.Streaming)'; Replace = 'if (false)'; Tests = 'VideoTests' }

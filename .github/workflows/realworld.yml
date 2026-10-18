@@ -104,7 +104,7 @@ jobs:
           exit ${status:-0}
 
   # Parallel detection (DetectionOptions.Mode) on the long films: --parallel's automatic count (2 chunks on these
-  # 4-CPU runners, where the default stays sequential: it chunks from 8 CPUs on) and 4 chunks, byte for byte the
+  # 4-CPU runners, as the default's) and 4 chunks, byte for byte the
   # sequential result, and never falling back to sequential. In-process,
   # with FFmpeg 8.1's libraries.
   parallel:

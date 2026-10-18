@@ -3,8 +3,8 @@
 Usage: python tools/compare-parallel.py <video>... [--chunks N] [--require-chunks] [--report summary.md] [--fast-yuv]
 
 Each video runs with all five detectors at once and --stats, in 0.7.2 and 0.7.1 mode, once with --sequential and once
-with --chunks N (default: --parallel, chunked from 4 CPUs on with the automatic count; the CLI's default chunks only
-from 8 CPUs on). A run that fell back to sequential (the CLI's summary doesn't
+with --chunks N (default: --parallel, the automatic count from 4 CPUs on, like the CLI's default but at any frame
+size, and with a warning when it can't chunk). A run that fell back to sequential (the CLI's summary doesn't
 say "in N chunks") is reported; with --require-chunks it fails. Extra shotdetect options: SHOTDETECTOR_OURS_ARGS.
 """
 
