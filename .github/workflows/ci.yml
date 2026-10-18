@@ -661,7 +661,7 @@ jobs:
       - name: Compare interlaced 10-bit video with scenedetect (informational)
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.2' && matrix.part == 'more')
         run: |
-          python tools/compare.py samples/informational/*.mov samples/informational/*.mxf --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
+          python tools/compare.py samples/informational/*.mov samples/informational/*.mxf samples/informational/*.avi --detector all --stats --report tenbit.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### Interlaced 10-bit, AVC-Intra and ProRes (informational), ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
 
   # x64 and ARM give the same results end to end: every detector's scene list and per-frame stats on the main
@@ -726,7 +726,7 @@ jobs:
           # The LGPL converter too (dev-only build, as compare.py --fast-yuv): does it give x64's results on ARM?
           dotnet build -c Release -v q -p:WithFastYuv=true -o fastyuv src/ShotDetector.Cli
           FASTYUV=$PWD/fastyuv/shotdetect tools/arch-outputs.sh src/ShotDetector.Cli/bin/Release/net10.0/shotdetect "$PWD/native/${{ matrix.rid }}" out \
-            samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg
+            samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg samples/informational/*.avi
 
       # Parallel detection on ARM, as the parity job checks it on x64: three chunks on every sample, byte for byte the
       # sequential result (all five detectors, stats, 0.7.2 and 0.7.1 mode), core and FastYuv paths, in-process.

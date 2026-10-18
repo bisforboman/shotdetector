@@ -57,11 +57,18 @@ try {
 
     # MPEG-2 in a program stream: most packets carry no pts (timestamps come from a decoding pass).
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mpeg2video -q:v 3 sintel_mpeg2.mpg
+    # MPEG-1 in a system stream, the same way: it decodes with MPEG-2's IDCT (the C one everywhere, VideoReader.IdctOptions).
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mpeg1video -q:v 3 -f mpeg sintel_mpeg1.mpg
 
     # 10-bit h264: its conversion interpolates chroma, from where the stream says the samples sit (left for h264), as
     # OpenCV does; compared exactly. (Informational until 2026-10-11: ffmpeg's command line drops that siting.)
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libx264 -pix_fmt yuv420p10le -crf 18 sintel_10bit.mp4
     New-Item -ItemType Directory -Force informational | Out-Null
+
+    # MPEG-4 Part 2 (the DivX/Xvid era), from FFmpeg's encoder and from Xvid: the decoder picks its IDCT from the
+    # encoder's signature, so both. Informational until ARM's results on them are known (docs/backlog.md).
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mpeg4 -q:v 3 informational/sintel_mpeg4.avi
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libxvid -q:v 3 informational/sintel_xvid.avi
 
     # Interlaced broadcast video (issue #42): 10 s of 1080i25, top field first, made from the 1080p trailer
     # (50p woven into fields). XDCAM HD (MPEG-2 4:2:2, 50 Mbit/s, in MXF) is compared exactly (samples/broadcast/);
