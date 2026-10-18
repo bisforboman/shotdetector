@@ -1,7 +1,9 @@
 # FastYuv for 10-bit and 4:2:2 (ARM = x86)
 
-Status: scoping (2026-10-18), nothing built. Backlog: "ARM's results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG
-video" (Maybe for 10-bit and 4:2:2). The owner decides whether and how far to go (open questions at the end).
+Status: 4:2:2 done (2026-10-18): FastYuv converts yuv422p and yuvj422p through `IYuv422Converter`, rotated frames
+included, and arch-diff requires ARM to equal x64 on them. 10-bit: Maybe, until a prototype reproduces x86's bytes.
+The owner's answers to the open questions at the end: docs/decisions/2026-10-18-fastyuv-422.md. Backlog: "ARM's
+results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video".
 
 ## Goal
 
@@ -28,7 +30,8 @@ the frame) and what OpenCV's `sws_scale_frame` does. Each was hashed (framemd5) 
 | yuv422p / yuvj422p, even height | unscaled special converter, **the same function** | `ssse3` only | `ff_yuv_420_bgr24_ssse3` with the chroma row `y`, not `y >> 1` |
 | yuv420p10le, even width | scaled path, "bicubic scaler ... using MMXEXT" | `mmxext` only | `yuv2bgr24_X_mmxext` and its vertical filter |
 | yuv422p, odd height | scaled path, MMXEXT | `mmxext` only | as 10-bit, with 8-bit input |
-| yuv420p10le or yuv422p, odd width | scaled path, full chroma interpolation | nothing (default = `-cpuflags 0`) | none: C |
+| yuv420p10le, odd width | scaled path, full chroma interpolation | nothing (default = `-cpuflags 0`) | none: C |
+| yuv420p or yuv422p, odd width, even height | unscaled special converter (as for even widths) | `ssse3` only | as for even widths |
 
 Removing SSE2, SSSE3, SSE4, AVX, AVX2 and AVX-512 together changes nothing on 10-bit, so the SIMD horizontal scalers
 (`ff_hscale10to15_*`) are bit-exact with C there; only the MMXEXT inline assembly matters. FFmpeg 9.0.2 gave the same
@@ -71,7 +74,9 @@ The filter coefficients come from libswscale/utils.c `initFilter` with x86's ali
 vertical 2 (C alone: 1). Logged as "reducing / aligning filtersize 5 -> 4" for the bicubic chroma taps, so the reduce,
 align and normalize steps decide the coefficients the port must have. NEON uses the same alignments (4 and 2).
 
-**Odd sizes.** An odd width forces full chroma interpolation (`SWS_FULL_CHR_H_INT`, utils.c "Forcing full internal H
+**Odd sizes.** (Corrected while building 4:2:2: 8-bit yuv420p and yuv422p at an odd width and the same size take the
+unscaled SSSE3 converter like even widths, `print_info` says so and FastYuv's arithmetic gives its bytes, 0 pixels off,
+FFmpeg 8.1.3; the full chroma interpolation below applies to the scaled path only.) An odd width forces full chroma interpolation (`SWS_FULL_CHR_H_INT`, utils.c "Forcing full internal H
 chroma due to odd output size"), which x86 runs in C (`yuv2bgr24_full_X_c`): x64 default equals `-cpuflags 0` there.
 Whether ARM's default equals it too is **unverified** (no odd-width 10-bit or 4:2:2 sample). An odd-height 4:2:2 frame
 can't take the unscaled converter and runs the same MMXEXT output as 10-bit.
