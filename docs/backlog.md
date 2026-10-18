@@ -26,7 +26,7 @@ Status: **Released** (on nuget.org), **Done** (on `main`, in the next release), 
 
 - ARM against x64 on MPEG-4 Part 2 (Xvid/DivX) and MPEG-1: a sample of each in the arch comparison
   - Why: No sample is MPEG-4 Part 2 or MPEG-1 (tools/make-samples.ps1), so whether ARM decodes them as x64 is unknown; MPEG-4 Part 2's default IDCT on x64 equals `-idct simple` but not the C one (#384), so the MPEG-2 fix may not carry over. A new sample changes the samples cache key, so CI regenerates them once
-  - Status: Open
+  - Status: In progress (2026-10-18): step 1, the samples (MPEG-1 required; MPEG-4 Part 2 from FFmpeg's encoder and from Xvid, in samples/informational/, reported) and their first ARM table; then a fix if FFmpeg has a knob, else a decision record as for 10-bit
 
 - VideoWriter's rare CI mismatch: about 1 CI test run in 10-20, one file differs from `ffmpeg -c:v libx264`'s by a few hundred bytes (never locally, never in ffmpeg's own output). Ruled out (2026-10-10): x264 threads (1, both sides; the SEI settings match), filter-graph threads, frame padding (zeroed), the input frames (hashes identical), uninitialised heap (MALLOC_PERTURB_). Left: something in x264/FFmpeg inside a long-lived .NET process
   - Why: The exact-output promise; the check stays a hard failure (docs/decisions/), so every failure is a data point (the test prints both files' x264 settings and CI keeps both files)
