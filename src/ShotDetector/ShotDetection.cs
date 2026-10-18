@@ -1168,7 +1168,7 @@ public static class ShotDetection
     /// <summary>Why <see cref="AutoChunks"/> gave one chunk, for the same arguments; null when it gave more.</summary>
     internal static string? WhyOneChunk(int cpus, int frames, Fps fps, long pixels = 0, bool forced = false, int? threads = null) =>
         AutoChunks(cpus, frames, fps, pixels, forced, threads) > 1 ? null
-        : cpus < (forced ? 4 : 8) ? $"fewer than {(forced ? 4 : 8)} CPUs ({cpus})"
+        : (forced ? 4 : 8) is var least && cpus < least ? $"fewer than {least} CPUs ({cpus})"
         : !forced && pixels > AutoChunksMaxPixels ? "frames larger than 3840 x 2160"
         : threads == 1 ? "one decoder thread"
         : "shorter than two minutes";
