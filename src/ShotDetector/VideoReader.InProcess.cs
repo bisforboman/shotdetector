@@ -57,12 +57,13 @@ internal sealed partial class VideoReader
 
         // Decoding and converting run on their own thread and the resize and scoring on the caller's, overlapped as
         // with the executable (where ffmpeg is the other side). Eight buffers, so neither side waits for the other on
-        // every frame (with three, the handoffs cost as much as the decoding on small video). Cancelled by the
-        // caller's token, or by us when the caller stops iterating.
+        // every frame (with three, the handoffs cost as much as the decoding on small video); a chunk of a parallel run
+        // gets a share of the eight (ShotDetection.ChunkBuffers): there the other chunks keep the cores busy while one
+        // waits. Cancelled by the caller's token, or by us when the caller stops iterating.
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var free = new BlockingCollection<byte[]>();
         using var full = new BlockingCollection<(byte[] Buffer, long Pts, bool Bgr)>();
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < _frameBuffers; i++)
             free.Add(new byte[size]);
         double timeBase = 0;
         bool late = false;
