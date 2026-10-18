@@ -968,9 +968,10 @@ internal sealed partial class VideoReader
     /// </summary>
     internal IEnumerable<byte[]> Frames(CancellationToken cancellationToken = default) => Frames(0, null, cancellationToken);
 
-    // The executable's yuv420p pipeline met a frame of another size than the stream's: ffmpeg scales such frames in YUV
-    // before the converter sees them, where OpenCV scales them inside its one conversion to BGR. From then on this
-    // video takes the BGR pipelines, which convert them as OpenCV does.
+    // The executable's YUV pipeline met a frame of another size or pixel format than the stream's: ffmpeg scales or
+    // converts such frames in YUV (to the stream's size and -pix_fmt) before the converter sees them, where OpenCV does
+    // it inside its one conversion to BGR. From then on this video takes the BGR pipelines, which convert them as OpenCV
+    // does.
     bool _sizeChanges;
 
     /// <summary>
@@ -1103,7 +1104,7 @@ internal sealed partial class VideoReader
         psi.ArgumentList.Add(server is null ? "-" : $@"\\.\pipe\{pipeName}");
 
         using var proc = Start(psi);
-        using var livePts = new BlockingCollection<(long Pts, bool NewSize)>();
+        using var livePts = new BlockingCollection<(long Pts, bool NewLayout)>();
         string streamSize = $"{_codedSize.W}x{_codedSize.H}"; // OpenCV's buffer, as scale= in the BGR pipelines
         double liveTimeBase = _timeBase;
         if (!Streaming)
@@ -1123,7 +1124,10 @@ internal sealed partial class VideoReader
                     var frame = ShowInfoLine().Match(line);
                     if (frame.Success)
                     {
-                        livePts.Add((long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture), frame.Groups[2].Value != streamSize));
+                        // showinfo sees the decoded frame, before the output's -pix_fmt conversion.
+                        var format = FormatField().Match(line);
+                        livePts.Add((long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture),
+                            frame.Groups[2].Value != streamSize || (format.Success && format.Groups[1].Value != _pixelFormat)));
                         continue;
                     }
 
@@ -1241,9 +1245,9 @@ internal sealed partial class VideoReader
                     break;
                 }
 
-                // A new size on a YUV pipeline: read again on a BGR pipeline (after the finally below). Files
-                // only: a stream can't be read twice.
-                if (yuv && info.NewSize && _stream is null && !Streaming)
+                // A new size or pixel format on a YUV pipeline: read again on a BGR pipeline (after the finally
+                // below). Files only: a stream can't be read twice.
+                if (yuv && info.NewLayout && _stream is null && !Streaming)
                 {
                     _sizeChanges = again = true;
                     break;
@@ -1362,6 +1366,9 @@ internal sealed partial class VideoReader
 
     [System.Text.RegularExpressions.GeneratedRegex(@"\] n:\s*\d+ pts:\s*(-?\d+) .* s:(\d+x\d+) ")]
     private static partial System.Text.RegularExpressions.Regex ShowInfoLine();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@" fmt:(\S+) ")]
+    private static partial System.Text.RegularExpressions.Regex FormatField();
 
     [System.Text.RegularExpressions.GeneratedRegex(@"config in time_base: (\d+)/(\d+)")]
     private static partial System.Text.RegularExpressions.Regex TimeBaseLine();

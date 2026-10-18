@@ -28,6 +28,9 @@ internal sealed partial class VideoReader
     /// <summary>The decoded size of the first frame Frames gave in-process (before rotation); null before then.</summary>
     internal (int Width, int Height)? FirstFrameSize { get; private set; }
 
+    /// <summary>On a YUV pipeline in-process: the frames that took the BGR conversion instead (another size or pixel format).</summary>
+    internal int BgrFallbackFrames { get; private set; }
+
     /// <summary>Frames(startFrame, count) decoded in-process: the same bytes per pipeline as the ffmpeg pipe, then the same resize.</summary>
     IEnumerable<byte[]> FramesInProcess(int startFrame, int? count, CancellationToken cancellationToken, int seekBack)
     {
@@ -112,10 +115,14 @@ internal sealed partial class VideoReader
                     var buffer = free.Take(cancel.Token);
                     FirstFrameSize ??= (decoder.Width, decoder.Height);
 
-                    // A frame of another size than the stream's first: OpenCV scales it to that size inside its one
-                    // conversion to BGR, which FastYuv's conversion at the stream's size can't reproduce. The core
-                    // path's conversion for those frames instead (exact; only they are slower).
-                    bool bgr = pipeline is FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled && !writer.HasFirstSize;
+                    // A frame of another size than the stream's first, or than its headers' (the YUV layout's), or of
+                    // another pixel format (4:2:0 in a 4:2:2 stream, or the reverse): OpenCV scales or converts it inside
+                    // its one conversion to BGR, which FastYuv's conversion of the stream's layout can't reproduce. The
+                    // core path's conversion for those frames instead (exact; only they are slower).
+                    bool bgr = pipeline is FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled
+                        && !(writer.HasFirstSize && (decoder.Width, decoder.Height) == _codedSize && decoder.PixelFormat == _pixelFormat);
+                    if (bgr)
+                        BgrFallbackFrames++;
                     switch (bgr ? FramePipeline.SampledBgr : pipeline)
                     {
                         case FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled:

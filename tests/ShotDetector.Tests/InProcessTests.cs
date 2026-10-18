@@ -372,6 +372,48 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // Two encodes joined, the second in another pixel format (4:2:2 then 4:2:0, and the reverse), timestamps continuing:
+    // OpenCV converts each frame from its own format, so FastYuv (set up for the stream's) leaves the second half's
+    // frames to the exact conversion, in-process frame by frame and through the executable by reading again on a BGR
+    // pipeline. The first half's frames still take FastYuv's.
+    [Theory]
+    [InlineData("yuv422p", "yuv420p")]
+    [InlineData("yuv420p", "yuv422p")]
+    public void PixelFormatChangeTakesTheExactConversion(string first, string second)
+    {
+        if (Libs is null)
+            return;
+        string dir = Path.Combine(Path.GetTempPath(), $"shotdetector-format-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts");
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-t", "2", "-pix_fmt", first, "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb", a], default);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "2", "-i", clips.ThreeShots, "-t", "2", "-pix_fmt", second, "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb", "-output_ts_offset", "2", b], default);
+            File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
+            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, Downscale = 2, FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess };
+            var pipe = ShotDetection.Detect(joined, options);
+            Assert.Equal(first, pipe.Video.PixelFormat);
+            string expected = pipe.Stats!.Csv(pipe.Video.Position);
+            var inProcess = ShotDetection.Detect(joined, options with { Decoder = VideoDecoder.InProcess });
+            Assert.Equal(expected, inProcess.Stats!.Csv(inProcess.Video.Position));
+
+            var fastPipe = ShotDetection.Detect(joined, options with { Yuv420Converter = new SwscaleYuv420() });
+            Assert.Equal(expected, fastPipe.Stats!.Csv(fastPipe.Video.Position));
+            Assert.True(fastPipe.Video.Reader.Pipeline is FramePipeline.SampledBgr or FramePipeline.FullFrameResize); // read again on a BGR pipeline
+
+            var fast = ShotDetection.Detect(joined, options with { Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() });
+            Assert.True(fast.Video.DecodedInProcess);
+            Assert.Equal(expected, fast.Stats!.Csv(fast.Video.Position));
+            Assert.Equal(first == "yuv422p" ? FramePipeline.Yuv422Sampled : FramePipeline.Yuv420Sampled, fast.Video.Reader.Pipeline);
+            Assert.Equal(50, fast.Video.Reader.BgrFallbackFrames); // the second half's 2 s at 25 fps
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // Two encodes joined (tools/make-broken.py's res_change.ts in small): the second half at another size, its
     // timestamps starting over. Frames are labelled by time as scenedetect labels them, so the second half's cuts come
     // out of order (sorted at the end) and its stats rows replace the first half's; its frames are scaled to the first
