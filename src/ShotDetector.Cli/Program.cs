@@ -47,8 +47,8 @@ const string Usage = """
           --crop <x0> <y0> <x1> <y1>     Only analyse this part of the frame (inclusive pixel corners)
           --threads <n>                  Decoder threads (0 = FFmpeg's choice; default: the CPUs, at most 16, as
                                          OpenCV, which damaged video needs to match). ~20 MB each at 1080p
-      --parallel                     Score a long file in chunks on several cores at once, with the same
-                                     result (half the CPUs, at most 4 chunks, each at least a minute)
+          --sequential                   Score the file in one pass instead of in chunks (parallel, with the
+                                         same result, is the default for long local files)
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
                                          cv2.resize (faster, but cuts can differ from PySceneDetect)
           --csv <file>                   Write shot list as CSV
@@ -219,11 +219,14 @@ try
             case "--threads":
                 options = options with { DecodeThreads = NextInt() };
                 break;
-            case "--parallel":
-                options = options with { Parallel = true };
+            case "--sequential":
+                options = options with { Mode = DetectionMode.Sequential };
+                break;
+            case "--parallel": // not in --help: the default now, kept for scripts that ask for it
+                options = options with { Mode = DetectionMode.Parallel };
                 break;
             case "--chunks": // not in --help: CI forces a chunk count on short samples
-                options = options with { Parallel = true, Chunks = NextInt() };
+                options = options with { Mode = DetectionMode.Parallel, Chunks = NextInt() };
                 break;
             case "--always-bt601": // not in --help: compare.py on Windows, whose OpenCV wheel converts with BT.601
                 options = options with { AlwaysBt601 = true };
