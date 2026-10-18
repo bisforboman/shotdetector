@@ -99,6 +99,12 @@ public sealed record VideoStreamInfo
 
     /// <summary>The display matrix's rotation in degrees, counterclockwise (av_display_rotation_get); null if none.</summary>
     public double? Rotation { get; init; }
+
+    /// <summary>
+    /// The codec's extradata (its out-of-band headers: avcC for H.264 in mp4, an MPEG-4 Part 2 stream's VOL, ...), as
+    /// ffprobe's <c>-show_data</c> prints it for the stream; empty if none.
+    /// </summary>
+    public ReadOnlyMemory<byte> ExtraData { get; init; }
 }
 
 /// <summary>What a stream carries (FFmpeg's media type).</summary>
@@ -222,6 +228,13 @@ public sealed record MediaInfo
     /// <see cref="PacketTimestamps"/> (null entries: unknown); read along with them.
     /// </summary>
     public IReadOnlyList<long?>? PacketPositions { get; init; }
+
+    /// <summary>
+    /// The video stream's first packet's bytes, as ffprobe's <c>-show_entries packet=data -show_data -read_intervals
+    /// %+#1</c> prints them (what a decoder reads first: an MPEG-4 Part 2 stream's headers and user data, ...); null
+    /// unless asked for (<see cref="ProbeOptions.FirstVideoPacket"/>), or when there is no video packet.
+    /// </summary>
+    public ReadOnlyMemory<byte>? FirstVideoPacket { get; init; }
 }
 
 /// <summary>What <see cref="MediaProbe"/> reads besides the headers, and how it opens the input.</summary>
@@ -229,6 +242,9 @@ public sealed record ProbeOptions
 {
     /// <summary>Also read every video packet's pts and position (<see cref="MediaInfo.PacketTimestamps"/>, <see cref="MediaInfo.PacketPositions"/>).</summary>
     public bool PacketTimestamps { get; init; }
+
+    /// <summary>Also read the first video packet's bytes (<see cref="MediaInfo.FirstVideoPacket"/>): reads up to that packet only.</summary>
+    public bool FirstVideoPacket { get; init; }
 
     /// <summary>
     /// FFmpeg demuxer options, as ffmpeg's input options without the dash (for an image sequence pattern such as

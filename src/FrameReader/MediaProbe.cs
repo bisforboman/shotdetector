@@ -67,7 +67,8 @@ public static unsafe class MediaProbe
             var streams = new List<StreamInfo>();
             for (int i = 0; i < fmt->nb_streams; i++)
                 streams.Add(Stream(fmt->streams[i], i));
-            var (pts, pos) = index >= 0 && options?.PacketTimestamps == true ? Packets(fmt, index) : (null, null);
+            bool timestamps = options?.PacketTimestamps == true, first = options?.FirstVideoPacket == true;
+            var (pts, pos, packet) = index >= 0 && (timestamps || first) ? Packets(fmt, index, timestamps) : (null, null, null);
             return new MediaInfo
             {
                 Container = Marshal.PtrToStringAnsi((IntPtr)fmt->iformat->name) ?? "",
@@ -77,6 +78,7 @@ public static unsafe class MediaProbe
                 Streams = streams,
                 PacketTimestamps = pts,
                 PacketPositions = pos,
+                FirstVideoPacket = first && packet is not null ? new ReadOnlyMemory<byte>(packet) : (ReadOnlyMemory<byte>?)null,
             };
         }
         finally
@@ -124,6 +126,7 @@ public static unsafe class MediaProbe
             DurationPts = Known(st->duration),
             FrameCount = st->nb_frames != 0 ? st->nb_frames : null,
             Rotation = rotation,
+            ExtraData = par->extradata_size > 0 ? new ReadOnlySpan<byte>(par->extradata, par->extradata_size).ToArray() : ReadOnlyMemory<byte>.Empty,
         };
     }
 
@@ -178,9 +181,11 @@ public static unsafe class MediaProbe
         };
     }
 
-    static (List<long?>? Pts, List<long?>? Pos) Packets(AVFormatContext* fmt, int index)
+    /// <summary>The video packets' pts and positions (with <paramref name="all"/>; else only the first packet is read), and the first one's bytes.</summary>
+    static (List<long?>? Pts, List<long?>? Pos, byte[]? First) Packets(AVFormatContext* fmt, int index, bool all)
     {
         List<long?> result = [], positions = [];
+        byte[]? first = null;
         var pkt = ffmpeg.av_packet_alloc();
         try
         {
@@ -189,11 +194,14 @@ public static unsafe class MediaProbe
             {
                 if (pkt->stream_index == index)
                 {
+                    first ??= new ReadOnlySpan<byte>(pkt->data, pkt->size).ToArray();
                     result.Add(Known(pkt->pts));
                     positions.Add(pkt->pos < 0 ? null : pkt->pos);
                 }
 
                 ffmpeg.av_packet_unref(pkt);
+                if (!all && first is not null)
+                    return (null, null, first);
             }
 
             Demuxer.ThrowIfReadFailed(fmt, read, null);
@@ -203,7 +211,7 @@ public static unsafe class MediaProbe
             ffmpeg.av_packet_free(&pkt);
         }
 
-        return (result, positions);
+        return (all ? result : null, all ? positions : null, first);
     }
 
     static long? Known(long ts) => ts == ffmpeg.AV_NOPTS_VALUE ? null : ts;
