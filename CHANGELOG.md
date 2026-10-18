@@ -6,6 +6,41 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.8.0 – 2026-10-18
+
+FastYuv for 10-bit video, parallel detection by default from 4 CPUs, and why a parallel run fell back.
+
+### New
+
+- ShotDetector.FastYuv converts 10-bit 4:2:0 video (yuv420p10le, e.g. h264 High 10) too, with x86's exact bytes:
+  `SwscaleYuv420` implements the new `IYuv420P10Converter`, a port of the path x86's swscale takes for it (the
+  bicubic chroma filters as initFilter sets them up, the MMXEXT vertical scaler and output, the C output for the
+  last two rows), with the chroma sited where the stream says. So on ARM, ShotDetector with FastYuv gives x64's
+  results for 10-bit as it does for 8-bit. Even widths, any height, turned or not; odd widths keep the default path.
+- On x64, FastYuv isn't needed for exactness on 10-bit: it gives the same bytes as the default path and is slower on
+  small video (854x480: about 2.5-3.5x the time; 1080p about even), since each chroma row is filtered again for
+  every row that reads it. A converter you set is used as set (docs/decisions/2026-10-18-fastyuv-10bit-x64.md); a
+  faster 10-bit pass is on the backlog.
+- `DetectedVideo.ChunkFallback`: why scoring in chunks fell back to a sequential read (a chunk's frame at another
+  position, overlap scores that differ, ...), also a `DetectionResult.Warnings` entry that the CLI prints. Before, a
+  fallback was silent and looked like a run that never chunked.
+- `Mode = DetectionMode.Parallel` (CLI `--parallel`, `--chunks`) warns when it reads the file sequentially all the
+  same, and why: fewer than 4 CPUs, shorter than two minutes, a time range, frame skip, the ffmpeg executable, a
+  stream, MPEG-PS without timestamps.
+
+### Faster
+
+- Parallel detection is now the default from 4 CPUs on (was 8), still for frames up to 3840x2160: on GitHub's 4-CPU
+  x64 and ARM runners 2 chunks were 1.07x to 1.8x faster on every film and clip measured, 1080p included, for 10 to
+  54 MB more memory and, on 2-core SMT machines, up to 8% more CPU time (17% at low resolution with stats). On 4 to 7
+  CPUs that is 2 or 3 chunks. `Mode = DetectionMode.Sequential` (CLI `--sequential`) opts out.
+
+### Fixed
+
+- Parallel detection: decoder threads that don't divide evenly among the chunks are no longer lost (`--threads 5` in 2
+  chunks decoded with 2 + 2, now 3 + 2), and `DecodeThreads = 0` (FFmpeg's choice) shares out the default count
+  instead of giving each chunk 1 thread.
+
 ## 3.7.0 – 2026-10-18
 
 Parallel detection by default on 8+ CPUs, FastYuv for 4:2:2, ARM decodes MPEG-1/2, MJPEG and MPEG-4 as x86, and library warnings.
