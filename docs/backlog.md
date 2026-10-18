@@ -706,7 +706,7 @@ faster C# can't help there; what is left is the pipe (~0.5 s per 2 min), startup
 
 - Dependabot: one grouped PR for the GitHub Actions updates
   - Why: Since actions are pinned by SHA (2026-10-17) every action update is its own PR and its own full CI run (six on 2026-10-18, #388-#394); a `groups` entry for the github-actions ecosystem in .github/dependabot.yml makes it one PR a week
-  - Status: Open
+  - Status: Done (2026-10-18): two groups, minor and patch together (auto-merged once green, as before) and majors together (wait for a look)
 
 - Check upstream.yml's BtbN job on its first scheduled run (Monday 2026-10-19)
   - Why: #357 wasn't dispatched on its branch (the workflow's other jobs could open real issues), so its first real run is the check: the log should say the pin is up to date, or open one issue
