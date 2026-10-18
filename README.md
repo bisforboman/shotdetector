@@ -288,7 +288,7 @@ same CPU time (the
 [weekly benchmark](https://github.com/bisforboman/shotdetector/actions/workflows/benchmark.yml) has both). It needs
 in-process decoding of a file: streams, URLs, a time range, frame skip and MPEG-PS read sequentially, and so does any
 file a chunk can't reproduce (a seek that lands late, dropped frames, a size change). `DetectedVideo.Chunks` says which
-ran. Each chunk has its own decoder and frame buffers, so memory grows with the chunks; frames larger than 3840x2160
+ran. Each chunk has its own decoder (they share the frame buffers), so memory grows with the chunks; frames over 3840x2160
 read sequentially by default. `DetectionOptions.Mode` chooses: `Auto` (the default) chunks for `Detect` from 4 CPUs on
 but not for `DetectStreamAsync`, so its shots still come as they are found; `Sequential` never chunks (CLI
 `--sequential`; services running several detections at once may want it); `Parallel` chunks from 4 CPUs on and at any

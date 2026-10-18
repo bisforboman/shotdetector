@@ -393,7 +393,7 @@ public sealed record DetectionOptions
     /// makes it read the file sequentially instead, from the start. <see cref="DetectedVideo.Chunks"/> says which ran,
     /// <see cref="DetectedVideo.ChunkFallback"/> why it fell back (also in <see cref="DetectionResult.Warnings"/>, as is
     /// why <see cref="DetectionMode.Parallel"/> read sequentially). The decoder threads are shared out among the chunks.
-    /// Memory grows by a decoder and its frame buffers per chunk. <see cref="DetectionMode.Auto"/> (the default) chunks
+    /// Memory grows by a decoder per chunk (they share the frame buffers). <see cref="DetectionMode.Auto"/> chunks
     /// for Detect from 4 CPUs on and for frames up to 3840 x 2160, but not for DetectStreamAsync, whose shots would
     /// otherwise all come once the whole file is scored; <see cref="DetectionMode.Parallel"/> chunks from 4 CPUs on, at
     /// any frame size, and DetectStreamAsync too; <see cref="DetectionMode.Sequential"/> never does.
@@ -413,6 +413,12 @@ public sealed record DetectionOptions
 
     /// <summary>When chunking: this many chunks instead of the automatic count (tests, the CLI's hidden --chunks).</summary>
     internal int? Chunks { get; init; }
+
+    /// <summary>
+    /// The in-process reader's frame buffers between its decoding thread and the caller's: 8, fewer per chunk
+    /// (<see cref="ShotDetection.ChunkBuffers"/>).
+    /// </summary>
+    internal int FrameBuffers { get; init; } = 8;
 
     /// <summary><see cref="Mode"/> for a run: Auto is parallel, except when the shots are streamed.</summary>
     internal DetectionMode ResolvedMode(bool streaming) => Mode switch
@@ -1192,6 +1198,13 @@ public static class ShotDetection
         Math.Max(1, threads / chunks + (chunk < threads % chunks ? 1 : 0));
 
     /// <summary>
+    /// A chunk's frame buffers: a sequential run's 8 shared out (4 each in 2 chunks), at least 2 (one decoding, one
+    /// scored). Measured 2026-10-18 on 4 CPUs, 240p to 2160p: no slower than 8 each, and up to 285 MB less at 2160p
+    /// with FastYuv in 4 chunks (docs/parallel-detection.md).
+    /// </summary>
+    internal static int ChunkBuffers(int chunks) => Math.Max(2, 8 / chunks);
+
+    /// <summary>
     /// Each detector's per-frame metrics, scored in chunks of the file at once: each chunk on its own reader, from one
     /// frame before its first (metrics compare with the previous frame) to one past its last, whose score must equal the
     /// next chunk's for it. Every frame's position must be the probe's for its index (a seek that lands late, a dropped
@@ -1228,7 +1241,7 @@ public static class ShotDetection
         {
             int a = bounds[i], b = bounds[i + 1], from = Math.Max(0, a - 1), k = from;
             bool last = i == chunks - 1;
-            var co = o with { DecodeThreads = ChunkThreads(threads, chunks, i) };
+            var co = o with { DecodeThreads = ChunkThreads(threads, chunks, i), FrameBuffers = ChunkBuffers(chunks) };
             try
             {
                 var reader = new VideoReader(path, co, stop.Token);

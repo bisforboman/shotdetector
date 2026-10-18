@@ -152,6 +152,20 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
     public void DecoderThreadsSharedOut(int threads, int chunks, int[] expected) =>
         Assert.Equal(expected, Enumerable.Range(0, chunks).Select(i => ShotDetection.ChunkThreads(threads, chunks, i)));
 
+    // A chunk's frame buffers: a sequential run's 8 shared out, at least 2 each (one decoding, one scored).
+    [Theory]
+    [InlineData(2, 4)]
+    [InlineData(3, 2)]
+    [InlineData(4, 2)]
+    [InlineData(5, 2)]
+    [InlineData(8, 2)]
+    [InlineData(16, 2)]
+    public void FrameBuffersSharedOut(int chunks, int expected)
+    {
+        Assert.Equal(8, new DetectionOptions().FrameBuffers);
+        Assert.Equal(expected, ShotDetection.ChunkBuffers(chunks));
+    }
+
     // A larger second half (from frame 100) with timestamps that carry on: scenedetect scales its frames to the first
     // size, which the last of four chunks (from 111) would take from them instead. The overlap scores and the first
     // sizes both tell.

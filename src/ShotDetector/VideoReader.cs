@@ -279,6 +279,7 @@ internal sealed partial class VideoReader
     readonly bool _ffmpegResize;
     readonly bool _deinterlace;        // DeinterlaceMode.On, or Auto with an interlaced stream
     readonly int? _decodeThreads;
+    readonly int _frameBuffers;
     readonly string[] _inputOptions;   // ffmpeg/ffprobe options for the input (an image sequence's rate)
     readonly bool _fullFrames;         // tests: the full-frame pipeline instead of the sampled one
     readonly bool _alwaysBt601;        // compare.py on Windows: BT.601 whatever the tags, as the Windows OpenCV wheel
@@ -352,6 +353,7 @@ internal sealed partial class VideoReader
         _stream = video;
         _ffmpegResize = o.FfmpegResize;
         _decodeThreads = o.DecodeThreads;
+        _frameBuffers = o.FrameBuffers;
         _fullFrames = o.FullFrames;
         _alwaysBt601 = o.AlwaysBt601;
         _decoder = o.Decoder;
