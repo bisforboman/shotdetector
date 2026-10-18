@@ -24,6 +24,24 @@ public sealed unsafe class BgrConverter : IDisposable
     /// </summary>
     public bool KeepFirstSize { get; init; }
 
+    /// <summary>
+    /// Convert every frame to this size: a frame of another size is scaled to it in the same conversion (bicubic), as
+    /// OpenCV does into its buffer of the stream's size (from the stream's headers), whichever frame comes first (after
+    /// a seek, a frame of another size can); null (the default): <see cref="KeepFirstSize"/> decides.
+    /// </summary>
+    public (int Width, int Height)? Size
+    {
+        get => _size;
+        init
+        {
+            if (value is { } s && (s.Width <= 0 || s.Height <= 0))
+                throw new ArgumentOutOfRangeException(nameof(value), $"The size must be positive: {s.Width}x{s.Height}.");
+            _size = value;
+        }
+    }
+
+    readonly (int Width, int Height)? _size;
+
     /// <summary>A converter of <paramref name="decoder"/>'s current frame.</summary>
     /// <param name="decoder">The decoder whose current frame is converted; not disposed with the converter.</param>
     public BgrConverter(FrameDecoder decoder) => _d = decoder;
@@ -119,7 +137,7 @@ public sealed unsafe class BgrConverter : IDisposable
     {
         Prepare();
 
-        // Scaled to the first size: the rows wanted aren't the decoded frame's rows, so the whole frame.
+        // Scaled to the first size (or Size): the rows wanted aren't the decoded frame's rows, so the whole frame.
         if (_bgr->width != _src->width || _bgr->height != _src->height)
             return Whole(out stride);
 
@@ -177,11 +195,12 @@ public sealed unsafe class BgrConverter : IDisposable
             _bgr = ffmpeg.av_frame_alloc();
         }
 
-        if ((_bgr->width != _src->width || _bgr->height != _src->height) && !(KeepFirstSize && _bgr->width > 0))
+        var (w, h) = _size ?? (KeepFirstSize && _bgr->width > 0 ? (_bgr->width, _bgr->height) : (_src->width, _src->height));
+        if (_bgr->width != w || _bgr->height != h)
         {
             ffmpeg.av_frame_unref(_bgr);
             _bgr->format = (int)AVPixelFormat.AV_PIX_FMT_BGR24;
-            (_bgr->width, _bgr->height) = (_src->width, _src->height);
+            (_bgr->width, _bgr->height) = (w, h);
             Check(ffmpeg.av_frame_get_buffer(_bgr, 32), "frame buffer");
         }
     }

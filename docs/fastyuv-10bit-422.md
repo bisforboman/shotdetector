@@ -5,6 +5,26 @@ included, and arch-diff requires ARM to equal x64 on them. 10-bit: Maybe, until 
 The owner's answers to the open questions at the end: docs/decisions/2026-10-18-fastyuv-422.md. Backlog: "ARM's
 results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video".
 
+## As built (4:2:2)
+
+- `IYuv422Converter` (ShotDetector), a new interface beside `IYuv420Converter` so package validation passes;
+  `SwscaleYuv420` implements both, reading chroma row `y` for 4:2:2 (`y >> 1` for 4:2:0), as x86's SSSE3 converter.
+- `VideoReader.Pipeline` takes `Yuv422Sampled` for yuv422p and yuvj422p with an even decoded height when the converter
+  is an `IYuv422Converter`. The executable sends `-pix_fmt yuv422p` (or the stream's own format); in-process,
+  `FrameWriter.WriteYuv` packs the decoded planes.
+- Rotation: the YUV pipelines convert the frame as decoded and turn after converting (`CvResize.ResizeYuv` reads the
+  turned image in source coordinates), as OpenCV's `cv::rotate` does after its conversion. So turned 4:2:2 takes the
+  fast path at 90 and 270 too, and turned 4:2:0 of odd width equals the default path.
+- A frame of another size or pixel format than the stream's (a resolution change; 4:2:0 frames in a 4:2:2 stream, or
+  the reverse) takes the default conversion: in-process frame by frame, through the executable by reading again on a
+  BGR pipeline.
+- Proof: FastYuvTests and InProcessTests against the default path; arch-diff requires ARM with FastYuv to equal x64 on
+  the unturned `sintel_422.mp4` and the turned `sintel_rotated_422.mp4`.
+
+The sections below are the scoping written before 4:2:2 was built. Where they describe the code (4:2:2 still
+differing, rotation turning the planes first, `WriteYuv420`, the only 4:2:2 sample being turned), the list above
+replaces them; for 10-bit they still stand.
+
 ## Goal
 
 On ARM, ShotDetector with ShotDetector.FastYuv gives x64's exact results on 8-bit 4:2:0 (docs/decisions/2026-10-17-arm-results.md;

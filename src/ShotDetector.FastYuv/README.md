@@ -25,8 +25,9 @@ The converter is a bit-exact port of FFmpeg libswscale's yuv420p → BGR24 conve
 all 2^24 Y/U/V values), so this package is licensed under the **GNU LGPL 2.1 or later**
 (COPYING.LGPL). The ShotDetector package itself is MIT. It converts yuv422p (and yuvj422p) too: swscale runs the same
 converter for it, with a chroma row for every row (`IYuv422Converter`, which `SwscaleYuv420` implements). Video that
-isn't 8-bit yuv420p or yuv422p with an even height uses the normal path anyway. On ARM, where FFmpeg's own conversion
-rounds differently, it gives x86's results.
+isn't 8-bit yuv420p or yuv422p with an even decoded height uses the normal path anyway. Rotated video is converted
+before it is turned, as OpenCV does, so turned 4:2:0 and 4:2:2 take the fast path too. On ARM, where FFmpeg's own
+conversion rounds differently, it gives x86's results.
 
 Copyright (C) 2001-2007 Michael Niedermayer, (C) 2009-2010 Konstantin Shishkov (FFmpeg); yadif (C) 2006-2011
 Michael Niedermayer, 2010 James Darnley (FFmpeg);

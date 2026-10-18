@@ -40,8 +40,8 @@ FFmpeg 9 executable gives the same results (CI's comparison with scenedetect run
 libraries when OpenCV's wheels do, since scenedetect's frames come from OpenCV's FFmpeg.
 
 The ffmpeg and ffprobe executables (on `PATH`, or in `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`) are still
-needed without those libraries, for URLs whose protocol the libraries lack (FrameReader.Native has http, and https on
-Windows), and for the image and clip exports. Files of every kind decode
+needed without those libraries, for URLs whose protocol the libraries lack (FrameReader.Native has http and
+https), and for the image and clip exports. Files of every kind decode
 in-process, including image sequences, rotated phone video, AV1 (dav1d in our build) and deinterlacing; a codec the
 libraries can't decode and a rotation that isn't a quarter turn use the executable.
 
@@ -280,21 +280,26 @@ How it keeps up while computing exactly what OpenCV and scenedetect compute:
 - the resize, BGR to HSV and the frame differences are vectorised (AVX2), with the same integer arithmetic;
 - decoding overlaps scoring, with all the CPUs (at most 16) as decoder threads, as OpenCV (`--threads` to change).
 
-**Parallel detection**, the default for `Detect` and the CLI, scores a long local file in chunks on several cores at
-once (half the CPUs, at most 4 chunks, for files of two minutes or more), then runs the cut decisions once over all the
-scores, so the result is exactly the sequential one; CI compares the two byte for byte on every sample and on three
-films. On a 16-thread desktop it ran 1.5x (Tears of Steel, 1280x534, whose decoding already keeps 5 cores busy) to
-2.3x (Elephants Dream, 426x240) faster, on 4-CPU runners 1.1x to 1.6x, with the same CPU time. It needs in-process
-decoding of a file: streams, URLs, a time range, frame skip and MPEG-PS read sequentially, and so does any file a chunk
-can't reproduce (a seek that lands late, dropped frames, a size change). `DetectedVideo.Chunks` says which ran. Each
-chunk has its own decoder. `DetectionOptions.Mode` chooses: `Auto` (the default) chunks for `Detect` but not for
-`DetectStreamAsync`, so its shots still come as they are found; `Sequential` never chunks (CLI `--sequential`);
-`Parallel` chunks `DetectStreamAsync` too, whose shots then all come at the end. The older `Parallel = true` still
-works and is obsolete ([docs/parallel-detection.md](docs/parallel-detection.md)).
+**Parallel detection**, the default for `Detect` and the CLI from 8 CPUs on, scores a long local file in chunks on
+several cores at once (half the CPUs, at most 4 chunks, for files of two minutes or more), then runs the cut decisions
+once over all the scores, so the result is exactly the sequential one; CI compares the two byte for byte on every
+sample and on three films. It pays where one decoder can't keep the cores busy: more cores work at once for about the
+same CPU time (the
+[weekly benchmark](https://github.com/bisforboman/shotdetector/actions/workflows/benchmark.yml) has both). It needs
+in-process decoding of a file: streams, URLs, a time range, frame skip and MPEG-PS read sequentially, and so does any
+file a chunk can't reproduce (a seek that lands late, dropped frames, a size change). `DetectedVideo.Chunks` says which
+ran. Each chunk has its own decoder and frame buffers, so memory grows with the chunks; frames larger than 3840x2160
+read sequentially by default. `DetectionOptions.Mode` chooses: `Auto` (the default) chunks for `Detect` from 8 CPUs on
+but not for `DetectStreamAsync`, so its shots still come as they are found; `Sequential` never chunks (CLI
+`--sequential`; services running several detections at once may want it); `Parallel` chunks from 4 CPUs on and at any
+frame size (CLI `--parallel`), `DetectStreamAsync` too, whose shots then all come at the end. The older
+`Parallel = true` still works and is obsolete ([docs/parallel-detection.md](docs/parallel-detection.md)).
 
-The FastYuv package (LGPL) is an alternative for the executable path: ffmpeg sends raw yuv420p (or yuv422p) and a
-bit-exact port of swscale's converter converts only the pixels the resize reads. Files in other pixel formats (10-bit,
-4:4:4) or with an odd height convert whole frames, still with identical results.
+The FastYuv package (LGPL) converts the raw yuv420p or yuv422p planes (from ffmpeg, or decoded in-process) with a
+bit-exact port of x86 swscale's converter, only the pixels the resize reads. Files in other pixel formats (10-bit,
+4:4:4) or with an odd decoded height take the default conversion, still with identical results. In-process on x64 it
+isn't needed for exactness (the default path converts only those rows with FFmpeg's own swscale, and costs a little
+less CPU); there its point is ARM, where it gives x86's results.
 
 ## Where this differs from PySceneDetect
 
@@ -318,15 +323,16 @@ bit-exact port of swscale's converter converts only the pixels the resize reads.
   conversion of the decoded frames to BGR rounds differently on ARM (its x86 and ARM assembly differ), so by default
   per-frame stats differ slightly from x86's and now and then a cut moves. For x86's results on ARM, add
   ShotDetector.FastYuv (`Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420()`), a port of the x86
-  conversion: CI checks that ARM then gives x64's results exactly on 8-bit 4:2:0 and 4:2:2 video (nearly all video),
-  through both decoders (MPEG-1/2, MJPEG and MPEG-4 Part 2 included: they decode with FFmpeg's C IDCT, which x86's
-  default matches and ARM's doesn't, except Xvid's MPEG-4, which FFmpeg decodes with the Xvid IDCT everywhere). 10-bit still differs on ARM (another conversion path,
+  conversion: CI checks that ARM then gives x64's results exactly on even-sized 8-bit 4:2:0 and 4:2:2 video (nearly
+  all video), through both decoders. ShotDetector decodes MPEG-1/2, MJPEG and MPEG-4 Part 2 with FFmpeg's C IDCT on
+  every platform, which gives x86's default frames; ARM's own IDCT doesn't (Xvid's MPEG-4 aside, which FFmpeg decodes
+  with the Xvid IDCT everywhere). 10-bit still differs on ARM (another conversion path,
   [docs/fastyuv-10bit-422.md](docs/fastyuv-10bit-422.md)). The `shotdetect` binaries don't include FastYuv (LGPL), so on ARM they give the default results
   ([docs/decisions/2026-10-17-arm-results.md](docs/decisions/2026-10-17-arm-results.md)).
   scenedetect itself differs on ARM, because opencv-python's ARM wheels replace parts of OpenCV with Arm's
   KleidiCV and Carotene libraries: `cv2.resize` for downscales under 3x (scenedetect's usual ones) and BGR to HSV
   round differently, by 1 or 2 on some pixels, which moves per-frame stats and now and then a cut. macOS on Intel
-  is different again: its wheel has no FFmpeg (Apple's decoders instead). the nightly `parity-os` workflow shows Windows (exact)
+  is different again: its wheel has no FFmpeg (Apple's decoders instead). The nightly `parity-os` workflow shows Windows (exact)
   and macOS (informational).
 - **Timestamps:** scenedetect prints times from OpenCV's frame positions (container pts → ms →
   rounded to µs, with Python's exact-binary rounding), not from frame/fps. `FrameTime.cs` reproduces
@@ -373,7 +379,6 @@ bit-exact port of swscale's converter converts only the pixels the resize reads.
   (`--detector hash`) ports the grayscale conversion and INTER_AREA resize bit-exactly but computes
   the DCT in double precision, so on flat frames (fades to black), where the hash is DCT rounding
   noise in scenedetect too, a few hash values and the odd cut inside a fade differ.
-- **Not ported:** frame skip, crop.
 
 ## Security
 

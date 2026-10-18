@@ -194,6 +194,44 @@ public class VideoFrameReaderTests
         }
     }
 
+    // Size: every frame at the given size, whichever comes first. From the larger second half on (as after a seek into
+    // it), the frames come out as KeepFirstSize gives them when the first size came first.
+    [Fact]
+    public void SizeScalesEveryFrameToIt()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-size-").FullName;
+        try
+        {
+            string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), path = Path.Combine(dir, "grows.ts");
+            Run("-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=0.4", "-c:v", "mpeg2video", a);
+            Run("-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=480x360:r=25:d=0.4", "-c:v", "mpeg2video", "-output_ts_offset", "0.4", b);
+            File.WriteAllBytes(path, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
+            using var decoder = new FrameDecoder(path, new FrameDecoderOptions());
+            using var first = new BgrConverter(decoder) { KeepFirstSize = true };
+            using var sized = new BgrConverter(decoder) { Size = (320, 240) };
+            int larger = 0;
+            while (decoder.Next())
+            {
+                var expected = first.Convert(out int expectedStride).ToArray();
+                if (decoder.Width == 320)
+                    continue;
+                larger++;
+                var bgr = sized.Convert(out int stride);
+                for (int y = 0; y < 240; y++)
+                    Assert.True(bgr.Slice(y * stride, 320 * 3).SequenceEqual(expected.AsSpan(y * expectedStride, 320 * 3)), $"row {y}");
+            }
+
+            Assert.True(larger >= 5, $"{larger} larger frames");
+            Assert.Throws<ArgumentOutOfRangeException>(() => new BgrConverter { Size = (0, 240) });
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     static int FirstDifference(byte[] a, byte[] b)
     {
         int n = Math.Min(a.Length, b.Length);

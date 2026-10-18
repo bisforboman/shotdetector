@@ -48,7 +48,9 @@ const string Usage = """
           --threads <n>                  Decoder threads (0 = FFmpeg's choice; default: the CPUs, at most 16, as
                                          OpenCV, which damaged video needs to match). ~20 MB each at 1080p
           --sequential                   Score the file in one pass instead of in chunks (parallel, with the
-                                         same result, is the default for long local files)
+                                         same result, is the default for long local files from 8 CPUs on and
+                                         for frames up to 3840x2160)
+          --parallel                     Score a long local file in chunks from 4 CPUs on, at any frame size
           --ffmpeg-resize                Downscale with ffmpeg bilinear instead of an exact port of
                                          cv2.resize (faster, but cuts can differ from PySceneDetect)
           --csv <file>                   Write shot list as CSV
@@ -78,24 +80,24 @@ const string Usage = """
       -o, --output <dir>                 Folder for outputs given as relative paths; $VIDEO_NAME works in every output path
           --config <file>                scenedetect's config file (scenedetect.cfg): its values are the defaults; keys
                                          ShotDetector doesn't have are listed on stderr
-      --load-scenes <csv>                Take the shots from a scene list CSV instead of detecting (scenedetect load-scenes)
-      --load-scenes-column <name>        Its column with each shot's start (default "Start Frame")
+          --load-scenes <csv>            Take the shots from a scene list CSV instead of detecting (scenedetect load-scenes)
+          --load-scenes-column <name>    Its column with each shot's start (default "Start Frame")
           --split-copy                   Copy streams instead of re-encoding (fast; cuts on keyframes)
           --split-high-quality           CRF 17, preset slow (instead of 22, veryfast)
           --split-crf <n>, --split-preset <name>, --split-args "<ffmpeg args>"
           --split-expand                 Stretch the first/last clip to the video's start/end (with -s/-e)
           --probe                        Only describe the input (container, video, every stream), then stop
           --probe-json                   The same as JSON on standard output
-      --waveform <file.dat>          Only write the audio's waveform peaks as BBC audiowaveform's .dat (for
-                                     peaks.js and other viewers), then stop; video or audio-only input
-      --waveform-zoom <n>            Samples per point (audiowaveform --zoom; default 256)
-      --waveform-pixels-per-second <n>  Points per second instead
-      --waveform-bits <8|16>         Resolution of the .dat (default 16)
-      --waveform-split-channels      One waveform per channel (default: the channels averaged)
-      --audio-filter <graph>         Only run an ffmpeg -af filter graph over the audio, then stop: analysis
-                                     filters' results (silencedetect, ebur128=metadata=1, astats=metadata=1)
-                                     go to standard output with their times
-      --audio-out <file>             Write the (filtered) audio, encoded by the extension (.mp3, .m4a, .wav, ...)
+          --waveform <file.dat>          Only write the audio's waveform peaks as BBC audiowaveform's .dat (for
+                                         peaks.js and other viewers), then stop; video or audio-only input
+          --waveform-zoom <n>            Samples per point (audiowaveform --zoom; default 256)
+          --waveform-pixels-per-second <n>  Points per second instead
+          --waveform-bits <8|16>         Resolution of the .dat (default 16)
+          --waveform-split-channels      One waveform per channel (default: the channels averaged)
+          --audio-filter <graph>         Only run an ffmpeg -af filter graph over the audio, then stop: analysis
+                                         filters' results (silencedetect, ebur128=metadata=1, astats=metadata=1)
+                                         go to standard output with their times
+          --audio-out <file>             Write the (filtered) audio, encoded by the extension (.mp3, .m4a, .wav, ...)
           --find-tone                    Only list reference tone (1 kHz line-up tone) in the audio, then stop;
                                          video or audio-only input. Not in scenedetect
           --trim-tone                    Leave reference tone at the start and end out of detection
@@ -222,7 +224,7 @@ try
             case "--sequential":
                 options = options with { Mode = DetectionMode.Sequential };
                 break;
-            case "--parallel": // not in --help: the default now, kept for scripts that ask for it
+            case "--parallel":
                 options = options with { Mode = DetectionMode.Parallel };
                 break;
             case "--chunks": // not in --help: CI forces a chunk count on short samples

@@ -1,22 +1,26 @@
 # Parallel detection of long files
 
 Status: built (2026-10-16), opt-in at first (`DetectionOptions.Parallel`, `--parallel`); the default for `Detect`
-since 2026-10-18: `DetectionOptions.Mode`, `--sequential`, `DetectedVideo.Chunks`. The user's choices: docs/decisions/
-("Parallel detection: opt-in, in-process files, automatic chunks, a prototype first", "Parallel detection: build it,
-`Parallel` and `--parallel`, half the CPUs up to 4" and "Parallel detection as the default").
+since 2026-10-18 from 8 CPUs on and for frames up to 3840 x 2160: `DetectionOptions.Mode`, `--sequential`,
+`DetectedVideo.Chunks`. The user's choices: docs/decisions/ ("Parallel detection: opt-in, in-process files, automatic
+chunks, a prototype first", "Parallel detection: build it, `Parallel` and `--parallel`, half the CPUs up to 4",
+"Parallel detection as the default" and "Parallel by default only from 8 CPUs, with a frame-size cap").
 
 ## Turning it on and off
 
 `DetectionOptions.Mode` (`DetectionMode`):
 
-- `Auto`, the default: parallel for `Detect` and `DetectAsync` (and so the CLI), sequential for `DetectStreamAsync`,
-  which would otherwise deliver every shot at the end. Every condition below still applies: a file that can't be
-  chunked reads sequentially.
+- `Auto`, the default: parallel for `Detect` and `DetectAsync` (and so the CLI) from 8 CPUs on and for frames up to
+  3840 x 2160, sequential for `DetectStreamAsync`, which would otherwise deliver every shot at the end. On 4 CPUs a
+  sequential run already keeps the cores busy (2 chunks were ~15% slower there), and memory grows per chunk with the
+  frame size. Every condition below still applies: a file that can't be chunked reads sequentially.
 - `Sequential`: one pass, never chunks (CLI `--sequential`).
-- `Parallel`: chunks wherever it can, `DetectStreamAsync` too.
+- `Parallel`: chunks wherever it can, from 4 CPUs on and at any frame size, `DetectStreamAsync` too (CLI
+  `--parallel`).
 
-`DetectionOptions.Parallel` is obsolete and still works: true is `Parallel`, false `Sequential`. The CLI still accepts
-`--parallel` (now the default, out of `--help`); its hidden `--chunks <n>` forces a chunk count for CI.
+`DetectionOptions.Parallel` is obsolete and still works: true is `Parallel`, false `Sequential`. The CLI's hidden
+`--chunks <n>` forces a chunk count for CI; CI's runners have 4 CPUs, so its comparisons ask for `--parallel` or
+`--chunks`.
 
 ## Goal
 
@@ -66,7 +70,8 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
   position equals the probe's for its index, each chunk gives its frames, the overlap frame's score equals the next
   chunk's, every chunk's first frame has the first chunk's size, and nothing threw. Otherwise the file is read
   sequentially from the start (a real error comes from there) and `DetectedVideo.Chunks` is 1.
-- `AutoChunks`: half the CPUs, at most 4, from 4 CPUs on, each chunk at least a minute.
+- `AutoChunks`: half the CPUs, at most 4, each chunk at least a minute, never more chunks than the decoder threads
+  the caller set; `Auto` from 8 CPUs on and for frames up to 3840 x 2160 pixels, `Parallel` from 4 CPUs on at any size.
 - Sequential, always: streams and URLs, the executable path, MPEG-PS without packet pts, a time range, frame skip.
   Progress counts all chunks' frames; a fallback starts it over.
 - Damaged video: frame-threaded decoders conceal damage differently from run to run (`samples/broken/corrupt.mp4` gave

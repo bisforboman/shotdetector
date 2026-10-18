@@ -327,11 +327,11 @@ internal sealed class CvResize
         _ => (width - 1 - x, height - 1 - y),
     };
 
-    // ResizeYuvTurned's plan: the decoded frame's rows and columns under the pixels the resize reads, and the frame
-    // they are converted into.
+    // ResizeYuvTurned's plan: the decoded frame's rows and columns under the pixels the resize reads, each one's index
+    // among them (-1: not read), and the converted pixels at those rows and columns only (rows x columns x 3).
     (int Turn, int Width, int Height, int CropX, int CropY)? _turnedFor;
-    int[] _turnedRows = [], _turnedCols = [];
-    byte[] _turnedBgr = [];
+    int[] _turnedRows = [], _turnedCols = [], _turnedRowIndex = [], _turnedColIndex = [];
+    byte[] _turnedBgr = [], _turnedScratch = [];
 
     /// <summary>
     /// <see cref="ResizeYuv"/> for a turned frame: as OpenCV, which turns the converted image (cv::rotate), and as the
@@ -348,20 +348,46 @@ internal sealed class CvResize
             var under = SourceRows.SelectMany(r => SourceCols.Select(x => TurnedSource(turn, x + cropX, r + cropY, width, height))).ToArray();
             _turnedRows = under.Select(p => p.Y).Distinct().Order().ToArray();
             _turnedCols = under.Select(p => p.X).Distinct().Order().ToArray();
-            _turnedBgr = new byte[width * height * 3];
+            _turnedRowIndex = Index(_turnedRows, height);
+            _turnedColIndex = Index(_turnedCols, width);
+            _turnedBgr = new byte[_turnedRows.Length * _turnedCols.Length * 3];
+            _turnedScratch = new byte[width * 3];
             _turnedFor = (turn, width, height, cropX, cropY);
         }
 
-        int[] rows = _turnedRows, cols = _turnedCols;
+        int[] rows = _turnedRows, cols = _turnedCols, rowIndex = _turnedRowIndex, colIndex = _turnedColIndex;
         byte[] bgr = _turnedBgr;
+        int n = cols.Length;
+
+        // Each row converted into a whole-width scratch row (the converter writes at the columns' own offsets), then
+        // only the columns read kept, packed.
+        void ConvertRow(int i, byte[] scratch)
+        {
+            convert(yuv, width, height, rows[i], cols, scratch);
+            var packed = bgr.AsSpan(i * n * 3, n * 3);
+            for (int j = 0; j < n; j++)
+            {
+                int s = cols[j] * 3;
+                (packed[j * 3], packed[j * 3 + 1], packed[j * 3 + 2]) = (scratch[s], scratch[s + 1], scratch[s + 2]);
+            }
+        }
+
         if (_chunks.Length == 1)
         {
-            foreach (int y in rows)
-                convert(yuv, width, height, y, cols, bgr.AsSpan(y * width * 3, width * 3));
+            for (int i = 0; i < rows.Length; i++)
+                ConvertRow(i, _turnedScratch);
         }
         else
         {
-            Parallel.ForEach(rows, y => convert(yuv, width, height, y, cols, bgr.AsSpan(y * width * 3, width * 3)));
+            Parallel.For(0,
+                rows.Length,
+                () => new byte[width * 3],
+                (i, _, scratch) =>
+                {
+                    ConvertRow(i, scratch);
+                    return scratch;
+                },
+                _ => { });
         }
 
         // Then the rows of the turned frame the resize reads, gathered from the converted pixels.
@@ -397,10 +423,20 @@ internal sealed class CvResize
             foreach (int x in SourceCols)
             {
                 var (sx, sy) = TurnedSource(turn, x + cropX, y, width, height);
-                int s = (sy * width + sx) * 3, d = (x + cropX) * 3;
+                int s = (rowIndex[sy] * n + colIndex[sx]) * 3, d = (x + cropX) * 3;
                 (row[d], row[d + 1], row[d + 2]) = (bgr[s], bgr[s + 1], bgr[s + 2]);
             }
         }
+    }
+
+    /// <summary>Each of <paramref name="values"/>' index among them, by value (0 .. <paramref name="size"/> - 1; -1: not among them).</summary>
+    static int[] Index(int[] values, int size)
+    {
+        var index = new int[size];
+        Array.Fill(index, -1);
+        for (int i = 0; i < values.Length; i++)
+            index[values[i]] = i;
+        return index;
     }
 
     int Row0(int dy) => Math.Clamp(_yofs[dy], 0, _sh - 1);

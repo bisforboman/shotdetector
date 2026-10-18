@@ -24,7 +24,9 @@ dropped in 0.9.0), exports
 (save-images, save-html, split-video), stats, streaming out (`DetectStreamAsync`) and in (`Detect(Stream)`, URLs,
 CLI `-i -`). CI compares every sample clip against scenedetect 0.7.2 and 0.7.1 on Linux for the core and FastYuv
 paths (10-bit h264 too), 0.7.2 both through the ffmpeg executable and in-process (our FFmpeg build; `compare.py`
-adds `SHOTDETECTOR_OURS_ARGS` to every run, CI sets `--decoder`); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
+adds `SHOTDETECTOR_OURS_ARGS` to every run, CI sets `--decoder`). `Detect` chunks long in-process files on several
+cores by default from 8 CPUs on (docs/parallel-detection.md; `--sequential` one pass, `--parallel` from 4 CPUs on,
+hidden `--chunks N`; CI's 4-CPU runners use those); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
 weekly. `docs/backlog.md` has what's next, in order; `docs/decisions/` what the user decided and why.
 
 **Release policy:** the user says when to release ("when everything is ready, push a 0.x.0 release"). Two products,
@@ -119,7 +121,7 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - `tools/compare.py`: runs scenedetect and shotdetect on videos, diffs cuts/CSVs/stats, Markdown report.
   `tools/make-samples.ps1`: synthetic + Blender trailers + VFR/rotation/colour variants. `tools/realworld.py`:
   whole Blender films and codec clips, pinned by SHA-256. `tools/mutation/`: guard mutations.
-- `.github/workflows`: `ci.yml` (build/test, AOT matrix incl. Alpine, parity matrix; `parity-os.yml`: the main comparison on Windows and macOS, informational, nightly), `mutation.yml`,
+- `.github/workflows`: `ci.yml` (build/test, AOT matrix incl. Alpine, parity matrix, `arch`/`arch-diff`: x64 against ARM on every sample; `parity-os.yml`: the main comparison on Windows and macOS, informational, nightly), `compare.yml` (on demand: a branch's microbenchmarks against a base on chosen runners), `mutation.yml`,
   `realworld.yml` (also nightly 02:17 UTC), `benchmark.yml` (weekly + on demand; `tools/bench.py`), `upstream.yml` (Mondays: an issue when PyPI has a newer scenedetect than CI's pin, or a newer FFmpeg point release, zlib or dav1d than the native build's, or a new FFmpeg in opencv-python's Linux wheel), `release.yml` (tag → NuGet trusted publishing + GitHub release + binaries), `codeql.yml` (code scanning of the C#: PRs, main, weekly; findings under Security, not a required check).
 - `Directory.Build.props` (version; release.yml overrides from the tag), `Directory.Packages.props` (central versions).
 
@@ -164,7 +166,8 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   wheels have no FFmpeg. `getBuildInformation()`'s "Custom HAL" line names the library. Our own results differ on
   ARM too: FFmpeg's yuv420p to BGR assembly rounds differently there; FastYuv gives x86's results on 8-bit 4:2:0 and
   4:2:2 (ci.yml's arch-diff requires that, docs/decisions/2026-10-17-arm-results.md, 2026-10-18-fastyuv-422.md). The
-  IDCTs too: MPEG-1/2, MJPEG and MPEG-4 Part 2 decode with the C one (`VideoReader.IdctOptions`), except MPEG-4 that
+  IDCTs too: MPEG-1/2, MJPEG and MPEG-4 Part 2 decode with the C one (`VideoReader.IdctOptions`; `-idct simple`, and
+  in-process FrameReader's `CodecOptions`, so FrameReader alone keeps FFmpeg's default), except MPEG-4 that
   FFmpeg gives the Xvid IDCT (`Mpeg4Idct`, its own rule: signature, else FourCC; 2026-10-18-mpeg4-xvid-idct.md).
 - Benchmarks on this desktop: pin CPUs with `cmd /c start /affinity 3 ...` (children inherit), compare CPU time
   (more stable than wall time here), and interleave runs. The resize and edge detector alone: benchmarks/micro (real
