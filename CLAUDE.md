@@ -53,6 +53,7 @@ with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
   that need every other job in their workflow (passed or skipped: light PRs skip the heavy ones, and a skipped matrix
   job never reports its per-matrix names). A new job in ci.yml or realworld.yml goes in its gate's `needs`. Don't push
   to main directly.
+- **Files an open PR changes**: before editing a file, check the open PRs (`gh pr list`, or the GitHub tools' PR files) for one that changes it; if one does, wait for it to merge and branch from main after it, rather than editing the same lines in parallel (2026-10-18: none of 34 PRs in a week needed a conflict resolved by hand, this way).
 - **Worktrees**: `git worktree add .claude/worktrees/<name> -b <branch> origin/main` (ignored). Sessions working at
   the same time each use their own worktree, never one checkout, so a commit can't land on another's branch.
 - **Changelog**: a PR with a change users of the packages notice adds `changes/shotdetector/<branch>.md` or
