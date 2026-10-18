@@ -631,6 +631,17 @@ internal sealed partial class VideoReader
         Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
 
     /// <summary>
+    /// <see cref="DetectionResult.Warnings"/>' line for an https HLS playlist decoded by the ffmpeg executable, else
+    /// null: the executable checks the playlist's certificate but opens its segments, keys and variants without the
+    /// check (FFmpeg's HLS demuxer doesn't pass tls_verify on); in-process, FrameReader checks them too.
+    /// </summary>
+    internal static string? ExecutableHlsWarning(string? path, string container, bool decodedInProcess) =>
+        !decodedInProcess && container == "hls" && Uri.TryCreate(path, UriKind.Absolute, out var url) && url.Scheme == Uri.UriSchemeHttps
+            ? "decoded by ffmpeg, which fetched the playlist's segments without checking their certificates; in-process "
+            + "decoding (the FrameReader.Native packages) checks them."
+            : null;
+
+    /// <summary>
     /// FFmpeg options for an input path or URL: only the protocols it needs. A file (a plain path, or an FFmpeg
     /// pseudo-protocol string such as concat: or subfile:, which then fails) reads as a file; an http(s) or rtsp URL its
     /// own family, a second layer over FFmpeg's checks of what it serves (an HLS playlist's entries); another network
