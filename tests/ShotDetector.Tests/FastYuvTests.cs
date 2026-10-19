@@ -349,13 +349,22 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
     [InlineData("420p10-90", "-pix_fmt yuv420p10le -chroma_sample_location left", "-display_rotation 90", "", "Yuv420P10Sampled")]
     [InlineData("420p10-180", "-pix_fmt yuv420p10le -chroma_sample_location left", "-display_rotation 180", "", "Yuv420P10Sampled")]
     [InlineData("420p10-270-crop", "-pix_fmt yuv420p10le", "-display_rotation -90", "turned-crop", "Yuv420P10Sampled")]
+
+    // The codec's tags (h264's VUI) against Matroska's header: the frames carry the codec's, which the default path and
+    // OpenCV convert with, so FastYuv takes the first frame's, not the stream's (libx264; skipped without it).
+    [InlineData("420p10-vui-topleft", "-pix_fmt yuv420p10le -chroma_sample_location left -c:v libx264 -x264-params chromaloc=2", "", "", "Yuv420P10Sampled")]
+    [InlineData("420-vui-matrix", "-pix_fmt yuv420p -colorspace bt709 -c:v libx264 -x264-params colormatrix=smpte170m", "", "", "Yuv420Sampled")]
+    [InlineData("420-vui-range", "-pix_fmt yuv420p -color_range pc -c:v libx264 -bsf:v h264_metadata=video_full_range_flag=0", "", "", "Yuv420Sampled")]
     public void SameFramesAsTheDefaultPath(string name, string format, string display, string variant, string pipeline)
     {
         string dir = Directory.CreateTempSubdirectory($"shotdetector-fastyuv-{name}-").FullName;
         try
         {
             string plain = Path.Combine(dir, "plain.mkv"), video = Path.Combine(dir, "video.mov");
-            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-frames:v", "60", .. format.Split(' '), "-c:v", "ffv1", plain], default);
+            bool encoder = format.Contains("-c:v", StringComparison.Ordinal);
+            if (encoder && !VideoReader.Run("ffmpeg", ["-hide_banner", "-encoders"], default).Contains(" libx264 ", StringComparison.Ordinal))
+                return;
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-frames:v", "60", .. format.Split(' '), .. encoder ? [] : new[] { "-c:v", "ffv1" }, plain], default);
             if (display.Length > 0)
                 VideoReader.Run("ffmpeg", ["-v", "error", "-y", .. display.Split(' '), "-i", plain, "-c", "copy", video], default);
             else

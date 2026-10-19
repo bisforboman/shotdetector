@@ -516,6 +516,13 @@ internal sealed partial class VideoReader
             : DownscaledSize(effective.SourceWidth, effective.SourceHeight, CropRegion.Width, CropRegion.Height);
         _pixelFormat = stream.GetValueOrDefault("pix_fmt", "");
 
+        // The first frame's chroma location and colour tags over the stream's: OpenCV converts each frame with its own
+        // (sws_scale_frame), which are the codec's (an h264 stream's VUI) where a container's header can say otherwise.
+        // Read only where they're used: by FastYuv, and by the executable's scale filter where swscale interpolates the
+        // chroma (not 8-bit 4:2:0; the in-process default path converts with each frame's own).
+        if (!headersOnly && (_yuv420 is not null || _pixelFormat is not ("yuv420p" or "yuvj420p")))
+            PreferFrameTags(stream, FrameTags(path, ffprobe, cancellationToken));
+
         // Where the chroma samples sit, which OpenCV's converter (sws_scale_frame) takes from the frame; ffmpeg's command
         // line loses it on the way to its filters, so the scale filter is told (scenedetect's 10-bit frames, issue-free
         // for 8-bit 4:2:0, whose unscaled conversion doesn't interpolate chroma).
@@ -667,6 +674,49 @@ internal sealed partial class VideoReader
         catch (Exception e) when (e is ShotDetectionException or FrameReader.FrameReaderException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// The first decoded frame's chroma location and colour tags (<see cref="FrameTagsArgs"/>' output): from FFmpeg's
+    /// libraries when they probed the input, else from ffprobe; a Stream's from its first bytes. Null when no frame
+    /// decodes (the stream's tags then).
+    /// </summary>
+    string? FrameTags(string path, string ffprobe, CancellationToken cancellationToken)
+    {
+        byte[]? prefix = _stream is null ? null : _prefix;
+        try
+        {
+            return _probesInProcess
+                ? InProcessProbe.FrameTags(path, _ffmpegDirectory, _inputOptions, prefix, cancellationToken)
+                : Run(ffprobe, FrameTagsArgs(path, _inputOptions), cancellationToken, stdin: prefix);
+        }
+        catch (Exception e) when (e is ShotDetectionException or FrameReader.FrameReaderException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>ffprobe's arguments for the first video frame's chroma location and colour tags (it decodes that frame only).</summary>
+    internal static string[] FrameTagsArgs(string path, string[] inputOptions) =>
+        ["-v", "error", .. inputOptions, "-select_streams", "v:0", "-read_intervals", "%+#1",
+            "-show_entries", "frame=chroma_location,color_space,color_range", "-of", "default=nw=1", "-i", path];
+
+    /// <summary>
+    /// The frame's chroma location, colour space and range (<paramref name="frameTags"/>, ffprobe's frame entries) in
+    /// <paramref name="stream"/>'s place, each where the frame has one: the decoder's values, which a container's header
+    /// can contradict.
+    /// </summary>
+    internal static void PreferFrameTags(Dictionary<string, string> stream, string? frameTags)
+    {
+        foreach (var line in (frameTags ?? "").Split('\n', StringSplitOptions.TrimEntries))
+        {
+            int eq = line.IndexOf('=');
+            if (eq < 0)
+                continue;
+            string key = line[..eq], value = line[(eq + 1)..];
+            if (key is "chroma_location" or "color_space" or "color_range" && value is not ("unspecified" or "unknown" or ""))
+                stream[key] = value;
         }
     }
 

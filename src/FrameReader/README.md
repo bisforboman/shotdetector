@@ -320,7 +320,8 @@ codec extradata; optionally every packet's timestamp, and the first video packet
 -show_streams` instead: every field ffprobe prints (profile, level, aspect ratios, colour, disposition, tags, side
 data, ...), with ffprobe's keys and value types, unknown values left out as there; it opens each stream's decoder, as
 ffprobe does. **The advanced layer:** `FrameDecoder` is the lower level, decoded frames as FFmpeg holds them (`GetPlane`), with
-seeking. `BgrConverter` turns its current frame into BGR at its own size, the bytes `-vf scale,format=bgr24` gives
+seeking, and each frame's own chroma location and colour tags (`ChromaLocation`, `ColorSpace`, `ColorRange`: the
+decoder's, where `VideoStreamInfo` gives a container's header, which can say otherwise). `BgrConverter` turns its current frame into BGR at its own size, the bytes `-vf scale,format=bgr24` gives
 (OpenCV's too); `Convert(rows, out stride)` converts only the slices holding the rows you read, for when you sample a
 few rows of each frame (ShotDetector reads its resize's rows this way).
 

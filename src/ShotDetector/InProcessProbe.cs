@@ -92,6 +92,32 @@ internal static unsafe class InProcessProbe
     }
 
     /// <summary>
+    /// <c>ffprobe -select_streams v:0 -read_intervals %+#1 -show_entries frame=chroma_location,color_space,color_range</c>'s
+    /// output (VideoReader.FrameTagsArgs): the first decoded frame's, with ffprobe's names; with
+    /// <paramref name="streamPrefix"/>, from a Stream's first bytes. Empty when no frame decodes.
+    /// </summary>
+    public static string FrameTags(string path,
+        string? libraryDirectory,
+        string[]? inputOptions,
+        byte[]? streamPrefix,
+        CancellationToken cancellationToken)
+    {
+        InProcess.Load(libraryDirectory);
+        try
+        {
+            var options = new FrameDecoderOptions { InputOptions = Options(inputOptions), CancellationToken = cancellationToken };
+            using var decoder = streamPrefix is null ? new FrameDecoder(path, options) : new FrameDecoder(new MemoryStream(streamPrefix), options);
+            return decoder.Next()
+                ? $"chroma_location={decoder.ChromaLocation ?? "unspecified"}\ncolor_space={decoder.ColorSpace ?? "unknown"}\ncolor_range={decoder.ColorRange ?? "unknown"}\n"
+                : "";
+        }
+        catch (FrameReaderException e)
+        {
+            throw InProcess.Map(e, libraryDirectory);
+        }
+    }
+
+    /// <summary>
     /// Every stream: FrameReader's, as <see cref="VideoReader"/> fills them from ffprobe's <c>-show_entries</c>
     /// (VideoReader.StreamEntries) without the libraries.
     /// </summary>

@@ -19,10 +19,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: `Demuxer.Open` passes `FrameDecoderOptions.InputOptions` to avformat_open_input and drops what's left, so a misspelt demuxer option is ignored without a word (the release-candidate security review, 2026-10-18), though FrameReader's README says unknown option names are an `ArgumentException`. `CodecOptions` checks its leftovers since 2026-10-18. Changing it could break callers passing options some demuxers lack (ShotDetector passes the image sequences' `framerate`), so it needs a look per caller
   - Status: Open
 
-- In-process default path vs the executable on 10-bit h264 with top-left chroma: different stats
-  - Why: Found 2026-10-18 measuring FastYuv's 10-bit speed-up: a 854x480 yuv420p10le h264 clip in mkv encoded with `-x264-params chromaloc=2` (ffprobe: chroma_location topleft) gives other stats in-process with the default path than through the ffmpeg executable (every frame's values; the cuts happen to agree), on main before that change too, while FastYuv through both decoders equals the executable. The left-sited h264 clips and FastYuvTests' ffv1 topleft clip agree. Likely where BgrConverter's chroma position comes from for this stream (the h264 VUI against the container), so which one OpenCV matches needs checking against scenedetect
-  - Status: Open
-
 ## Waiting
 
 - Move to FFmpeg 9's libraries (FFmpeg.AutoGen 9, Native packages on 9.0.x) when opencv-python's Linux wheels bundle FFmpeg 9
@@ -43,8 +39,8 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Each chunk's `new VideoReader` (ShotDetection.ScoreChunked) probes the file and reads every packet's pts again, N times at once: about 0.1 s on mp4, growing with the file on MPEG-TS (the release-candidate performance review, 2026-10-18). The outer reader already has the list
   - Status: Maybe (2026-10-18: measured about 0.1 s on mp4 and 0.3 s on a 500 MB MPEG-TS per run, small next to the detection)
 
-- FastYuv: convert with each frame's chroma location, not the stream's
-  - Why: The default path converts each frame from its own chroma siting (as OpenCV's sws_scale_frame does), FastYuv from the stream's (FrameReader exposes no per-frame chroma location), so a frame tagged differently from its stream would differ in-process; rare (h264 sets it per SPS), found while building FastYuv 10-bit (#412). Needs FrameReader to expose the frame's chroma location (additive)
+- FastYuv and the executable path: convert with each frame's chroma location and colour tags, not the first frame's
+  - Why: The default path converts each frame from its own chroma siting and colour tags (as OpenCV's sws_scale_frame does); since 2026-10-19 the executable path's scale filter and FastYuv take the first frame's (`FrameDecoder.ChromaLocation`/`ColorSpace`/`ColorRange`, ffprobe's frame entries; docs/decisions/2026-10-19-chroma-and-colour-tags-from-the-frame.md) for the whole video, so a video whose tags change midway would still differ there; rare (h264 sets them per SPS), found while building FastYuv 10-bit (#412)
   - Status: Maybe
 
 - Warn for a local playlist whose segments are https

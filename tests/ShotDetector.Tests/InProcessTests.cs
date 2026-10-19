@@ -59,13 +59,19 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
     [InlineData("10bit-left", "-pix_fmt yuv420p10le -chroma_sample_location left")]
     [InlineData("10bit-topleft", "-pix_fmt yuv420p10le -chroma_sample_location topleft")]
     [InlineData("422-10bit-left", "-pix_fmt yuv422p10le -chroma_sample_location left")]
+
+    // ... and where h264's VUI (the frames') says otherwise than Matroska's header (the stream's): the frames' (libx264).
+    [InlineData("10bit-h264-vui-topleft", "-pix_fmt yuv420p10le -chroma_sample_location left -c:v libx264 -x264-params chromaloc=2")]
     [InlineData("oddheight", "-vf crop=320:237:0:0 -pix_fmt yuv420p")]
     public void SameAsTheFfmpegExecutableForEachFormat(string name, string args)
     {
         if (Libs is null)
             return;
         string copy = Path.Combine(Path.GetTempPath(), $"shotdetector-{name}-{Guid.NewGuid():N}.mkv");
-        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, .. args.Split(' '), "-c:v", "ffv1", copy], default);
+        bool encoder = args.Contains("-c:v", StringComparison.Ordinal);
+        if (encoder && !VideoReader.Run("ffmpeg", ["-hide_banner", "-encoders"], default).Contains(" libx264 ", StringComparison.Ordinal))
+            return;
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, .. args.Split(' '), .. encoder ? [] : new[] { "-c:v", "ffv1" }, copy], default);
         try
         {
             var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess };

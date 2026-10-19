@@ -14,6 +14,11 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "")'; Replace = '""'; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
         @{ File = 'src/FrameReader/BgrConverter.cs'; Find = 'ffmpeg.av_opt_set_int(_toRows, "src_h_chr_pos", hPos, 0);'; Replace = ''; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
 
+        # The first frame's chroma location and colour tags over the stream's (the container's header can contradict the
+        # codec's, which OpenCV converts with): executable path's in_chroma_loc, FastYuv's colours and siting
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (key is "chroma_location" or "color_space" or "color_range" && value is not ("unspecified" or "unknown" or ""))'; Replace = 'if (false)'; Tests = 'VideoTests.TheFramesChromaLocationAndColourTagsWinOverTheStreams' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'PreferFrameTags(stream, FrameTags(path, ffprobe, cancellationToken));'; Replace = '_ = stream;'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
+
         # compare.py on Windows: BT.601 whatever the colour tags, as the Windows OpenCV wheel (executable, FastYuv, not in-process)
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '+ (_alwaysBt601 ? ":in_color_matrix=bt601" : "")'; Replace = '+ ""'; Tests = 'VideoTests.AlwaysBt601IgnoresTheColourTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '_alwaysBt601 ? "bt470bg" : '; Replace = ''; Tests = 'VideoTests.AlwaysBt601IgnoresTheColourTags' }
