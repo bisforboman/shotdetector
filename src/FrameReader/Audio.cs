@@ -20,7 +20,7 @@ public sealed record AudioConvertOptions
     /// <summary>ffmpeg's <c>-fflags +bitexact -flags:a +bitexact</c>: no version tags or random IDs.</summary>
     public bool Bitexact { get; init; }
 
-    /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash.</summary>
+    /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash; a name nothing takes is an <see cref="ArgumentException"/>.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
 
     /// <summary>Receives progress (<see cref="MediaProgress"/>): about 10 times a second, and once at the end.</summary>

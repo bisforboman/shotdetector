@@ -651,6 +651,22 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // FrameReader refuses an input option no demuxer or protocol takes, as ffmpeg's command line does; the options
+    // ShotDetector passes for a file and for an image sequence are all taken (http(s) and HLS: VideoTests'
+    // UrlInputIsStreamed, FrameReader's tests).
+    [Fact]
+    public void UnknownInputOptionsFailAndShotDetectorsAreTaken()
+    {
+        if (Libs is null)
+            return;
+        FrameReader.FFmpegLibraries.Load(Libs);
+        var misspelt = new Dictionary<string, string> { ["framerat"] = "25" };
+        var e = Assert.Throws<ArgumentException>(() => new FrameReader.FrameDecoder(clips.ThreeShots, new FrameReader.FrameDecoderOptions { InputOptions = misspelt }).Dispose());
+        Assert.Contains("\"framerat\"", e.Message, StringComparison.Ordinal);
+        using var decoder = new FrameReader.FrameDecoder(clips.ThreeShots, new FrameReader.FrameDecoderOptions { InputOptions = InProcessProbe.Options(VideoReader.InputOptions(clips.ThreeShots)) });
+        Assert.True(decoder.Next());
+    }
+
     // VideoInfo.Streams: every stream with type, codec, tag, language, title, flags, bit rate, duration and audio details,
     // the same in-process as from ffprobe (issue #81).
     [Theory]
