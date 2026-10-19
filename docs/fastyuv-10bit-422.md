@@ -40,9 +40,10 @@ results with FastYuv for 10-bit, 4:2:2, MPEG-2 and MJPEG video".
   bicubic filter makes overshoot, C's tables do; the model reproduces both, so nothing was left unexplained.
 - Plumbing as 4:2:2: `FramePipeline.Yuv420P10Sampled`, `-pix_fmt yuv420p10le` through the executable, 16-bit planes
   from `FrameWriter.WriteYuv` in-process; any height (the even-height rule is the 8-bit unscaled converter's); turned
-  frames are converted before turning, so they take it too. Both FastYuv paths take the stream's `chroma_location`,
-  as the executable's `in_chroma_loc` does (FrameDecoder doesn't expose a frame's own; a frame tagged otherwise than
-  its stream would differ in-process, as the default paths would differ from each other).
+  frames are converted before turning, so they take it too. Both FastYuv paths take the first frame's
+  `chroma_location`, as the executable's `in_chroma_loc` does (since 2026-10-19, `FrameDecoder.ChromaLocation` or
+  ffprobe's frame entry: before, the stream's, which is a container's header where it has one; a frame tagged
+  otherwise than the first would still differ, as OpenCV converts each frame with its own).
 - Proof on x64 (FFmpeg 8.1.3 executable and libraries, an AVX-512 Xeon): the prototype and the converter give
   ffmpeg's bytes, 0 differing, for noise and 0/1023 extremes at widths of every even residue mod 8, odd heights,
   chroma left, center, topleft, top, bottomleft and unspecified, every supported matrix and both ranges, and on all

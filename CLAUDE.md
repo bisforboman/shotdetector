@@ -153,7 +153,9 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   informational with deinterlacing off, exact with `--deinterlace auto` vs scenedetect on a lossless yadif copy.
 - 10-bit (any format without swscale's unscaled path to BGR): chroma is interpolated from where the samples sit. OpenCV's
   `sws_scale_frame` takes that from the frame (h264/HEVC 4:2:0: left); ffmpeg's command line drops it before its filters
-  (center), so the executable path passes `in_chroma_loc` and BgrConverter's row context sets swscale's position. Linux
+  (center), so the executable path passes `in_chroma_loc` (the first frame's, read with ffprobe or FrameDecoder: a container's
+  header can contradict the stream's own, as can its colour matrix and range, which FastYuv takes from there too) and
+  BgrConverter's row context sets swscale's position. Linux
   OpenCV can't decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments
   (files for it outside a `debug/` folder: .gitignore ignores those, so they'd silently not be committed). To time a
   change against main on other runners (ARM, macOS), dispatch `compare.yml` on its branch instead: no branch to delete.
