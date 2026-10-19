@@ -6,6 +6,36 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.10.0 – 2026-10-19
+
+Colour tags from the decoded frame, warnings as they happen, and parallel chunks that don't probe again.
+
+### New
+
+- `DetectionOptions.Warnings`: an `IProgress<string>` told each warning as soon as it is known (an http or https HLS playlist
+  read by the ffmpeg executable, why `Mode = Parallel` read sequentially, a fallback from chunks), so
+  `DetectStreamAsync`, which has no result, gets them too. Detect still returns them in `DetectionResult.Warnings`.
+
+### Faster
+
+- Parallel detection probes the file once: each chunk's reader takes the first reader's stream properties and packet
+  timestamps instead of reading them again. Most noticeable on MPEG-TS, where reading every packet's timestamp is slow:
+  a 4-minute, 280 MB clip went from 6.7 s to 5.8 s in 2 chunks on 4 CPUs (and from 21 s to 17 s of CPU time in 4).
+
+### Fixed
+
+- The warning that the ffmpeg executable fetches an HLS playlist's https segments without checking their certificates
+  now covers playlists opened over http too, whose https segments, keys and variants went unchecked without a word.
+- With ShotDetector.FastYuv and the ffmpeg executable, a video whose colour matrix or range changes midway (two streams
+  joined, a spliced broadcast) could give other cuts than PySceneDetect: ffmpeg converted the frames after the change
+  before FastYuv read them. They now reach FastYuv as decoded, and the cuts are exact. Stats after such a change can
+  still differ slightly, because FastYuv converts every frame with the first frame's colours.
+- Videos whose container says something else than the video stream about where the chroma samples sit or about the
+  colours (for example an mkv whose header says "left" or BT.709 while its h264 stream says "top left" or BT.601):
+  the ffmpeg executable path (10-bit video) and ShotDetector.FastYuv (both decoders) converted with the container's
+  values and gave other stats than PySceneDetect, which converts with the stream's. They now take the first frame's,
+  as the in-process default path already did.
+
 ## 3.9.0 – 2026-10-19
 
 FastYuv's 10-bit conversion a frame at a time, and parallel detection with less memory.
