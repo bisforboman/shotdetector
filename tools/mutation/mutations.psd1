@@ -79,7 +79,7 @@
 
         # Parallel detection says why it read sequentially, and shares the decoder threads out without losing one
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = '        fallback = problem;'; Replace = '        fallback = null;'; Tests = 'ParallelTests.FallsBackToSequential' }
-        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'o.Mode == DetectionMode.Parallel && notChunked is not null ?'; Replace = 'false ?'; Tests = 'ParallelTests.FallsBackToSequential' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (o.Mode == DetectionMode.Parallel && notChunked is not null)'; Replace = 'if (false)'; Tests = 'ParallelTests.FallsBackToSequential' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ' + (chunk < threads % chunks ? 1 : 0)'; Replace = ''; Tests = 'ParallelTests.DecoderThreadsSharedOut' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'Math.Max(2, 8 / chunks)'; Replace = '8 / chunks'; Tests = 'ParallelTests.FrameBuffersSharedOut' }
 
