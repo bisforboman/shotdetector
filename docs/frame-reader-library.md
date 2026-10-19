@@ -125,8 +125,8 @@ which are ShotDetector-specific. Propose the split and a public API sketch, and 
 5. Benchmarks (BenchmarkDotNet, plus the desktop rules in CLAUDE.md: pinned CPUs, CPU time, interleaved runs):
    the library vs FFMpegCore's raw-frame pipe vs the ffmpeg executable, at SD/720p/1080p, measuring fps,
    allocations and peak memory. Keep FFMpegCore in the benchmark project only.
-6. Later: exact seeking and thumbnails (VideoReader's seek is the reference), audio, opt-in hardware decoding
-   (never used by ShotDetector unless bit-exact).
+6. Done since (the README has each): exact seeking and thumbnails (VideoReader's seek is the reference), audio,
+   opt-in hardware decoding (never used by ShotDetector unless bit-exact).
 
 ## Quality bar
 
