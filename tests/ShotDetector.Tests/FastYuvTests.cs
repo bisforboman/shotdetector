@@ -399,6 +399,44 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
         static List<string> Hashes(VideoReader reader) => [.. reader.Frames().Select(f => Convert.ToHexString(SHA256.HashData(f)))];
     }
 
+    // A colour matrix or range that changes midway (two h264 streams joined): the executable's raw-YUV pipe passes the
+    // second half's samples through untouched (ffmpeg would convert them to the first half's tags), so FastYuv reads
+    // the frames it reads from the same stream with the first half's tags written into every SPS. (FastYuv converts
+    // every frame with the first frame's tags: docs/backlog.md's per-frame tags row.) libx264; skipped without it.
+    [Theory]
+    [InlineData("yuv420p", "colormatrix=bt709", "", "Yuv420Sampled")]
+    [InlineData("yuv420p", "fullrange=on", "scale=out_range=full", "Yuv420Sampled")]
+    [InlineData("yuv420p10le", "colormatrix=bt709", "", "Yuv420P10Sampled")]
+    [InlineData("yuv422p", "colormatrix=bt709", "", "Yuv422Sampled")]
+    public void TagChangeMidwayKeepsTheSamples(string format, string secondTags, string secondFilter, string pipeline)
+    {
+        if (!VideoReader.Run("ffmpeg", ["-hide_banner", "-encoders"], default).Contains(" libx264 ", StringComparison.Ordinal))
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetector-fastyuv-tags-").FullName;
+        try
+        {
+            string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts"), relabelled = Path.Combine(dir, "relabelled.ts");
+            string[] encode = ["-pix_fmt", format, "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb"];
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-t", "2", .. encode, "-x264-params", "colormatrix=bt470bg", a], default);
+            string[] filter = secondFilter.Length > 0 ? ["-vf", secondFilter] : [];
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "2", "-i", clips.ThreeShots, "-t", "2", .. filter, .. encode, "-x264-params", "colormatrix=bt470bg:" + secondTags, "-output_ts_offset", "2", b], default);
+            File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", joined, "-c", "copy", "-bsf:v", "h264_metadata=matrix_coefficients=5:video_full_range_flag=0", relabelled], default);
+
+            var options = new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess, Yuv420Converter = new SwscaleYuv420() };
+            var expected = new VideoReader(relabelled, options);
+            var reader = new VideoReader(joined, options);
+            Assert.Equal(Hashes(expected), Hashes(reader));
+            Assert.Equal(Enum.Parse<FramePipeline>(pipeline), reader.Pipeline); // not read again on a BGR pipeline
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+
+        static List<string> Hashes(VideoReader reader) => [.. reader.Frames().Select(f => Convert.ToHexString(SHA256.HashData(f)))];
+    }
+
     // A turned clip read from a start frame (the exact seek) gives the frames a read from the start gives there, with
     // FastYuv as without, through both decoders.
     [Theory]

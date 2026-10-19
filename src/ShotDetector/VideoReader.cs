@@ -309,6 +309,7 @@ internal sealed partial class VideoReader
     readonly string? _chromaLocation;
     readonly bool? _xvidIdct;          // MPEG-4 Part 2: whether FFmpeg's decoder takes the Xvid IDCT (Mpeg4Idct); null if not known
     readonly YuvConversion? _yuvForVideo;         // _yuv420 configured for this video's layout and colours (4:2:0 or 4:2:2)
+    readonly string _yuvLabels;        // the raw-YUV pipe's setparams: every frame labelled with the first frame's colour tags
 
     /// <summary>
     /// What a file's probe read: the stream entries (with the first frame's tags where they were read), every frame's pts
@@ -580,6 +581,16 @@ internal sealed partial class VideoReader
         bool fullRange = _pixelFormat is "yuvj420p" or "yuvj422p" || stream.GetValueOrDefault("color_range") == "pc";
         string colorSpace = _alwaysBt601 ? "bt470bg" : stream.GetValueOrDefault("color_space", "");
 
+        // The raw-YUV pipe (FastYuv on the executable): ffmpeg sets its output up with the first frame's colour tags, and
+        // when a later frame's matrix or range differs (a spliced or concatenated stream) it reconfigures and converts
+        // that frame's samples to the first frame's tags (through RGB), so FastYuv would read other samples than the
+        // decoder's. Labelled with the first frame's tags, every frame reaches the pipe untouched. A yuvj format keeps
+        // its full range: labelled otherwise, ffmpeg converts it.
+        string labelSpace = stream.GetValueOrDefault("color_space", "") is var cs && SetParamsColorSpaces.Contains(cs) ? cs : "unknown";
+        string labelRange = _pixelFormat.StartsWith("yuvj", StringComparison.Ordinal) ? "pc"
+            : stream.GetValueOrDefault("color_range") is { } range && range is "tv" or "pc" ? range : "unknown";
+        _yuvLabels = $"setparams=colorspace={labelSpace}:range={labelRange}";
+
         // 4:2:2 when the converter does that too (FastYuv's does): swscale takes the same unscaled converter for it. 10-bit
         // 4:2:0 too: swscale scales that one (interpolating the chroma from where it sits), so its converter is for the
         // size and chroma location as well, and declines sizes it doesn't reproduce.
@@ -726,6 +737,13 @@ internal sealed partial class VideoReader
     }
 
     /// <summary>ffprobe's arguments for the first video frame's chroma location and colour tags (it decodes that frame only).</summary>
+    // The colour spaces ffmpeg's setparams takes by name (ffprobe's names; "reserved" and the like are labelled unknown).
+    static readonly HashSet<string> SetParamsColorSpaces =
+    [
+        "gbr", "bt709", "unknown", "fcc", "bt470bg", "smpte170m", "smpte240m", "ycgco", "ycgco-re", "ycgco-ro", "bt2020nc",
+        "bt2020c", "smpte2085", "chroma-derived-nc", "chroma-derived-c", "ictcp", "ipt-c2",
+    ];
+
     internal static string[] FrameTagsArgs(string path, string[] inputOptions) =>
         ["-v", "error", .. inputOptions, "-select_streams", "v:0", "-read_intervals", "%+#1",
             "-show_entries", "frame=chroma_location,color_space,color_range", "-of", "default=nw=1", "-i", path];
@@ -1194,7 +1212,7 @@ internal sealed partial class VideoReader
         args = pipeline switch
         {
             // The source's own format, so ffmpeg passes the samples through untouched; turned after converting.
-            FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled or FramePipeline.Yuv420P10Sampled => [.. args, "-vf", select[1], "-f", "rawvideo", "-pix_fmt", _pixelFormat],
+            FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled or FramePipeline.Yuv420P10Sampled => [.. args, "-vf", select[1] + "," + _yuvLabels, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
 
             // Like OpenCV: SWS_BICUBIC, colour matrix and range from the stream's tags (BT.601 if untagged).
             FramePipeline.FullFrameResize => [.. args, "-vf", prefix + toBgr + crop,

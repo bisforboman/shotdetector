@@ -834,3 +834,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - Parallel detection: hand the outer reader's packet list to the chunks' readers
   - Why: Each chunk's `new VideoReader` (ShotDetection.ScoreChunked) probes the file and reads every packet's pts again, N times at once: about 0.1 s on mp4, growing with the file on MPEG-TS (the release-candidate performance review, 2026-10-18). The outer reader already has the list
   - Status: Done (2026-10-19, #431): a chunk's reader takes the outer reader's probe (`VideoReader.ProbeResult`: the stream entries with the first frame's tags, every frame's pts, the Xvid IDCT) instead of probing again; on a 4-minute, 280 MB MPEG-TS on this 4-CPU container 6.7 s to 5.8 s wall and 18-21 s to 16-17 s CPU in 2 and 4 chunks, an mp4 within noise
+
+- The executable path's raw-YUV pipe (FastYuv) converted the samples after a colour tag change
+  - Why: Found investigating the per-frame-tags Maybe row: ffmpeg sets the pipe's output up with the first frame's colour matrix and range and, when a later frame's differ (two h264 streams joined), converts its samples to them through RGB; FastYuv then read other samples than the decoder's, and cuts moved (a cut missing on a 10-bit matrix change, one 2 frames off on an 8-bit one)
+  - Status: Done (2026-10-19, #432): the pipe labels every frame with the first frame's tags (`setparams` after showinfo), so the samples pass through untouched; process + FastYuv now gives in-process FastYuv's results on every built clip (docs/decisions/2026-10-19-per-frame-tags.md)

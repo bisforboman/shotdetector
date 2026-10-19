@@ -3,12 +3,16 @@ per clip, detector and decoder, how many stats rows differ and by how much at mo
 frame checksums (decoded, single-threaded, b's -idct simple against a's default, bgr24, bgr24 from swscale's C code, bgr24 +bitexact), as frames differing;
 and whether b's FastYuv files equal a's default ones. Exits 1 unless they do on every 8-bit 4:2:0 and 4:2:2 clip of even
 size (yuv420p, yuvj420p, yuv422p, yuvj422p, turned or not; MPEG-1/2, MJPEG and MPEG-4 Part 2 too, which decode with the
-C IDCT or, Xvid's, the Xvid one; odd widths reported for now): the rest is FFmpeg's rounding on ARM, reported
+C IDCT or, Xvid's, the Xvid one; odd widths reported for now; on clips whose colour tags change midway, b's FastYuv
+against a's FastYuv, which differs from the default path there by design): the rest is FFmpeg's rounding on ARM, reported
 (docs/decisions/2026-10-17-arm-results.md, 2026-10-18-fastyuv-422.md, 2026-10-18-mpeg4-xvid-idct.md).
 Usage: python3 tools/arch-summary.py <a-dir> <b-dir>"""
 import csv
 import sys
 from pathlib import Path
+
+# tools/make-samples.ps1's clips whose colour matrix or chroma siting changes midway (samples/informational/).
+TAGS_CHANGE = {"sintel_matrix_change.mkv", "sintel_10bit_siting_change.mkv"}
 
 
 def rows(path: Path) -> list[list[str]]:
@@ -81,8 +85,18 @@ def main() -> int:
                  else frames(a / f"{clip}.{k}.md5", b / f"{clip}.{k}.md5") if k != "file"
                  else ("same" if same(a / f"{clip}.file.md5", b / f"{clip}.file.md5") else "differ") for k in kinds]
         fast = [n for n in outputs if n.startswith(clip + ".")]
-        hits = sum(same(a / n, b / n.replace(".scenes.csv", ".fastyuv.scenes.csv").replace(".stats.csv", ".fastyuv.stats.csv"))
-                   for n in fast)
+
+        # Colour tags that change midway: FastYuv converts every frame with the first frame's, the default path each
+        # frame with its own (parked, docs/decisions/2026-10-19-per-frame-tags.md), so b's FastYuv is held to a's.
+        own = clip in TAGS_CHANGE
+
+        def fastyuv(n: str) -> str:
+            return n.replace(".scenes.csv", ".fastyuv.scenes.csv").replace(".stats.csv", ".fastyuv.stats.csv")
+
+        def matches(n: str) -> bool:
+            return same(a / (fastyuv(n) if own else n), b / fastyuv(n))
+
+        hits = sum(matches(n) for n in fast)
         info = dict(line.split("=", 1) for line in (a / codec).read_text().splitlines() if "=" in line)
         codec_name, pix_fmt = info.get("codec_name", ""), info.get("pix_fmt", "")
         width, height = int(info.get("width") or 0), int(info.get("height") or 0)
@@ -94,9 +108,10 @@ def main() -> int:
         checked += required
         if required and (not fast or hits != len(fast)):
             failed.append(clip)
-        split = " ".join(f"{d} {sum(same(a / n, b / n.replace('.scenes.csv', '.fastyuv.scenes.csv').replace('.stats.csv', '.fastyuv.stats.csv')) for n in fast if f'.{d}.' in n)}/{sum(f'.{d}.' in n for n in fast)}"
+        split = " ".join(f"{d} {sum(matches(n) for n in fast if f'.{d}.' in n)}/{sum(f'.{d}.' in n for n in fast)}"
                          for d in ("inprocess", "process"))
-        print(f"| {clip} | {codec_name},{pix_fmt} | {' | '.join(cells)} | {hits}/{len(fast)} ({split}){' (required)' if required else ''} |")
+        mark = (" (required" + (", a's FastYuv" if own else "") + ")") if required else ""
+        print(f"| {clip} | {codec_name},{pix_fmt} | {' | '.join(cells)} | {hits}/{len(fast)} ({split}){mark} |")
     if failed:
         print(f"\nARM with FastYuv differs from x64 on 8-bit 4:2:0 or 4:2:2, or 10-bit 4:2:0: {', '.join(failed)}")
     if not checked:

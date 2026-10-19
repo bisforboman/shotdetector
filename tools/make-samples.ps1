@@ -79,6 +79,21 @@ try {
     # widths. Reported on ARM until its first table is read (docs/decisions/2026-10-18-fastyuv-422.md).
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -vf scale=853:480 -c:v libvpx-vp9 -crf 32 -b:v 0 -row-mt 1 `
       -cpu-used 4 informational/sintel_oddwidth.mkv
+    # Colour tags that change midway: two h264 halves joined, each SPS with its own (a spliced or concatenated stream).
+    # OpenCV converts every frame with its own; FastYuv takes the first frame's colour matrix and the executable path
+    # the first frame's chroma siting for the whole video (docs/decisions/2026-10-19-per-frame-tags.md): their stats
+    # differ after the change, cuts don't. 8-bit with the matrix changing (BT.601 to BT.709), 10-bit with the siting
+    # (left to top left).
+    foreach ($clip in @(
+            @{ Name = "sintel_matrix_change.mkv"; Format = "yuv420p"; First = "colormatrix=bt470bg"; Second = "colormatrix=bt709" },
+            @{ Name = "sintel_10bit_siting_change.mkv"; Format = "yuv420p10le"; First = "chromaloc=0"; Second = "chromaloc=2" })) {
+        ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 10 -c:v libx264 -pix_fmt $clip.Format -crf 18 `
+          -x264-params $clip.First -f mpegts tags_first.ts
+        ffmpeg -v error -y -ss 10 -i sintel_trailer-480p.mp4 -an -t 10 -c:v libx264 -pix_fmt $clip.Format -crf 18 `
+          -x264-params $clip.Second -output_ts_offset 10 -f mpegts tags_second.ts
+        ffmpeg -v error -y -i "concat:tags_first.ts|tags_second.ts" -c copy (Join-Path informational $clip.Name)
+        Remove-Item tags_first.ts, tags_second.ts
+    }
 
     # Interlaced broadcast video (issue #42): 10 s of 1080i25, top field first, made from the 1080p trailer
     # (50p woven into fields). XDCAM HD (MPEG-2 4:2:2, 50 Mbit/s, in MXF) is compared exactly (samples/broadcast/);

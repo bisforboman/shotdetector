@@ -19,6 +19,10 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (key is "chroma_location" or "color_space" or "color_range" && value is not ("unspecified" or "unknown" or ""))'; Replace = 'if (false)'; Tests = 'VideoTests.TheFramesChromaLocationAndColourTagsWinOverTheStreams' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'PreferFrameTags(stream, FrameTags(path, ffprobe, cancellationToken));'; Replace = '_ = stream;'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
 
+        # The executable's raw-YUV pipe labels every frame with the first frame's colour tags, so a matrix or range that
+        # changes midway doesn't make ffmpeg convert the later frames' samples (FastYuv reads the decoder's)
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'select[1] + "," + _yuvLabels'; Replace = 'select[1]'; Tests = 'FastYuvTests.TagChangeMidwayKeepsTheSamples' }
+
         # compare.py on Windows: BT.601 whatever the colour tags, as the Windows OpenCV wheel (executable, FastYuv, not in-process)
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '+ (_alwaysBt601 ? ":in_color_matrix=bt601" : "")'; Replace = '+ ""'; Tests = 'VideoTests.AlwaysBt601IgnoresTheColourTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '_alwaysBt601 ? "bt470bg" : '; Replace = ''; Tests = 'VideoTests.AlwaysBt601IgnoresTheColourTags' }
