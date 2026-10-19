@@ -146,5 +146,8 @@
 
         # The executable's HLS warning: an http playlist too, whose https segments, keys and variants go unchecked as well
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' || url.Scheme == Uri.UriSchemeHttp)'; Replace = ')'; Tests = 'UrlOptionTests.AnHttpOrHttpsPlaylistThroughTheExecutableWarns' }
+
+        # Parallel detection: a chunk's reader takes the outer reader's probe instead of probing the file again
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'video.Probed is { } probed ? new VideoReader(path, co, probed, stop.Token) : '; Replace = ''; Tests = 'ParallelTests.ChunksTakeTheOuterReadersProbe' }
     )
 }

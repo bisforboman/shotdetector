@@ -69,6 +69,44 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
         AssertSame(ShotDetection.Detect(clips.ThreeShots, options), parallel);
     }
 
+    // The chunks' readers take the outer reader's probe (stream entries, packet pts, the Xvid IDCT): the file is probed once.
+    [Fact]
+    public void ChunksTakeTheOuterReadersProbe()
+    {
+        if (Libs is null)
+            return;
+        int probes = 0;
+        var options = Options(DetectorKind.Content) with { OnProbe = () => Interlocked.Increment(ref probes) };
+        var parallel = ShotDetection.Detect(clips.ThreeShots, options with { Mode = DetectionMode.Parallel, Chunks = 3 });
+        Assert.Equal(3, parallel.Video.Chunks);
+        Assert.Equal(1, probes);
+        AssertSame(ShotDetection.Detect(clips.ThreeShots, Options(DetectorKind.Content)), parallel);
+    }
+
+    // A reader from another's probe is the reader that probes for itself: sizes, rate, tags, every frame's position and
+    // the frames, through the executable (ffprobe) and in-process. The clips are MPEG-4 Part 2 (the Xvid IDCT probe).
+    [Theory]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    [InlineData(VideoDecoder.InProcess)]
+    public void AReaderFromAnotherReadersProbeIsTheSame(VideoDecoder decoder)
+    {
+        if (decoder == VideoDecoder.InProcess && Libs is null)
+            return;
+        var options = Options(DetectorKind.Content) with { Decoder = decoder };
+        var own = new VideoReader(clips.ThreeShots, options);
+        Assert.NotNull(own.Probed);
+        int probes = 0;
+        var shared = new VideoReader(clips.ThreeShots, options with { OnProbe = () => probes++ }, own.Probed, default);
+        Assert.Equal(0, probes);
+        Assert.Same(own.Probed, shared.Probed);
+        Assert.Equal((own.Width, own.Height, own.SourceWidth, own.SourceHeight, own.Fps, own.Codec, own.Container, own.FieldOrder),
+            (shared.Width, shared.Height, shared.SourceWidth, shared.SourceHeight, shared.Fps, shared.Codec, shared.Container, shared.FieldOrder));
+        Assert.Equal((own.ExpectedFrames, own.OpenCvFrameCount, own.Duration, own.PtsFromFrames, own.PixelFormat, own.Rotation),
+            (shared.ExpectedFrames, shared.OpenCvFrameCount, shared.Duration, shared.PtsFromFrames, shared.PixelFormat, shared.Rotation));
+        Assert.Equal(Enumerable.Range(0, own.ExpectedFrames).Select(k => own.Position(k)), Enumerable.Range(0, shared.ExpectedFrames).Select(k => shared.Position(k)));
+        Assert.Equal(own.Frames(40, 20).Select(f => f.ToArray()).ToList(), shared.Frames(40, 20).Select(f => f.ToArray()).ToList());
+    }
+
     // Dropped frames (positions that aren't the probe's), MPEG-PS (no cheap seek), a time range and frame skip: read
     // sequentially, with the same result. Two chunks: the dropped frames (60, 61) then shift the second chunk's frames by
     // two, while the boundary (75) is in a still shot, where the overlap scores agree; only the positions tell. Dropped
