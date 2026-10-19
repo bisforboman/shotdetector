@@ -391,8 +391,8 @@ public sealed record DetectionOptions
     /// minutes or more (each chunk at least a minute). Only for files decoded in-process, without a time range or frame
     /// skip and not MPEG-PS; anything a chunk can't reproduce (a seek that lands late, dropped frames, a size change)
     /// makes it read the file sequentially instead, from the start. <see cref="DetectedVideo.Chunks"/> says which ran,
-    /// <see cref="DetectedVideo.ChunkFallback"/> why it fell back (also in <see cref="DetectionResult.Warnings"/>, as is
-    /// why <see cref="DetectionMode.Parallel"/> read sequentially). The decoder threads are shared out among the chunks.
+    /// <see cref="DetectedVideo.ChunkFallback"/> why it fell back (also in <see cref="DetectionResult.Warnings"/> and
+    /// <see cref="DetectionOptions.Warnings"/>, as is why <see cref="DetectionMode.Parallel"/> read sequentially). The decoder threads are shared out among the chunks.
     /// Memory grows by a decoder per chunk (they share the frame buffers). <see cref="DetectionMode.Auto"/> chunks
     /// for Detect from 4 CPUs on and for frames up to 3840 x 2160, but not for DetectStreamAsync, whose shots would
     /// otherwise all come once the whole file is scored; <see cref="DetectionMode.Parallel"/> chunks from 4 CPUs on, at
@@ -493,6 +493,17 @@ public sealed record DetectionOptions
     public IProgress<DetectionProgress>? Progress { get; init; }
 
     /// <summary>
+    /// Told each warning (<see cref="DetectionResult.Warnings"/>' sentences, in the same order) once, as soon as it is
+    /// known: an https HLS playlist decoded by the ffmpeg executable right after the probe, and why
+    /// <see cref="DetectionMode.Parallel"/> reads sequentially before the first frame, both before any shot; a fallback
+    /// from scoring in chunks when it happens, before the sequential read. The only way
+    /// <see cref="ShotDetection.DetectStreamAsync(string, DetectionOptions?, CancellationToken)"/> has to tell them.
+    /// Reported synchronously on the thread that runs the detection (DetectStreamAsync's background thread); with
+    /// <see cref="System.Progress{T}"/>, reports arrive on the thread that created it, so possibly after a shot.
+    /// </summary>
+    public IProgress<string>? Warnings { get; init; }
+
+    /// <summary>
     /// Report <see cref="Progress"/> only when the fraction done crosses a multiple of this (0.1: at 10 %, 20 %, ...),
     /// besides the first report and the last: one line per step for a service log, with no throttling of your own.
     /// When the frame count is unknown (streamed input), just the first and the last. Above 0 and at most 1; null (the
@@ -574,8 +585,8 @@ public sealed record DetectionResult
     /// their certificates (in-process decoding checks them); scoring in chunks that fell back to a sequential read
     /// (<see cref="DetectedVideo.ChunkFallback"/>); <see cref="DetectionMode.Parallel"/> asked for and the file read
     /// sequentially all the same, and why (fewer than 4 CPUs, shorter than two minutes, a time range, ...).
-    /// <see cref="ShotDetection.DetectStreamAsync(string, DetectionOptions?, CancellationToken)"/>
-    /// has no result, so streaming callers don't get these.
+    /// <see cref="DetectionOptions.Warnings"/> is told each one as soon as it is known, also by
+    /// <see cref="ShotDetection.DetectStreamAsync(string, DetectionOptions?, CancellationToken)"/>, which has no result.
     /// </summary>
     public IReadOnlyList<string> Warnings { get; init; } = [];
 }
@@ -809,7 +820,8 @@ public static class ShotDetection
     /// video is still being decoded (on a background thread). The shots are exactly those Detect
     /// returns. A shot is known once the cut that ends it is confirmed, which can take a few frames
     /// (the adaptive detector's window, the minimum shot length); the last shot comes at the end.
-    /// Stopping the enumeration early, or cancelling, stops ffmpeg.
+    /// Stopping the enumeration early, or cancelling, stops ffmpeg. There is no result: warnings
+    /// (<see cref="DetectionResult.Warnings"/>) go to <see cref="DetectionOptions.Warnings"/> as soon as they are known.
     /// </summary>
     /// <exception cref="ArgumentException">Invalid options.</exception>
     /// <exception cref="ShotDetectionException">The input, ffmpeg or FFmpeg's libraries failed; <see cref="ShotDetectionException.Reason"/>
@@ -919,6 +931,19 @@ public static class ShotDetection
         var video = spilled is not null ? new VideoReader(spilled.Path, o, cancellationToken)
             : videoStream is not null ? new VideoReader(videoStream, prefix!, o, cancellationToken)
             : new VideoReader(videoPath!, o, cancellationToken);
+
+        // Warnings for the result, each also told to DetectionOptions.Warnings as soon as it is known (streaming callers
+        // get no result).
+        var warnings = new List<string>();
+        void Warn(string? warning)
+        {
+            if (warning is null)
+                return;
+            warnings.Add(warning);
+            o.Warnings?.Report(warning);
+        }
+
+        Warn(VideoReader.ExecutableHlsWarning(videoPath, video.Container, video.DecodesInProcess));
         IReadOnlyList<FrameReader.ToneSegment>? tone = null;
         if (o.TrimReferenceTone)
         {
@@ -1024,6 +1049,8 @@ public static class ShotDetection
             : 1;
         if (parallel && notChunked is null && chunks < 2)
             notChunked = o.Chunks is not null ? "one chunk asked for" : WhyOneChunk(Environment.ProcessorCount, video.ExpectedFrames, video.Fps, pixels, o.Mode == DetectionMode.Parallel, o.DecodeThreads);
+        if (o.Mode == DetectionMode.Parallel && notChunked is not null)
+            Warn("read sequentially, not in chunks: " + notChunked);
         string? fallback = null;
         var gate = new object();
         int scoredFrames = 0;
@@ -1039,6 +1066,8 @@ public static class ShotDetection
                 out fallback,
                 cancellationToken)
             : null;
+        if (fallback is not null)
+            Warn("read sequentially, from the start, as scoring in chunks fell back: " + fallback); // no notChunked then
         if (chunked is { } scored)
         {
             for (int k = 0; k < scored.Frames; k++)
@@ -1126,12 +1155,7 @@ public static class ShotDetection
             Stats = stats,
             Cuts = Unique(cuts),
             ReferenceTone = tone,
-            Warnings = [.. new[]
-            {
-                VideoReader.ExecutableHlsWarning(videoPath, video.Container, video.DecodesInProcess),
-                fallback is not null ? "read sequentially, from the start, as scoring in chunks fell back: " + fallback : null,
-                o.Mode == DetectionMode.Parallel && notChunked is not null ? "read sequentially, not in chunks: " + notChunked : null,
-            }.OfType<string>()],
+            Warnings = warnings,
         };
     }
 

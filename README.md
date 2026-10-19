@@ -272,7 +272,8 @@ usual places); otherwise the executable is used. `--decoder inprocess` insists o
 process` on the executable. A URL decodes in-process when the libraries have its protocol (FrameReader.Native: http
 and https), as a stream; other URLs use the executable. Through the executable, an https HLS playlist's segments are
 fetched without their certificates checked (FFmpeg doesn't pass the check on to them; in-process, FrameReader does),
-and the result says so (`DetectionResult.Warnings`; `shotdetect` prints it on stderr).
+and the result says so (`DetectionResult.Warnings`; `shotdetect` prints it on stderr), as does
+`DetectionOptions.Warnings` as soon as it is known (an `IProgress<string>`, also for `DetectStreamAsync`).
 
 How it keeps up while computing exactly what OpenCV and scenedetect compute:
 - only the pixels the exact `cv2.resize` port reads are converted to BGR (in-process, the row slices that hold

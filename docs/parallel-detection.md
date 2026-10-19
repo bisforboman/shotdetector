@@ -19,7 +19,8 @@ default from 4 CPUs", which replaced the 8-CPU gate the same day after runner me
   reads sequentially.
 - `Sequential`: one pass, never chunks (CLI `--sequential`).
 - `Parallel`: chunks wherever it can, from 4 CPUs on and at any frame size, `DetectStreamAsync` too (CLI
-  `--parallel`), and says why in `DetectionResult.Warnings` when it can't.
+  `--parallel`), and says why in `DetectionResult.Warnings` when it can't (and in `DetectionOptions.Warnings`, which
+  `DetectStreamAsync` tells too).
 
 `DetectionOptions.Parallel` is obsolete and still works: true is `Parallel`, false `Sequential`. The CLI's hidden
 `--chunks <n>` forces a chunk count for CI; CI's runners have 4 CPUs, so its comparisons ask for `--parallel` or

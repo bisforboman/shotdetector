@@ -140,5 +140,8 @@
 
         # FrameReader: an InputOptions name nothing took is an ArgumentException (FrameReader's own defaults never count)
         @{ File = 'src/FrameReader/Demuxer.cs'; Find = 'string? unused = ret >= 0 ? UnusedOption(options) : null;'; Replace = 'string? unused = null;'; Tests = 'InProcessTests.UnknownInputOptionsFailAndShotDetectorsAreTaken' }
+
+        # DetectionOptions.Warnings: each warning told as soon as it is known, so DetectStreamAsync's callers get them too
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'o.Warnings?.Report(warning);'; Replace = ''; Tests = 'ParallelTests.StreamingCallersGetTheWarningsBeforeTheFirstShot' }
     )
 }

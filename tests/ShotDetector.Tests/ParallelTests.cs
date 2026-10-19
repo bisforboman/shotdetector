@@ -225,7 +225,7 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
         if (Libs is null)
             return;
         var reports = new List<DetectionProgress>();
-        var progress = new SynchronousProgress(p =>
+        var progress = new SynchronousProgress<DetectionProgress>(p =>
         {
             lock (reports)
                 reports.Add(p);
@@ -324,8 +324,57 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
     public void AutomaticChunksBySizeModeAndThreads(int cpus, long pixels, bool forced, int? threads, int expected) =>
         Assert.Equal(expected, ShotDetection.AutoChunks(cpus, 100_000, new Fps(25, 1), pixels, forced, threads));
 
-    sealed class SynchronousProgress(Action<DetectionProgress> report) : IProgress<DetectionProgress>
+    // DetectionOptions.Warnings: DetectStreamAsync has no result, so it hears why Parallel read sequentially before the
+    // first shot (in-process or through the executable, which can't chunk either).
+    [Fact]
+    public async Task StreamingCallersGetTheWarningsBeforeTheFirstShot()
     {
-        public void Report(DetectionProgress value) => report(value);
+        var warnings = new List<string>();
+        var options = new DetectionOptions
+        {
+            FfmpegDirectory = Libs,
+            Decoder = Libs is null ? VideoDecoder.FfmpegProcess : VideoDecoder.InProcess,
+            Mode = DetectionMode.Parallel,
+            Warnings = new SynchronousProgress<string>(w =>
+            {
+                lock (warnings)
+                    warnings.Add(w);
+            }),
+        };
+        int shots = 0;
+        await foreach (var _ in ShotDetection.DetectStreamAsync(clips.ThreeShots, options))
+        {
+            if (shots++ == 0)
+            {
+                lock (warnings)
+                    Assert.StartsWith("read sequentially, not in chunks: ", Assert.Single(warnings));
+            }
+        }
+
+        Assert.Equal(3, shots);
+        Assert.Single(warnings);
+    }
+
+    // Detect tells DetectionOptions.Warnings exactly what DetectionResult.Warnings holds, and nothing when it's empty.
+    [Theory]
+    [InlineData(DetectionMode.Parallel)]
+    [InlineData(DetectionMode.Sequential)]
+    public void DetectTellsTheWarningsItReturns(DetectionMode mode)
+    {
+        var warnings = new List<string>();
+        var result = ShotDetection.Detect(clips.ThreeShots, new DetectionOptions
+        {
+            FfmpegDirectory = Libs,
+            Decoder = Libs is null ? VideoDecoder.FfmpegProcess : VideoDecoder.InProcess,
+            Mode = mode,
+            Warnings = new SynchronousProgress<string>(warnings.Add),
+        });
+        Assert.Equal(result.Warnings, warnings);
+        Assert.Equal(mode == DetectionMode.Parallel ? 1 : 0, warnings.Count);
+    }
+
+    sealed class SynchronousProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 }
