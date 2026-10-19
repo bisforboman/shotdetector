@@ -778,14 +778,17 @@ internal sealed partial class VideoReader
         Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
 
     /// <summary>
-    /// <see cref="DetectionResult.Warnings"/>' line for an https HLS playlist decoded by the ffmpeg executable, else
-    /// null: the executable checks the playlist's certificate but opens its segments, keys and variants without the
-    /// check (FFmpeg's HLS demuxer doesn't pass tls_verify on); in-process, FrameReader checks them too.
+    /// <see cref="DetectionResult.Warnings"/>' line for an http or https HLS playlist decoded by the ffmpeg executable,
+    /// else null: the executable checks an https playlist's own certificate, but opens its segments, keys and variants
+    /// without the check (FFmpeg's HLS demuxer doesn't pass tls_verify on, and an http playlist's input has none to
+    /// pass), so any of them on https goes unchecked; in-process, FrameReader checks them too. The playlist isn't read
+    /// to see whether it names any. A local playlist can't reach https (its whitelist is file,crypto).
     /// </summary>
     internal static string? ExecutableHlsWarning(string? path, string container, bool decodedInProcess) =>
-        !decodedInProcess && container == "hls" && Uri.TryCreate(path, UriKind.Absolute, out var url) && url.Scheme == Uri.UriSchemeHttps
-            ? "decoded by ffmpeg, which fetched the playlist's segments without checking their certificates; in-process "
-            + "decoding (the FrameReader.Native packages) checks them."
+        !decodedInProcess && container == "hls" && Uri.TryCreate(path, UriKind.Absolute, out var url)
+        && (url.Scheme == Uri.UriSchemeHttps || url.Scheme == Uri.UriSchemeHttp)
+            ? "decoded by ffmpeg, which fetches the playlist's https segments, keys and variants without checking their "
+            + "certificates; in-process decoding (the FrameReader.Native packages) checks them."
             : null;
 
     /// <summary>

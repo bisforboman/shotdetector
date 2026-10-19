@@ -143,5 +143,8 @@
 
         # DetectionOptions.Warnings: each warning told as soon as it is known, so DetectStreamAsync's callers get them too
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'o.Warnings?.Report(warning);'; Replace = ''; Tests = 'ParallelTests.StreamingCallersGetTheWarningsBeforeTheFirstShot' }
+
+        # The executable's HLS warning: an http playlist too, whose https segments, keys and variants go unchecked as well
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' || url.Scheme == Uri.UriSchemeHttp)'; Replace = ')'; Tests = 'UrlOptionTests.AnHttpOrHttpsPlaylistThroughTheExecutableWarns' }
     )
 }

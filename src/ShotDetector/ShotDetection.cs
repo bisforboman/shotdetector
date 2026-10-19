@@ -494,7 +494,7 @@ public sealed record DetectionOptions
 
     /// <summary>
     /// Told each warning (<see cref="DetectionResult.Warnings"/>' sentences, in the same order) once, as soon as it is
-    /// known: an https HLS playlist decoded by the ffmpeg executable right after the probe, and why
+    /// known: an http or https HLS playlist decoded by the ffmpeg executable right after the probe, and why
     /// <see cref="DetectionMode.Parallel"/> reads sequentially before the first frame, both before any shot; a fallback
     /// from scoring in chunks when it happens, before the sequential read. The only way
     /// <see cref="ShotDetection.DetectStreamAsync(string, DetectionOptions?, CancellationToken)"/> has to tell them.
@@ -581,8 +581,8 @@ public sealed record DetectionResult
 
     /// <summary>
     /// What the caller should know about how the video was read, one sentence each; empty when nothing (never null).
-    /// So far: an https HLS playlist decoded by the ffmpeg executable, which fetches its segments without checking
-    /// their certificates (in-process decoding checks them); scoring in chunks that fell back to a sequential read
+    /// So far: an http or https HLS playlist decoded by the ffmpeg executable, which fetches its https segments without
+    /// checking their certificates (in-process decoding checks them); scoring in chunks that fell back to a sequential read
     /// (<see cref="DetectedVideo.ChunkFallback"/>); <see cref="DetectionMode.Parallel"/> asked for and the file read
     /// sequentially all the same, and why (fewer than 4 CPUs, shorter than two minutes, a time range, ...).
     /// <see cref="DetectionOptions.Warnings"/> is told each one as soon as it is known, also by
