@@ -64,6 +64,60 @@ public class FrameDecoderTests
         }
     }
 
+    // The frame's chroma location and colour tags are the decoder's (here the h264 VUI's), not the container's header,
+    // which says otherwise in this clip; both as ffprobe reports them.
+    [Fact]
+    public void ReadsTheFramesChromaLocationAndColourTags()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-tags-").FullName;
+        try
+        {
+            if (!Run("ffmpeg", "-hide_banner", "-encoders").Contains(" libx264 ", StringComparison.Ordinal))
+                return; // this ffmpeg can't write the clip
+            string path = Clip(dir,
+                "tags.mkv",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p10le",
+                "-chroma_sample_location",
+                "left",
+                "-colorspace",
+                "bt709",
+                "-color_range",
+                "pc",
+                "-x264-params",
+                "chromaloc=2:colormatrix=smpte170m:fullrange=off");
+
+            string Probe(string entries) => Run("ffprobe", "-v", "error", "-select_streams", "v:0", "-read_intervals", "%+#1", "-show_entries", entries, "-of", "default=nw=1", path);
+            Assert.Equal("chroma_location=left\ncolor_range=pc\ncolor_space=bt709\n", Sorted(Probe("stream=chroma_location,color_space,color_range")));
+            Assert.Equal("chroma_location=topleft\ncolor_range=tv\ncolor_space=smpte170m\n", Sorted(Probe("frame=chroma_location,color_space,color_range")));
+            var stream = MediaProbe.Probe(path).Video!;
+            Assert.Equal(("left", "bt709", "pc"), (stream.ChromaLocation, stream.ColorSpace, stream.ColorRange));
+            using var decoder = new FrameDecoder(path, Options);
+            Assert.True(decoder.Next());
+            Assert.Equal(("topleft", "smpte170m", "tv"), (decoder.ChromaLocation, decoder.ColorSpace, decoder.ColorRange));
+
+            // Unspecified: null (ffprobe's "unknown" or "unspecified").
+            string plain = Clip(dir, "plain.mkv", "-c:v", "ffv1", "-pix_fmt", "yuv420p");
+            path = plain;
+            string? Value(string key) => Probe("frame=" + key).Trim()[(key.Length + 1)..] is var v && v is "unknown" or "unspecified" ? null : v;
+            using var untagged = new FrameDecoder(plain, Options);
+            Assert.True(untagged.Next());
+            Assert.Null(untagged.ChromaLocation ?? Value("chroma_location"));
+            Assert.Equal((Value("color_space"), Value("color_range")), (untagged.ColorSpace, untagged.ColorRange));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+
+        static string Sorted(string probed) =>
+            string.Concat(probed.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Order(StringComparer.Ordinal).Select(l => l + "\n"));
+    }
+
     [Fact]
     public void DeinterlacesRotatesAndReadsStreams()
     {

@@ -759,6 +759,31 @@ public sealed unsafe class FrameDecoder : IDisposable
     public string PixelFormat => ffmpeg.av_get_pix_fmt_name((AVPixelFormat)_frame->format) ?? "unknown";
 
     /// <summary>
+    /// Where the current frame's chroma samples sit (left, center, topleft, ...), as ffprobe's frame chroma_location;
+    /// null when unspecified. The video stream's own (<see cref="VideoStreamInfo.ChromaLocation"/>) is the container's
+    /// when it has one, which can disagree with the codec's (an h264 stream's VUI): this is what the decoder gave.
+    /// </summary>
+    public string? ChromaLocation => _frame->chroma_location == AVChromaLocation.AVCHROMA_LOC_UNSPECIFIED
+        ? null
+        : ffmpeg.av_chroma_location_name(_frame->chroma_location);
+
+    /// <summary>
+    /// The current frame's colour space (matrix) name (bt709, smpte170m, ...), as ffprobe's frame color_space; null when
+    /// unspecified. Like <see cref="ChromaLocation"/>, the decoder's value, which a container's tag can contradict.
+    /// </summary>
+    public string? ColorSpace => _frame->colorspace == AVColorSpace.AVCOL_SPC_UNSPECIFIED
+        ? null
+        : ffmpeg.av_color_space_name(_frame->colorspace);
+
+    /// <summary>
+    /// The current frame's colour range name (tv, pc), as ffprobe's frame color_range; null when unspecified. Like
+    /// <see cref="ChromaLocation"/>, the decoder's value, which a container's tag can contradict.
+    /// </summary>
+    public string? ColorRange => _frame->color_range == AVColorRange.AVCOL_RANGE_UNSPECIFIED
+        ? null
+        : ffmpeg.av_color_range_name(_frame->color_range);
+
+    /// <summary>
     /// One plane of the current frame (0: luma or the packed pixels; 1, 2: chroma; 3: alpha), its rows
     /// <paramref name="stride"/> bytes apart; valid until the next <see cref="Next"/>.
     /// </summary>
