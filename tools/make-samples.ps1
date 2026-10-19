@@ -65,6 +65,10 @@ try {
     # 10-bit h264: its conversion interpolates chroma, from where the stream says the samples sit (left for h264), as
     # OpenCV does; compared exactly. (Informational until 2026-10-11: ffmpeg's command line drops that siting.)
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libx264 -pix_fmt yuv420p10le -crf 18 sintel_10bit.mp4
+    # ... with top-left chroma in the stream (h264 VUI) and left in Matroska's header: OpenCV converts with the frame's
+    # (the bitstream's) siting, ffprobe's stream reports the container's.
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -c:v libx264 -pix_fmt yuv420p10le -crf 18 `
+      -chroma_sample_location left -x264-params chromaloc=2 sintel_10bit_topleft.mkv
 
     # MPEG-4 Part 2 (the DivX/Xvid era), from FFmpeg's encoder and from Xvid: FFmpeg's decoder takes the Xvid IDCT for
     # Xvid's (by its signature) and the platform's for the rest, which we replace with the C IDCT (Mpeg4Idct), so both.
