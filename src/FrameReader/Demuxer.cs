@@ -80,6 +80,7 @@ internal static unsafe class Demuxer
         }
 
         int ret = ffmpeg.avformat_open_input(&fmt, path, null, &options);
+        string? unused = ret >= 0 ? UnusedOption(options) : null;
         ffmpeg.av_dict_free(&options);
         if (ret < 0)
         {
@@ -87,6 +88,13 @@ internal static unsafe class Demuxer
                 cancel.Free(); // avformat_open_input freed the context
             cancellationToken.ThrowIfCancellationRequested();
             throw new FrameReaderException(FrameReaderError.InvalidInput, $"FFmpeg (open {path}): {FFmpegLibraries.ErrorMessage(ret)}");
+        }
+
+        if (unused != null)
+        {
+            string format = Marshal.PtrToStringAnsi((nint)fmt->iformat->name) ?? "?";
+            Close(&fmt);
+            throw new ArgumentException($"No demuxer or protocol option \"{unused}\" (FFmpeg opened {path} as {format}).", "options");
         }
 
         ret = ffmpeg.avformat_find_stream_info(fmt, null);
@@ -99,6 +107,29 @@ internal static unsafe class Demuxer
 
         return fmt;
     }
+
+    /// <summary>
+    /// The first name in what avformat_open_input left of the options that the demuxer, the protocol and the format
+    /// context all didn't take: a misspelt or unknown InputOptions name, which ffmpeg's command line refuses too. The
+    /// names FrameReader sets on every input (scan_all_pmts, used by MPEG-TS only; tls_verify and ca_file, by TLS only)
+    /// and their aliases are left over on most inputs, also when the caller sets them (tls_verify=0 for a plain file,
+    /// or for an http HLS playlist whose segments are https), so they never count.
+    /// </summary>
+    static string? UnusedOption(AVDictionary* options)
+    {
+        AVDictionaryEntry* entry = null;
+        while ((entry = ffmpeg.av_dict_get(options, "", entry, ffmpeg.AV_DICT_IGNORE_SUFFIX)) != null)
+        {
+            string key = Marshal.PtrToStringUTF8((nint)entry->key) ?? "";
+            if (!OwnOptions.Contains(key))
+                return key;
+        }
+
+        return null;
+    }
+
+    // FrameReader's defaults (Open) and the TLS options' aliases; av_dict matches names ignoring case.
+    static readonly HashSet<string> OwnOptions = new(["scan_all_pmts", "tls_verify", "verify", "ca_file", "cafile"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Closes an input <see cref="Open"/> opened, with what its interrupt callback held.</summary>
     internal static void Close(AVFormatContext** fmt)

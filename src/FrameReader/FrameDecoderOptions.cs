@@ -12,7 +12,7 @@ public sealed record FrameDecoderOptions
     /// <summary>With <see cref="Deinterlace"/>: computes only the rows asked for, with yadif's arithmetic, instead of FFmpeg's filter.</summary>
     public IRowDeinterlacer? RowDeinterlacer { get; init; }
 
-    /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash (an image sequence's <c>framerate</c>).</summary>
+    /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash (an image sequence's <c>framerate</c>); a name nothing takes is an <see cref="ArgumentException"/>.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
 
     /// <summary>

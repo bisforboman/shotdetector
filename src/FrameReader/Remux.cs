@@ -39,7 +39,7 @@ public sealed record RemuxOptions
     /// <summary>Leave out what makes a file differ between FFmpeg versions, as ffmpeg's <c>-fflags +bitexact</c>.</summary>
     public bool Bitexact { get; init; }
 
-    /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash.</summary>
+    /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash; a name nothing takes is an <see cref="ArgumentException"/>.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
 
     /// <summary>

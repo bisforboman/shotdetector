@@ -248,7 +248,7 @@ public sealed record ProbeOptions
 
     /// <summary>
     /// FFmpeg demuxer options, as ffmpeg's input options without the dash (for an image sequence pattern such as
-    /// <c>frames/%04d.png</c>: <c>framerate</c> = <c>25/1</c>).
+    /// <c>frames/%04d.png</c>: <c>framerate</c> = <c>25/1</c>). A name no demuxer or protocol takes is an <see cref="ArgumentException"/>.
     /// </summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
 

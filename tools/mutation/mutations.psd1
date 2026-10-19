@@ -137,5 +137,8 @@
         # an Xvid signature, or none at all and an Xvid FourCC
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(codec == "mpeg4" && xvidIdct == false)'; Replace = '(codec == "mpeg4")'; Tests = 'Mpeg4IdctTests' }
         @{ File = 'src/ShotDetector/Mpeg4Idct.cs'; Find = 's.XvidBuild == -1 && s.DivxVersion == -1 && s.LavcBuild == -1 && '; Replace = ''; Tests = 'Mpeg4IdctTests' }
+
+        # FrameReader: an InputOptions name nothing took is an ArgumentException (FrameReader's own defaults never count)
+        @{ File = 'src/FrameReader/Demuxer.cs'; Find = 'string? unused = ret >= 0 ? UnusedOption(options) : null;'; Replace = 'string? unused = null;'; Tests = 'InProcessTests.UnknownInputOptionsFailAndShotDetectorsAreTaken' }
     )
 }

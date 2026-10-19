@@ -11,7 +11,7 @@ public sealed record AudioReaderOptions
     /// <summary>Output channel count (FFmpeg's default layout for it: 1 mono, 2 stereo, ...); null: the stream's own.</summary>
     public int? Channels { get; init; }
 
-    /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash.</summary>
+    /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash; a name nothing takes is an <see cref="ArgumentException"/>.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
 
     /// <summary>

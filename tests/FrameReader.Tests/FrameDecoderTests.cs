@@ -213,6 +213,76 @@ public class FrameDecoderTests
         }
     }
 
+    // An InputOptions name that no demuxer, protocol or the format context takes fails, as ffmpeg's command line refuses
+    // it, for every reader that opens an input (a path or a Stream); the open input is closed first.
+    [Fact]
+    public void UnknownInputOptionsFail()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-dec-").FullName;
+        try
+        {
+            string path = Clip(dir, "clip.mp4", "-c:v", "mpeg4", "-t", "0.2");
+            var misspelt = new Dictionary<string, string> { ["framerat"] = "10" };
+            var e = Assert.Throws<ArgumentException>(() => new FrameDecoder(path, new FrameDecoderOptions { InputOptions = misspelt }).Dispose());
+            Assert.Contains("\"framerat\"", e.Message, StringComparison.Ordinal);
+            Assert.Contains("mov,mp4", e.Message, StringComparison.Ordinal);
+            Assert.Contains("framerat", Assert.Throws<ArgumentException>(() => MediaProbe.Probe(path, new ProbeOptions { InputOptions = misspelt })).Message, StringComparison.Ordinal);
+            Assert.Contains("framerat", Assert.Throws<ArgumentException>(() => MediaProbe.ProbeJson(path, new ProbeOptions { InputOptions = misspelt })).Message, StringComparison.Ordinal);
+            using (var stream = File.OpenRead(path))
+                Assert.Contains("framerat", Assert.Throws<ArgumentException>(() => MediaProbe.Probe(stream, new ProbeOptions { InputOptions = misspelt })).Message, StringComparison.Ordinal);
+            using (var stream = File.OpenRead(path))
+                Assert.Contains("framerat", Assert.Throws<ArgumentException>(() => new FrameDecoder(stream, new FrameDecoderOptions { InputOptions = misspelt }).Dispose()).Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // What an input takes still opens it: the image sequence's framerate (image2), the format context's
+    // protocol_whitelist and fflags, a protocol's rw_timeout (every URLContext has it). FrameReader's own defaults
+    // (scan_all_pmts, tls_verify, ca_file) are left over on a plain file and don't count, nor do they when the caller
+    // passes them or the TLS options' aliases, as for an http HLS playlist with https segments.
+    [Fact]
+    public void InputOptionsAnInputTakesOpenIt()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-dec-").FullName;
+        try
+        {
+            Run("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=64x48:r=25:d=0.2", Path.Combine(dir, "img%03d.png"));
+            string sequence = Path.Combine(dir, "img%03d.png");
+            var info = MediaProbe.Probe(sequence, new ProbeOptions { InputOptions = new Dictionary<string, string> { ["framerate"] = "10", ["protocol_whitelist"] = "file" } });
+            Assert.Equal(10, info.Video!.AverageFrameRate.Num / info.Video.AverageFrameRate.Den);
+
+            string path = Clip(dir, "clip.mp4", "-c:v", "mpeg4", "-t", "0.2");
+            var taken = new Dictionary<string, string>
+            {
+                ["protocol_whitelist"] = "file,crypto",
+                ["fflags"] = "+genpts",
+                ["rw_timeout"] = "30000000",
+                ["tls_verify"] = "0",
+                ["verify"] = "1",
+                ["ca_file"] = "/nowhere.pem",
+                ["cafile"] = "/nowhere.pem",
+                ["scan_all_pmts"] = "0",
+            };
+            using (var decoder = new FrameDecoder(path, new FrameDecoderOptions { InputOptions = taken }))
+                Assert.True(decoder.Next());
+            using (var decoder = new FrameDecoder(path, Options))
+                Assert.True(decoder.Next());
+            using (var stream = File.OpenRead(path))
+                Assert.NotNull(MediaProbe.Probe(stream, new ProbeOptions { InputOptions = new Dictionary<string, string> { ["protocol_whitelist"] = "pipe" } }).Video);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // A server that sends the start of a clip and then stalls: cancellation stops the read FFmpeg waits in (its interrupt
     // callback), and rw_timeout makes it fail rather than wait forever.
     [Fact]
@@ -304,6 +374,14 @@ public class FrameDecoderTests
             }
 
             Assert.Equal(25, frames);
+
+            // ShotDetector's options for an https URL (the protocols, rw_timeout; tls_verify=0 here) are all taken there;
+            // a misspelt one isn't.
+            var shotDetectors = new Dictionary<string, string> { ["protocol_whitelist"] = "http,https,tcp,tls,crypto,httpproxy", ["rw_timeout"] = "30000000", ["tls_verify"] = "0" };
+            using (var decoder = new FrameDecoder(url, new FrameDecoderOptions { InputOptions = shotDetectors }))
+                Assert.True(decoder.Next());
+            var misspelt = new Dictionary<string, string>(shotDetectors) { ["rw_timout"] = "30000000" };
+            Assert.Contains("\"rw_timout\"", Assert.Throws<ArgumentException>(() => new FrameDecoder(url, new FrameDecoderOptions { InputOptions = misspelt }).Dispose()).Message, StringComparison.Ordinal);
         }
         finally
         {
