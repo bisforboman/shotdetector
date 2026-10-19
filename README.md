@@ -271,8 +271,11 @@ packages or the CLI's bundled ones, or a system install. It is the default whene
 usual places); otherwise the executable is used. `--decoder inprocess` insists on the libraries, `--decoder
 process` on the executable. A URL decodes in-process when the libraries have its protocol (FrameReader.Native: http
 and https), as a stream; other URLs use the executable. Through the executable, an http or https HLS playlist's https
-segments are fetched without their certificates checked (FFmpeg doesn't pass the check on to them; in-process,
-FrameReader does), and the result says so (`DetectionResult.Warnings`; `shotdetect` prints it on stderr), as does
+segments, keys and variants are fetched without their certificates checked (FFmpeg doesn't pass the check on to them;
+in-process, FrameReader does), so when the libraries fail to open an http or https URL (a refused certificate, or a
+format they lack, such as DASH in FrameReader.Native, which leaves out libxml2), `Auto` reports that failure rather
+than handing the URL to the executable: `--decoder process` (`Decoder = VideoDecoder.FfmpegProcess`) reads it there,
+and for an http or https playlist the result then says so (`DetectionResult.Warnings`; `shotdetect` prints it on stderr), as does
 `DetectionOptions.Warnings` as soon as it is known (an `IProgress<string>`, also for `DetectStreamAsync`).
 
 How it keeps up while computing exactly what OpenCV and scenedetect compute:

@@ -29,3 +29,8 @@ names, and the TLS options' aliases `verify` and `cafile`, never count, also whe
 send `tls_verify=0` whatever the input is (and FrameReader's own HLS test passes `tls_verify=1` for an http playlist
 whose segments are https, where the playlist's http protocol leaves it over). Every other leftover is the caller's,
 so the check needs no list of what the caller set.
+
+Correction (2026-10-19, ShotDetector 3.10.1): not all of ShotDetector's options were taken. It added `framerate` (with
+`FrameRate` set) to any file path containing a `%`, also a plain video file such as `My%20Video.mp4`, which mp4 doesn't
+take: 3.10.0 failed there in-process ("No demuxer or protocol option "framerate""; the executable always had). It now
+adds it only to a path FFmpeg's image2 reads as a numbered sequence (`VideoReader.IsImageSequencePattern`).

@@ -388,7 +388,7 @@ internal sealed partial class VideoReader
             : fr <= 0 ? throw new ArgumentException("FrameRate must be positive.")
             : Fps.FromFloat(fr);
         _inputOptions = video is not null ? StreamInputOptions
-            : frameRate is { } r && path.Contains('%') && !IsUrl(path) ? ["-framerate", $"{r.Num}/{r.Den}", .. InputOptions(path)]
+            : frameRate is { } r && IsImageSequencePattern(path) && !IsUrl(path) ? ["-framerate", $"{r.Num}/{r.Den}", .. InputOptions(path)]
             : InputOptions(path);
 
         // One demux-only pass: stream properties, plus every packet's pts for a file (no decoding).
@@ -406,7 +406,9 @@ internal sealed partial class VideoReader
         _urlInProcess = libraries && video is null && IsUrl(path) && InProcess.HasProtocol(new Uri(path).Scheme, _ffmpegDirectory);
         _probesInProcess = (video is not null || !Streaming || _urlInProcess) && libraries;
 
-        // Auto: a URL the libraries can't open (a format they lack, as DASH without libxml2) goes to the executable.
+        // Auto: a URL the libraries can't open (a format they lack) goes to the executable, except http and https: a
+        // failure there can be a certificate the libraries refused (an HLS playlist's https segment, key or variant),
+        // which the executable doesn't check, so it is the error (docs/decisions/2026-10-19-auto-no-fallback-for-https.md).
         string? urlProbe = null;
         if (probed is null)
             o.OnProbe?.Invoke();
@@ -415,6 +417,10 @@ internal sealed partial class VideoReader
             try
             {
                 urlProbe = InProcessProbe.Properties(path, _ffmpegDirectory, packets: false, _inputOptions, cancellationToken: cancellationToken);
+            }
+            catch (ShotDetectionException e) when (IsHttp(path))
+            {
+                throw new ShotDetectionException(e.Reason, e.Message + AutoHttpRefusal, e);
             }
             catch (ShotDetectionException)
             {
@@ -552,8 +558,8 @@ internal sealed partial class VideoReader
             PreferFrameTags(stream, FrameTags(path, ffprobe, cancellationToken));
 
         // Where the chroma samples sit, which OpenCV's converter (sws_scale_frame) takes from the frame; ffmpeg's command
-        // line loses it on the way to its filters, so the scale filter is told (scenedetect's 10-bit frames, issue-free
-        // for 8-bit 4:2:0, whose unscaled conversion doesn't interpolate chroma).
+        // line loses it on the way to its filters, so the scale filter is told (every format but 8-bit 4:2:0, whose
+        // unscaled conversion doesn't interpolate chroma).
         _chromaLocation = stream.GetValueOrDefault("chroma_location") is { } loc and not ("unspecified" or "unknown" or "") ? loc : null;
         FieldOrder = stream.GetValueOrDefault("field_order") switch
         {
@@ -586,10 +592,7 @@ internal sealed partial class VideoReader
         // that frame's samples to the first frame's tags (through RGB), so FastYuv would read other samples than the
         // decoder's. Labelled with the first frame's tags, every frame reaches the pipe untouched. A yuvj format keeps
         // its full range: labelled otherwise, ffmpeg converts it.
-        string labelSpace = stream.GetValueOrDefault("color_space", "") is var cs && SetParamsColorSpaces.Contains(cs) ? cs : "unknown";
-        string labelRange = _pixelFormat.StartsWith("yuvj", StringComparison.Ordinal) ? "pc"
-            : stream.GetValueOrDefault("color_range") is { } range && range is "tv" or "pc" ? range : "unknown";
-        _yuvLabels = $"setparams=colorspace={labelSpace}:range={labelRange}";
+        _yuvLabels = YuvLabels(_pixelFormat, stream.GetValueOrDefault("color_space"), stream.GetValueOrDefault("color_range"));
 
         // 4:2:2 when the converter does that too (FastYuv's does): swscale takes the same unscaled converter for it. 10-bit
         // 4:2:0 too: swscale scales that one (interpolating the chroma from where it sits), so its converter is for the
@@ -736,7 +739,6 @@ internal sealed partial class VideoReader
         }
     }
 
-    /// <summary>ffprobe's arguments for the first video frame's chroma location and colour tags (it decodes that frame only).</summary>
     // The colour spaces ffmpeg's setparams takes by name (ffprobe's names; "reserved" and the like are labelled unknown).
     static readonly HashSet<string> SetParamsColorSpaces =
     [
@@ -744,6 +746,53 @@ internal sealed partial class VideoReader
         "bt2020c", "smpte2085", "chroma-derived-nc", "chroma-derived-c", "ictcp", "ipt-c2",
     ];
 
+    /// <summary>
+    /// The raw-YUV pipe's setparams filter, labelling every frame with the first frame's colour tags: a matrix setparams
+    /// can't name and a range other than tv or pc are unknown, and a yuvj format is full range whatever it says.
+    /// </summary>
+    internal static string YuvLabels(string pixelFormat, string? colorSpace, string? colorRange)
+    {
+        string space = colorSpace is { } cs && SetParamsColorSpaces.Contains(cs) ? cs : "unknown";
+        string range = pixelFormat.StartsWith("yuvj", StringComparison.Ordinal) ? "pc"
+            : colorRange is "tv" or "pc" ? colorRange : "unknown";
+        return $"setparams=colorspace={space}:range={range}";
+    }
+
+    /// <summary>
+    /// Whether FFmpeg's image2 demuxer reads this path as a numbered sequence (av_filename_number_test): every '%' starts
+    /// "%%" (a literal percent) or digits then 'd', and there is exactly one such number ("frames/%04d.png"). Anything
+    /// else, such as "My%20Video.mp4", is a plain file name, which takes no frame rate.
+    /// </summary>
+    internal static bool IsImageSequencePattern(string path)
+    {
+        bool number = false;
+        for (int i = 0; i < path.Length; i++)
+        {
+            if (path[i] != '%')
+                continue;
+            int j = i + 1;
+            while (j < path.Length && char.IsAsciiDigit(path[j]))
+                j++;
+            if (j == path.Length)
+                return false;
+            if (path[j] == 'd')
+            {
+                if (number)
+                    return false;
+                number = true;
+            }
+            else if (path[j] != '%')
+            {
+                return false;
+            }
+
+            i = j;
+        }
+
+        return number;
+    }
+
+    /// <summary>ffprobe's arguments for the first video frame's chroma location and colour tags (it decodes that frame only).</summary>
     internal static string[] FrameTagsArgs(string path, string[] inputOptions) =>
         ["-v", "error", .. inputOptions, "-select_streams", "v:0", "-read_intervals", "%+#1",
             "-show_entries", "frame=chroma_location,color_space,color_range", "-of", "default=nw=1", "-i", path];
@@ -820,6 +869,17 @@ internal sealed partial class VideoReader
     /// </summary>
     internal static readonly string[] StreamInputOptions = ["-protocol_whitelist", "pipe"];
 
+    /// <summary>
+    /// What <see cref="VideoDecoder.Auto"/> adds to an in-process failure to open an http or https URL, which it doesn't
+    /// hand to the ffmpeg executable.
+    /// </summary>
+    internal const string AutoHttpRefusal = " (FFmpeg's libraries, in-process: Auto doesn't take an http or https URL on to the ffmpeg "
+        + "executable, which doesn't check the certificates of the https segments, keys and variants it fetches; "
+        + "Decoder = FfmpegProcess, --decoder process, uses it)";
+
+    static bool IsHttp(string? path) =>
+        Uri.TryCreate(path, UriKind.Absolute, out var url) && (url.Scheme == Uri.UriSchemeHttps || url.Scheme == Uri.UriSchemeHttp);
+
     static bool IsUrl(string path) =>
         Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
 
@@ -831,9 +891,8 @@ internal sealed partial class VideoReader
     /// to see whether it names any. A local playlist can't reach https (its whitelist is file,crypto).
     /// </summary>
     internal static string? ExecutableHlsWarning(string? path, string container, bool decodedInProcess) =>
-        !decodedInProcess && container == "hls" && Uri.TryCreate(path, UriKind.Absolute, out var url)
-        && (url.Scheme == Uri.UriSchemeHttps || url.Scheme == Uri.UriSchemeHttp)
-            ? "decoded by ffmpeg, which fetches the playlist's https segments, keys and variants without checking their "
+        !decodedInProcess && container == "hls" && IsHttp(path)
+            ? "decoded by ffmpeg, which fetches any https segments, keys and variants without checking their "
             + "certificates; in-process decoding (the FrameReader.Native packages) checks them."
             : null;
 
