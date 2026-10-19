@@ -822,3 +822,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - Warnings for streaming callers (DetectStreamAsync)
   - Why: DetectStreamAsync yields shots and has no result object, so it can't carry DetectionResult.Warnings; a streaming caller decoding an https playlist through the executable gets no warning
   - Status: Done (2026-10-19, #429): `DetectionOptions.Warnings`, an `IProgress<string>` told each warning as soon as it is known (the HLS notice and why Parallel read sequentially before any shot, a chunk fallback before the sequential read), for Detect and DetectStreamAsync alike; DetectionResult.Warnings holds the same sentences, from the same place (docs/decisions/2026-10-19-warnings-as-they-happen.md)
+
+- Warn for a local playlist whose segments are https
+  - Why: DetectionResult.Warnings (2026-10-18) covers an https playlist decoded by the ffmpeg executable; a local .m3u8 naming https segments takes the same unchecked path, but the decision left it undecided (docs/decisions/2026-10-18-library-warnings.md)
+  - Status: Done (2026-10-19, #430): a local playlist can't fetch https through the executable (it opens with `-protocol_whitelist file,crypto`; ffprobe 8.1: "Protocol 'https' not on whitelist 'file,crypto'!"); the real gap was an http playlist, whose https segments, keys and variants the executable fetches unchecked: it now warns too (docs/decisions/2026-10-19-hls-warning-http-playlists.md)

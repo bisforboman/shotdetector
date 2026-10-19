@@ -768,21 +768,27 @@ public class UrlOptionTests
     public void MpegAndMjpegDecodeWithTheCIdct(string codec, string expected) =>
         Assert.Equal(expected, string.Join(' ', VideoReader.IdctOptions(codec)));
 
-    // DetectionResult.Warnings: an https HLS playlist through the executable, whose segments go unchecked, and nothing else.
+    // DetectionResult.Warnings: an http or https HLS playlist through the executable, whose https segments go unchecked,
+    // and nothing else (a local playlist can't reach https: its whitelist is file,crypto).
     [Theory]
     [InlineData("https://example.com/play.m3u8", "hls", false, true)]
     [InlineData("HTTPS://example.com/play.m3u8", "hls", false, true)]
     [InlineData("https://example.com/play.m3u8", "hls", true, false)]
-    [InlineData("http://example.com/play.m3u8", "hls", false, false)]
+    [InlineData("http://example.com/play.m3u8", "hls", false, true)]
+    [InlineData("HTTP://example.com/play.m3u8", "hls", false, true)]
+    [InlineData("http://example.com/play.m3u8", "hls", true, false)]
+    [InlineData("http://example.com/a.mp4", "mov,mp4,m4a,3gp,3g2,mj2", false, false)]
+    [InlineData("file:///videos/play.m3u8", "hls", false, false)]
+    [InlineData("rtsp://example.com/play.m3u8", "hls", false, false)]
     [InlineData("https://example.com/a.mp4", "mov,mp4,m4a,3gp,3g2,mj2", false, false)]
     [InlineData("/videos/play.m3u8", "hls", false, false)]
     [InlineData(@"C:\videos\play.m3u8", "hls", false, false)]
     [InlineData(null, "hls", false, false)]
-    public void AnHttpsPlaylistThroughTheExecutableWarns(string? path, string container, bool inProcess, bool warns)
+    public void AnHttpOrHttpsPlaylistThroughTheExecutableWarns(string? path, string container, bool inProcess, bool warns)
     {
         var warning = VideoReader.ExecutableHlsWarning(path, container, inProcess);
         if (warns)
-            Assert.StartsWith("decoded by ffmpeg, which fetched the playlist's segments without checking", warning);
+            Assert.StartsWith("decoded by ffmpeg, which fetches the playlist's https segments, keys and variants without checking", warning);
         else
             Assert.Null(warning);
     }
