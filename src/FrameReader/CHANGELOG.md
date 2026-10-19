@@ -7,6 +7,23 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.8.0 – 2026-10-19
+
+Each decoded frame's chroma location and colour tags, and unknown InputOptions names as an ArgumentException.
+
+### New
+
+- `FrameDecoder.ChromaLocation`, `ColorSpace` and `ColorRange`: the current frame's chroma location, colour matrix and
+  range, with ffprobe's names (its frame entries), null when unspecified. They are what the decoder gave, which can
+  differ from `VideoStreamInfo`'s, the container's header when it has one (an h264 stream's own tags win in the frames).
+
+### Fixed
+
+- `InputOptions` (`FrameDecoderOptions`, `ProbeOptions`, `AudioReaderOptions`, `AudioConvertOptions`, `RemuxOptions`):
+  a name no demuxer or protocol takes, such as a misspelt one, was ignored without a word. It is an `ArgumentException`
+  now, naming the option, as the README promised and as `CodecOptions` and ffmpeg's command line do. FrameReader's own
+  defaults (`scan_all_pmts`, `tls_verify`, `ca_file`) never count, so `tls_verify=0` still works for any input.
+
 ## 2.7.0 – 2026-10-18
 
 Decoder options (CodecOptions), the codec's extradata and first packet from MediaProbe, and BgrConverter.Size.
