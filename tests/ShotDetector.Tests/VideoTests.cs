@@ -839,6 +839,32 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // OpenCV converts with each frame's chroma location and colour tags, the codec's (an h264 stream's VUI), which a
+    // container's header can contradict: the first frame's win over the stream's, each where the frame has one.
+    [Fact]
+    public void TheFramesChromaLocationAndColourTagsWinOverTheStreams()
+    {
+        var stream = new Dictionary<string, string>
+        {
+            ["pix_fmt"] = "yuv420p10le",
+            ["chroma_location"] = "left",
+            ["color_space"] = "bt709",
+            ["color_range"] = "pc",
+        };
+        VideoReader.PreferFrameTags(stream, "chroma_location=topleft\ncolor_space=smpte170m\r\ncolor_range=tv\n");
+        Assert.Equal(("topleft", "smpte170m", "tv", "yuv420p10le"), (stream["chroma_location"], stream["color_space"], stream["color_range"], stream["pix_fmt"]));
+
+        // Unspecified in the frame, or no frame: the stream's stand.
+        VideoReader.PreferFrameTags(stream, "chroma_location=unspecified\ncolor_space=unknown\ncolor_range=\n");
+        VideoReader.PreferFrameTags(stream, null);
+        Assert.Equal(("topleft", "smpte170m", "tv"), (stream["chroma_location"], stream["color_space"], stream["color_range"]));
+
+        // ffprobe's arguments: the first frame only, of the first video stream.
+        Assert.Equal(["-v", "error", "-f", "mpegts", "-select_streams", "v:0", "-read_intervals", "%+#1", "-show_entries",
+            "frame=chroma_location,color_space,color_range", "-of", "default=nw=1", "-i", "in.ts"],
+            VideoReader.FrameTagsArgs("in.ts", ["-f", "mpegts"]));
+    }
+
     // compare.py on Windows: the Windows OpenCV wheel converts with BT.601 whatever the tags say. AlwaysBt601 on a
     // BT.709-tagged copy gives the untagged copy's results (BT.601, the default), on the core and FastYuv paths.
     [Fact]
