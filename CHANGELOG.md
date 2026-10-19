@@ -6,6 +6,28 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.9.0 – 2026-10-19
+
+FastYuv's 10-bit conversion a frame at a time, and parallel detection with less memory.
+
+### New
+
+- `IYuv420P10FrameConverter`: a 10-bit converter that converts all of a frame's pixels the resize reads in one call
+  (`FrameToBgr`), beside `IYuv420P10Converter`; the pipelines use it when the converter `ForVideo` returns implements
+  it. ShotDetector.FastYuv's 10-bit converters do.
+
+### Faster
+
+- ShotDetector.FastYuv on 10-bit 4:2:0 video: each chroma row is filtered horizontally once per frame (it was filtered
+  again for every row that reads it), the vertical filter runs four chroma samples at a time, and saturation no longer
+  branches. On 4 shared x64 vCPUs, 30 s of 854x480 10-bit h264 took 3.9 s instead of 5.8 s through the ffmpeg
+  executable and 3.8 s instead of 5.1 s in-process (the default path: 3.5 s and 3.5 s); 1080p 10.3 s instead of 12.3 s
+  in-process (default 12.1 s). The same results, byte for byte.
+- Parallel detection uses less memory: the chunks share a sequential run's 8 frame buffers (4 each in 2 chunks, 2 in 3
+  or 4) instead of keeping 8 each, at the same speed. Peak memory in 2 / 4 chunks, measured on 4 CPUs: 1080p 187 to
+  175 / 259 to 218 MB; with ShotDetector.FastYuv, 1080p 202 to 178 / 292 to 221 MB and 2160p 553 to 458 / 868 to 583
+  MB.
+
 ## 3.8.0 – 2026-10-18
 
 FastYuv for 10-bit video, parallel detection by default from 4 CPUs, and why a parallel run fell back.
