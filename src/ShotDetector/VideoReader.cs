@@ -310,11 +310,31 @@ internal sealed partial class VideoReader
     readonly bool? _xvidIdct;          // MPEG-4 Part 2: whether FFmpeg's decoder takes the Xvid IDCT (Mpeg4Idct); null if not known
     readonly YuvConversion? _yuvForVideo;         // _yuv420 configured for this video's layout and colours (4:2:0 or 4:2:2)
 
+    /// <summary>
+    /// What a file's probe read: the stream entries (with the first frame's tags where they were read), every frame's pts
+    /// in display order, whether those came from a decoding pass, and the Xvid IDCT. Read-only once built; null for a
+    /// Stream, a URL, streaming and headers only.
+    /// </summary>
+    internal sealed record ProbeResult(IReadOnlyDictionary<string, string> Stream, long[] Pts, bool PtsFromFrames, bool? XvidIdct);
+
+    /// <summary>This reader's probe, for another reader of the same file with the same options (a chunk's) to reuse.</summary>
+    internal ProbeResult? Probed { get; }
+
     /// <param name="path">Video file, or a URL (http(s), rtsp, ... ; read as a stream).</param>
     /// <param name="options">Uses FfmpegResize, DecodeThreads, Yuv420Converter, Compatibility, Crop, FfmpegDirectory, Streaming and ProbeBytes.</param>
     /// <param name="cancellationToken">Cancels the ffprobe run (the process is killed).</param>
     internal VideoReader(string path, DetectionOptions? options = null, CancellationToken cancellationToken = default)
         : this(path, null, options, cancellationToken)
+    {
+    }
+
+    /// <summary>
+    /// Another reader of a file that <paramref name="probed"/> came from, with the same options but for
+    /// <see cref="DetectionOptions.DecodeThreads"/> and <see cref="DetectionOptions.FrameBuffers"/> (a chunk's): it
+    /// takes that probe instead of probing the file again.
+    /// </summary>
+    internal VideoReader(string path, DetectionOptions options, ProbeResult probed, CancellationToken cancellationToken)
+        : this(path, null, options, cancellationToken, probed: probed)
     {
     }
 
@@ -342,7 +362,8 @@ internal sealed partial class VideoReader
         DetectionOptions? options,
         CancellationToken cancellationToken,
         bool headersOnly = false,
-        byte[]? prefix = null)
+        byte[]? prefix = null,
+        ProbeResult? probed = null)
     {
         var o = options ?? new DetectionOptions();
         var compatibility = o.Compatibility;
@@ -374,7 +395,7 @@ internal sealed partial class VideoReader
         string entries = ProbeEntries + (Streaming || headersOnly ? "" : ":packet=pts");
         string ffprobe = _ffprobe = Executable(o.FfmpegDirectory, "ffprobe");
         string[] probeArgs = ["-v", "error", .. _inputOptions, "-select_streams", "v:0", "-show_entries", entries, "-of", "default=nw=1", "-i", path];
-        string probed;
+        string text;
 
         // A file, with FFmpeg's libraries available (as for decoding in-process): read the same with them, no ffprobe.
         // A Stream too: its first bytes, as ffprobe reads them from stdin.
@@ -386,6 +407,8 @@ internal sealed partial class VideoReader
 
         // Auto: a URL the libraries can't open (a format they lack, as DASH without libxml2) goes to the executable.
         string? urlProbe = null;
+        if (probed is null)
+            o.OnProbe?.Invoke();
         if (_urlInProcess && _decoder == VideoDecoder.Auto)
         {
             try
@@ -399,16 +422,20 @@ internal sealed partial class VideoReader
             }
         }
 
-        if (urlProbe is not null)
+        if (probed is not null)
         {
-            probed = urlProbe;
+            text = ""; // read below from the reader's probe this one shares
+        }
+        else if (urlProbe is not null)
+        {
+            text = urlProbe;
         }
         else if (_probesInProcess && video is not null)
         {
             _prefix = prefix ?? ReadPrefix(video, o.ProbeBytes, cancellationToken);
             try
             {
-                probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: false, streamPrefix: _prefix);
+                text = InProcessProbe.Properties(path, _ffmpegDirectory, packets: false, streamPrefix: _prefix);
             }
             catch (ShotDetectionException e)
             {
@@ -417,14 +444,14 @@ internal sealed partial class VideoReader
         }
         else if (_probesInProcess)
         {
-            probed = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly && !Streaming, _inputOptions, cancellationToken: cancellationToken);
+            text = InProcessProbe.Properties(path, _ffmpegDirectory, packets: !headersOnly && !Streaming, _inputOptions, cancellationToken: cancellationToken);
         }
         else if (video is not null)
         {
             _prefix = prefix ?? ReadPrefix(video, o.ProbeBytes, cancellationToken);
             try
             {
-                probed = Run(ffprobe, probeArgs, cancellationToken, stdin: _prefix);
+                text = Run(ffprobe, probeArgs, cancellationToken, stdin: _prefix);
             }
             catch (ShotDetectionException e)
             {
@@ -433,13 +460,13 @@ internal sealed partial class VideoReader
         }
         else
         {
-            probed = Run(ffprobe, probeArgs, cancellationToken);
+            text = Run(ffprobe, probeArgs, cancellationToken);
         }
 
-        var stream = new Dictionary<string, string>();
+        var stream = probed is null ? new Dictionary<string, string>() : new Dictionary<string, string>(probed.Stream);
         var pts = new List<long>();
         bool missingPts = false;
-        foreach (var line in probed.Split('\n', StringSplitOptions.TrimEntries))
+        foreach (var line in text.Split('\n', StringSplitOptions.TrimEntries))
         {
             int eq = line.IndexOf('=');
             if (eq < 0)
@@ -520,7 +547,7 @@ internal sealed partial class VideoReader
         // (sws_scale_frame), which are the codec's (an h264 stream's VUI) where a container's header can say otherwise.
         // Read only where they're used: by FastYuv, and by the executable's scale filter where swscale interpolates the
         // chroma (not 8-bit 4:2:0; the in-process default path converts with each frame's own).
-        if (!headersOnly && (_yuv420 is not null || _pixelFormat is not ("yuv420p" or "yuvj420p")))
+        if (probed is null && !headersOnly && (_yuv420 is not null || _pixelFormat is not ("yuv420p" or "yuvj420p")))
             PreferFrameTags(stream, FrameTags(path, ffprobe, cancellationToken));
 
         // Where the chroma samples sit, which OpenCV's converter (sws_scale_frame) takes from the frame; ffmpeg's command
@@ -542,7 +569,7 @@ internal sealed partial class VideoReader
         // MPEG-4 Part 2: whether FFmpeg's decoder takes the Xvid IDCT, from the codec tag, the extradata and the first
         // packet (one more short probe; for a URL a second connection, so a URL decodes as its file does on ARM too).
         if (Codec == "mpeg4" && !headersOnly)
-            _xvidIdct = XvidIdct(path, ffprobe, cancellationToken);
+            _xvidIdct = probed is not null ? probed.XvidIdct : XvidIdct(path, ffprobe, cancellationToken);
         Duration = double.TryParse(stream.GetValueOrDefault("duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out double length)
             ? TimeSpan.FromSeconds(length)
             : null;
@@ -577,10 +604,11 @@ internal sealed partial class VideoReader
         // Some containers (MPEG-PS) carry no pts on every packet. OpenCV then takes the frame's
         // dts (its pts when set and non-zero, else pkt_dts), in output order: get exactly that
         // from a decoding pass, which only such files pay for.
-        _ptsFromFrames = missingPts;
+        _ptsFromFrames = probed?.PtsFromFrames ?? missingPts;
         if (missingPts)
             pts = _probesInProcess ? InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions) : FrameTimestamps(ffprobe, path, _inputOptions, cancellationToken);
-        _pts = [.. pts];
+        _pts = probed?.Pts ?? [.. pts];
+        Probed = probed ?? (Streaming || headersOnly ? null : new(stream, _pts, _ptsFromFrames, _xvidIdct));
     }
 
     static List<long> FrameTimestamps(string ffprobe, string path, string[] inputOptions, CancellationToken ct)

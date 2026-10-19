@@ -360,6 +360,9 @@ public sealed record DetectionOptions
     /// <summary>Tests: pipe whole BGR frames rather than only the pixels the resize reads (same results, slower).</summary>
     internal bool FullFrames { get; init; }
 
+    /// <summary>Tests: called each time a reader probes the file (not when it takes another reader's probe).</summary>
+    internal Action? OnProbe { get; init; }
+
     /// <summary>
     /// compare.py on Windows (the CLI's hidden <c>--always-bt601</c>): convert with BT.601 coefficients whatever the
     /// colour tags say, as the Windows OpenCV wheel does (docs/decisions/); decodes with the ffmpeg executable.
@@ -1268,7 +1271,7 @@ public static class ShotDetection
             var co = o with { DecodeThreads = ChunkThreads(threads, chunks, i), FrameBuffers = ChunkBuffers(chunks) };
             try
             {
-                var reader = new VideoReader(path, co, stop.Token);
+                var reader = video.Probed is { } probed ? new VideoReader(path, co, probed, stop.Token) : new VideoReader(path, co, stop.Token);
                 chunkStats[i] = collectStats ? new Stats() : null;
                 var ds = settings.Select(st => Build(st, co, reader, minSceneLen, chunkStats[i])).ToList();
                 for (int d = 0; d < ds.Count; d++)

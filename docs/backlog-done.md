@@ -826,3 +826,11 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - Warn for a local playlist whose segments are https
   - Why: DetectionResult.Warnings (2026-10-18) covers an https playlist decoded by the ffmpeg executable; a local .m3u8 naming https segments takes the same unchecked path, but the decision left it undecided (docs/decisions/2026-10-18-library-warnings.md)
   - Status: Done (2026-10-19, #430): a local playlist can't fetch https through the executable (it opens with `-protocol_whitelist file,crypto`; ffprobe 8.1: "Protocol 'https' not on whitelist 'file,crypto'!"); the real gap was an http playlist, whose https segments, keys and variants the executable fetches unchecked: it now warns too (docs/decisions/2026-10-19-hls-warning-http-playlists.md)
+
+- Check upstream.yml's BtbN job on its first scheduled run (Monday 2026-10-19)
+  - Why: #357 wasn't dispatched on its branch (the workflow's other jobs could open real issues), so its first real run is the check: the log should say the pin is up to date, or open one issue
+  - Status: Done (2026-10-19: the scheduled run started at 11:00 UTC, about 5.5 h after its 05:27 cron; its btbn job logged "The action pins autobuild-2026-09-30-13-08 (FFmpeg 8.1.3 and 9.0.2); BtbN's newest month-end release, autobuild-2026-09-30-13-08, has 8.1.3 and 9.0.2. Up to date.", run https://github.com/bisforboman/shotdetector/actions/runs/39241460086)
+
+- Parallel detection: hand the outer reader's packet list to the chunks' readers
+  - Why: Each chunk's `new VideoReader` (ShotDetection.ScoreChunked) probes the file and reads every packet's pts again, N times at once: about 0.1 s on mp4, growing with the file on MPEG-TS (the release-candidate performance review, 2026-10-18). The outer reader already has the list
+  - Status: Done (2026-10-19, #431): a chunk's reader takes the outer reader's probe (`VideoReader.ProbeResult`: the stream entries with the first frame's tags, every frame's pts, the Xvid IDCT) instead of probing again; on a 4-minute, 280 MB MPEG-TS on this 4-CPU container 6.7 s to 5.8 s wall and 18-21 s to 16-17 s CPU in 2 and 4 chunks, an mp4 within noise
