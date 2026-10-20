@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text.RegularExpressions;
+using ShotDetector;
 
 /// <summary>The shotdetect CLI, run as a process (built with the tests, like ClipMaker).</summary>
 public class CliTests(Clips clips) : IClassFixture<Clips>
@@ -33,5 +35,19 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
         Assert.True(summary > warning.Index, err);
         Assert.DoesNotContain("Warning", output, StringComparison.Ordinal);
         Assert.Contains("Scene", output, StringComparison.Ordinal);
+    }
+
+    // --version prints the package's version (the library's: both take ShotDetectorVersion), without the "+commit".
+    [Fact]
+    public void VersionPrintsTheVersion()
+    {
+        var (exitCode, output, err) = Run("--version");
+        Assert.True(exitCode == 0, err);
+        string expected = typeof(ShotDetection).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()!
+            .InformationalVersion.Split('+')[0];
+        Assert.Equal(expected, output.TrimEnd());
+        Assert.Matches(@"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$", output.TrimEnd());
+        Assert.Empty(err);
     }
 }

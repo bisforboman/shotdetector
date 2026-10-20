@@ -266,7 +266,8 @@ jobs:
           issue "$FR_DUE" "$FR" framereader FrameReaderApiBaselineVersion
           issue "$SD_DUE" "$SD" shotdetector ApiBaselineVersion
 
-  # Standalone shotdetect binaries (no .NET needed; ffmpeg still is), attached to the release.
+  # Standalone shotdetect binaries (no .NET needed, FFmpeg's libraries next to them; the ffmpeg executable only for the
+  # image and clip exports and some URLs), attached to the release. ci.yml's aot job builds the same matrix.
   binaries:
     needs: [version, native, release]
     if: needs.version.outputs.shotdetector-due == 'true'
@@ -277,6 +278,7 @@ jobs:
         # with ci.yml's two).
         include:
           - { rid: linux-x64, os: ubuntu-26.04 }
+          - { rid: linux-arm64, os: ubuntu-26.04-arm }
           - { rid: linux-musl-x64, os: ubuntu-26.04, container: 'mcr.microsoft.com/dotnet/sdk:10.0-alpine@sha256:230c3fbae0ceedc70bca04eed2bfb5694e8b248cadbb81010f41b7a993601f55' }
           - { rid: win-x64, os: windows-latest }
           - { rid: osx-arm64, os: macos-latest }

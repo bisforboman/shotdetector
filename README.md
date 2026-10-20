@@ -28,8 +28,10 @@ with its own versions and changelog; FFmpeg's libraries in `FrameReader.Native`)
 dotnet add package ShotDetector                 # the library
 dotnet add package ShotDetector.FastYuv         # optional, LGPL: faster on large video
 dotnet add package FrameReader.Native.linux-x64  # optional, LGPL: FFmpeg's libraries for in-process decoding
-dotnet tool install -g ShotDetector.Cli         # the shotdetect command (bundles those libraries)
+dotnet tool install -g ShotDetector.Cli         # the shotdetect command (needs the .NET 10 SDK; bundles those libraries)
 ```
+
+Or `shotdetect` without .NET: [the release binaries](#the-release-binaries).
 
 When FFmpeg 8's shared libraries are available, video files are read and decoded in-process, with no ffmpeg or
 ffprobe needed: faster and lighter, with the same results (see Performance). The `FrameReader.Native.<rid>`
@@ -46,7 +48,37 @@ in-process, including image sequences, rotated phone video, AV1 (dav1d in our bu
 libraries can't decode and a rotation that isn't a quarter turn use the executable.
 
 Releases are built by GitHub Actions from the tagged commit: packages carry SourceLink and symbol packages, and
-every package and binary has a signed build attestation (`gh attestation verify <file> --repo bisforboman/shotdetector`).
+every package and binary has a signed build attestation (`gh attestation verify <file> --repo bisforboman/shotdetector`,
+the file a package or a binary's archive).
+
+### The release binaries
+
+Each [GitHub release](https://github.com/bisforboman/shotdetector/releases/latest) has `shotdetect` as a Native AOT
+binary, `shotdetect-vX.Y.Z-<rid>.tar.gz` (`.zip` on Windows) for `linux-x64`, `linux-arm64`, `linux-musl-x64`
+(Alpine), `osx-arm64` and `win-x64`. Nothing needs to be installed, neither .NET nor ffmpeg: the archive holds
+`shotdetect` with FFmpeg's libraries next to it (our build, LGPL, with its license files), which it decodes with. Keep
+them in one folder. Unpack and run:
+
+```
+# Linux, Alpine and macOS (the archive has no folder of its own)
+mkdir shotdetect && tar -xzf shotdetect-vX.Y.Z-linux-x64.tar.gz -C shotdetect
+xattr -dr com.apple.quarantine shotdetect   # macOS, for an archive downloaded in a browser (below)
+./shotdetect/shotdetect -i video.mp4
+
+# Windows (PowerShell)
+Expand-Archive shotdetect-vX.Y.Z-win-x64.zip shotdetect
+.\shotdetect\shotdetect.exe -i video.mp4
+```
+
+The macOS binary isn't notarized yet, so Gatekeeper blocks it and its libraries when the archive came through a
+browser (a "cannot be opened" or "not verified" message) until `xattr` clears the quarantine; `curl` downloads
+aren't quarantined.
+
+Put the folder on `PATH` to run `shotdetect` from anywhere; `shotdetect --version` says which release it is. Like
+the .NET tool, the binaries still need the ffmpeg and ffprobe executables (on `PATH`, or `--ffmpeg-dir`) for what
+the libraries don't do: the image and clip exports (`--save-images`, `--save-html`'s thumbnails,
+`--split-video`), URLs whose protocol the libraries lack (they have http and https), and DASH, which the libraries
+can't read (`--decoder process`).
 
 ## Library
 
@@ -176,7 +208,7 @@ table), and `--stats` writes the per-frame metrics file that `scenedetect -s` wr
 standard input; `--frame-rate` overrides the frame rate (scenedetect `-f`), also for image
 sequences such as `frames/%04d.png`. Defaults match the scenedetect CLI:
 content threshold 27, adaptive threshold 3, min-content-val 15, frame window 2, fade threshold 12,
-min scene length 0.6s. `--help` lists all options.
+min scene length 0.6s. `--help` lists all options, `--version` prints the version.
 
 `--probe` only describes the input (container, video, every stream: codecs, sizes, languages, channel layouts)
 and `--probe-json` prints the same as JSON. `--waveform peaks.dat` writes the audio's waveform as BBC audiowaveform's .dat

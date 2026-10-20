@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using ShotDetector;
 
 const string Usage = """
@@ -106,6 +107,7 @@ const string Usage = """
                                          (not with -s/-e/--duration); the tone found goes to stderr
           --tone-min-duration <seconds>  Shortest tone that counts (default 5)
           --tone-search <seconds>        Search only the first seconds of audio (default: all of it)
+          --version                      Print shotdetect's version, then stop
     """;
 
 bool skipCuts = false, quiet = false, htmlNoImages = false, findTone = false, probe = false, probeJson = false;
@@ -470,6 +472,9 @@ try
             case "-h" or "--help":
                 Console.WriteLine(Usage);
                 return 0;
+            case "--version":
+                Console.WriteLine(CliVersion());
+                return 0;
             default:
                 throw new ArgumentException($"Unknown option {args[i]}");
         }
@@ -804,6 +809,11 @@ static string ProbeJson(VideoInfo v)
 
     return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
 }
+
+// The release's version (release.yml's -p:ShotDetectorVersion), without the "+commit" the SDK appends.
+static string CliVersion() => typeof(Config).Assembly
+    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+    ?.InformationalVersion.Split('+')[0] ?? "";
 
 static DetectorKind KindOf(string name) => name switch
 {
