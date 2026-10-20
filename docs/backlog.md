@@ -60,9 +60,5 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The review of 3.10.0 (2026-10-19): ShotDetector reads the first frame's chroma location and colour tags once per detection (`FrameTags`: in-process FrameDecoder, else a one-frame ffprobe) also where only a fallback would use them (in-process without FastYuv, where BgrConverter converts each frame from its own tags), about 0.14 s on 4K 10-bit, and on a live rtsp URL it waits for the first frame before detection starts. Reading them lazily, when the executable path or FastYuv first needs them, would save both
   - Status: Maybe
 
-- The CLI prints warnings as they happen
-  - Why: The review of 3.10.0 (2026-10-19): `shotdetect` prints `DetectionResult.Warnings` on stderr after detection; `DetectionOptions.Warnings` (since 3.10.0) reports each as soon as it is known, so a long run or a live input would tell why it reads sequentially (or that the executable fetches https segments unchecked) at the start instead of the end
-  - Status: Maybe
-
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and
 why: [decisions/](decisions/).

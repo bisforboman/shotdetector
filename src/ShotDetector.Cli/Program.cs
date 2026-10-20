@@ -597,11 +597,20 @@ try
         };
     }
 
+    // Each warning on stderr as soon as it is known (the library reports them on the detection thread), not after
+    // detection; a terminal's progress line is cleared first. One Write per warning, so it stays one piece.
+    string clearProgress = "\r" + new string(' ', 40) + "\r";
+    options = options with
+    {
+        Warnings = new SyncProgress<string>(w => Console.Error.Write(
+            (Console.IsErrorRedirected ? "" : clearProgress) + "Warning: " + w + Environment.NewLine)),
+    };
+
     var result = loadScenes is not null ? ShotDetection.LoadScenes(input, loadScenes, loadColumn!, options)
         : input == "-" ? ShotDetection.Detect(Console.OpenStandardInput(), options)
         : ShotDetection.Detect(input, options);
     if (!Console.IsErrorRedirected)
-        Console.Error.Write("\r" + new string(' ', 40) + "\r");
+        Console.Error.Write(clearProgress);
     var video = result.Video;
 
     // Output paths: $VIDEO_NAME expanded, relative ones under -o.
@@ -623,9 +632,6 @@ try
         + $"detector={string.Join('+', (options.Detectors?.Select(d => d.Kind) ?? [options.Detector]).Select(k => k.ToString().ToLowerInvariant()))}, "
         + $"min-scene-len={result.MinSceneLengthFrames} frames, decoded {(video.DecodedInProcess ? "in-process" : "by ffmpeg")}"
         + $"{(video.Chunks > 1 ? " in " + video.Chunks + " chunks" : "")}"));
-
-    foreach (var warning in result.Warnings)
-        Console.Error.WriteLine("Warning: " + warning);
 
     if (result.ReferenceTone is { } tone)
     {
