@@ -31,5 +31,7 @@ Consequences:
   out libxml2, so has no DASH demuxer) worked under Auto only through this fallback; it now needs
   `--decoder process`. With libraries that have the DASH demuxer (a system FFmpeg, BtbN's builds), Auto decodes it
   in-process as before.
+  Asked again with this consequence in front of the owner (2026-10-20, multiple choice: "Keep it, merge" or "Exempt
+  DASH", a fallback only on an error that tells a missing DASH reader from a refused connection): "Keep it, merge".
 - Only URLs whose protocol the libraries have are tried in-process at all: on libraries without https (or tls), an
   https URL still goes straight to the executable, as before.
