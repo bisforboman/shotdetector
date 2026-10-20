@@ -15,14 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-19: on x86 one known, stats only: a video whose colour tags change midway, with FastYuv or, on a 10-bit siting change, the executable's default path (every cut exact; the per-frame-tags row in Maybe, the informational samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- CI: the AOT binaries decode a clip with their bundled FFmpeg on Alpine, Windows and macOS too
-  - Why: ci.yml's `aot` job runs the published binary on a clip (file, https URL, standard input) with our FFmpeg next to it on linux-x64 and linux-arm64 only; on linux-musl-x64 it runs without the musl libraries, and on win-x64 and osx-arm64 it only checks that the binary starts. The README says every release binary needs nothing installed (#446; checked by hand on linux-x64 only, and 3.11.0's musl archive does carry the libraries), so the other three should prove it the same way
-  - Status: Open
-
-- Release: run each binary from its archive before uploading it
-  - Why: release.yml's `binaries` job publishes, archives, attests and uploads without running the binary; unpacking the archive into an empty folder and running `--version` and one small clip (with no ffmpeg on PATH) would catch a broken archive, a missing library or a wrong rpath before users download it. The linux-arm64 entry first ran at 3.11.0
-  - Status: Open
-
 ## Waiting
 
 - macOS: sign and notarize the osx-arm64 binary, then perhaps a Homebrew tap
