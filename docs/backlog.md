@@ -15,21 +15,9 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-19: on x86 one known, stats only: a video whose colour tags change midway, with FastYuv or, on a 10-bit siting change, the executable's default path (every cut exact; the per-frame-tags row in Maybe, the informational samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- README: an install section for the release binaries (download, unpack, run, per OS), and what still needs ffmpeg
-  - Why: The README's Install shows only `dotnet tool install`, which needs the .NET 10 SDK; the release binaries need nothing installed (checked 2026-10-20: 3.10.1's linux-x64 binary detected a clip with no ffmpeg and no .NET on PATH, linking only libc and libm) but the README only says they exist. Also say what still needs ffmpeg/ffprobe: the image and clip exports, URLs whose protocol the libraries lack, DASH (`--decoder process`)
-  - Status: Open
-
-- CLI: `--version`
-  - Why: `shotdetect --version` prints "Unknown option"; users and bug reports need the version
-  - Status: Open
-
-- Release binaries for linux-arm64
-  - Why: release.yml's `binaries` matrix builds linux-x64, linux-musl-x64, win-x64 and osx-arm64, though FrameReader.Native already ships linux-arm64 and CI builds an ARM AOT binary; ARM Linux users (Graviton, Raspberry Pi 5) need the .NET tool today
-  - Status: Open
-
 - macOS: sign and notarize the osx-arm64 binary, then perhaps a Homebrew tap
   - Why: release.yml doesn't codesign or notarize it, so a copy downloaded in a browser is quarantined and Gatekeeper blocks it until the user clears it (`xattr -d com.apple.quarantine`); notarizing needs the owner's Apple Developer account (secrets in the `release` environment). A Homebrew tap (formula pointing at the release asset) would make `brew install` the macOS route
-  - Status: Open (notarizing waits on the owner's Apple Developer account; until then the README section says how to clear the quarantine)
+  - Status: Open (notarizing waits on the owner's Apple Developer account; meanwhile README's "The release binaries" explains the quarantine and `xattr -dr com.apple.quarantine`, #446)
 
 ## Waiting
 

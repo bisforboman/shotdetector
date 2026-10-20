@@ -850,3 +850,15 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - The CLI prints warnings as they happen
   - Why: The review of 3.10.0 (2026-10-19): `shotdetect` prints `DetectionResult.Warnings` on stderr after detection; `DetectionOptions.Warnings` (since 3.10.0) reports each as soon as it is known, so a long run or a live input would tell why it reads sequentially (or that the executable fetches https segments unchecked) at the start instead of the end
   - Status: Done (2026-10-20, #444): the CLI sets `DetectionOptions.Warnings` and prints each one on stderr when the library reports it (`Warning: ` as before, a terminal's progress line cleared first), no longer the result's list after the summary line; every report is on the detection thread (the chunk fallback comes back after the chunks), so one Write per warning is enough. CliTests runs the built `shotdetect` (`--parallel` on a short clip: the warning once, before the summary line)
+
+- README: an install section for the release binaries (download, unpack, run, per OS), and what still needs ffmpeg
+  - Why: The README's Install shows only `dotnet tool install`, which needs the .NET 10 SDK; the release binaries need nothing installed (checked 2026-10-20: 3.10.1's linux-x64 binary detected a clip with no ffmpeg and no .NET on PATH, linking only libc and libm) but the README only says they exist. Also say what still needs ffmpeg/ffprobe: the image and clip exports, URLs whose protocol the libraries lack, DASH (`--decoder process`)
+  - Status: Done (2026-10-20, #446): README's Install has "The release binaries": the latest release's archives per platform, unpacking and running on Linux, Alpine, macOS (`xattr -dr com.apple.quarantine` for a browser download) and Windows, nothing to install, and what still needs ffmpeg/ffprobe (image and clip exports, URLs whose protocol the libraries lack, DASH with `--decoder process`); the tool line says it needs the .NET 10 SDK
+
+- CLI: `--version`
+  - Why: `shotdetect --version` prints "Unknown option"; users and bug reports need the version
+  - Status: Done (2026-10-20, #446): `--version` prints the informational version without the "+commit" (release.yml's `-p:ShotDetectorVersion`); CliTests and ci.yml's aot job check it
+
+- Release binaries for linux-arm64
+  - Why: release.yml's `binaries` matrix builds linux-x64, linux-musl-x64, win-x64 and osx-arm64, though FrameReader.Native already ships linux-arm64 and CI builds an ARM AOT binary; ARM Linux users (Graviton, Raspberry Pi 5) need the .NET tool today
+  - Status: Done (2026-10-20, #446): release.yml's `binaries` matrix has linux-arm64 on ubuntu-26.04-arm (native.yml already built native-linux-arm64); ci.yml's aot matrix builds it the same way on every full PR, with our linux-arm64 FFmpeg build next to the binary, and checks that it detects cuts decoding in-process (file, https, standard input). release.yml's entry first runs at the next release
