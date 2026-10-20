@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-19: on x86 one known, stats only: a video whose colour tags change midway, with FastYuv or, on a 10-bit siting change, the executable's default path (every cut exact; the per-frame-tags row in Maybe, the informational samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- FrameReader: an rtsp input through the InputOptions check, tested
-  - Why: Since 2.8.0 (#428) an `InputOptions` name nothing takes is an `ArgumentException`. ShotDetector passes rtsp URLs only `protocol_whitelist` (VideoReader.InputOptions), and a caller may pass rtsp's own options (`rtsp_transport`, `stimeout`); #428 tested file, image sequence, Stream, http, https and HLS but no rtsp input, as no test serves one. A local rtsp server (ffmpeg `-rtsp_flags listen`, or a minimal one in the tests) would show the whitelist and an rtsp option still open, and a misspelt one throw
-  - Status: Open
-
 ## Waiting
 
 - At the next FrameReader release, count the commits touching both products again (docs/frame-reader-product.md, "When to reconsider")

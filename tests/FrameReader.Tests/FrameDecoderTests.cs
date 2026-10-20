@@ -457,6 +457,87 @@ public class FrameDecoderTests
         }
     }
 
+    // An rtsp input goes through the InputOptions check like any other: ShotDetector's options for an rtsp URL (the
+    // protocol_whitelist VideoReader.InputOptions passes) and rtsp's own (rtsp_transport) open it, a misspelt name
+    // doesn't. The reader listens for a publisher (rtsp_flags=listen, rtsp options too, with listen_timeout: FFmpeg 8.1
+    // refuses its own default, -1 s passed on to tcp as -1000 ms) and ffmpeg pushes a clip to it. The check runs once
+    // the input is open, after the publisher's ANNOUNCE, so the misspelt name needs a publisher too.
+    [Fact]
+    public void RtspInputOptionsAreChecked()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-dec-").FullName;
+        try
+        {
+            string clip = Clip(dir, "clip.mkv", "-c:v", "mpeg4");
+            var options = new Dictionary<string, string>
+            {
+                ["protocol_whitelist"] = "rtsp,rtsps,rtp,srtp,udp,tcp,tls",
+                ["rtsp_transport"] = "tcp",
+                ["rtsp_flags"] = "listen",
+                ["listen_timeout"] = "30",
+            };
+            Assert.Equal(50, Published(clip, options, decoder =>
+            {
+                int n = 0;
+                while (decoder.Next())
+                    n++;
+                return n;
+            }));
+
+            var misspelt = new Dictionary<string, string>(options) { ["rtsp_transprot"] = "tcp" };
+            var e = Assert.Throws<ArgumentException>(() => Published(clip, misspelt, _ => 0));
+            Assert.Contains("\"rtsp_transprot\"", e.Message, StringComparison.Ordinal);
+            Assert.Contains("as rtsp", e.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+
+        // What read returns from a FrameDecoder listening on a free port while ffmpeg publishes the clip there. A pusher
+        // that starts before the reader listens is refused and exits at once: it starts again until the reader is done.
+        static int Published(string clip, Dictionary<string, string> options, Func<FrameDecoder, int> read)
+        {
+            var free = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            free.Start();
+            int port = ((System.Net.IPEndPoint)free.LocalEndpoint).Port;
+            free.Stop();
+            string url = $"rtsp://127.0.0.1:{port}/live";
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var reader = Task.Run(() =>
+            {
+                using var decoder = new FrameDecoder(url, new FrameDecoderOptions { InputOptions = options, CancellationToken = cancel.Token });
+                return read(decoder);
+            });
+            var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"));
+            foreach (var a in new[] { "-v", "quiet", "-nostdin", "-i", clip, "-c", "copy", "-rtsp_transport", "tcp", "-f", "rtsp", url })
+                psi.ArgumentList.Add(a);
+            Process? pusher = null;
+            try
+            {
+                while (!reader.IsCompleted && !cancel.IsCancellationRequested)
+                {
+                    pusher?.Dispose();
+                    pusher = Process.Start(psi)!;
+                    Task.WaitAny([reader, pusher.WaitForExitAsync()], TimeSpan.FromSeconds(30));
+                    if (!pusher.HasExited || pusher.ExitCode == 0)
+                        break;
+                }
+
+                Assert.True(Task.WaitAny([reader], TimeSpan.FromSeconds(30)) == 0, "the rtsp reader didn't finish");
+                return reader.GetAwaiter().GetResult();
+            }
+            finally
+            {
+                if (pusher is { HasExited: false })
+                    pusher.Kill(true);
+                pusher?.Dispose();
+            }
+        }
+    }
+
     /// <summary>A clip over https (TLS on a TcpListener) with a self-signed certificate for localhost; byte ranges too.</summary>
     sealed class SelfSignedHttpsServer : IDisposable
     {
