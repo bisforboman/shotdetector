@@ -6,6 +6,19 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.11.0 – 2026-10-20
+
+The CLI prints warnings as they happen, has --version, and comes as a Linux ARM64 binary.
+
+### New
+
+- `shotdetect --version` prints the version.
+- `shotdetect` as a Native AOT binary for `linux-arm64` (Graviton, Raspberry Pi 5) on each GitHub release, beside
+  linux-x64, linux-musl-x64, win-x64 and osx-arm64. The README's Install section now says how to download, unpack
+  and run the binaries on each system, and what still needs the ffmpeg executable.
+- `shotdetect` prints each warning on stderr as soon as it is known (why `--parallel` reads sequentially, an HLS
+  playlist read by the ffmpeg executable) instead of after detection, and still once.
+
 ## 3.10.1 – 2026-10-20
 
 Fixes from the review of 3.10.0: file names with a %, and Auto no longer hands an http(s) URL the libraries refused to the executable.
