@@ -268,8 +268,11 @@ jobs:
 
   # Standalone shotdetect binaries (no .NET needed, FFmpeg's libraries next to them; the ffmpeg executable only for the
   # image and clip exports and some URLs), attached to the release. ci.yml's aot job builds the same matrix.
+  # Each archive is checked before it's uploaded (tools/check-binary.sh, which ci.yml's aot job runs on the archive a
+  # pull request builds the same way): unpacked into an empty folder, it prints the release's version and decodes the
+  # clip job's clips in-process with no ffmpeg on PATH.
   binaries:
-    needs: [version, native, release]
+    needs: [version, native, release, clip]
     if: needs.version.outputs.shotdetector-due == 'true'
     strategy:
       fail-fast: false
@@ -311,23 +314,21 @@ jobs:
           name: native-${{ matrix.rid }}
           path: native/${{ matrix.rid }}
 
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: clip
+          path: clip
+
       - name: Publish
         run: |
           dotnet publish src/ShotDetector.Cli -c Release -r ${{ matrix.rid }} -p:PublishAot=true \
             -p:ShotDetectorVersion=${{ needs.version.outputs.shotdetector }} -p:FrameReaderVersion=${{ needs.version.outputs.framereader }} -o out
-          rm -f out/*.pdb out/*.dbg
 
       - name: Archive
-        run: |
-          name=shotdetect-v${{ needs.version.outputs.shotdetector }}-${{ matrix.rid }}
-          cp LICENSE THIRD-PARTY-NOTICES.md src/FrameReader.Native/COPYING.LGPL src/FrameReader.Native/COPYING.dav1d native/${{ matrix.rid }}/configure.txt native/${{ matrix.rid }}/sbom.spdx.json out/
-          case "${{ matrix.rid }}" in linux-*) cp src/FrameReader.Native/COPYING.openssl out/ ;; esac
-          if [ "${{ matrix.rid }}" = win-x64 ]; then
-            (cd out && 7z a "../$name.zip" . > /dev/null) && file="$name.zip"
-          else
-            tar -czf "$name.tar.gz" -C out . && file="$name.tar.gz"
-          fi
-          echo "ARCHIVE=$file" >> "$GITHUB_ENV"
+        run: echo "ARCHIVE=$(tools/archive-binary.sh ${{ matrix.rid }} ${{ needs.version.outputs.shotdetector }})" >> "$GITHUB_ENV"
+
+      - name: The archive runs on its own
+        run: tools/check-binary.sh "$ARCHIVE" "${{ needs.version.outputs.shotdetector }}" clip
 
       - name: Attest the binaries
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -338,3 +339,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "v${{ needs.version.outputs.shotdetector }}" "$ARCHIVE" --repo "$GITHUB_REPOSITORY"
+
+  # The clips the binaries job decodes (tools/check-binary.sh --clips), made once on Linux with BtbN's ffmpeg: macOS
+  # has no pinned build, and the binaries are checked without ffmpeg anyway.
+  clip:
+    needs: version
+    if: needs.version.outputs.shotdetector-due == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install ffmpeg
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+
+      - name: Clips
+        run: tools/check-binary.sh --clips clip
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: clip
+          path: clip/
