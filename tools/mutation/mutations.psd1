@@ -22,6 +22,9 @@
         # The executable's raw-YUV pipe labels every frame with the first frame's colour tags, so a matrix or range that
         # changes midway doesn't make ffmpeg convert the later frames' samples (FastYuv reads the decoder's)
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'select[1] + "," + _yuvLabels'; Replace = 'select[1]'; Tests = 'FastYuvTests.TagChangeMidwayKeepsTheSamples' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'colorSpace is { } cs && SetParamsColorSpaces.Contains(cs) ? cs : "unknown"'; Replace = 'colorSpace ?? "unknown"'; Tests = 'UrlOptionTests.TheYuvPipesLabelsAreTheFirstFramesTags' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'pixelFormat.StartsWith("yuvj", StringComparison.Ordinal) ? "pc"'; Replace = 'false ? "pc"'; Tests = 'UrlOptionTests.TheYuvPipesLabelsAreTheFirstFramesTags' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'colorRange is "tv" or "pc" ? colorRange : "unknown"'; Replace = 'colorRange ?? "unknown"'; Tests = 'UrlOptionTests.TheYuvPipesLabelsAreTheFirstFramesTags' }
 
         # compare.py on Windows: BT.601 whatever the colour tags, as the Windows OpenCV wheel (executable, FastYuv, not in-process)
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '+ (_alwaysBt601 ? ":in_color_matrix=bt601" : "")'; Replace = '+ ""'; Tests = 'VideoTests.AlwaysBt601IgnoresTheColourTags' }
@@ -98,7 +101,11 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (missingPts)'; Replace = 'if (false)'; Tests = 'VideoTests' }
 
         # Frame rate override: an image sequence is read at that rate
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'path.Contains(''%'') && !IsUrl(path)'; Replace = 'false'; Tests = 'VideoTests' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'IsImageSequencePattern(path) && !IsUrl(path)'; Replace = 'false'; Tests = 'VideoTests.ImageSequenceIsReadAtTheFrameRate' }
+        # ... and only a pattern image2 reads as one (av_filename_number_test): a '%' in a file's name (My%20Video.mp4) isn't
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'IsImageSequencePattern(path) && !IsUrl(path)'; Replace = 'path.Contains(''%'') && !IsUrl(path)'; Tests = 'VideoTests.APercentInAFileNameIsNoImageSequence' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (number)'; Replace = 'if (false)'; Tests = 'UrlOptionTests.ImageSequencePatternsAreImage2s' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'else if (path[j] != ''%'')'; Replace = 'else if (false)'; Tests = 'UrlOptionTests.ImageSequencePatternsAreImage2s' }
 
         # Dropped frames: each decoded frame takes its own packet's time (OpenCV labels frames by time)
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'k < _livePackets.Count ? _livePackets[k] : frame'; Replace = 'false ? 0 : frame'; Tests = 'VideoTests' }
@@ -150,6 +157,12 @@
 
         # The executable's HLS warning: an http playlist too, whose https segments, keys and variants go unchecked as well
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' || url.Scheme == Uri.UriSchemeHttp)'; Replace = ')'; Tests = 'UrlOptionTests.AnHttpOrHttpsPlaylistThroughTheExecutableWarns' }
+        # ... once, though checked again after the frames (Auto may have handed decoding to the executable meanwhile)
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (!hlsWarned && '; Replace = 'if ('; Tests = 'VideoTests.UrlInputIsStreamed' }
+
+        # Auto doesn't take an http or https URL the libraries failed to open on to the executable, which would fetch its
+        # https segments, keys and variants without checking their certificates (files and other URLs still fall back)
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'catch (ShotDetectionException e) when (IsHttp(path))'; Replace = 'catch (ShotDetectionException e) when (false)'; Tests = 'VideoTests.AutoDoesNotHandAnHttpUrlTheLibrariesRefusedToTheExecutable' }
 
         # Parallel detection: a chunk's reader takes the outer reader's probe instead of probing the file again
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'video.Probed is { } probed ? new VideoReader(path, co, probed, stop.Token) : '; Replace = ''; Tests = 'ParallelTests.ChunksTakeTheOuterReadersProbe' }

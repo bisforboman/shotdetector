@@ -22,3 +22,6 @@ FrameReader's io_open wrapper checks them. What should happen?
 **1. Warn for http playlists too.** `VideoReader.ExecutableHlsWarning` fires for both schemes, with a sentence true for
 both: "decoded by ffmpeg, which fetches the playlist's https segments, keys and variants without checking their
 certificates; in-process decoding (the FrameReader.Native packages) checks them." The backlog row is closed as done.
+
+2026-10-19, 3.10.1: the sentence now says "which fetches any https segments, keys and variants", since it is given
+without reading the playlist (review of 3.10.0).

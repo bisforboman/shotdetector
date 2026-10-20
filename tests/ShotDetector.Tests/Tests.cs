@@ -788,10 +788,42 @@ public class UrlOptionTests
     {
         var warning = VideoReader.ExecutableHlsWarning(path, container, inProcess);
         if (warns)
-            Assert.StartsWith("decoded by ffmpeg, which fetches the playlist's https segments, keys and variants without checking", warning);
+            Assert.StartsWith("decoded by ffmpeg, which fetches any https segments, keys and variants without checking", warning);
         else
             Assert.Null(warning);
     }
+
+    // An image sequence is what FFmpeg's image2 reads as one (av_filename_number_test, checked against ffprobe 8.1): one
+    // number, '%' then digits then 'd'; "%%" is a literal percent; any other '%' (a URL-encoded name) makes a plain file.
+    [Theory]
+    [InlineData("frames/%04d.png", true)]
+    [InlineData("x%d.png", true)]
+    [InlineData("x%5d.png", true)]
+    [InlineData("100%%_%03d.png", true)]
+    [InlineData("x%%03d.png", false)]
+    [InlineData("x%d%d.png", false)]
+    [InlineData("x%3%d.png", false)]
+    [InlineData("My%20Video.mp4", false)]
+    [InlineData("My%20Video_%03d.png", false)]
+    [InlineData("a%b.mp4", false)]
+    [InlineData("a%", false)]
+    [InlineData("a%3", false)]
+    [InlineData("frames.mp4", false)]
+    public void ImageSequencePatternsAreImage2s(string path, bool pattern) =>
+        Assert.Equal(pattern, VideoReader.IsImageSequencePattern(path));
+
+    // The executable's raw-YUV pipe labels frames with the first frame's colour tags, in names setparams takes: an unknown
+    // matrix or range is "unknown", and a yuvj format is full range whatever its tag says.
+    [Theory]
+    [InlineData("yuv420p", "bt709", "tv", "setparams=colorspace=bt709:range=tv")]
+    [InlineData("yuv420p", "bt2020nc", "pc", "setparams=colorspace=bt2020nc:range=pc")]
+    [InlineData("yuv420p", "reserved", "unknown", "setparams=colorspace=unknown:range=unknown")]
+    [InlineData("yuv420p", null, null, "setparams=colorspace=unknown:range=unknown")]
+    [InlineData("yuv420p", "smpte170m", "mpeg", "setparams=colorspace=smpte170m:range=unknown")]
+    [InlineData("yuvj420p", "bt470bg", "tv", "setparams=colorspace=bt470bg:range=pc")]
+    [InlineData("yuvj422p", "bt709", null, "setparams=colorspace=bt709:range=pc")]
+    public void TheYuvPipesLabelsAreTheFirstFramesTags(string pixelFormat, string? colorSpace, string? colorRange, string labels) =>
+        Assert.Equal(labels, VideoReader.YuvLabels(pixelFormat, colorSpace, colorRange));
 
     // ffmpeg and ffprobe are started by full path (next to the app, else from PATH), never by a bare name, which would
     // also find one in the current folder.

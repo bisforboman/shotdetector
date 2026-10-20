@@ -414,9 +414,17 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         int port = server.Port;
         try
         {
+            // The executable: Auto doesn't fall back to it for an http URL the libraries can't open (DASH without
+            // libxml2, as in FrameReader.Native), so it is asked for.
             var expected = ShotDetection.Detect(clips.ThreeShots, new() { CollectStats = true });
-            var r = ShotDetection.Detect($"http://localhost:{port}/{name}", new() { CollectStats = true });
+            var r = ShotDetection.Detect($"http://localhost:{port}/{name}", new() { CollectStats = true, Decoder = VideoDecoder.FfmpegProcess });
             Assert.True(r.Video.Streamed);
+
+            // An http playlist through the executable: warned once (it fetches any https segments unchecked).
+            if (name.EndsWith(".m3u8"))
+                Assert.StartsWith("decoded by ffmpeg, which fetches any https segments", Assert.Single(r.Warnings));
+            else
+                Assert.Empty(r.Warnings);
 
             // MPEG-4 from FFmpeg's encoder: the C IDCT, as for the file (on ARM its default IDCT differs).
             Assert.False(r.Video.Reader.UsesXvidIdct);
@@ -440,10 +448,74 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
                 Assert.True(inProcess.Video.Streamed);
                 Assert.Equal(expected.Stats!.Csv(expected.Video.Position), inProcess.Stats!.Csv(inProcess.Video.Position));
             }
+
+            // Auto on the same libraries does what InProcess does: decodes in-process, or fails as it does (DASH where the
+            // libraries have no DASH demuxer), never taking the URL on to the executable.
+            if (Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS") is { } libraries)
+            {
+                ShotDetectionException? inProcessError = null;
+                try
+                {
+                    ShotDetection.Probe($"http://localhost:{port}/{name}", new() { FfmpegDirectory = libraries, Decoder = VideoDecoder.InProcess });
+                }
+                catch (ShotDetectionException e)
+                {
+                    inProcessError = e;
+                }
+
+                var auto = new DetectionOptions { CollectStats = true, FfmpegDirectory = libraries };
+                if (inProcessError is null)
+                {
+                    var a = ShotDetection.Detect($"http://localhost:{port}/{name}", auto);
+                    Assert.True(a.Video.DecodedInProcess);
+                    Assert.Equal(expected.Stats!.Csv(expected.Video.Position), a.Stats!.Csv(a.Video.Position));
+                }
+                else
+                {
+                    var refused = Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect($"http://localhost:{port}/{name}", auto));
+                    Assert.EndsWith(VideoReader.AutoHttpRefusal, refused.Message, StringComparison.Ordinal);
+                }
+            }
         }
         finally
         {
             server.Dispose();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // An http playlist naming a segment on a self-signed https server: in-process refuses the certificate, and Auto
+    // doesn't take the URL on to the executable, which fetches the segment without the check (it decodes there only when
+    // asked for, and warns).
+    [Fact]
+    public void AutoDoesNotHandAnHttpUrlTheLibrariesRefusedToTheExecutable()
+    {
+        string dir = Directory.CreateTempSubdirectory("shotdetector-tls-").FullName;
+        string segment = Path.Combine(dir, "seg.ts");
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-c", "copy", "-bsf:v", "dump_extra", "-f", "mpegts", segment], default);
+        var segments = new SelfSignedHttpsServer(File.ReadAllBytes(segment));
+        File.WriteAllText(Path.Combine(dir, "play.m3u8"),
+            $"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nhttps://localhost:{segments.Port}/seg.ts\n#EXT-X-ENDLIST\n");
+        var playlists = new FileServer(dir);
+        try
+        {
+            string url = $"http://localhost:{playlists.Port}/play.m3u8";
+            var process = ShotDetection.Detect(url, new() { Detector = DetectorKind.Content, Decoder = VideoDecoder.FfmpegProcess });
+            Assert.Equal([0L, 50L, 100L], process.Shots.Select(s => s.Start.FrameNum));
+            Assert.StartsWith("decoded by ffmpeg, which fetches any https segments", Assert.Single(process.Warnings));
+
+            if (Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS") is { } libs)
+            {
+                Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(url, new() { FfmpegDirectory = libs, Decoder = VideoDecoder.InProcess }));
+                var refused = Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(url, new() { FfmpegDirectory = libs }));
+                Assert.Equal(ShotDetectionError.InvalidInput, refused.Reason);
+                Assert.EndsWith(VideoReader.AutoHttpRefusal, refused.Message, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            playlists.Dispose();
+            segments.Dispose();
             Directory.Delete(dir, true);
         }
     }
@@ -563,6 +635,85 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    /// <summary>Some bytes over https (TLS on a TcpListener) with a self-signed certificate for localhost; byte ranges too.</summary>
+    sealed class SelfSignedHttpsServer : IDisposable
+    {
+        readonly System.Net.Sockets.TcpListener _listener = new(System.Net.IPAddress.Loopback, 0);
+        readonly System.Security.Cryptography.X509Certificates.X509Certificate2 _cert;
+        readonly byte[] _bytes;
+
+        public SelfSignedHttpsServer(byte[] bytes)
+        {
+            _bytes = bytes;
+            using var key = System.Security.Cryptography.RSA.Create(2048);
+            var request = new System.Security.Cryptography.X509Certificates.CertificateRequest("CN=localhost",
+                key,
+                System.Security.Cryptography.HashAlgorithmName.SHA256,
+                System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+            var san = new System.Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder();
+            san.AddDnsName("localhost");
+            request.CertificateExtensions.Add(san.Build());
+            using var cert = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+
+            // Through PFX: Schannel can't use an ephemeral key.
+            _cert = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12(cert.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Pfx), null);
+            _listener.Start();
+            _ = Task.Run(Serve);
+        }
+
+        public int Port => ((System.Net.IPEndPoint)_listener.LocalEndpoint).Port;
+
+        public void Dispose()
+        {
+            _listener.Stop();
+            _cert.Dispose();
+        }
+
+        async Task Serve()
+        {
+            while (true)
+            {
+                System.Net.Sockets.TcpClient client;
+                try
+                {
+                    client = await _listener.AcceptTcpClientAsync();
+                }
+                catch (Exception e) when (e is System.Net.Sockets.SocketException or ObjectDisposedException or InvalidOperationException)
+                {
+                    return;
+                }
+
+                _ = Task.Run(async () =>
+                {
+                    using (client)
+                    {
+                        try
+                        {
+                            using var tls = new System.Net.Security.SslStream(client.GetStream());
+                            await tls.AuthenticateAsServerAsync(_cert);
+                            var head = new System.Text.StringBuilder();
+                            var one = new byte[1];
+                            while (!head.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal) && await tls.ReadAsync(one) == 1)
+                                head.Append((char)one[0]);
+                            var range = System.Text.RegularExpressions.Regex.Match(head.ToString(), @"Range: bytes=(\d+)-", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            int from = range.Success ? int.Parse(range.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+                            string status = range.Success
+                                ? $"206 Partial Content\r\nContent-Range: bytes {from}-{_bytes.Length - 1}/{_bytes.Length}"
+                                : "200 OK";
+                            await tls.WriteAsync(System.Text.Encoding.ASCII.GetBytes(
+                                $"HTTP/1.1 {status}\r\nContent-Length: {_bytes.Length - from}\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n"));
+                            await tls.WriteAsync(_bytes.AsMemory(from));
+                        }
+                        catch (Exception e) when (e is IOException or System.Security.Authentication.AuthenticationException or ObjectDisposedException)
+                        {
+                            // the client refused the certificate, or went away
+                        }
+                    }
+                });
+            }
+        }
+    }
+
     [Fact]
     public void ExportsNeedAPath()
     {
@@ -618,6 +769,38 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal([(0L, "00:00:00.000"), (50L, "00:00:01.000"), (100L, "00:00:02.000")],
             r.Shots.Select(s => (s.Start.FrameNum, s.Start.Timecode())));
         Assert.Equal("00:00:03.000", r.Shots[^1].End.Timecode());
+    }
+
+    // A '%' that isn't an image sequence's number (a URL-encoded name) leaves a file a file: the frame rate applies as to
+    // any video, with no -framerate for its demuxer (mp4 has none: 3.10.0 failed there, in-process and with the executable).
+    [Theory]
+    [InlineData("My%20Video.mp4")]
+    [InlineData("a%b.mp4")]
+    public void APercentInAFileNameIsNoImageSequence(string name)
+    {
+        string dir = Directory.CreateTempSubdirectory("shotdetector-percent-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            File.Copy(clips.ThreeShots, path);
+            List<DetectionOptions> runs = [new() { Detector = DetectorKind.Content, FrameRate = 50, Decoder = VideoDecoder.FfmpegProcess }];
+            if (Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS") is { } libs)
+            {
+                runs.Add(runs[0] with { Decoder = VideoDecoder.InProcess, FfmpegDirectory = libs });
+                runs.Add(runs[0] with { Decoder = VideoDecoder.Auto, FfmpegDirectory = libs });
+            }
+
+            foreach (var options in runs)
+            {
+                var r = ShotDetection.Detect(path, options);
+                Assert.Equal([(0L, "00:00:00.000"), (100L, "00:00:02.000"), (200L, "00:00:04.000")],
+                    r.Shots.Select(s => (s.Start.FrameNum, s.Start.Timecode())));
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 
     [Fact]

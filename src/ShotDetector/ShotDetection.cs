@@ -144,7 +144,10 @@ public enum VideoDecoder
     /// <summary>
     /// The default: <see cref="InProcess"/> when FFmpeg 8's shared libraries load (from
     /// <see cref="DetectionOptions.FfmpegDirectory"/>, else the system's usual places), else <see cref="FfmpegProcess"/>.
-    /// The results are the same either way.
+    /// The results are the same either way. A file the libraries give no frames of, and a URL they can't open, go to the
+    /// executable, except an http or https URL (when the libraries have its protocol): its failure is the error, since
+    /// the executable doesn't check the certificates of the https segments, keys and variants a playlist names
+    /// (<see cref="FfmpegProcess"/> still uses it).
     /// </summary>
     Auto,
 }
@@ -946,7 +949,18 @@ public static class ShotDetection
             o.Warnings?.Report(warning);
         }
 
-        Warn(VideoReader.ExecutableHlsWarning(videoPath, video.Container, video.DecodesInProcess));
+        // The executable's HLS warning; checked again after the frames, in case Auto handed decoding to the executable.
+        bool hlsWarned = false;
+        void WarnHls()
+        {
+            if (!hlsWarned && VideoReader.ExecutableHlsWarning(videoPath, video.Container, video.DecodesInProcess) is { } hls)
+            {
+                hlsWarned = true;
+                Warn(hls);
+            }
+        }
+
+        WarnHls();
         IReadOnlyList<FrameReader.ToneSegment>? tone = null;
         if (o.TrimReferenceTone)
         {
@@ -1117,6 +1131,7 @@ public static class ShotDetection
             }
         }
 
+        WarnHls();
         o.Progress?.Report(Progress(frameCount, frameCount));
         if (frameCount > 0)
         {

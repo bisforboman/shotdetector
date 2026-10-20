@@ -36,7 +36,8 @@ const string Usage = """
                                          rate of an image sequence such as frames/%04d.png (default 25)
           --ffmpeg-dir <dir>             Folder containing ffmpeg and ffprobe (default: found on PATH)
           --decoder <auto|inprocess|process>  auto (default): FFmpeg 8's shared libraries in this process
-                                         when they load (faster, less memory), else the ffmpeg executable;
+                                         when they load (faster, less memory), else the ffmpeg executable
+                                         (an http(s) URL they can't open is an error, not handed to it);
                                          inprocess: the libraries or an error; process: the executable
       -s, --start <time>                 Start here: HH:MM:SS[.mmm], seconds (12.5s) or 1-based frame (300)
       -e, --end <time>                   Stop here (exclusive); same formats, frames 0-based
