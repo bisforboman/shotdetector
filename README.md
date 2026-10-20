@@ -275,7 +275,7 @@ segments, keys and variants are fetched without their certificates checked (FFmp
 in-process, FrameReader does), so when the libraries fail to open an http or https URL (a refused certificate, or a
 format they lack, such as DASH in FrameReader.Native, which leaves out libxml2), `Auto` reports that failure rather
 than handing the URL to the executable: `--decoder process` (`Decoder = VideoDecoder.FfmpegProcess`) reads it there,
-and for an http or https playlist the result then says so (`DetectionResult.Warnings`; `shotdetect` prints it on stderr), as does
+and for an http or https playlist the result then says so (`DetectionResult.Warnings`; `shotdetect` prints it on stderr as soon as it is known), as does
 `DetectionOptions.Warnings` as soon as it is known (an `IProgress<string>`, also for `DetectStreamAsync`).
 
 How it keeps up while computing exactly what OpenCV and scenedetect compute:
