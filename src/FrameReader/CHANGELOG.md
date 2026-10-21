@@ -7,6 +7,24 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.9.0 – 2026-10-21
+
+Audio reads skip the streams they don't use, and rtsp listen mode works without listen_timeout.
+
+### Faster
+
+- `AudioReader` and `Audio.Convert` (and so `Video.Convert`'s audio) skip the streams they don't decode, as ffmpeg's
+  `-vn` does, so containers that can jump over them (MP4 and MOV, MXF) read only the audio: a 394 MB MXF of 4:2:2 MPEG-2 video and PCM
+  audio is read for 55 MB instead of all of it. The samples and files are the same as before. MPEG-TS and Matroska still
+  read every byte.
+
+### Fixed
+
+- An rtsp input with `InputOptions` `rtsp_flags` = `listen` and no `listen_timeout` failed to open with "Numerical result
+  out of range" (FFmpeg 8.1 passes its own default, -1 s, on to tcp as -1000 ms, which tcp refuses; `ffmpeg -rtsp_flags
+  listen -i rtsp://...` fails the same way). FrameReader now passes `listen_timeout` = `0`, which waits for a publisher
+  without end as -1 meant to; a `listen_timeout` of your own is used as it is.
+
 ## 2.8.0 – 2026-10-19
 
 Each decoded frame's chroma location and colour tags, and unknown InputOptions names as an ArgumentException.
