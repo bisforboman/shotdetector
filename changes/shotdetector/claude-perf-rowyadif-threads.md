@@ -11,7 +11,7 @@
   default converter; on 150 s of 1080i25 MPEG-2 (4 vCPUs) it now takes 17.2 s instead of 24.1 s for 4:2:2 MXF and 11.8 s
   instead of 16.0 s for 4:2:0 MPEG-TS, a third less CPU time, and 1.35-1.54x as fast in parallel mode. Results are
   unchanged, byte for byte.
-- FastYuv in-process copies only the rows it converts for progressive video too (10-bit h264: about 1.05-1.09x).
+- FastYuv in-process copies only the rows it converts for progressive video too (10-bit h264: 1.04-1.09x).
 - Parallel detection gives h264, HEVC and other frame-threaded decoders twice the CPUs' decoder threads (at most 16),
   shared among the chunks, for frames up to 1920 x 1080: each chunk's decoder now has up to the CPUs' count. On 4 vCPUs,
   150 s of 1080p h264 took 15.1 s instead of 16.8 s (8-bit) and 19.5 s instead of 23.8 s (10-bit), in the same CPU time

@@ -37,6 +37,9 @@ frames). It exists for other CPUs' results; on x64 it gives the same results as 
 speed. It converts a frame's pixels in one pass (`IYuv420P10FrameConverter`), filtering each chroma row once, as
 swscale does.
 
+Each converter also says which chroma rows converting a row reads (`IYuvChromaRows`), so decoding in-process
+ShotDetector copies, and with `Yadif` deinterlaces, only the rows it converts, not whole frames.
+
 Copyright (C) 2001-2012 Michael Niedermayer, (C) 2009-2010 Konstantin Shishkov, (C) 2024 Niklas Haas (FFmpeg); yadif (C) 2006-2011
 Michael Niedermayer, 2010 James Darnley (FFmpeg);
 C# port (C) 2026 Jakob Boman.
