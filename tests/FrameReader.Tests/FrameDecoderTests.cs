@@ -697,6 +697,115 @@ public class FrameDecoderTests
         }
     }
 
+    // CopyRows: the rows asked for, as GetPlane has them, at row * stride of the destination, nothing else written;
+    // with a row deinterlacer, only those rows computed (the deinterlacer's calls counted) and the same bytes as when
+    // every row is. Out-of-range rows and a destination too small are refused.
+    [Fact]
+    public void CopyRowsCopiesOnlyTheRowsAskedFor()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-rows-").FullName;
+        try
+        {
+            string path = Clip(dir, "interlaced.mkv", "-vf", "setfield=tff", "-pix_fmt", "yuv422p", "-flags", "+ilme+ildct", "-c:v", "mpeg2video", "-frames:v", "6");
+            int[] luma = [0, 1, 7, 100, 239], chroma = [3, 4, 200];
+            foreach (bool deinterlace in new[] { false, true })
+            {
+                var some = new Averaging();
+                var all = new Averaging();
+                using var rows = new FrameDecoder(path, new FrameDecoderOptions { Deinterlace = deinterlace, RowDeinterlacer = some });
+                using var planes = new FrameDecoder(path, new FrameDecoderOptions { Deinterlace = deinterlace, RowDeinterlacer = all });
+                Assert.Throws<InvalidOperationException>(() => rows.CopyRows(0, luma, new byte[320 * 240], 320));
+                int frames = 0;
+                while (rows.Next())
+                {
+                    Assert.True(planes.Next());
+                    frames++;
+                    int before = some.Rows;
+                    foreach (var (plane, wanted, width) in new[] { (0, luma, 320), (1, chroma, 160), (2, chroma, 160) })
+                    {
+                        const int Stride = 400;
+                        var dst = new byte[Stride * 240];
+                        Array.Fill(dst, (byte)0xA5);
+                        rows.CopyRows(plane, wanted, dst, Stride);
+                        var whole = planes.GetPlane(plane, out int stride);
+                        for (int y = 0; y < 240; y++)
+                        {
+                            var row = dst.AsSpan(y * Stride, Stride);
+                            if (wanted.Contains(y))
+                            {
+                                Assert.True(row[..width].SequenceEqual(whole.Slice(y * stride, width)), $"plane {plane}, row {y}");
+                                Assert.True(row[width..].ToArray().All(b => b == 0xA5));
+                            }
+                            else
+                            {
+                                Assert.True(row.ToArray().All(b => b == 0xA5), $"plane {plane}, row {y} written");
+                            }
+                        }
+                    }
+
+                    // Interpolated rows only among those asked for: at most the odd ones of 5 + 3 + 3 (top field first).
+                    Assert.InRange(some.Rows - before, deinterlace ? 1 : 0, deinterlace ? 6 : 0);
+                    Assert.Throws<ArgumentOutOfRangeException>(() => rows.CopyRows(0, [240], new byte[320 * 241], 320));
+                    Assert.Throws<ArgumentOutOfRangeException>(() => rows.CopyRows(1, [0], new byte[320], 159));
+                    Assert.Throws<ArgumentException>(() => rows.CopyRows(0, [2], new byte[320 * 2], 320));
+                }
+
+                Assert.Equal(6, frames);
+                Assert.False(planes.Next());
+                Assert.Equal(deinterlace ? 6 * (240 + 2 * 240) / 2 : 0, all.Rows);
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    /// <summary>A row deinterlacer of its own (the average of the rows above and below), counting the rows it writes.</summary>
+    sealed unsafe class Averaging : IRowDeinterlacer
+    {
+        public int Rows;
+
+        public void FilterRow(nint dst, nint prev, nint cur, nint next, int srcStride, int dstStride, int width, int height, int y, int bytesPerSample)
+        {
+            Interlocked.Increment(ref Rows);
+            byte* c = (byte*)cur, d = (byte*)dst + (long)y * dstStride;
+            byte* above = c + (long)Math.Max(y - 1, 0) * srcStride, below = c + (long)Math.Min(y + 1, height - 1) * srcStride;
+            for (int x = 0; x < width * bytesPerSample; x++)
+                d[x] = (byte)((above[x] + below[x] + 1) >> 1);
+        }
+    }
+
+    // Which codecs' decoders decode several frames at once (FFmpeg's frame threading), known before opening one, and
+    // an opened decoder with threads does so: h264 and HEVC yes; MPEG-2 (slice threads) and dav1d (threads of its own) no.
+    [Fact]
+    public void SaysWhichDecodersFrameThread()
+    {
+        if (Libs is null)
+            return;
+        Assert.True(FrameDecoder.HasFrameThreads("h264"));
+        Assert.True(FrameDecoder.HasFrameThreads("hevc"));
+        Assert.False(FrameDecoder.HasFrameThreads("mpeg2video"));
+        Assert.False(FrameDecoder.HasFrameThreads("av1"));
+        Assert.False(FrameDecoder.HasFrameThreads("no-such-codec"));
+        string dir = Directory.CreateTempSubdirectory("framereader-threads-").FullName;
+        try
+        {
+            string h264 = Clip(dir, "h264.mkv", "-c:v", "libx264", "-frames:v", "10");
+            string mpeg2 = Clip(dir, "mpeg2.mkv", "-c:v", "mpeg2video", "-frames:v", "10");
+            using (var decoder = new FrameDecoder(h264, new FrameDecoderOptions { Threads = 4 }))
+                Assert.True(decoder.FrameThreading);
+            using (var decoder = new FrameDecoder(mpeg2, new FrameDecoderOptions { Threads = 4 }))
+                Assert.False(decoder.FrameThreading);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void NoVideoIsInvalidInput()
     {

@@ -319,8 +319,10 @@ stream with its type, codec, codec tag, language, title, flags, bit rate, durati
 codec extradata; optionally every packet's timestamp, and the first video packet's bytes). `MediaProbe.ProbeJson(path)` gives ffprobe's `-print_format json -show_format
 -show_streams` instead: every field ffprobe prints (profile, level, aspect ratios, colour, disposition, tags, side
 data, ...), with ffprobe's keys and value types, unknown values left out as there; it opens each stream's decoder, as
-ffprobe does. **The advanced layer:** `FrameDecoder` is the lower level, decoded frames as FFmpeg holds them (`GetPlane`), with
-seeking, and each frame's own chroma location and colour tags (`ChromaLocation`, `ColorSpace`, `ColorRange`: the
+ffprobe does. **The advanced layer:** `FrameDecoder` is the lower level, decoded frames as FFmpeg holds them (`GetPlane`; or
+`CopyRows`, only the rows you read, which with a row deinterlacer are the only ones deinterlaced), with
+seeking, `HasFrameThreads(codec)` to tell whether a codec's decoder decodes several frames at once (where more threads
+than CPUs can pay), and each frame's own chroma location and colour tags (`ChromaLocation`, `ColorSpace`, `ColorRange`: the
 decoder's, where `VideoStreamInfo` gives a container's header, which can say otherwise). `BgrConverter` turns its current frame into BGR at its own size, the bytes `-vf scale,format=bgr24` gives
 (OpenCV's too); `Convert(rows, out stride)` converts only the slices holding the rows you read, for when you sample a
 few rows of each frame (ShotDetector reads its resize's rows this way).
