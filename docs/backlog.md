@@ -15,7 +15,23 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-19: on x86 one known, stats only: a video whose colour tags change midway, with FastYuv or, on a 10-bit siting change, the executable's default path (every cut exact; the per-frame-tags row in Maybe, the informational samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
+- FastYuv's row yadif with FastYuv's converter: compute and copy only the rows that are read
+  - Why: Profiled 2026-10-21 on main 77469b9 (4 vCPU, 150 s 1080i25 MPEG-2): `Yadif = new Yadif()` with `Yuv420Converter = new SwscaleYuv420()`, the pairing the FastYuv package offers, is slower than FFmpeg's whole-frame yadif (MXF 23.5 s against 24.0 s, and against 16.6 s for row yadif with the default converter; TS 16.0 against 13.1 s): `FrameWriter.WriteYuv` takes whole planes (`GetPlane` -> `EnsureRows(0, height)`), so every row is deinterlaced in managed code (26 s CPU) and copied. Compute and copy only the rows the resize reads plus the chroma rows the converter's filter taps read (from `SwscaleYuv420`'s taps, not a guessed margin), same buffer layout so `ResizeYuv` doesn't change; also drops the full-plane copy on 10-bit FastYuv (2.9 s CPU). Needs a public FrameReader way to compute selected rows, so a FrameReader release too. Results must stay byte-identical (the profile's configurations all matched)
+  - Status: Open
+
+- More decoder threads for frame-threaded decoders (h264, HEVC)
+  - Why: Profiled 2026-10-21: with h264 the four frame threads are 62-68% busy and frames in flight limit throughput; 8 decoder threads on 4 vCPUs gave 1.19-1.22x sequential and 1.10-1.21x parallel on 1080p h264 8- and 10-bit, same CPU time, +30-50 MB, byte-identical output. MPEG-2 (slice threads only) gains nothing. Rule in `DefaultDecodeThreads`/`ChunkThreads`: about 2x the CPUs when the codec has frame threading, which ShotDetector can't see today (a FrameReader property, e.g. from `AV_CODEC_CAP_FRAME_THREADS`, so a FrameReader release); check the memory at 4K against the parallel cap
+  - Status: Open
+
+- Decoding apart from conversion and deinterlacing (another thread)
+  - Why: Profiled 2026-10-21: one producer thread decodes, deinterlaces and converts in series; on MPEG-2 it is ~80% busy with ~35% of its time serial work while the slice threads idle, and the scoring thread is 85-90% idle. Handing reference-counted frames (`TakeFrame`) to a conversion thread, with row yadif's previous/current/next frames kept alive, should take sequential 1080i MXF from 16.6 s to about 11-12 s (decode-only floor ~10.5 s) and help 10-bit h264, where swscale is 88% of the producer. docs/frame-references.md describes K converter workers, which ShotDetector doesn't use yet, and names the obstacle (row-wise deinterlacing stays on the decoding thread). Medium; changes FrameDecoder; a decision record on the design first
+  - Status: Open (design to the owner first)
+
 ## Waiting
+
+- Parallel detection above 8 CPUs: more than 4 chunks and 16 decoder threads in total
+  - Why: `AutoChunks` = min(4, CPUs / 2, whole minutes) and `DefaultDecodeThreads` = min(CPUs, 16): on 16 CPUs 4 chunks of 4 threads, on 32 still 4 x 4. A chunk keeps about 1.5-1.75 cores busy (profiled on 4 vCPUs), so by that estimate half of 32 cores sit idle. Not measured: the weekly benchmark only runs on 4-vCPU runners, so measure first on a larger machine (the owner's 16-thread desktop, asked for, or a larger runner), then raise the caps if it pays; results stay identical (CI compares chunked with sequential)
+  - Status: Waiting (on a measurement above 8 CPUs)
 
 - At the next FrameReader release, count the commits touching both products again (docs/frame-reader-product.md, "When to reconsider")
   - Why: 2.8.0 counted 1 of 21, under 1 in 20 for the first time; the trigger needs two releases in a row over at least 20 counted commits, and then means asking the owner, not splitting. 2.9.0 counted 0 of 6, too few: its window joins the next release's
