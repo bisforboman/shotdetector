@@ -599,12 +599,14 @@ internal sealed partial class VideoReader
         // size and chroma location as well, and declines sizes it doesn't reproduce.
         _yuvForVideo = _pixelFormat switch
         {
-            "yuv420p" or "yuvj420p" => _yuv420?.ForColor(colorSpace, fullRange) is { } c420 ? new(c420.RowToBgr) : null,
-            "yuv422p" or "yuvj422p" => (_yuv420 as IYuv422Converter)?.ForColor(colorSpace, fullRange) is { } c422 ? new(c422.RowToBgr) : null,
+            "yuv420p" or "yuvj420p" => _yuv420?.ForColor(colorSpace, fullRange) is { } c420 ? new(c420.RowToBgr, ChromaRows: c420 as IYuvChromaRows) : null,
+            "yuv422p" or "yuvj422p" => (_yuv420 as IYuv422Converter)?.ForColor(colorSpace, fullRange) is { } c422
+                ? new(c422.RowToBgr, ChromaRows: c422 as IYuvChromaRows)
+                : null,
 
             // A frame at a time when the converter does that too (FastYuv's does): each chroma row filtered once per frame.
             "yuv420p10le" => (_yuv420 as IYuv420P10Converter)?.ForVideo(colorSpace, fullRange, _chromaLocation, _codedSize.W, _codedSize.H) is { } c10
-                ? new(c10.RowToBgr, c10 as IYuv420P10FrameConverter)
+                ? new(c10.RowToBgr, c10 as IYuv420P10FrameConverter, c10 as IYuvChromaRows)
                 : null,
             _ => null,
         };

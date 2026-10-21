@@ -61,14 +61,23 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, (int Width, int H
     /// <summary>
     /// The frame's yuv420p (or, with <paramref name="chroma422"/>, yuv422p; with <paramref name="bytesPerSample"/> 2,
     /// yuv420p10le) planes, packed (Y, then U, then V), as ffmpeg's rawvideo sends them. Not turned: the YUV pipelines
-    /// turn after converting (CvResize.ResizeYuv).
+    /// turn after converting (CvResize.ResizeYuv). With <paramref name="rows"/> (luma rows, then the chroma rows of U and
+    /// V), only those rows, where the whole frame would have them: the decoder computes no others (row-wise yadif); the
+    /// rest of <paramref name="dst"/> keeps what it had.
     /// </summary>
-    public void WriteYuv(byte[] dst, bool chroma422, int bytesPerSample = 1)
+    public void WriteYuv(byte[] dst, bool chroma422, int bytesPerSample = 1, (int[] Luma, int[] Chroma)? rows = null)
     {
         int w = _d.Width, h = _d.Height, cw = (w + 1) / 2, ch = chroma422 ? h : (h + 1) / 2, o = 0;
         for (int p = 0; p < 3; p++)
         {
             int pw = (p == 0 ? w : cw) * bytesPerSample, ph = p == 0 ? h : ch;
+            if (rows is { } r)
+            {
+                _d.CopyRows(p, p == 0 ? r.Luma : r.Chroma, dst.AsSpan(o, pw * ph), pw);
+                o += pw * ph;
+                continue;
+            }
+
             var plane = _d.GetPlane(p, out int stride);
             for (int y = 0; y < ph; y++, o += pw)
                 plane.Slice(y * stride, pw).CopyTo(dst.AsSpan(o));

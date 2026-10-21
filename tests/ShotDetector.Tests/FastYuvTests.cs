@@ -309,6 +309,119 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // In-process, only the rows the YUV pipelines read are taken from the decoder (FrameDecoder.CopyRows): the luma
+    // rows the resize converts and the chroma rows the converter says those read (IYuvChromaRows). Every other row of
+    // the frame overwritten with noise (in the pipelines: an earlier frame's rows) changes nothing, for each layout,
+    // size, turn, crop and output size; and those rows are fewer than the frame's where the resize skips some.
+    [Theory]
+    [InlineData("420", 64, 48, null)]
+    [InlineData("420", 37, 22, null)]
+    [InlineData("422", 64, 48, null)]
+    [InlineData("422", 37, 23, null)]
+    [InlineData("420p10", 64, 48, null)]
+    [InlineData("420p10", 70, 21, "left")]
+    [InlineData("420p10", 66, 34, "topleft")]
+    [InlineData("420p10", 62, 31, "top")]
+    [InlineData("420p10", 48, 30, "bottomleft")]
+    public void RowsOutsideTheRowsReadChangeNothing(string layout, int width, int height, string? chromaLocation)
+    {
+        bool chroma422 = layout == "422", tenBit = layout == "420p10";
+        int chromaHeight = chroma422 ? height : (height + 1) / 2, chromaWidth = (width + 1) / 2, bytes = tenBit ? 2 : 1;
+        var yuv = new byte[tenBit ? IYuv420P10Converter.FrameSize(width, height) : chroma422 ? IYuv422Converter.FrameSize(width, height) : IYuv420Converter.FrameSize(width, height)];
+        var random = new Random(width * height + layout.Length);
+        random.NextBytes(yuv);
+        if (tenBit)
+        {
+            var samples = MemoryMarshal.Cast<byte, ushort>(yuv.AsSpan());
+            for (int i = 0; i < samples.Length; i++)
+                samples[i] &= 1023;
+        }
+
+        var fast = new SwscaleYuv420();
+        YuvConversion conversion;
+        IYuvChromaRows chromaRows;
+        if (tenBit)
+        {
+            var c10 = (IYuv420P10FrameConverter)((IYuv420P10Converter)fast).ForVideo("bt709", false, chromaLocation, width, height)!;
+            (conversion, chromaRows) = (new YuvConversion(c10.RowToBgr, c10), (IYuvChromaRows)c10);
+        }
+        else if (chroma422)
+        {
+            var c422 = ((IYuv422Converter)fast).ForColor("bt709", false)!;
+            (conversion, chromaRows) = (new YuvConversion(c422.RowToBgr), (IYuvChromaRows)c422);
+        }
+        else
+        {
+            var c420 = fast.ForColor("bt709", false)!;
+            (conversion, chromaRows) = (new YuvConversion(c420.RowToBgr), (IYuvChromaRows)c420);
+        }
+
+        bool fewer = false;
+        foreach (int turn in new[] { 0, 90, 180, 270 })
+        {
+            int tw = turn is 90 or 270 ? height : width, th = turn is 90 or 270 ? width : height;
+            foreach (var (cropX, cropY, cw, ch) in new[] { (0, 0, tw, th), (3, 2, tw - 4, th - 3) })
+            {
+                foreach (var (dw, dh) in new[] { (7, 9), (Math.Max(cw / 3, 1), Math.Max(ch / 3, 1)), (cw * 2, ch + 5), (400, 380) })
+                {
+                    byte[] expected = new byte[dw * dh * 3], actual = new byte[dw * dh * 3];
+                    new CvResize(cw, ch, dw, dh).ResizeYuv(yuv, expected, conversion, width, height, turn, cropX, cropY);
+                    var resize = new CvResize(cw, ch, dw, dh);
+                    var (luma, chroma) = VideoReader.YuvRowsRead(resize, chromaRows, width, height, chroma422, turn, cropX, cropY);
+                    fewer |= luma.Length < height || chroma.Length < chromaHeight;
+
+                    // Noise everywhere but the rows read (the planes packed: Y, then U, then V).
+                    var poisoned = new byte[yuv.Length];
+                    random.NextBytes(poisoned);
+                    int lumaRow = width * bytes, chromaRow = chromaWidth * bytes, u = width * height * bytes, v = u + chromaWidth * chromaHeight * bytes;
+                    foreach (int y in luma)
+                        yuv.AsSpan(y * lumaRow, lumaRow).CopyTo(poisoned.AsSpan(y * lumaRow));
+                    foreach (int y in chroma)
+                    {
+                        yuv.AsSpan(u + y * chromaRow, chromaRow).CopyTo(poisoned.AsSpan(u + y * chromaRow));
+                        yuv.AsSpan(v + y * chromaRow, chromaRow).CopyTo(poisoned.AsSpan(v + y * chromaRow));
+                    }
+
+                    resize.ResizeYuv(poisoned, actual, conversion, width, height, turn, cropX, cropY);
+                    Assert.True(expected.AsSpan().SequenceEqual(actual), $"turn {turn}, crop ({cropX}, {cropY}), {dw}x{dh}");
+                }
+            }
+        }
+
+        Assert.True(fewer);
+    }
+
+    // A converter that doesn't say which chroma rows it reads (IYuvChromaRows) gets whole planes.
+    [Fact]
+    public void ConvertersThatDoNotSayWhichRowsGetWholePlanes()
+    {
+        var resize = new CvResize(320, 240, 32, 24);
+        var said = new VideoReader(clips.ThreeShots, new DetectionOptions { Yuv420Converter = new SwscaleYuv420() });
+        var unsaid = new VideoReader(clips.ThreeShots, new DetectionOptions { Yuv420Converter = new Unsaid() });
+        Assert.Equal(FramePipeline.Yuv420Sampled, unsaid.Pipeline);
+        Assert.NotNull(said.YuvRowsRead(resize));
+        Assert.Null(unsaid.YuvRowsRead(resize));
+    }
+
+    /// <summary>FastYuv's 4:2:0 converter, without saying which rows it reads.</summary>
+    sealed class Unsaid : IYuv420Converter
+    {
+        readonly SwscaleYuv420 _fast = new();
+
+        public IYuv420Converter? ForColor(string colorSpace, bool fullRange) => _fast.ForColor(colorSpace, fullRange) is { } c ? new Wrapped(c) : null;
+
+        public void RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow) =>
+            _fast.RowToBgr(yuv, width, height, y, cols, bgrRow);
+
+        sealed class Wrapped(IYuv420Converter converter) : IYuv420Converter
+        {
+            public IYuv420Converter? ForColor(string colorSpace, bool fullRange) => converter.ForColor(colorSpace, fullRange);
+
+            public void RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow) =>
+                converter.RowToBgr(yuv, width, height, y, cols, bgrRow);
+        }
+    }
+
     // Whole videos: with FastYuv, the frames the detectors see are the default path's, byte for byte (on x64), through
     // the ffmpeg executable and (with SHOTDETECTOR_FFMPEG_LIBS) in-process; and FastYuv is used where swscale's unscaled
     // converter is (even decoded height), the BGR path elsewhere. Lossless ffv1 copies of the test clip; turned by a

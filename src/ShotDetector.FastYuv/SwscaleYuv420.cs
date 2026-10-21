@@ -19,7 +19,7 @@ namespace ShotDetector.FastYuv;
 /// And 10-bit 4:2:0, yuv420p10le (<see cref="IYuv420P10Converter"/>): swscale scales that one (no unscaled converter),
 /// so the port follows x86's scaled path, its MMXEXT vertical scaler and output, for even widths.
 /// </summary>
-public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, IYuv420P10Converter
+public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, IYuv420P10Converter, IYuvChromaRows
 {
     /// <summary>ff_yuv2rgb_coeffs (crv, cbu, cgu, cgv), indexed by AVColorSpace.</summary>
     internal static readonly int[][] Coeffs =
@@ -127,6 +127,12 @@ public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, IYuv420P
     // Untagged 10-bit (BT.601, limited range, centred chroma), set up for the frame's size on first use.
     void IYuv420P10Converter.RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow) =>
         (_untagged10 ??= SwscaleYuv420P10.Untagged(width, height)).RowToBgr(yuv, width, height, y, cols, bgrRow);
+
+    /// <inheritdoc/>
+    // 8-bit: the one chroma row RowToBgr reads, y / 2 for 4:2:0 and y for 4:2:2 (no vertical interpolation). 10-bit
+    // conversions are ForVideo's, which say their own.
+    public (int First, int Count) ChromaRows(int width, int height, int chromaHeight, int y) =>
+        (chromaHeight == height ? y : y >> 1, 1);
 
     void RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int chromaHeight, int y, int chromaRow, ReadOnlySpan<int> cols, Span<byte> bgrRow)
     {
