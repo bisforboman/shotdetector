@@ -15,6 +15,14 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-19: on x86 one known, stats only: a video whose colour tags change midway, with FastYuv or, on a 10-bit siting change, the executable's default path (every cut exact; the per-frame-tags row in Maybe, the informational samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
+- Parallel detection: find why 2 chunks read the file about 4 times, not about 2
+  - Why: Measured for #452 (2026-10-21, 4 CPUs, synthetic 1080i MXF 2.4 GB and MPEG-TS 1.6 GB, `rchar`): sequential in-process detection reads a file 2.0 times (the packet-pts pre-scan, then decoding), parallel with 2 chunks 4.0 times. Since #431 a chunk's reader takes the outer reader's `ProbeResult` (ShotDetection.ScoreChunked: `video.Probed is { } probed ? new VideoReader(path, co, probed, ...)`), so the packet scan shouldn't repeat: find what does (Probed null in some case, the colour-tag read, the chunks' seeks reading from the start, overlap) and fix it. Parallel was 1.27x faster on the MXF and no faster on the TS, for twice the reads; it is the default from 4 CPUs
+  - Status: Open
+
+- FrameReader: the audio reader discards the streams it doesn't use
+  - Why: Measured for #452: `ffmpeg -vn` reads 13% of a 52 Mb/s MXF to convert its audio, `Audio.ConvertAsync` all of it (AudioReader sets no `AVDISCARD_ALL` on the video stream). Discard shouldn't change the decoded audio; check the output byte for byte against before and against ffmpeg's. Nothing to gain on MPEG-TS, where every packet is parsed
+  - Status: Open
+
 ## Waiting
 
 - macOS: sign and notarize the osx-arm64 binary, then perhaps a Homebrew tap
@@ -34,6 +42,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Open
 
 ## Maybe
+
+- Collect frame timestamps during decoding instead of a packet-pts pre-scan
+  - Why: Detection on a file reads it twice: `MediaProbe.Packets` over every packet (VideoReader's probe, `packets: !headersOnly && !Streaming`), then decoding. The pre-scan feeds the frame labels (`PacketOf`), the frame count (progress, chunk boundaries) and MPEG-PS timestamps; doing without it means getting those during the pass or later. Worth it for files larger than RAM on slow shares (a read costs size / throughput: 20 GB at 100 MB/s is 200 s); it would also make #452's shared audio-and-detection pass worth revisiting (closed 2026-10-21: starting both at the same time already shares the read today)
+  - Status: Maybe
 
 - FrameReader: rtsp listen mode needs `listen_timeout` with FFmpeg 8.1
   - Why: Found by #443's test: with `rtsp_flags=listen` and no `listen_timeout`, FFmpeg 8.1's default of -1 s reaches tcp as -1000 ms, out of range ("Numerical result out of range"), on the plain command line too. Say so in FrameReader's README (InputOptions), or pass a default when `rtsp_flags` asks to listen; check whether a later FFmpeg 8.x fixes it first
