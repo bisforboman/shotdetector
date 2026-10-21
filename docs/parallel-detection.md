@@ -72,13 +72,25 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
 - `ShotDetection.ScoreChunked`: chunks split evenly by the probe's frame count (not on keyframes: the exact seek starts
   anywhere), each on its own `VideoReader`, which takes the outer reader's probe (stream entries, every frame's pts, the
   Xvid IDCT; read-only, 2026-10-19) rather than probing the file again, with its share of the decoder threads (the remainder to the first chunks,
-  so 5 in 2 chunks are 3 and 2; with 0, FFmpeg's choice, the default count is shared out). Checked: every frame's
+  so 5 in 2 chunks are 3 and 2; with 0, FFmpeg's choice, the default count is shared out: for a frame-threaded
+  decoder up to 1080p, twice the CPUs at most 16, since 2026-10-21, below). Checked: every frame's
   position equals the probe's for its index, each chunk gives its frames, the overlap frame's score equals the next
   chunk's, every chunk's first frame has the first chunk's size, and nothing threw. Otherwise the file is read
   sequentially from the start (a real error comes from there), `DetectedVideo.Chunks` is 1 and
   `DetectedVideo.ChunkFallback` says why (also a `DetectionResult.Warnings` entry, which the CLI prints).
 - `AutoChunks`: half the CPUs, at most 4, each chunk at least a minute, never more chunks than the decoder threads
   the caller set (so none below 4 CPUs); `Auto` for frames up to 3840 x 2160 pixels, `Parallel` at any size.
+- Decoder threads for frame-threaded decoders (`FrameDecoder.HasFrameThreads`: FFmpeg's frame threading, h264, HEVC,
+  VP9, ProRes; not MPEG-2's slices or dav1d's own threads), 2026-10-21: a chunked run shares out twice the CPUs (at
+  most 16) instead of the CPUs for frames up to 1920 x 1080, so 2 chunks on 4 CPUs get 4 threads each, OpenCV's count
+  for one decoder, rather than 2 (`ChunkedDecodeThreads`). Such a decoder decodes a frame per thread at once and waits
+  on the frames in flight: profiled on 4 vCPUs, 2 frame threads per chunk kept each 62-68% busy. Measured on this
+  4-vCPU container, 150 s at 1080p25, min of 3 interleaved runs, adaptive with stats: h264 8-bit 16.8 s to 15.1 s
+  (1.11x), 10-bit 23.8 s to 19.5 s (1.22x), the same CPU time, ~30 MB more, identical scene and stats CSVs; MPEG-2
+  unchanged. At 3840 x 2160 it gained 1.09x for 125 MB more (398 to 523 MB: each thread holds 4K frames), so larger
+  frames keep the CPUs' count. A sequential run keeps OpenCV's count too
+  (docs/decisions/2026-10-11-decoder-threads-like-opencv.md: damaged files conceal like scenedetect's only with it),
+  although 8 threads there gave 1.19-1.22x on 1080p h264 as well.
 - Frame buffers (between a reader's decoding thread and the scoring): a sequential run's 8 shared out,
   `ChunkBuffers` = max(2, 8 / chunks), so 4 each in 2 chunks and 2 in 3 or 4 (2026-10-18; it was 8 each). Measured
   on this 4-CPU container, content detector, with and without stats, 3 interleaved rounds (the table below): CPU time
