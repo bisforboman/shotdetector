@@ -19,11 +19,11 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Profiled 2026-10-21: one producer thread decodes, deinterlaces and converts in series; on MPEG-2 it is ~80% busy with ~35% of its time serial work while the slice threads idle, and the scoring thread is 85-90% idle. Handing reference-counted frames (`TakeFrame`) to a conversion thread, with row yadif's previous/current/next frames kept alive, should take sequential 1080i MXF from 16.6 s to about 11-12 s (decode-only floor ~10.5 s) and help 10-bit h264, where swscale is 88% of the producer. docs/frame-references.md describes K converter workers, which ShotDetector doesn't use yet, and names the obstacle (row-wise deinterlacing stays on the decoding thread). Medium; changes FrameDecoder; a decision record on the design first
   - Status: Open (design to the owner first)
 
-## Waiting
+- Repeated runs on damaged files (samples/broken: truncated.ts, corrupt.mp4, corrupt.ts) give different scene or stats results at the same thread count
+  - Why: Find whether the decoder's frame or slice threads make concealment non-deterministic, whether scenedetect/OpenCV varies the same way across runs, and what "identical" should mean for damaged input. Measured 2026-10-21 (#461, 4 vCPUs, in-process, content with stats, 3 sequential runs each): truncated.ts gave 3 different results at 4 threads (on main too) and 2 at 8; corrupt.mp4 and corrupt.ts 3 different results at both 4 and 8; base.mp4, truncated.mp4, dup_pts.mkv and res_change.ts the same in every run at 4 and 8. CI's exact set includes truncated.ts
+  - Status: Open
 
-- More decoder threads in a sequential run for frame-threaded decoders
-  - Why: 8 threads on 4 vCPUs gave 1.19-1.22x on 1080p h264 sequential (2026-10-21 profile), same CPU, identical output on clean files; chunked runs got it in #461. Against docs/decisions/2026-10-11-decoder-threads-like-opencv.md (OpenCV's count, for damaged files' concealment): measured 4 vs 8 threads on samples/broken, the clean and truncated mp4, dup_pts and res_change gave identical results, truncated.ts and corrupt.* varied run to run at either count. The owner's call
-  - Status: Waiting (on the owner)
+## Waiting
 
 - Parallel detection above 8 CPUs: more than 4 chunks and 16 decoder threads in total
   - Why: `AutoChunks` = min(4, CPUs / 2, whole minutes) and `DefaultDecodeThreads` = min(CPUs, 16): on 16 CPUs 4 chunks of 4 threads, on 32 still 4 x 4. A chunk keeps about 1.5-1.75 cores busy (profiled on 4 vCPUs), so by that estimate half of 32 cores sit idle. Not measured: the weekly benchmark only runs on 4-vCPU runners, so measure first on a larger machine (the owner's 16-thread desktop, asked for, or a larger runner), then raise the caps if it pays; results stay identical (CI compares chunked with sequential)
