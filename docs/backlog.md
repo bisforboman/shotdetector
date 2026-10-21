@@ -17,10 +17,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 ## Waiting
 
-- macOS: sign and notarize the osx-arm64 binary, then perhaps a Homebrew tap
-  - Why: release.yml doesn't codesign or notarize it, so a copy downloaded in a browser is quarantined and Gatekeeper blocks it until the user clears it (`xattr -d com.apple.quarantine`); notarizing needs the owner's Apple Developer account (secrets in the `release` environment). A Homebrew tap (formula pointing at the release asset) would make `brew install` the macOS route
-  - Status: Waiting (notarizing waits on the owner's Apple Developer account; meanwhile README's "The release binaries" explains the quarantine and `xattr -dr com.apple.quarantine`, #446)
-
 - At the next FrameReader release, count the commits touching both products again (docs/frame-reader-product.md, "When to reconsider")
   - Why: 2.8.0 counted 1 of 21, under 1 in 20 for the first time; the trigger needs two releases in a row over at least 20 counted commits, and then means asking the owner, not splitting
   - Status: Waiting (on the next FrameReader release)
@@ -37,10 +33,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - Collect frame timestamps during decoding instead of a packet-pts pre-scan
   - Why: Detection on a file reads it twice: `MediaProbe.Packets` over every packet (VideoReader's probe, `packets: !headersOnly && !Streaming`), then decoding. The pre-scan feeds the frame labels (`PacketOf`), the frame count (progress, chunk boundaries) and MPEG-PS timestamps; doing without it means getting those during the pass or later. Worth it for files larger than RAM on slow shares (a read costs size / throughput: 20 GB at 100 MB/s is 200 s); it would also make #452's shared audio-and-detection pass worth revisiting (closed 2026-10-21: starting both at the same time already shares the read today)
-  - Status: Maybe
-
-- FrameReader: rtsp listen mode needs `listen_timeout` with FFmpeg 8.1
-  - Why: Found by #443's test: with `rtsp_flags=listen` and no `listen_timeout`, FFmpeg 8.1's default of -1 s reaches tcp as -1000 ms, out of range ("Numerical result out of range"), on the plain command line too. Say so in FrameReader's README (InputOptions), or pass a default when `rtsp_flags` asks to listen; check whether a later FFmpeg 8.x fixes it first
   - Status: Maybe
 
 - FastYuv: 10-bit 4:2:0 of odd width
