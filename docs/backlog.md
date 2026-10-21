@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-19: on x86 one known, stats only: a video whose colour tags change midway, with FastYuv or, on a 10-bit siting change, the executable's default path (every cut exact; the per-frame-tags row in Maybe, the informational samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- Parallel detection: find why 2 chunks read the file about 4 times, not about 2
-  - Why: Measured for #452 (2026-10-21, 4 CPUs, synthetic 1080i MXF 2.4 GB and MPEG-TS 1.6 GB, `rchar`): sequential in-process detection reads a file 2.0 times (the packet-pts pre-scan, then decoding), parallel with 2 chunks 4.0 times. Since #431 a chunk's reader takes the outer reader's `ProbeResult` (ShotDetection.ScoreChunked: `video.Probed is { } probed ? new VideoReader(path, co, probed, ...)`), so the packet scan shouldn't repeat: find what does (Probed null in some case, the colour-tag read, the chunks' seeks reading from the start, overlap) and fix it. Parallel was 1.27x faster on the MXF and no faster on the TS, for twice the reads; it is the default from 4 CPUs
-  - Status: Open
-
 ## Waiting
 
 - macOS: sign and notarize the osx-arm64 binary, then perhaps a Homebrew tap
