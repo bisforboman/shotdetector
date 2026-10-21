@@ -190,6 +190,21 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
     public void DecoderThreadsSharedOut(int threads, int chunks, int[] expected) =>
         Assert.Equal(expected, Enumerable.Range(0, chunks).Select(i => ShotDetection.ChunkThreads(threads, chunks, i)));
 
+    // The decoder threads a chunked run shares out unless the caller set some: a sequential run's (the CPUs, at most 16),
+    // or twice the CPUs, at most 16, for a frame-threaded decoder (h264, HEVC) with frames up to 1920 x 1080: each chunk
+    // then at most the CPUs' count.
+    [Theory]
+    [InlineData(4, false, 1920 * 1080, 4)]
+    [InlineData(4, true, 1920 * 1080, 8)]
+    [InlineData(4, true, 1920 * 1080 + 1, 4)]
+    [InlineData(4, true, 3840 * 2160, 4)]
+    [InlineData(6, true, 1280 * 720, 12)]
+    [InlineData(8, true, 1920 * 1080, 16)]
+    [InlineData(16, true, 1920 * 1080, 16)]
+    [InlineData(32, false, 1920 * 1080, 16)]
+    public void ChunkedRunsGiveFrameThreadedDecodersTwiceTheCpus(int cpus, bool frameThreads, long pixels, int expected) =>
+        Assert.Equal(expected, ShotDetection.ChunkedDecodeThreads(cpus, frameThreads, pixels));
+
     // A chunk's frame buffers: a sequential run's 8 shared out, at least 2 each (one decoding, one scored).
     [Theory]
     [InlineData(2, 4)]

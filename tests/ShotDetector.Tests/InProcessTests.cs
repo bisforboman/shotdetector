@@ -221,7 +221,8 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
     }
 
     // Row-wise yadif (FastYuv's Yadif) gives FFmpeg's yadif results: per-frame stats from the whole frames and from the
-    // sampled rows, from the start and after a seek, 8-bit 4:2:0 and 4:2:2, 10-bit 4:2:2, and with FastYuv.
+    // sampled rows, from the start and after a seek, 8-bit 4:2:0 and 4:2:2, 10-bit 4:2:2, and with FastYuv (only the rows
+    // its conversion reads deinterlaced: 4:2:0, 4:2:2, 10-bit 4:2:0, cropped).
     [Theory]
     [InlineData("420", "-pix_fmt yuv420p", "")]
     [InlineData("420-start", "-pix_fmt yuv420p", "start")]
@@ -233,6 +234,10 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
     [InlineData("bff", "-pix_fmt yuv420p -vf setfield=bff", "")]
     [InlineData("1080i-422", "-t 1 -vf scale=1920:1080,setfield=tff -pix_fmt yuv422p", "")] // sparse rows: 1080 lines sampled to 144
     [InlineData("1080i-420", "-t 1 -vf scale=1920:1080,setfield=tff -pix_fmt yuv420p", "")]
+    [InlineData("422-fastyuv", "-pix_fmt yuv422p", "fastyuv")]
+    [InlineData("420-10bit-fastyuv", "-pix_fmt yuv420p10le", "fastyuv")]
+    [InlineData("1080i-422-fastyuv", "-t 1 -vf scale=1920:1080,setfield=tff -pix_fmt yuv422p", "fastyuv")]
+    [InlineData("1080i-420-fastyuv-crop", "-t 1 -vf scale=1920:1080,setfield=tff -pix_fmt yuv420p", "fastyuv-crop")]
     public void RowWiseYadifEqualsFfmpegs(string name, string args, string variant)
     {
         if (Libs is null)
@@ -247,6 +252,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
                 "start" => options with { StartTime = "2.5" },
                 "full" => options with { FullFrames = true },
                 "fastyuv" => options with { Yuv420Converter = new SwscaleYuv420() },
+                "fastyuv-crop" => options with { Yuv420Converter = new SwscaleYuv420(), Crop = (101, 37, 1501, 899) },
                 _ => options,
             };
 

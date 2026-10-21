@@ -23,7 +23,7 @@ namespace ShotDetector.FastYuv;
 /// tables clip it. Even widths only (an odd width takes another path, full chroma interpolation, in C). A frame at a
 /// time (<see cref="IYuv420P10FrameConverter"/>), each chroma row is filtered horizontally once, as swscale does.
 /// </summary>
-internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter
+internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRows
 {
     /// <summary>av_chroma_location_enum_to_pos for ffprobe's chroma_location names (null: unspecified, so center).</summary>
     static readonly Dictionary<string, (int H, int V)> ChromaPositions = new()
@@ -146,6 +146,19 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter
     /// <inheritdoc/>
     public void RowToBgr(ReadOnlySpan<byte> yuv, int width, int height, int y, ReadOnlySpan<int> cols, Span<byte> bgrRow) =>
         Convert(yuv, width, height, [y], cols, bgrRow, packed: false);
+
+    /// <inheritdoc/>
+    // The vertical filter's taps for the row: as many chroma rows as the filter is long, from its position (SwscaleFilter
+    // keeps them inside the plane).
+    public (int First, int Count) ChromaRows(int width, int height, int chromaHeight, int y)
+    {
+        var plan = _plan;
+        if (plan.Width != width || plan.Height != height)
+            _plan = plan = Plan.For(width, height, _hChrPos, _vChrPos) ?? throw new ArgumentException($"FastYuv doesn't convert 10-bit 4:2:0 at {width}x{height}.");
+        if ((uint)y >= (uint)height)
+            throw new ArgumentOutOfRangeException(nameof(y));
+        return (plan.V.Pos[y], plan.V.Size);
+    }
 
     /// <inheritdoc/>
     public void FrameToBgr(ReadOnlySpan<byte> yuv, int width, int height, ReadOnlySpan<int> rows, ReadOnlySpan<int> cols, Span<byte> bgr) =>

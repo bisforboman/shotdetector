@@ -31,6 +31,35 @@ internal sealed partial class VideoReader
     /// <summary>On a YUV pipeline in-process: the frames that took the BGR conversion instead (another size or pixel format).</summary>
     internal int BgrFallbackFrames { get; private set; }
 
+    /// <summary>
+    /// The decoded frame's rows this video's YUV pipeline converts and the chroma rows converting them reads
+    /// (<see cref="YuvRowsRead(CvResize, IYuvChromaRows, int, int, bool, int, int, int)"/>); null when the converter
+    /// doesn't say which (<see cref="IYuvChromaRows"/>): whole planes then.
+    /// </summary>
+    internal (int[] Luma, int[] Chroma)? YuvRowsRead(CvResize resizer) => _yuvForVideo?.ChromaRows is { } chromaRows
+        ? YuvRowsRead(resizer, chromaRows, _codedSize.W, _codedSize.H, Pipeline == FramePipeline.Yuv422Sampled, Turn, CropRegion.X, CropRegion.Y)
+        : null;
+
+    /// <summary>
+    /// The rows of a <paramref name="width"/> × <paramref name="height"/> decoded frame that
+    /// <see cref="CvResize.ResizeYuv(byte[], byte[], YuvConversion, int, int, int, int, int)"/> reads (ascending): the
+    /// luma rows it converts, and the chroma rows (of U and V) converting those reads, as the converter gives them.
+    /// </summary>
+    internal static (int[] Luma, int[] Chroma) YuvRowsRead(CvResize resizer, IYuvChromaRows chromaRows, int width, int height, bool chroma422, int turn, int cropX, int cropY)
+    {
+        int chromaHeight = chroma422 ? height : (height + 1) / 2;
+        var luma = resizer.DecodedRows(width, height, turn, cropX, cropY);
+        var chroma = new SortedSet<int>();
+        foreach (int y in luma)
+        {
+            var (first, count) = chromaRows.ChromaRows(width, height, chromaHeight, y);
+            for (int c = first; c < first + count; c++)
+                chroma.Add(c);
+        }
+
+        return (luma, [.. chroma]);
+    }
+
     /// <summary>Frames(startFrame, count) decoded in-process: the same bytes per pipeline as the ffmpeg pipe, then the same resize.</summary>
     IEnumerable<byte[]> FramesInProcess(int startFrame, int? count, CancellationToken cancellationToken, int seekBack)
     {
@@ -52,6 +81,10 @@ internal sealed partial class VideoReader
         // was most of the decoding thread's work). Frames of a new size on the FastYuv path are resized on the decoding
         // thread, with its own CvResize, as each keeps row buffers.
         int[]? rows = resizer?.SourceRows.Select(r => r + CropRegion.Y).ToArray();
+
+        // The YUV pipelines: the decoded rows the conversion reads, when the converter says which chroma rows those are
+        // (FastYuv's do), so only they are copied (and, with row-wise yadif, deinterlaced); else whole planes.
+        var yuvRows = IsYuv(pipeline) ? YuvRowsRead(resizer!) : null;
         var decoderResizer = resizer is null ? null : new CvResize(CropRegion.Width, CropRegion.Height, Width, Height);
         var small = new byte[Width * Height * 3];
 
@@ -127,7 +160,10 @@ internal sealed partial class VideoReader
                     switch (bgr ? FramePipeline.SampledBgr : pipeline)
                     {
                         case FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled or FramePipeline.Yuv420P10Sampled:
-                            writer.WriteYuv(buffer, chroma422: pipeline == FramePipeline.Yuv422Sampled, bytesPerSample: pipeline == FramePipeline.Yuv420P10Sampled ? 2 : 1);
+                            writer.WriteYuv(buffer,
+                                chroma422: pipeline == FramePipeline.Yuv422Sampled,
+                                bytesPerSample: pipeline == FramePipeline.Yuv420P10Sampled ? 2 : 1,
+                                yuvRows);
                             break;
                         case FramePipeline.SampledBgr when bgr:
                             writer.WriteResized(buffer, decoderResizer!, rows!, (CropRegion.X, CropRegion.Y));

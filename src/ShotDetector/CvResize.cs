@@ -386,6 +386,18 @@ internal sealed class CvResize
         _ => (width - 1 - x, height - 1 - y),
     };
 
+    /// <summary>
+    /// The decoded frame's rows <see cref="ResizeYuv(byte[], byte[], YuvConversion, int, int, int, int, int)"/> converts
+    /// (ascending): <see cref="SourceRows"/> offset by the crop, or, turned, the rows under the pixels the resize reads.
+    /// </summary>
+    internal int[] DecodedRows(int width, int height, int turn, int cropX, int cropY) => turn == 0
+        ? SourceRows.Select(r => r + cropY).ToArray()
+        : TurnedPixels(width, height, turn, cropX, cropY).Select(p => p.Y).Distinct().Order().ToArray();
+
+    /// <summary>The decoded frame's pixels under the ones a turned frame's resize reads (ResizeYuvTurned).</summary>
+    IEnumerable<(int X, int Y)> TurnedPixels(int width, int height, int turn, int cropX, int cropY) =>
+        SourceRows.SelectMany(r => SourceCols.Select(x => TurnedSource(turn, x + cropX, r + cropY, width, height)));
+
     // ResizeYuvTurned's plan: the decoded frame's rows and columns under the pixels the resize reads, each one's index
     // among them (-1: not read), and the converted pixels at those rows and columns only (rows x columns x 3).
     (int Turn, int Width, int Height, int CropX, int CropY)? _turnedFor;
@@ -404,7 +416,7 @@ internal sealed class CvResize
         {
             // Turned, the resize reads rows cropY + SourceRows and columns cropX + SourceCols; under them in the decoded
             // frame, each a row or a column there.
-            var under = SourceRows.SelectMany(r => SourceCols.Select(x => TurnedSource(turn, x + cropX, r + cropY, width, height))).ToArray();
+            var under = TurnedPixels(width, height, turn, cropX, cropY).ToArray();
             _turnedRows = under.Select(p => p.Y).Distinct().Order().ToArray();
             _turnedCols = under.Select(p => p.X).Distinct().Order().ToArray();
             _turnedRowIndex = Index(_turnedRows, height);

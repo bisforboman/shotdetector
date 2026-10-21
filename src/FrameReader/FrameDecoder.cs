@@ -223,6 +223,25 @@ public sealed unsafe class FrameDecoder : IDisposable
         return desc != null && ffmpeg.avcodec_find_decoder(desc->id) != null;
     }
 
+    /// <summary>
+    /// Whether the decoder this class opens for the codec (ffprobe's codec_name) decodes several frames at once on its
+    /// threads (FFmpeg's frame threading: h264, HEVC, VP9, ProRes, ...), rather than only slices of one frame (MPEG-2) or
+    /// threads of its own (dav1d). Such a decoder is held up by the frames it may have in flight, one per thread, so
+    /// more threads than CPUs can pay. Known before opening, as <see cref="FrameDecoderOptions.Threads"/> must be.
+    /// </summary>
+    /// <param name="codec">The codec's FFmpeg name.</param>
+    public static bool HasFrameThreads(string codec)
+    {
+        var desc = ffmpeg.avcodec_descriptor_get_by_name(codec);
+        if (desc == null || !HasDecoder(codec))
+            return false;
+        var decoder = ffmpeg.avcodec_find_decoder(desc->id);
+        return decoder != null && (decoder->capabilities & ffmpeg.AV_CODEC_CAP_FRAME_THREADS) != 0;
+    }
+
+    /// <summary>Whether the opened decoder frame-threads (FFmpeg's active_thread_type): tests.</summary>
+    internal bool FrameThreading => (_dec->active_thread_type & ffmpeg.FF_THREAD_FRAME) != 0;
+
     /// <summary>Whether a rotation (ffprobe's, degrees) of this pixel format is one this decoder applies.</summary>
     /// <param name="rotation">The display rotation in degrees.</param>
     /// <param name="pixelFormat">FFmpeg's pixel format name.</param>
@@ -795,13 +814,68 @@ public sealed unsafe class FrameDecoder : IDisposable
         return Plane(_frame, plane, out stride);
     }
 
+    /// <summary>
+    /// Copies <paramref name="rows"/> of one plane of the current frame (as <see cref="GetPlane"/> numbers them) into
+    /// <paramref name="destination"/>: row r at <c>r * destinationStride</c>, the plane's width in bytes of it; the bytes
+    /// between are left alone. With row-wise deinterlacing (<see cref="FrameDecoderOptions.RowDeinterlacer"/>) only these
+    /// rows are computed, where <see cref="GetPlane"/> computes every row: for a reader that needs only some. Otherwise a
+    /// plain copy. Valid until the next <see cref="Next"/>.
+    /// </summary>
+    /// <param name="plane">The plane's index (0: luma or the packed pixels; 1, 2: chroma; 3: alpha).</param>
+    /// <param name="rows">The plane's rows to copy, in any order.</param>
+    /// <param name="destination">Where they go.</param>
+    /// <param name="destinationStride">Bytes from one row to the next in <paramref name="destination"/>, at least the plane's row width.</param>
+    public void CopyRows(int plane, ReadOnlySpan<int> rows, Span<byte> destination, int destinationStride)
+    {
+        if (!_started)
+            throw new InvalidOperationException("No frame yet: call Next first.");
+        var src = Plane(_frame, plane, out int stride);
+        int height = PlaneRows(_frame, plane), rowBytes = ffmpeg.av_image_get_linesize((AVPixelFormat)_frame->format, _frame->width, plane);
+        if (rowBytes <= 0)
+            throw new ArgumentOutOfRangeException(nameof(plane));
+        if (destinationStride < rowBytes)
+            throw new ArgumentOutOfRangeException(nameof(destinationStride), "Shorter than a row of the plane.");
+        foreach (int y in rows)
+        {
+            if ((uint)y >= (uint)height)
+                throw new ArgumentOutOfRangeException(nameof(rows), $"Row {y} isn't in the plane (0 to {height - 1}).");
+            if ((long)y * destinationStride + rowBytes > destination.Length)
+                throw new ArgumentException($"Row {y} doesn't fit the destination.", nameof(destination));
+        }
+
+        if (_rowMode == true && !_swapped)
+        {
+            // Only these rows (yadif's or the copied ones), in parallel batches as EnsureRows.
+            var done = _rRows![plane];
+            foreach (int y in rows)
+            {
+                if (!done[y])
+                {
+                    done[y] = true;
+                    _rPending.Add((plane, y));
+                }
+            }
+
+            ComputeRows();
+        }
+
+        foreach (int y in rows)
+            src.Slice(y * stride, rowBytes).CopyTo(destination.Slice(y * destinationStride, rowBytes));
+    }
+
+    /// <summary>The plane's height in rows: the frame's, or the subsampled chroma's.</summary>
+    static int PlaneRows(AVFrame* frame, int plane)
+    {
+        var desc = ffmpeg.av_pix_fmt_desc_get((AVPixelFormat)frame->format);
+        int shift = plane is 1 or 2 && desc != null ? desc->log2_chroma_h : 0;
+        return -((-frame->height) >> shift);
+    }
+
     internal static ReadOnlySpan<byte> Plane(AVFrame* frame, int plane, out int stride)
     {
         if (plane is < 0 or > 3 || frame->data[(uint)plane] == null)
             throw new ArgumentOutOfRangeException(nameof(plane));
-        var desc = ffmpeg.av_pix_fmt_desc_get((AVPixelFormat)frame->format);
-        int shift = plane is 1 or 2 && desc != null ? desc->log2_chroma_h : 0;
-        int rows = -((-frame->height) >> shift);
+        int rows = PlaneRows(frame, plane);
         stride = frame->linesize[(uint)plane];
         return new ReadOnlySpan<byte>(frame->data[(uint)plane], stride * rows);
     }

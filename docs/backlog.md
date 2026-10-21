@@ -15,17 +15,13 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-19: on x86 one known, stats only: a video whose colour tags change midway, with FastYuv or, on a 10-bit siting change, the executable's default path (every cut exact; the per-frame-tags row in Maybe, the informational samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- FastYuv's row yadif with FastYuv's converter: compute and copy only the rows that are read
-  - Why: Profiled 2026-10-21 on main 77469b9 (4 vCPU, 150 s 1080i25 MPEG-2): `Yadif = new Yadif()` with `Yuv420Converter = new SwscaleYuv420()`, the pairing the FastYuv package offers, is slower than FFmpeg's whole-frame yadif (MXF 23.5 s against 24.0 s, and against 16.6 s for row yadif with the default converter; TS 16.0 against 13.1 s): `FrameWriter.WriteYuv` takes whole planes (`GetPlane` -> `EnsureRows(0, height)`), so every row is deinterlaced in managed code (26 s CPU) and copied. Compute and copy only the rows the resize reads plus the chroma rows the converter's filter taps read (from `SwscaleYuv420`'s taps, not a guessed margin), same buffer layout so `ResizeYuv` doesn't change; also drops the full-plane copy on 10-bit FastYuv (2.9 s CPU). Needs a public FrameReader way to compute selected rows, so a FrameReader release too. Results must stay byte-identical (the profile's configurations all matched)
-  - Status: Open
-
-- More decoder threads for frame-threaded decoders (h264, HEVC)
-  - Why: Profiled 2026-10-21: with h264 the four frame threads are 62-68% busy and frames in flight limit throughput; 8 decoder threads on 4 vCPUs gave 1.19-1.22x sequential and 1.10-1.21x parallel on 1080p h264 8- and 10-bit, same CPU time, +30-50 MB, byte-identical output. MPEG-2 (slice threads only) gains nothing. Rule in `DefaultDecodeThreads`/`ChunkThreads`: about 2x the CPUs when the codec has frame threading, which ShotDetector can't see today (a FrameReader property, e.g. from `AV_CODEC_CAP_FRAME_THREADS`, so a FrameReader release); check the memory at 4K against the parallel cap
-  - Status: Open
-
 - Decoding apart from conversion and deinterlacing (another thread)
   - Why: Profiled 2026-10-21: one producer thread decodes, deinterlaces and converts in series; on MPEG-2 it is ~80% busy with ~35% of its time serial work while the slice threads idle, and the scoring thread is 85-90% idle. Handing reference-counted frames (`TakeFrame`) to a conversion thread, with row yadif's previous/current/next frames kept alive, should take sequential 1080i MXF from 16.6 s to about 11-12 s (decode-only floor ~10.5 s) and help 10-bit h264, where swscale is 88% of the producer. docs/frame-references.md describes K converter workers, which ShotDetector doesn't use yet, and names the obstacle (row-wise deinterlacing stays on the decoding thread). Medium; changes FrameDecoder; a decision record on the design first
   - Status: Open (design to the owner first)
+
+- Repeated runs on damaged files (samples/broken: truncated.ts, corrupt.mp4, corrupt.ts) give different scene or stats results at the same thread count
+  - Why: Find whether the decoder's frame or slice threads make concealment non-deterministic, whether scenedetect/OpenCV varies the same way across runs, and what "identical" should mean for damaged input. Measured 2026-10-21 (#461, 4 vCPUs, in-process, content with stats, 3 sequential runs each): truncated.ts gave 3 different results at 4 threads (on main too) and 2 at 8; corrupt.mp4 and corrupt.ts 3 different results at both 4 and 8; base.mp4, truncated.mp4, dup_pts.mkv and res_change.ts the same in every run at 4 and 8. CI's exact set includes truncated.ts
+  - Status: Open
 
 ## Waiting
 

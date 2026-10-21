@@ -386,7 +386,10 @@ public sealed record DetectionOptions
 
     /// <summary>
     /// Decoder threads; 0 = FFmpeg's choice. Null (the default) is OpenCV's: the CPUs available, at most 16. Damaged
-    /// video decodes like scenedetect's only with that count (concealment depends on it); clean video with any.
+    /// video decodes like scenedetect's only with that count (concealment depends on it); clean video with any. Read in
+    /// chunks (<see cref="Mode"/>), the count is shared out among the chunks: by default twice the CPUs (at most 16) for
+    /// a decoder that decodes several frames at once (h264, HEVC) with frames up to 1920 x 1080, so each chunk's decoder
+    /// has up to the CPUs' count.
     /// </summary>
     public int? DecodeThreads { get; init; }
 
@@ -1233,6 +1236,22 @@ public static class ShotDetection
         : null;
 
     /// <summary>
+    /// The decoder threads a chunked run shares out when the caller set none: a sequential run's
+    /// (<see cref="VideoReader.DefaultDecodeThreads"/>), or, for a decoder that decodes several frames at once
+    /// (<paramref name="frameThreads"/>: h264, HEVC, ...) and frames up to <see cref="MoreThreadsMaxPixels"/>, twice the
+    /// CPUs, at most 16. Such a decoder waits on the frames it has in flight, one per thread, and 2 chunks of 2 threads
+    /// on 4 CPUs left the cores idle: 2 of 4 decoded 150 s of 1080p h264 1.11x (8-bit) and 1.22x (10-bit) as fast in the
+    /// same CPU time, for 30 MB more (2026-10-21). Each chunk then has at most the CPUs' count, OpenCV's for its one
+    /// decoder. Slice-threaded decoders (MPEG-2) gain nothing; at 3840 x 2160 it was 1.09x for 125 MB more (each thread
+    /// holds 4K frames), so larger frames keep the sequential count.
+    /// </summary>
+    internal static int ChunkedDecodeThreads(int cpus, bool frameThreads, long pixels) =>
+        frameThreads && pixels <= MoreThreadsMaxPixels ? Math.Clamp(2 * cpus, 1, 16) : VideoReader.DefaultDecodeThreads(cpus);
+
+    /// <summary>The largest frame <see cref="ChunkedDecodeThreads"/> gives a frame-threaded decoder twice the CPUs for: 1920 x 1080.</summary>
+    internal const long MoreThreadsMaxPixels = 1920L * 1080;
+
+    /// <summary>
     /// A chunk's share of <paramref name="threads"/> decoder threads, the remainder going to the first chunks so none
     /// is lost (5 in 2 chunks: 3 and 2); at least 1 each.
     /// </summary>
@@ -1268,9 +1287,11 @@ public static class ShotDetection
         using var activity = Tracing.StartActivity("ShotDetection.ScoreChunked");
         int total = video.ExpectedFrames;
 
-        // The decoder threads shared out, so the total stays a sequential run's (FFmpeg's choice, 0, would give each
-        // chunk about one per CPU: the default count is shared out instead).
-        int threads = o.DecodeThreads is > 0 and var set ? set : VideoReader.DefaultDecodeThreads(Environment.ProcessorCount);
+        // The decoder threads shared out (FFmpeg's choice, 0, would give each chunk about one per CPU: the default count
+        // is shared out instead): a sequential run's, or twice that for a frame-threaded decoder (ChunkedDecodeThreads).
+        int threads = o.DecodeThreads is > 0 and var set
+            ? set
+            : ChunkedDecodeThreads(Environment.ProcessorCount, FrameReader.FrameDecoder.HasFrameThreads(video.Codec), (long)video.SourceWidth * video.SourceHeight);
         var metrics = new List<double?>[chunks, settings.Count];
         var overlap = new double?[chunks, settings.Count];
         var sizes = new (int, int)?[chunks];
