@@ -342,6 +342,10 @@ nothing per frame (frames are views of FFmpeg's buffers); the pipe readers alloc
 
 - Files, image sequence patterns (`frames/%04d.png`, with `InputOptions` `framerate`), and `Stream`s (headers first:
   mkv, webm, ts, mov or a faststart mp4).
+- An rtsp server's side: `InputOptions` `rtsp_flags` = `listen` waits for a publisher to push to the URL. FFmpeg 8.1's
+  own default `listen_timeout` (-1, wait forever) fails to open the input ("Numerical result out of range", on the
+  command line too), so FrameReader passes `listen_timeout` = `0`, the same wait without end, when you set none (your
+  own value is used as it is, in seconds; -1 fails as in FFmpeg). The options' `CancellationToken` stops the wait.
 - Deinterlacing (`FrameDecoderOptions.Deinterlace`, yadif as `-vf yadif`), the display matrix applied as ffmpeg's
   autorotate does, decoder threads.
 - Decoder options (`FrameDecoderOptions.CodecOptions`, as ffmpeg's before `-i`): `idct` = `simple` gives x86's

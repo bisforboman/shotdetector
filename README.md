@@ -70,9 +70,9 @@ Expand-Archive shotdetect-vX.Y.Z-win-x64.zip shotdetect
 .\shotdetect\shotdetect.exe -i video.mp4
 ```
 
-The macOS binary isn't notarized yet, so Gatekeeper blocks it and its libraries when the archive came through a
-browser (a "cannot be opened" or "not verified" message) until `xattr` clears the quarantine; `curl` downloads
-aren't quarantined.
+The macOS binary isn't notarized (that needs an Apple Developer account), so Gatekeeper blocks it and its libraries
+when the archive came through a browser (a "cannot be opened" or "not verified" message) until `xattr` clears the
+quarantine; `curl` downloads aren't quarantined.
 
 Put the folder on `PATH` to run `shotdetect` from anywhere; `shotdetect --version` says which release it is. Like
 the .NET tool, the binaries still need the ffmpeg and ffprobe executables (on `PATH`, or `--ffmpeg-dir`) for what
