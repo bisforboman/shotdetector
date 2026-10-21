@@ -35,7 +35,8 @@ the old rule 2.6.0 and 2.6.1 met the trigger on 8 commits in two days; the user'
 the sample and the tests (docs/decisions/2026-10-17-split-trigger-sample.md). 2.7.0 (with tests): 4 of 29 (the IDCT options, the MPEG-4
 probe's extradata and first packet, `BgrConverter.Size`, the CodecOptions guards), not met. 2.8.0: 1 of 21 (the
 InputOptions check, tested through ShotDetector), under 1 in 20 for the first time; the trigger needs two releases in a row. 2.9.0: 0 of 6 (the audio reader's
-discard, the rtsp listen default), fewer than 20 counted, so the window joins the next release's.
+discard, the rtsp listen default), fewer than 20 counted, so the window joins the next release's. 2.10.0: 0 of 4 (`CopyRows`,
+`HasFrameThreads`), 0 of 10 since 2.8.0, still fewer than 20: the window joins the next release's again.
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)

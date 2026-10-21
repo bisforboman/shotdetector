@@ -7,6 +7,20 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.10.0 – 2026-10-21
+
+Copy only the rows you need of a frame, and whether a decoder frame-threads.
+
+### New
+
+- `FrameDecoder.CopyRows(plane, rows, destination, destinationStride)`: copies only the rows you ask for of one plane
+  of the current frame. With a row deinterlacer (`FrameDecoderOptions.RowDeinterlacer`), only those rows are
+  deinterlaced, where `GetPlane` deinterlaces every row: for readers that use a few rows of each frame.
+- `FrameDecoder.HasFrameThreads(codec)`: whether the decoder FrameDecoder opens for a codec decodes several frames at
+  once on its threads (FFmpeg's frame threading: h264, HEVC, VP9, ProRes, ...; not MPEG-2's slice threads or dav1d's
+  own). Known before opening, so you can choose `FrameDecoderOptions.Threads` by it: such decoders can use more threads
+  than there are CPUs.
+
 ## 2.9.0 – 2026-10-21
 
 Audio reads skip the streams they don't use, and rtsp listen mode works without listen_timeout.
