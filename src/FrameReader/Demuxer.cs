@@ -70,6 +70,14 @@ internal static unsafe class Demuxer
         foreach (var (name, value) in inputOptions ?? new Dictionary<string, string>())
             ffmpeg.av_dict_set(&options, name, value, 0);
 
+        // rtsp's listen mode waits forever by default (listen_timeout -1 s), handed to tcp as -1000 ms, which FFmpeg 8.1
+        // tcp's option check refuses ("Numerical result out of range"): the input never opens. 0 is the same wait
+        // without end (tcp's poll stops only on the interrupt callback), so it stands in when the caller leaves it out.
+        bool listenTimeout = inputOptions != null && RtspListens(inputOptions)
+            && !inputOptions.Keys.Any(k => string.Equals(k, "listen_timeout", StringComparison.OrdinalIgnoreCase));
+        if (listenTimeout)
+            ffmpeg.av_dict_set(&options, "listen_timeout", "0", 0);
+
         // The URLs the input opens itself (an HLS playlist's segments, keys and variants) are checked too, unless the
         // caller turned the check off or named their own certificates (tls_verify=0 or ca_file in InputOptions, which
         // FFmpeg wouldn't pass on to them either). tls_verify=1 from the caller still gets the wrapper.
@@ -80,7 +88,7 @@ internal static unsafe class Demuxer
         }
 
         int ret = ffmpeg.avformat_open_input(&fmt, path, null, &options);
-        string? unused = ret >= 0 ? UnusedOption(options) : null;
+        string? unused = ret >= 0 ? UnusedOption(options, listenTimeout) : null;
         ffmpeg.av_dict_free(&options);
         if (ret < 0)
         {
@@ -113,19 +121,45 @@ internal static unsafe class Demuxer
     /// context all didn't take: a misspelt or unknown InputOptions name, which ffmpeg's command line refuses too. The
     /// names FrameReader sets on every input (scan_all_pmts, used by MPEG-TS only; tls_verify and ca_file, by TLS only)
     /// and their aliases are left over on most inputs, also when the caller sets them (tls_verify=0 for a plain file,
-    /// or for an http HLS playlist whose segments are https), so they never count.
+    /// or for an http HLS playlist whose segments are https), so they never count. Nor does the listen_timeout Open
+    /// added (<paramref name="ownListenTimeout"/>): with rtsp_flags on any other input, rtsp_flags is the name reported.
     /// </summary>
-    static string? UnusedOption(AVDictionary* options)
+    static string? UnusedOption(AVDictionary* options, bool ownListenTimeout)
     {
         AVDictionaryEntry* entry = null;
         while ((entry = ffmpeg.av_dict_get(options, "", entry, ffmpeg.AV_DICT_IGNORE_SUFFIX)) != null)
         {
             string key = Marshal.PtrToStringUTF8((nint)entry->key) ?? "";
-            if (!OwnOptions.Contains(key))
+            if (!OwnOptions.Contains(key) && !(ownListenTimeout && string.Equals(key, "listen_timeout", StringComparison.OrdinalIgnoreCase)))
                 return key;
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Whether InputOptions' rtsp_flags turn on listen, read as FFmpeg reads a flags value: names joined by + or -, a
+    /// leading one without a sign replacing the default (none), each + adding and - removing its flag.
+    /// </summary>
+    internal static bool RtspListens(IReadOnlyDictionary<string, string> inputOptions)
+    {
+        var flags = inputOptions.FirstOrDefault(o => string.Equals(o.Key, "rtsp_flags", StringComparison.OrdinalIgnoreCase)).Value;
+        if (flags is null)
+            return false;
+        bool listen = false;
+        int i = 0;
+        while (i < flags.Length)
+        {
+            char sign = flags[i] is '+' or '-' ? flags[i++] : '+';
+            int end = flags.IndexOfAny(['+', '-'], i);
+            if (end < 0)
+                end = flags.Length;
+            if (flags.AsSpan(i, end - i).Trim().Equals("listen", StringComparison.Ordinal))
+                listen = sign == '+';
+            i = end;
+        }
+
+        return listen;
     }
 
     // FrameReader's defaults (Open) and the TLS options' aliases; av_dict matches names ignoring case.

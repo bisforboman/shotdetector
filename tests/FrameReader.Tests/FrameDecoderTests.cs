@@ -459,9 +459,10 @@ public class FrameDecoderTests
 
     // An rtsp input goes through the InputOptions check like any other: ShotDetector's options for an rtsp URL (the
     // protocol_whitelist VideoReader.InputOptions passes) and rtsp's own (rtsp_transport) open it, a misspelt name
-    // doesn't. The reader listens for a publisher (rtsp_flags=listen, rtsp options too, with listen_timeout: FFmpeg 8.1
-    // refuses its own default, -1 s passed on to tcp as -1000 ms) and ffmpeg pushes a clip to it. The check runs once
-    // the input is open, after the publisher's ANNOUNCE, so the misspelt name needs a publisher too.
+    // doesn't. The reader listens for a publisher (rtsp_flags=listen, rtsp options too) and ffmpeg pushes a clip to it,
+    // without listen_timeout (FFmpeg 8.1 refuses its own default, -1 s passed on to tcp as -1000 ms: FrameReader passes
+    // 0, the same wait without end) and with one. The check runs once the input is open, after the publisher's
+    // ANNOUNCE, so the misspelt name needs a publisher too.
     [Fact]
     public void RtspInputOptionsAreChecked()
     {
@@ -476,15 +477,9 @@ public class FrameDecoderTests
                 ["protocol_whitelist"] = "rtsp,rtsps,rtp,srtp,udp,tcp,tls",
                 ["rtsp_transport"] = "tcp",
                 ["rtsp_flags"] = "listen",
-                ["listen_timeout"] = "30",
             };
-            Assert.Equal(50, Published(clip, options, decoder =>
-            {
-                int n = 0;
-                while (decoder.Next())
-                    n++;
-                return n;
-            }));
+            Assert.Equal(50, Published(clip, options, Count));
+            Assert.Equal(50, Published(clip, new Dictionary<string, string>(options) { ["listen_timeout"] = "30" }, Count));
 
             var misspelt = new Dictionary<string, string>(options) { ["rtsp_transprot"] = "tcp" };
             var e = Assert.Throws<ArgumentException>(() => Published(clip, misspelt, _ => 0));
@@ -494,6 +489,14 @@ public class FrameDecoderTests
         finally
         {
             Directory.Delete(dir, true);
+        }
+
+        static int Count(FrameDecoder decoder)
+        {
+            int n = 0;
+            while (decoder.Next())
+                n++;
+            return n;
         }
 
         // What read returns from a FrameDecoder listening on a free port while ffmpeg publishes the clip there. A pusher
@@ -537,6 +540,18 @@ public class FrameDecoderTests
             }
         }
     }
+
+    // rtsp_flags as FFmpeg reads a flags value: the default listen_timeout goes only where listen ends up on.
+    [Theory]
+    [InlineData("listen", true)]
+    [InlineData("+listen", true)]
+    [InlineData("prefer_tcp+listen", true)]
+    [InlineData("listen-listen", false)]
+    [InlineData("-listen", false)]
+    [InlineData("prefer_tcp", false)]
+    [InlineData("listening", false)]
+    public void RtspListensReadsTheFlags(string flags, bool listens) =>
+        Assert.Equal(listens, Demuxer.RtspListens(new Dictionary<string, string> { ["RTSP_FLAGS"] = flags }));
 
     /// <summary>A clip over https (TLS on a TcpListener) with a self-signed certificate for localhost; byte ranges too.</summary>
     sealed class SelfSignedHttpsServer : IDisposable
