@@ -25,7 +25,7 @@
     <!-- Each product's API guard (SDK package validation): packing fails on a breaking change against its last stable
          version on nuget.org (docs/decisions/, 2026-10-08). -->
     <ApiBaselineVersion>3.11.0</ApiBaselineVersion>
-    <FrameReaderApiBaselineVersion>2.8.0</FrameReaderApiBaselineVersion>
+    <FrameReaderApiBaselineVersion>2.9.0</FrameReaderApiBaselineVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="StyleBro.Analyzers" PrivateAssets="all" />
