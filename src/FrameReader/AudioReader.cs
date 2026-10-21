@@ -19,6 +19,9 @@ public sealed record AudioReaderOptions
     /// or the read ends with an error); none by default.
     /// </summary>
     public CancellationToken CancellationToken { get; init; }
+
+    /// <summary>Whether the demuxer skips the streams other than the audio one (as ffmpeg's <c>-vn</c>); off only in tests, to compare.</summary>
+    internal bool DiscardOtherStreams { get; init; } = true;
 }
 
 /// <summary>Decoded, converted audio: valid until the next read from its <see cref="AudioReader"/>.</summary>
@@ -61,6 +64,7 @@ public sealed unsafe class AudioReader : IDisposable
     SwrContext* _swr;
     readonly int _stream, _outRate, _outChannels;
     readonly AVRational _timeBase;
+    readonly bool _discards;
     float[] _out = [];
     bool _draining, _decoderDone, _flushed;
     long _trimFrom = long.MinValue; // after a seek: input samples before this (in 1/sample_rate units, shifted) are dropped
@@ -102,6 +106,11 @@ public sealed unsafe class AudioReader : IDisposable
             if (_stream < 0 || codec == null)
                 throw new FrameReaderException(FrameReaderError.InvalidInput, "The input has no audio stream that these FFmpeg libraries decode.");
             var st = _fmt->streams[_stream];
+
+            // The demuxer skips the other streams' packets (where it can, without reading them: MP4, MXF), as ffmpeg's
+            // command line does with every stream no output uses. Start time and duration were read before this.
+            _discards = o.DiscardOtherStreams;
+            Discard(AVDiscard.AVDISCARD_ALL);
             _timeBase = st->time_base;
             _dec = ffmpeg.avcodec_alloc_context3(codec);
             Check(ffmpeg.avcodec_parameters_to_context(_dec, st->codecpar), "decoder parameters");
@@ -164,7 +173,11 @@ public sealed unsafe class AudioReader : IDisposable
 
         // Like ffmpeg, a seek that fails (a Stream: not seekable) only warns; decoding goes on from where it is, and the
         // trim below still starts at the time.
+        // With every stream wanted, as ffmpeg seeks before it discards the ones it doesn't use: the seek picks its
+        // reference stream (video, for its index or cues) among the streams not discarded.
+        Discard(AVDiscard.AVDISCARD_DEFAULT);
         ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, seekTo, seekTo, 0);
+        Discard(AVDiscard.AVDISCARD_ALL);
         ffmpeg.avcodec_flush_buffers(_dec);
         ffmpeg.swr_close(_swr);
         Check(ffmpeg.swr_init(_swr), "resampler");
@@ -320,6 +333,18 @@ public sealed unsafe class AudioReader : IDisposable
 
     /// <summary>Where <see cref="TryDecode"/>'s positions count from, on <see cref="AudioChunk.Time"/>'s timeline.</summary>
     internal TimeSpan Origin => TimeSpan.FromTicks((_start - (_fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : _fmt->start_time)) * 10);
+
+    /// <summary>Sets every stream's discard but the audio stream's (which keeps the default).</summary>
+    void Discard(AVDiscard discard)
+    {
+        if (!_discards)
+            return;
+        for (int i = 0; i < _fmt->nb_streams; i++)
+        {
+            if (i != _stream)
+                _fmt->streams[i]->discard = discard;
+        }
+    }
 
     int Convert(byte** data, int samples, int skip, int format, int channels)
     {

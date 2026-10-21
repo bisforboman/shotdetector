@@ -19,10 +19,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Measured for #452 (2026-10-21, 4 CPUs, synthetic 1080i MXF 2.4 GB and MPEG-TS 1.6 GB, `rchar`): sequential in-process detection reads a file 2.0 times (the packet-pts pre-scan, then decoding), parallel with 2 chunks 4.0 times. Since #431 a chunk's reader takes the outer reader's `ProbeResult` (ShotDetection.ScoreChunked: `video.Probed is { } probed ? new VideoReader(path, co, probed, ...)`), so the packet scan shouldn't repeat: find what does (Probed null in some case, the colour-tag read, the chunks' seeks reading from the start, overlap) and fix it. Parallel was 1.27x faster on the MXF and no faster on the TS, for twice the reads; it is the default from 4 CPUs
   - Status: Open
 
-- FrameReader: the audio reader discards the streams it doesn't use
-  - Why: Measured for #452: `ffmpeg -vn` reads 13% of a 52 Mb/s MXF to convert its audio, `Audio.ConvertAsync` all of it (AudioReader sets no `AVDISCARD_ALL` on the video stream). Discard shouldn't change the decoded audio; check the output byte for byte against before and against ffmpeg's. Nothing to gain on MPEG-TS, where every packet is parsed
-  - Status: Open
-
 ## Waiting
 
 - macOS: sign and notarize the osx-arm64 binary, then perhaps a Homebrew tap
