@@ -43,6 +43,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 ## Maybe
 
+- An opt-in fast mode that doesn't promise scenedetect's results: measure first
+  - Why: The 2026-10-21 profile put 45-87% of CPU in decoding and up to 40% in deinterlacing (1080i), with scenedetect's own maths at a few percent, so exactness costs most where every full frame must be decoded and deinterlaced. Candidates, each changing some output: FFmpeg's `lowres` decoding at 1/2 or 1/4 size (MPEG-1/2, MPEG-4 Part 2, MJPEG: broadcast MPEG-2 above all), skipping h264's deblocking (`skip_loop_filter`), one field instead of deinterlacing on 1080i, scoring on YUV or luma without BGR/HSV. Measure on real broadcast files (MXF/TS MPEG-2, h264): the speed-up and how many cuts move against the exact run, before deciding whether a mode is worth having. The default stays exact (the owner, 2026-10-22: "Maybe row, measure first"); any mode would be opt-in with its deviations documented
+  - Status: Maybe
+
 - Collect frame timestamps during decoding instead of a packet-pts pre-scan
   - Why: Detection on a file reads it twice: `MediaProbe.Packets` over every packet (VideoReader's probe, `packets: !headersOnly && !Streaming`), then decoding. The pre-scan feeds the frame labels (`PacketOf`), the frame count (progress, chunk boundaries) and MPEG-PS timestamps; doing without it means getting those during the pass or later. Worth it for files larger than RAM on slow shares (a read costs size / throughput: 20 GB at 100 MB/s is 200 s); it would also make #452's shared audio-and-detection pass worth revisiting (closed 2026-10-21: starting both at the same time already shares the read today)
   - Status: Maybe
