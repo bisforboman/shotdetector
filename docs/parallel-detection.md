@@ -111,6 +111,14 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
   | 3840x2160 | FastYuv | 366 MB | 553 / 458 MB | 868 / 583 MB |
 
   Peak RSS, medians of 3; with stats the same within a few MB.
+- A conversion thread (2026-10-22, docs/decisions/2026-10-22-decode-split.md): read sequentially in-process (a file,
+  a stream or a URL), video of at least 1280 x 720's pixels (the coded size, so portrait HD counts and 1280 x 534 scope
+  doesn't) converts its frames on a thread of its own: the decoding thread takes each decoded frame (a reference, not a
+  copy) and hands it over (`VideoReader.DefaultConvertThreads`; `DetectionOptions.ConvertThreads` and the hidden
+  `--convert-threads N` override it). Measured on 4 vCPUs: 1.09-1.20x on 1080i and 1080p sequentially, the same CPU time,
+  1-23 MB more memory, identical results. A parallel run's chunks convert on their decoding threads (`ChunkOptions`): the
+  chunks keep the cores busy already (1.00-1.07x there). Not with FastYuv's row-wise yadif (taking a frame would
+  deinterlace every row) nor on the executable path.
 - Sequential, always: streams and URLs, the executable path, MPEG-PS without packet pts, a time range, frame skip.
   Progress counts all chunks' frames; a fallback starts it over. When `Parallel` was asked for (`--parallel`,
   `--chunks`) and the file is read sequentially all the same, a warning says why: one of those, fewer than 4 CPUs,

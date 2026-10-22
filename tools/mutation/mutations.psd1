@@ -88,10 +88,14 @@
         # so FastYuv leaves it to the exact conversion (in-process per frame; the executable reads again on BGR)
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '&& writer.PixelFormat == _pixelFormat);'; Replace = ');'; Tests = 'InProcessTests.PixelFormatChangeTakesTheExactConversion' }
 
-        # Converting apart from decoding (ConvertThreads): off by default, never with row-wise yadif (taking a frame would
-        # deinterlace all its rows), and a taken frame's YUV rows where the decoder's CopyRows puts them
-        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'bool convertApart = _convertThreads > 0 && !(_deinterlace && _yadif is not null);'; Replace = 'bool convertApart = _convertThreads > 0;'; Tests = 'InProcessTests.ConvertThreadGivesTheSameFrames' }
-        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'internal int ConvertThreads { get; init; }'; Replace = 'internal int ConvertThreads { get; init; } = 1;'; Tests = 'InProcessTests.ConvertsOnTheDecodingThreadByDefault' }
+        # Converting apart from decoding (ConvertThreads): by default for HD read sequentially (at least 1280 x 720's
+        # pixels; not a parallel run's chunks), never with row-wise yadif (taking a frame would deinterlace all its rows),
+        # and a taken frame's YUV rows where the decoder's CopyRows puts them
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'bool convertApart = convertThreads > 0 && !(_deinterlace && _yadif is not null);'; Replace = 'bool convertApart = convertThreads > 0;'; Tests = 'InProcessTests.ConvertThreadGivesTheSameFrames' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'int convertThreads = _convertThreads ?? DefaultConvertThreads(_codedSize.W, _codedSize.H);'; Replace = 'int convertThreads = _convertThreads ?? 0;'; Tests = 'InProcessTests.HdConvertsOnAThreadOfItsOwnByDefault' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'internal int? ConvertThreads { get; init; }'; Replace = 'internal int? ConvertThreads { get; init; } = 1;'; Tests = 'InProcessTests.SmallVideoConvertsOnTheDecodingThreadByDefault' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'internal const long ConvertThreadMinPixels = 1280L * 720;'; Replace = 'internal const long ConvertThreadMinPixels = 1280L * 721;'; Tests = 'InProcessTests.DefaultConvertThreadsFromHd' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'ConvertThreads = o.ConvertThreads ?? 0 };'; Replace = 'ConvertThreads = o.ConvertThreads };'; Tests = 'InProcessTests.ChunksConvertOnTheirDecodingThreadsByDefault' }
         @{ File = 'src/ShotDetector/FrameWriter.cs'; Find = 'src.Slice(y * s, pw).CopyTo(dst.AsSpan(o + (y * pw), pw));'; Replace = 'src.Slice(y * s, pw).CopyTo(dst.AsSpan(o, pw));'; Tests = 'InProcessTests.ConvertThreadGivesTheSameFrames' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' || (format.Success && format.Groups[1].Value != _pixelFormat)'; Replace = ''; Tests = 'InProcessTests.PixelFormatChangeTakesTheExactConversion' }
         @{ File = 'src/ShotDetector/Stats.cs'; Find = 'if (!byPosition.TryGetValue(at.Key, out var merged))'; Replace = 'if (!byPosition.TryGetValue(at.Key, out var merged) || true)'; Tests = 'ThresholdDetectorTests.StatsAtTheSamePositionMergeKeyByKey' }

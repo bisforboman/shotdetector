@@ -853,16 +853,87 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
-    // The default converts on the decoding thread (ConvertThreads 0): the conversion thread is for measuring until it
-    // pays (docs/backlog.md).
+    // ConvertThreads unset, video smaller than HD converts on the decoding thread (a conversion thread gained 1.00-1.03x
+    // at 360p); set to 1, it converts apart (ConvertThreadStopsCleanly's first read).
     [Fact]
-    public void ConvertsOnTheDecodingThreadByDefault()
+    public void SmallVideoConvertsOnTheDecodingThreadByDefault()
     {
         if (Libs is null)
             return;
         var reader = new VideoReader(clips.ThreeShots, new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess });
         Assert.NotEmpty(reader.Frames());
         Assert.False(reader.ConvertedOnThread);
+    }
+
+    // The default's size rule: at least 1280 x 720's pixels, on the coded size, so portrait HD (or HD stored sideways
+    // with a rotation tag) counts and 1280 x 534 scope doesn't.
+    [Theory]
+    [InlineData(1280, 720, 1)]
+    [InlineData(720, 1280, 1)]
+    [InlineData(1920, 1080, 1)]
+    [InlineData(3840, 2160, 1)]
+    [InlineData(1279, 720, 0)]
+    [InlineData(1280, 534, 0)]
+    [InlineData(640, 360, 0)]
+    public void DefaultConvertThreadsFromHd(int width, int height, int expected) =>
+        Assert.Equal(expected, VideoReader.DefaultConvertThreads(width, height));
+
+    // A parallel run's chunks convert on their decoding threads unless ConvertThreads is set (the chunks keep the cores
+    // busy already); the options it doesn't touch are the run's.
+    [Fact]
+    public void ChunksConvertOnTheirDecodingThreadsByDefault()
+    {
+        var o = new DetectionOptions { Mode = DetectionMode.Parallel };
+        Assert.Null(o.ConvertThreads);
+        var chunk = ShotDetection.ChunkOptions(o, 8, 2, 0);
+        Assert.Equal(0, chunk.ConvertThreads);
+        Assert.Equal(4, chunk.DecodeThreads);
+        Assert.Equal(ShotDetection.ChunkBuffers(2), chunk.FrameBuffers);
+        Assert.Equal(1, ShotDetection.ChunkOptions(o with { ConvertThreads = 1 }, 8, 2, 1).ConvertThreads);
+        Assert.Equal(0, ShotDetection.ChunkOptions(o with { ConvertThreads = 0 }, 8, 2, 1).ConvertThreads);
+    }
+
+    // HD read sequentially converts on a thread of its own by default (ConvertThreads unset), a file and a stream alike,
+    // with the shots and stats of converting on the decoding thread; explicit 0 keeps it there, and row-wise yadif too.
+    [Fact]
+    public void HdConvertsOnAThreadOfItsOwnByDefault()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetector-convert-hd-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "hd.mkv");
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-t", "3", "-vf", "scale=1280:720", "-c:v", "ffv1", path], default);
+            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Mode = DetectionMode.Sequential };
+            Assert.Null(options.ConvertThreads);
+
+            var inline = ShotDetection.Detect(path, options with { ConvertThreads = 0 });
+            var byDefault = ShotDetection.Detect(path, options);
+            Assert.True(byDefault.Video.DecodedInProcess);
+            Assert.Equal(1280, byDefault.Video.Width);
+            Assert.False(inline.Video.Reader.ConvertedOnThread);
+            Assert.True(byDefault.Video.Reader.ConvertedOnThread);
+            Assert.NotEmpty(byDefault.Shots.Skip(1));
+            Assert.Equal(Shots.Csv(inline.Shots), Shots.Csv(byDefault.Shots));
+            Assert.Equal(inline.Stats!.Csv(inline.Video.Position), byDefault.Stats!.Csv(byDefault.Video.Position));
+
+            using (var stream = File.OpenRead(path))
+            {
+                var streamed = ShotDetection.Detect(stream, options);
+                Assert.True(streamed.Video.Streamed);
+                Assert.True(streamed.Video.Reader.ConvertedOnThread);
+                Assert.Equal(Shots.Csv(inline.Shots), Shots.Csv(streamed.Shots));
+            }
+
+            var rowYadif = new VideoReader(path, options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() });
+            Assert.NotEmpty(rowYadif.Frames());
+            Assert.False(rowYadif.ConvertedOnThread);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 
     // Converting on its own thread, the reader stops cleanly: the caller cancelling midway, the caller stopping early,
