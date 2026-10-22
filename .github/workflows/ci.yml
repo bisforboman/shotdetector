@@ -677,8 +677,10 @@ jobs:
 
       # Damaged files (tools/make-broken.py): concealment as OpenCV's decoder threads give it (the default thread count),
       # and two encodes joined, whose timestamps start over and whose resolution changes (frames labelled by time, cuts
-      # sorted, the new size scaled in one conversion, as scenedetect gets them). corrupt.mp4 still differs in a few
-      # stats cells (backlog), so not here.
+      # sorted, the new size scaled in one conversion, as scenedetect gets them). Corrupt data is best effort
+      # (docs/decisions/2026-10-22-damaged-files-best-effort.md): threaded decoders conceal it differently from run to
+      # run, in scenedetect as in ours, so corrupt.ts is informational and corrupt.mp4 isn't run. truncated.ts can vary
+      # in its last frame or two the same way; it hasn't on CI's sample, and if it ever does, make it informational.
       - name: Compare damaged files with scenedetect
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.2' && matrix.part == 'more')
         run: |

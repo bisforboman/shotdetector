@@ -380,12 +380,14 @@ less CPU); there its point is ARM, where it gives x86's results.
   frame, so scenedetect finds nothing (or a fade at frame 0) on interlaced MPEG-2, AVC-Intra or ProRes. ShotDetector
   analyses the real frames instead of reproducing that. With `DeinterlaceMode.On` or `Auto` the results equal
   scenedetect's on a deinterlaced copy, which OpenCV reads correctly (checked in CI on 1080i XDCAM HD).
-- **Damaged video:** when the decoder drops frames it can't decode, every frame still gets its own
-  time and frame number, as with OpenCV (numbers skip; identical to scenedetect on the damaged files
-  tested). Error concealment depends on the decoder's thread count, so ShotDetector uses OpenCV's (the CPUs,
-  at most 16): truncated files then match exactly. On corrupt data, concealment also depends on the threads'
-  timing, so scenedetect's stats and ours can vary a little from run to run (on Linux with 4 CPUs; cuts match);
-  on each corrupt file tested, one of our results was byte for byte one of scenedetect's. On a **resolution change**
+- **Damaged video (best effort):** when the decoder drops frames it can't decode, every frame still gets its own
+  time and frame number, as with OpenCV (numbers skip). Error concealment depends on the decoder's thread count, so
+  ShotDetector uses OpenCV's (the CPUs, at most 16). With several threads, FFmpeg's decoders also conceal damage
+  differently from run to run, in scenedetect as in ShotDetector, so on corrupt files the stats and sometimes a cut
+  can vary between runs of either tool, and a truncated stream can vary in its last frame or two.
+  `--threads 1` (`DetectionOptions.DecodeThreads = 1`) gives reproducible results, identical in-process and through
+  the ffmpeg executable, though not necessarily scenedetect's (OpenCV numbers frames differently with one thread).
+  docs/decisions/2026-10-22-damaged-files-best-effort.md has the measurement. On a **resolution change**
   mid-stream (two encodes joined), OpenCV scales the new frames to the stream's first size in its one conversion, and scenedetect
   numbers frames by their time, so where the timestamps start over its frame numbers do too: later frames overwrite
   earlier stats rows metric by metric (except the threshold detector's average, which scenedetect keeps and also
