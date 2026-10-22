@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-19: on x86 one known, stats only: a video whose colour tags change midway, with FastYuv or, on a 10-bit siting change, the executable's default path (every cut exact; the per-frame-tags row in Maybe, the informational samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- Decoding apart from conversion and deinterlacing (another thread)
-  - Why: Profiled 2026-10-21: one producer thread decodes, deinterlaces and converts in series; on MPEG-2 it is ~80% busy with ~35% of its time serial work while the slice threads idle, and the scoring thread is 85-90% idle. Handing reference-counted frames (`TakeFrame`) to a conversion thread, with row yadif's previous/current/next frames kept alive, should take sequential 1080i MXF from 16.6 s to about 11-12 s (decode-only floor ~10.5 s) and help 10-bit h264, where swscale is 88% of the producer. docs/frame-references.md describes K converter workers, which ShotDetector doesn't use yet, and names the obstacle (row-wise deinterlacing stays on the decoding thread). Medium; a decision record on the design first (docs/decisions/2026-10-22-decode-split.md)
-  - Status: Open: C done (#471, `ConvertThreads`, hidden `--convert-threads 1`, default off): one conversion thread taking refcounted frames where the decoder isn't in row-yadif mode, byte-identical. Measured 2026-10-22 on 4 vCPUs (min of 3, CLI with stats, FFmpeg's yadif for interlaced): sequential 1080i MXF 4:2:2 36.2 -> 33.1 s (1.09x), 1080i TS 4:2:0 27.4 -> 23.6 s (1.16x), 1080p h264 20.3 -> 18.5 s (1.10x), 1080p 10-bit h264 30.3 -> 25.2 s (1.20x); parallel 1.00-1.07x; 360p 1.00-1.03x; 2 CPUs (taskset) 1.06-1.13x on HD; CPU time the same, RSS 1-23 MB more. Row-yadif runs (FastYuv's Yadif) are unchanged. To decide: turning K=1 on (e.g. for sequential runs of HD), and B (FrameReader deferred take for row yadif, then K workers)
-
 ## Waiting
 
 - Parallel detection above 8 CPUs: more than 4 chunks and 16 decoder threads in total
@@ -42,6 +38,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Waiting (on .NET 11's release)
 
 ## Maybe
+
+- Option B: a FrameReader deferred take so FastYuv's row yadif converts off the decode thread
+  - Why: The conversion thread (C, on by default for sequential HD since 2026-10-22) can't serve row-wise yadif: taking a frame deinterlaces every row, so those runs still decode, deinterlace and convert on one thread. A deferred take that keeps yadif's previous, current and next frames referenced would let the conversion thread compute only the rows it reads, deinterlacing included (then K workers): expected 1080i MXF sequential with row yadif from ~16.6 s to about 12-13 s. Only for the library configuration with FastYuv's `Yadif` (the CLI deinterlaces with FFmpeg's yadif, which C already covers); parallel runs gain little (the chunks keep the cores busy). A FrameReader change (docs/decisions/2026-10-22-decode-split.md, docs/frame-references.md)
+  - Status: Maybe (the owner, 2026-10-22: parked)
 
 - The ffmpeg executable's seek with deinterlacing: land before the wanted frame
   - Why: Found 2026-10-22 (the TS chunk fallback): on interlaced MPEG-TS with `--deinterlace`, a seek for a keyframe's frame (a time range's start) lands on that frame itself, so yadif has no previous frame for it and its pixels differ from a full read's (RangeTests' interlaced-keyframe test fails with `VideoDecoder.FfmpegProcess`). The in-process path reads again from further back since then; the executable's select filter drops the frames before the wanted one unseen, so it would need another sign (a showinfo before the select, or always seeking a GOP further back with yadif). Only the executable decoder with deinterlacing and a start time or seek

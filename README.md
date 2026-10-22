@@ -314,7 +314,8 @@ How it keeps up while computing exactly what OpenCV and scenedetect compute:
 - only the pixels the exact `cv2.resize` port reads are converted to BGR (in-process, the row slices that hold
   them; with the executable, ffmpeg's `remap` filter keeps just those, or whole frames when that is cheaper);
 - the resize, BGR to HSV and the frame differences are vectorised (AVX2), with the same integer arithmetic;
-- decoding overlaps scoring, with all the CPUs (at most 16) as decoder threads, as OpenCV (`--threads` to change).
+- decoding overlaps scoring, with all the CPUs (at most 16) as decoder threads, as OpenCV (`--threads` to change);
+  HD video read sequentially in-process also converts its frames on a thread apart from the decoding one.
 
 **Parallel detection**, the default for `Detect` and the CLI from 4 CPUs on, scores a long local file in chunks on
 several cores at once (half the CPUs, at most 4 chunks, for files of two minutes or more), then runs the cut decisions

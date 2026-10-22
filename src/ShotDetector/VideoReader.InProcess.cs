@@ -34,6 +34,18 @@ internal sealed partial class VideoReader
     /// <summary>Whether the last in-process read converted on a thread of its own (<see cref="DetectionOptions.ConvertThreads"/>).</summary>
     internal bool ConvertedOnThread { get; private set; }
 
+    /// <summary>
+    /// The conversion threads when <see cref="DetectionOptions.ConvertThreads"/> is unset: 1 for frames of at least
+    /// 1280 x 720's pixels (HD, coded size, so 720 x 1280 portrait or stored sideways counts too; 1280 x 534 scope
+    /// doesn't), else 0. Sequential runs of HD gained 1.09-1.20x with the same CPU time and results, 360p 1.00-1.03x
+    /// (2026-10-22, docs/decisions/2026-10-22-decode-split.md).
+    /// </summary>
+    internal static int DefaultConvertThreads(int codedWidth, int codedHeight) =>
+        (long)codedWidth * codedHeight >= ConvertThreadMinPixels ? 1 : 0;
+
+    /// <summary>The fewest pixels per frame <see cref="DefaultConvertThreads"/> converts on a thread of its own for.</summary>
+    internal const long ConvertThreadMinPixels = 1280L * 720;
+
     /// <summary>The most bytes of decoded frames queued for the conversion thread (at least one frame, at most three).</summary>
     const long HandoffBytes = 32L << 20;
 
@@ -107,11 +119,12 @@ internal sealed partial class VideoReader
         double timeBase = 0;
         bool late = false;
 
-        // With ConvertThreads, converting runs on a thread of its own: the decoding thread takes each frame (a reference
-        // to its buffers, not a copy) and hands it over through a short queue (at most ~32 MB of frames, 1 to 3).
-        // Not with row-wise yadif: taking a frame deinterlaces all its rows, where the conversion computes only the rows
-        // it reads.
-        bool convertApart = _convertThreads > 0 && !(_deinterlace && _yadif is not null);
+        // With ConvertThreads (by default for HD: DefaultConvertThreads), converting runs on a thread of its own: the
+        // decoding thread takes each frame (a reference to its buffers, not a copy) and hands it over through a short
+        // queue (at most ~32 MB of frames, 1 to 3). Not with row-wise yadif: taking a frame deinterlaces all its rows,
+        // where the conversion computes only the rows it reads.
+        int convertThreads = _convertThreads ?? DefaultConvertThreads(_codedSize.W, _codedSize.H);
+        bool convertApart = convertThreads > 0 && !(_deinterlace && _yadif is not null);
         ConvertedOnThread = convertApart;
         long frameBytes = (long)_codedSize.W * _codedSize.H * 3 * (_pixelFormat.EndsWith("le", StringComparison.Ordinal) || _pixelFormat.EndsWith("be", StringComparison.Ordinal) ? 2 : 1);
         using var handoff = new BlockingCollection<FrameReader.DecodedFrame>((int)Math.Clamp(HandoffBytes / Math.Max(1, frameBytes), 1, 3));

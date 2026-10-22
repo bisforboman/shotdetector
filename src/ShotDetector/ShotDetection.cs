@@ -430,12 +430,14 @@ public sealed record DetectionOptions
     internal int FrameBuffers { get; init; } = 8;
 
     /// <summary>
-    /// Threads converting the in-process reader's frames apart from its decoding thread: 0 (the default) converts on
-    /// the decoding thread; 1 or more, on one conversion thread that takes the decoded frames (FrameDecoder.TakeFrame),
-    /// except with row-wise yadif (<see cref="Yadif"/>). Same frames either way (tests, timings, the CLI's hidden
-    /// --convert-threads).
+    /// Threads converting the in-process reader's frames apart from its decoding thread: 0 converts on the decoding
+    /// thread; 1 or more, on one conversion thread that takes the decoded frames (FrameDecoder.TakeFrame), except with
+    /// row-wise yadif (<see cref="Yadif"/>). Same frames either way. Unset (null), the reader picks
+    /// (<see cref="VideoReader.DefaultConvertThreads"/>): 1 for HD video read sequentially, files, streams and URLs
+    /// alike, 0 for smaller video; a parallel run's chunks convert on their decoding threads
+    /// (<see cref="ShotDetection.ChunkOptions"/>). Set for tests, timings and the CLI's hidden --convert-threads.
     /// </summary>
-    internal int ConvertThreads { get; init; }
+    internal int? ConvertThreads { get; init; }
 
     /// <summary><see cref="Mode"/> for a run: Auto is parallel, except when the shots are streamed.</summary>
     internal DetectionMode ResolvedMode(bool streaming) => Mode switch
@@ -1260,6 +1262,14 @@ public static class ShotDetection
     internal const long MoreThreadsMaxPixels = 1920L * 1080;
 
     /// <summary>
+    /// A chunk's reader's options: its share of the decoder threads and frame buffers, and its frames converted on its
+    /// decoding thread unless <see cref="DetectionOptions.ConvertThreads"/> is set (the chunks keep the cores busy
+    /// already: a conversion thread gained 1.00-1.07x there, 2026-10-22, docs/decisions/2026-10-22-decode-split.md).
+    /// </summary>
+    internal static DetectionOptions ChunkOptions(DetectionOptions o, int threads, int chunks, int chunk) =>
+        o with { DecodeThreads = ChunkThreads(threads, chunks, chunk), FrameBuffers = ChunkBuffers(chunks), ConvertThreads = o.ConvertThreads ?? 0 };
+
+    /// <summary>
     /// A chunk's share of <paramref name="threads"/> decoder threads, the remainder going to the first chunks so none
     /// is lost (5 in 2 chunks: 3 and 2); at least 1 each.
     /// </summary>
@@ -1312,7 +1322,7 @@ public static class ShotDetection
         {
             int a = bounds[i], b = bounds[i + 1], from = Math.Max(0, a - 1), k = from;
             bool last = i == chunks - 1;
-            var co = o with { DecodeThreads = ChunkThreads(threads, chunks, i), FrameBuffers = ChunkBuffers(chunks) };
+            var co = ChunkOptions(o, threads, chunks, i);
             try
             {
                 var reader = video.Probed is { } probed ? new VideoReader(path, co, probed, stop.Token) : new VideoReader(path, co, stop.Token);
