@@ -122,7 +122,7 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
 
 Exactness, scene list and stats CSV byte for byte against sequential: all 35 samples and variants with 7 detector
 configurations at 5 chunks (245/245) and the two films at 4 and 8 chunks (28/28) identical. The two MPEG-TS variants
-fell back (their seek landed late; fixed in #316, since then they run in chunks); open GOPs (long GOP, MPEG-2, DivX),
+fell back (their seek landed late; fixed in #316, since then they run in chunks; a seek at a join of concatenated TS copies, landing under half a frame late, and an interlaced one landing on the wanted keyframe itself, fixed 2026-10-22: `tools/make-interlaced-ts.sh`); open GOPs (long GOP, MPEG-2, DivX),
 VFR and 0.7.1's frame labels needed nothing special.
 
 Speed, adaptive, median wall time (CPU time the same throughout):
