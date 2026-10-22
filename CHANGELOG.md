@@ -6,6 +6,19 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.13.0 – 2026-10-22
+
+Parallel detection of joined MPEG-TS no longer falls back, and HD video read sequentially converts on a second thread.
+
+### Faster
+
+- Sequential in-process detection of HD video (at least 1280 x 720's pixels; a file read without chunks, a stream or a URL) converts the decoded frames on a second thread, apart from decoding: 1.1-1.2x as fast in the measured cases (1080i and 1080p, 4 CPUs), with the same results and the same CPU time, for a little more memory. Parallel runs and smaller video are unchanged.
+
+### Fixed
+
+- Parallel detection no longer falls back to reading sequentially at a join of concatenated MPEG-TS copies (`ffmpeg -f concat -c copy`) where the next copy's first frame follows the last one by less than half a frame: the chunk's seek landed on that frame and took it for the wanted one.
+- Deinterlacing in-process (`--deinterlace`), a seek that landed on the wanted frame itself (a keyframe in an MPEG-TS) left the deinterlacer without the frame before it: a time range's first frame had other pixels than in a full read, and a parallel run fell back to reading sequentially. Such a seek now reads again from further back.
+
 ## 3.12.0 – 2026-10-21
 
 FastYuv's row deinterlacing with its converter up to 1.5x faster, and more decoder threads for parallel h264 and HEVC.
