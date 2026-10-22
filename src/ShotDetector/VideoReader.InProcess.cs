@@ -135,12 +135,19 @@ internal sealed partial class VideoReader
                 if (seeked)
                     decoder.Seek(_pts[startFrame - seekBack]);
                 int emitted = 0;
+                bool before = false; // a frame decoded before the wanted one
                 while ((count is null || emitted < count) && decoder.Next())
                 {
                     long pts = decoder.Pts;
                     if (from is { } f && pts < f)
+                    {
+                        before = true;
                         continue;
-                    if (emitted == 0 && seeked && SeekLandedLate(pts * timeBase, startFrame))
+                    }
+
+                    // Late, or on the wanted frame itself (a keyframe) while deinterlacing: yadif then has no previous
+                    // frame for it and gives other pixels than the sequential read (a join of concatenated copies).
+                    if (emitted == 0 && seeked && (SeekLandedLate(pts * timeBase, startFrame) || (_deinterlace && !before)))
                     {
                         late = true;
                         break;

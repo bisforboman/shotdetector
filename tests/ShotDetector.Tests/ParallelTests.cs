@@ -152,6 +152,28 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // Two chunks meeting where two copies of a transport stream join, the second's first frame under half a frame after
+    // the first's last (RangeTests.JoinedTransportStream): the second chunk's seek must not take frame 50 for 49.
+    [Fact]
+    public void ChunksMeetingAtATransportStreamJoinDontFallBack()
+    {
+        if (Libs is null)
+            return;
+        string ts = RangeTests.JoinedTransportStream(clips.ThreeShots);
+        try
+        {
+            var options = Options(DetectorKind.Content);
+            var parallel = ShotDetection.Detect(ts, options with { Mode = DetectionMode.Parallel, Chunks = 2 });
+            Assert.Null(parallel.Video.ChunkFallback);
+            Assert.Equal(2, parallel.Video.Chunks);
+            AssertSame(ShotDetection.Detect(ts, options), parallel);
+        }
+        finally
+        {
+            File.Delete(ts);
+        }
+    }
+
     // Auto reads sequentially without a word (its own choice); chunks that run warn about nothing.
     [Fact]
     public void WarnsOnlyWhenParallelWasAskedFor()

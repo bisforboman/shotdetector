@@ -137,6 +137,79 @@ public class RangeTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // Two copies of the clip's first 2 s as a transport stream, joined by ffmpeg's concat demuxer with -c copy, the
+    // second copy shifted by 0.024 s less than the first's length (the audio's, when that is shorter): its keyframe (50)
+    // comes 0.016 s after the first copy's last frame (49, no keyframe), under half a frame. A seek for 49 lands on that
+    // keyframe; the check for a late landing allowed half a frame, so 50 passed for 49 and every later frame was one off
+    // (#452's 12-minute MPEG-TS fell back from parallel detection so).
+    internal static string JoinedTransportStream(string clip)
+    {
+        string name = Path.Combine(Path.GetTempPath(), $"shotdetector-{Guid.NewGuid():N}");
+        string copy = name + "-copy.ts", list = name + ".txt", joined = name + ".ts";
+        try
+        {
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clip, "-an", "-frames:v", "50", "-c:v", "mpeg2video", "-g", "12", "-bf", "2", "-q:v", "3", copy], default);
+            File.WriteAllText(list, $"file '{copy}'\nduration 1.976\nfile '{copy}'\nduration 1.976\n");
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", joined], default);
+            return joined;
+        }
+        finally
+        {
+            File.Delete(copy);
+            File.Delete(list);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SeekingToAJoinCloserThanHalfAFrameLosesNoFrames(bool inProcess)
+    {
+        string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+        if (inProcess && libs is null)
+            return;
+        string ts = JoinedTransportStream(clips.ThreeShots);
+        try
+        {
+            var o = new DetectionOptions { FfmpegDirectory = libs, Decoder = inProcess ? VideoDecoder.InProcess : VideoDecoder.FfmpegProcess };
+            var all = new VideoReader(ts, o).Frames().Select(f => f.ToArray()).ToList();
+            Assert.Equal(100, all.Count);
+            var reader = new VideoReader(ts, o);
+            Assert.Equal(all.Skip(49).Take(10), reader.Frames(49, 10).Select(f => f.ToArray()));
+            Assert.Equal(Enumerable.Range(49, 10).Select(new VideoReader(ts, o).Position), Enumerable.Range(49, 10).Select(reader.Position));
+        }
+        finally
+        {
+            File.Delete(ts);
+        }
+    }
+
+    // Interlaced MPEG-TS, deinterlaced in-process: a seek for a keyframe's frame lands on that very frame (decoding starts
+    // at the next keyframe after the packet found by time), so yadif would get no previous frame for it, and its pixels
+    // would differ from the sequential read's; such a landing reads again from further back.
+    [Fact]
+    public void SeekingAnInterlacedTransportStreamToAKeyframeDeinterlacesAsSequentially()
+    {
+        string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+        if (libs is null)
+            return;
+        string ts = Path.Combine(Path.GetTempPath(), $"shotdetector-{Guid.NewGuid():N}.ts");
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-vf", "setfield=tff", "-c:v", "mpeg2video", "-flags", "+ildct+ilme", "-g", "12", "-q:v", "3", ts], default);
+        try
+        {
+            var o = new DetectionOptions { FfmpegDirectory = libs, Decoder = VideoDecoder.InProcess, Deinterlace = DeinterlaceMode.Auto };
+            var reader = new VideoReader(ts, o);
+            Assert.True(reader.Deinterlaces);
+            var all = reader.Frames().Select(f => f.ToArray()).ToList();
+            foreach (int start in new[] { 24, 60, 61 })
+                Assert.Equal(all.Skip(start).Take(3), new VideoReader(ts, o).Frames(start, 3).Select(f => f.ToArray()));
+        }
+        finally
+        {
+            File.Delete(ts);
+        }
+    }
+
     // DetectedVideo.Crop: the region as the option's corners, ordered and clamped, so it can be passed back.
     [Fact]
     public void CropComesBackAsCorners()

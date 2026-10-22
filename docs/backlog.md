@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-19: on x86 one known, stats only: a video whose colour tags change midway, with FastYuv or, on a 10-bit siting change, the executable's default path (every cut exact; the per-frame-tags row in Maybe, the informational samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- Parallel detection on a long 1080i MPEG-TS fell back to reading sequentially: reproduce and fix if ours
-  - Why: In #452's measurement (2026-10-21) a 12-minute 1080i25 TFF MPEG-TS (mpeg2video 4:2:0 18 Mb/s + MP2, six lavfi scenes with temporal noise, woven from 1080p50) made the parallel run fall back: `chunk 1: frame 9000 at 359.968 s, expected 359.928 s`. A fallback reads the file about 3 times and was no faster than sequential. #455's agent rebuilt TS files by `-stream_loop` copy and re-encode and didn't hit it, so the original construction matters: write the generator as a script under tools/ (the scratchpad one is gone with the container), reproduce, find whether the chunk's seek or the expected time is off (TS timestamps, the 2-frame early seek, field order), and fix it if it is ours; if the file's own timestamps are at fault, say so and keep the fallback
-  - Status: Open
-
 - Decoding apart from conversion and deinterlacing (another thread)
   - Why: Profiled 2026-10-21: one producer thread decodes, deinterlaces and converts in series; on MPEG-2 it is ~80% busy with ~35% of its time serial work while the slice threads idle, and the scoring thread is 85-90% idle. Handing reference-counted frames (`TakeFrame`) to a conversion thread, with row yadif's previous/current/next frames kept alive, should take sequential 1080i MXF from 16.6 s to about 11-12 s (decode-only floor ~10.5 s) and help 10-bit h264, where swscale is 88% of the producer. docs/frame-references.md describes K converter workers, which ShotDetector doesn't use yet, and names the obstacle (row-wise deinterlacing stays on the decoding thread). Medium; changes FrameDecoder; a decision record on the design first
   - Status: Open (design to the owner first)
@@ -50,6 +46,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Waiting (on .NET 11's release)
 
 ## Maybe
+
+- The ffmpeg executable's seek with deinterlacing: land before the wanted frame
+  - Why: Found 2026-10-22 (the TS chunk fallback): on interlaced MPEG-TS with `--deinterlace`, a seek for a keyframe's frame (a time range's start) lands on that frame itself, so yadif has no previous frame for it and its pixels differ from a full read's (RangeTests' interlaced-keyframe test fails with `VideoDecoder.FfmpegProcess`). The in-process path reads again from further back since then; the executable's select filter drops the frames before the wanted one unseen, so it would need another sign (a showinfo before the select, or always seeking a GOP further back with yadif). Only the executable decoder with deinterlacing and a start time or seek
+  - Status: Maybe
 
 - An end-to-end test of FastYuv's row yadif on a rotated interlaced clip
   - Why: #461 left it unproven beyond the poison test's geometry (`FastYuvTests.RowsOutsideTheRowsReadChangeNothing` covers each turn with crops): a rotated (90/270) interlaced clip, row yadif with FastYuv's converter and with the default one, against FFmpeg's yadif + transpose, scene and stats byte for byte

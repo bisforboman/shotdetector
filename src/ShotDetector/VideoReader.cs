@@ -648,10 +648,14 @@ internal sealed partial class VideoReader
     }
 
     /// <summary>
-    /// Whether the first frame a seek for <paramref name="startFrame"/> gave (its absolute time) is more than half a
-    /// frame after that frame's: the frames between were lost.
+    /// Whether the first frame a seek for <paramref name="startFrame"/> gave (its absolute time) is after that frame's:
+    /// more than half a frame after it, or nearer the next frame's time than its own, so the frames between were lost.
+    /// The second where the next frame follows within half a frame: at a join of two copied streams (a concatenation),
+    /// the next copy's keyframe can come 0.016 s after the last frame at 25 fps, and the seek land there.
     /// </summary>
-    internal bool SeekLandedLate(double seconds, int startFrame) => seconds > _pts[startFrame] * _timeBase + 0.5 / Fps.Value;
+    internal bool SeekLandedLate(double seconds, int startFrame) =>
+        seconds > _pts[startFrame] * _timeBase + 0.5 / Fps.Value
+        || (startFrame + 1 < _pts.Length && seconds > (_pts[startFrame] + _pts[startFrame + 1]) / 2.0 * _timeBase);
 
     /// <summary>How many frames early a seek goes after one that landed late <paramref name="seekBack"/> frames early.</summary>
     internal static int SeekBackAgain(int seekBack) => seekBack * 16;
