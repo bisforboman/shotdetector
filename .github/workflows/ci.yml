@@ -660,6 +660,8 @@ jobs:
       # copy (FFV1, progressive), which is what deinterlacing stands for. With deinterlacing off it's informational:
       # opencv-python 5.0.0.93 (FFmpeg 8) can't convert interlaced frames ("Cannot convert interlaced to progressive")
       # and hands scenedetect the same nearly black image for every frame; ShotDetector reads the real ones (README).
+      # The fast-yuv path's in-process job deinterlaces with FastYuv's row yadif (--fast-yuv sets it), the others with
+      # FFmpeg's yadif filter on whole frames.
       - name: Compare interlaced broadcast video with scenedetect
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.2' && matrix.part == 'more')
         run: |

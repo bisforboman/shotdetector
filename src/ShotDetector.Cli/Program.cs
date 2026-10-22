@@ -267,7 +267,11 @@ try
                 };
                 break;
 #if FASTYUV
-            case "--fast-yuv": options = options with { Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420() }; break;
+            // The FastYuv package as its README pairs it: the converter, and yadif on the rows read (in-process
+            // deinterlacing only; unused otherwise).
+            case "--fast-yuv":
+                options = options with { Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420(), Yadif = new ShotDetector.FastYuv.Yadif() };
+                break;
 #endif
             case "--csv":
                 csvPath = Next();
