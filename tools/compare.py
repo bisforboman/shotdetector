@@ -39,7 +39,8 @@ def match(ref: list[int], ours: list[int], tol: int):
 
 EXE_NAME = "shotdetect.exe" if sys.platform == "win32" else "shotdetect"
 EXE = ROOT / "src" / "ShotDetector.Cli" / "bin" / "Release" / "net10.0" / EXE_NAME
-# A separate build with the LGPL fast path (-p:WithFastYuv=true), for --fast-yuv.
+# A separate build with the LGPL fast path (-p:WithFastYuv=true), for --fast-yuv: FastYuv's converter and, when
+# deinterlacing in-process, its row yadif.
 FAST_DIR = ROOT / "artifacts" / "cli-fastyuv"
 SCENEDETECT_PYTHON = sys.executable
 
@@ -151,7 +152,7 @@ def main() -> int:
     ap.add_argument("--detector", choices=["adaptive", "content", "threshold", "hist", "hash", "both", "all"], default="adaptive")
     ap.add_argument("--tolerance", type=int, default=2)
     ap.add_argument("--ffmpeg-resize", action="store_true", help="pass --ffmpeg-resize to ShotDetector")
-    ap.add_argument("--fast-yuv", action="store_true", help="use the ShotDetector.FastYuv path")
+    ap.add_argument("--fast-yuv", action="store_true", help="use the ShotDetector.FastYuv path (its converter, and its row yadif when deinterlacing in-process)")
     ap.add_argument("--compat", help="PySceneDetect release ShotDetector reproduces (default: the newest, 0.7.2; e.g. 0.7.1)")
     ap.add_argument("--scenedetect-python", default=sys.executable,
                     help="Python interpreter whose scenedetect is the reference (default: this one)")
