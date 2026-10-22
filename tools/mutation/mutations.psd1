@@ -154,8 +154,12 @@
         # MPEG-TS: a seek that lands after the wanted frame (no index) starts over from further back, on both paths
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (emitted == 0 && seek.Length > 1 && SeekLandedLate(pts * liveTimeBase, startFrame))'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (emitted == 0 && !again && seek.Length > 1)'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
-        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'if (emitted == 0 && seeked && SeekLandedLate(pts * timeBase, startFrame))'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'if (emitted == 0 && seeked && (SeekLandedLate(pts * timeBase, startFrame) || (_deinterlace && !before)))'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'late |= seeked && emitted == 0;'; Replace = ''; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
+        # ... also when it lands under half a frame late, nearer the next frame (a join of concatenated copies)
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '|| (startFrame + 1 < _pts.Length && seconds > (_pts[startFrame] + _pts[startFrame + 1]) / 2.0 * _timeBase)'; Replace = ''; Tests = 'RangeTests.SeekingToAJoinCloserThanHalfAFrameLosesNoFrames' }
+        # ... and, deinterlacing, when it lands on the wanted frame itself: yadif would have no previous frame for it
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = ' || (_deinterlace && !before)'; Replace = ''; Tests = 'RangeTests.SeekingAnInterlacedTransportStreamToAKeyframeDeinterlacesAsSequentially' }
 
         # MPEG-4 Part 2: the C IDCT (ARM decodes as x86) except where FFmpeg's decoder takes the Xvid IDCT, by its rule:
         # an Xvid signature, or none at all and an Xvid FourCC
