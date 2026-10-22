@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using ShotDetector;
 using ShotDetector.FastYuv;
 using FieldOrder = FrameReader.FieldOrder;
@@ -714,5 +715,224 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         {
             Directory.Delete(dir, true);
         }
+    }
+
+    // Converting on a thread of its own (ConvertThreads 1: the decoding thread takes each frame, one conversion thread
+    // writes it) gives the frames, stats and shots of converting on the decoding thread, on every pipeline: the sampled
+    // BGR rows, full frames, ffmpeg's scale, FastYuv's 4:2:0, 4:2:2 and 10-bit planes, crop, a seek, rotation, FFmpeg's
+    // yadif, MPEG-PS, a stream, chunks, and frames of another size (the exact conversion on a YUV pipeline). Row-wise
+    // yadif keeps converting on the decoding thread: taking a frame would deinterlace all its rows.
+    [Theory]
+    [InlineData("plain")]
+    [InlineData("full")]
+    [InlineData("scale")]
+    [InlineData("crop")]
+    [InlineData("start")]
+    [InlineData("fastyuv")]
+    [InlineData("422-fastyuv")]
+    [InlineData("10bit")]
+    [InlineData("10bit-fastyuv")]
+    [InlineData("rotate")]
+    [InlineData("rotate-fastyuv")]
+    [InlineData("deinterlace")]
+    [InlineData("deinterlace-422-fastyuv")]
+    [InlineData("row-yadif")]
+    [InlineData("mpegps")]
+    [InlineData("stream")]
+    [InlineData("chunks")]
+    [InlineData("res-change")]
+    [InlineData("res-change-fastyuv")]
+    public void ConvertThreadGivesTheSameFrames(string name)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetector-convert-").FullName;
+        try
+        {
+            string path = name switch
+            {
+                "mpegps" => clips.ThreeShotsMpegPs,
+                "stream" => clips.ThreeShotsMkv,
+                "deinterlace" or "row-yadif" => clips.Interlaced,
+                _ => clips.ThreeShots,
+            };
+            string Copy(string source, params string[] args)
+            {
+                string copy = Path.Combine(dir, $"copy{Directory.GetFiles(dir).Length}.mkv");
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", source, .. args, "-c:v", "ffv1", copy], default);
+                return copy;
+            }
+
+            if (name.StartsWith("422") || name == "deinterlace-422-fastyuv")
+                path = Copy(name.StartsWith("deinterlace") ? clips.Interlaced : path, "-pix_fmt", "yuv422p");
+            if (name.StartsWith("10bit"))
+                path = Copy(path, "-pix_fmt", "yuv420p10le");
+            if (name.StartsWith("rotate"))
+            {
+                string plain = Copy(path, "-pix_fmt", "yuv420p"), rotated = Path.Combine(dir, "rotated.mov");
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-display_rotation", "90", "-i", plain, "-c", "copy", rotated], default);
+                path = rotated;
+            }
+
+            if (name.StartsWith("res-change"))
+            {
+                string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts");
+                path = Path.Combine(dir, "joined.ts");
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-t", "4", "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb", a], default);
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "1", "-i", clips.ThreeShots, "-vf", "scale=240:180", "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb", b], default);
+                File.WriteAllBytes(path, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
+            }
+
+            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Mode = DetectionMode.Sequential };
+            if (name.Contains("fastyuv"))
+                options = options with { Yuv420Converter = new SwscaleYuv420() };
+            options = name switch
+            {
+                "full" => options with { FullFrames = true },
+                "scale" => options with { Downscale = 1 },
+                "crop" => options with { Crop = (10, 20, 300, 200) },
+                "start" => options with { StartTime = "1.5" },
+                "deinterlace" or "deinterlace-422-fastyuv" => options with { Deinterlace = DeinterlaceMode.On },
+                "row-yadif" => options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() },
+                "chunks" => options with { Mode = DetectionMode.Parallel, Chunks = 2 },
+                _ => options,
+            };
+            var inline = options with { ConvertThreads = 0 };
+            var apart = options with { ConvertThreads = 1 };
+            bool threaded = name != "row-yadif";
+
+            DetectionResult Run(DetectionOptions o)
+            {
+                if (name != "stream")
+                    return ShotDetection.Detect(path, o);
+                using var stream = File.OpenRead(path);
+                return ShotDetection.Detect(stream, o);
+            }
+
+            // Stats and shots, through Detect.
+            var expected = Run(inline);
+            var actual = Run(apart);
+            Assert.True(actual.Video.DecodedInProcess);
+            Assert.Equal(expected.Stats!.Csv(expected.Video.Position), actual.Stats!.Csv(actual.Video.Position));
+            Assert.Equal(Shots.Csv(expected.Shots), Shots.Csv(actual.Shots));
+            if (name == "chunks")
+            {
+                Assert.Equal(2, actual.Video.Chunks);
+                return;
+            }
+
+            Assert.False(expected.Video.Reader.ConvertedOnThread);
+            Assert.Equal(threaded, actual.Video.Reader.ConvertedOnThread);
+            Assert.Equal(expected.Video.Reader.BgrFallbackFrames, actual.Video.Reader.BgrFallbackFrames);
+            Assert.Equal(expected.Video.Reader.FirstFrameSize, actual.Video.Reader.FirstFrameSize);
+            if (name == "res-change-fastyuv")
+                Assert.True(actual.Video.Reader.BgrFallbackFrames > 0);
+            if (name == "stream")
+            {
+                Assert.True(actual.Video.Streamed);
+                return;
+            }
+
+            // Every frame's bytes, through the reader (from frame 37 for the seek).
+            List<string> Hashes(DetectionOptions o)
+            {
+                var reader = new VideoReader(path, o);
+                var frames = name == "start" ? reader.Frames(37, null) : reader.Frames();
+                List<string> hashes = [.. frames.Select(f => Convert.ToHexString(SHA256.HashData(f)))];
+                Assert.Equal(o.ConvertThreads > 0 && threaded, reader.ConvertedOnThread);
+                return hashes;
+            }
+
+            var inlineHashes = Hashes(inline);
+            Assert.NotEmpty(inlineHashes);
+            Assert.Equal(inlineHashes, Hashes(apart));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // The default converts on the decoding thread (ConvertThreads 0): the conversion thread is for measuring until it
+    // pays (docs/backlog.md).
+    [Fact]
+    public void ConvertsOnTheDecodingThreadByDefault()
+    {
+        if (Libs is null)
+            return;
+        var reader = new VideoReader(clips.ThreeShots, new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess });
+        Assert.NotEmpty(reader.Frames());
+        Assert.False(reader.ConvertedOnThread);
+    }
+
+    // Converting on its own thread, the reader stops cleanly: the caller cancelling midway, the caller stopping early,
+    // and a stream failing midway (the decoding error, as when converting on the decoding thread). Every taken frame
+    // is let go (a leak would show as the run never ending, not here; the native frames are FFmpeg's).
+    [Fact]
+    public void ConvertThreadStopsCleanly()
+    {
+        if (Libs is null)
+            return;
+        var options = new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, ConvertThreads = 1 };
+        var reader = new VideoReader(clips.ThreeShots, options);
+        using (var cancel = new CancellationTokenSource())
+        {
+            int n = 0;
+            var run = Task.Run(() =>
+            {
+                foreach (var frame in reader.Frames(cancel.Token))
+                {
+                    if (++n == 10)
+                        cancel.Cancel();
+                }
+            });
+            Assert.True(((IAsyncResult)run).AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(60)), "hung after cancelling");
+            Assert.ThrowsAny<OperationCanceledException>(() => run.GetAwaiter().GetResult());
+            Assert.True(reader.ConvertedOnThread);
+        }
+
+        var early = Task.Run(() => reader.Frames().Take(5).Count());
+        Assert.True(((IAsyncResult)early).AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(60)), "hung after stopping early");
+        Assert.Equal(5, early.Result);
+
+        // A stream that fails two thirds of the way in: the same error, after the same frames.
+        (int Frames, Exception? Error) Failing(int convertThreads)
+        {
+            var bytes = File.ReadAllBytes(clips.ThreeShotsMkv);
+            using var stream = new FailingStream(bytes, bytes.Length * 2 / 3);
+            int frames = 0;
+            try
+            {
+                var failing = new VideoReader(stream, options with { ConvertThreads = convertThreads, ProbeBytes = 4096 });
+                foreach (var frame in failing.Frames())
+                    frames++;
+                return (frames, null);
+            }
+            catch (ShotDetectionException e)
+            {
+                return (frames, e);
+            }
+        }
+
+        var (inlineFrames, inlineError) = Failing(0);
+        var (apartFrames, apartError) = Failing(1);
+        Assert.NotNull(inlineError);
+        Assert.True(inlineFrames > 0);
+        Assert.Equal(inlineFrames, apartFrames);
+        Assert.Equal(inlineError.Message, apartError?.Message);
+    }
+
+    sealed class FailingStream(byte[] bytes, int failAt) : MemoryStream(bytes, false)
+    {
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (Position >= failAt)
+                throw new IOException("The connection dropped.");
+            return base.Read(buffer, offset, (int)Math.Min(count, failAt - Position));
+        }
+
+        public override bool CanSeek => false;
+
+        public override long Seek(long offset, SeekOrigin loc) => throw new NotSupportedException();
     }
 }

@@ -429,6 +429,14 @@ public sealed record DetectionOptions
     /// </summary>
     internal int FrameBuffers { get; init; } = 8;
 
+    /// <summary>
+    /// Threads converting the in-process reader's frames apart from its decoding thread: 0 (the default) converts on
+    /// the decoding thread; 1 or more, on one conversion thread that takes the decoded frames (FrameDecoder.TakeFrame),
+    /// except with row-wise yadif (<see cref="Yadif"/>). Same frames either way (tests, timings, the CLI's hidden
+    /// --convert-threads).
+    /// </summary>
+    internal int ConvertThreads { get; init; }
+
     /// <summary><see cref="Mode"/> for a run: Auto is parallel, except when the shots are streamed.</summary>
     internal DetectionMode ResolvedMode(bool streaming) => Mode switch
     {
