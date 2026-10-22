@@ -15,6 +15,14 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-19: on x86 one known, stats only: a video whose colour tags change midway, with FastYuv or, on a 10-bit siting change, the executable's default path (every cut exact; the per-frame-tags row in Maybe, the informational samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
+- Parity CI for FastYuv's row yadif: compare `Yadif` + FastYuv's converter against scenedetect on the interlaced samples
+  - Why: Neither the CLI's `--fast-yuv` (it sets only `Yuv420Converter`) nor tools/compare.py nor ci.yml sets `DetectionOptions.Yadif`, so the parity matrix's fast-yuv rows deinterlace interlaced samples with FFmpeg's whole-frame yadif. The pairing #461 rewired (row yadif with FastYuv's converter, taking only the rows read through `CopyRows`) is checked against scenedetect only through unit tests (`RowWiseYadifEqualsFfmpegs`, the poison test). Have the dev-only `WithFastYuv` CLI's `--fast-yuv` also set `Yadif` (or a hidden flag), and the fast-yuv parity rows on samples/broadcast run it with `--deinterlace auto` against the lossless yadif copy, as the default path's rows do. Small
+  - Status: Open
+
+- Parallel detection on a long 1080i MPEG-TS fell back to reading sequentially: reproduce and fix if ours
+  - Why: In #452's measurement (2026-10-21) a 12-minute 1080i25 TFF MPEG-TS (mpeg2video 4:2:0 18 Mb/s + MP2, six lavfi scenes with temporal noise, woven from 1080p50) made the parallel run fall back: `chunk 1: frame 9000 at 359.968 s, expected 359.928 s`. A fallback reads the file about 3 times and was no faster than sequential. #455's agent rebuilt TS files by `-stream_loop` copy and re-encode and didn't hit it, so the original construction matters: write the generator as a script under tools/ (the scratchpad one is gone with the container), reproduce, find whether the chunk's seek or the expected time is off (TS timestamps, the 2-frame early seek, field order), and fix it if it is ours; if the file's own timestamps are at fault, say so and keep the fallback
+  - Status: Open
+
 - Decoding apart from conversion and deinterlacing (another thread)
   - Why: Profiled 2026-10-21: one producer thread decodes, deinterlaces and converts in series; on MPEG-2 it is ~80% busy with ~35% of its time serial work while the slice threads idle, and the scoring thread is 85-90% idle. Handing reference-counted frames (`TakeFrame`) to a conversion thread, with row yadif's previous/current/next frames kept alive, should take sequential 1080i MXF from 16.6 s to about 11-12 s (decode-only floor ~10.5 s) and help 10-bit h264, where swscale is 88% of the producer. docs/frame-references.md describes K converter workers, which ShotDetector doesn't use yet, and names the obstacle (row-wise deinterlacing stays on the decoding thread). Medium; changes FrameDecoder; a decision record on the design first
   - Status: Open (design to the owner first)
@@ -35,13 +43,21 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - Move to FFmpeg 9's libraries (FFmpeg.AutoGen 9, Native packages on 9.0.x) when opencv-python's Linux wheels bundle FFmpeg 9
   - Why: scenedetect's frames come from OpenCV's FFmpeg; moving earlier risks bytes OpenCV doesn't give, and drops system FFmpeg 8 in-process
-  - Status: Maybe (2026-10-14: FFmpeg.AutoGen 9.0.1.1 is out; opencv-python 5.0.0.93 and 4.14.0.94 still bundle libavcodec 62, so the trigger hasn't fired; the user: wait for OpenCV)
+  - Status: Waiting (2026-10-14: FFmpeg.AutoGen 9.0.1.1 is out; opencv-python 5.0.0.93 and 4.14.0.94 still bundle libavcodec 62, so the trigger hasn't fired; the user: wait for OpenCV)
 
 - The owner files the x264 AVX-512 report with VideoLAN (x264-avx512-report.md in the main checkout)
   - Why: CI's VideoWriter step needs DOTNET_TieredCompilation=0 because x264's AVX-512 code and .NET's tiered JIT differ about 1 run in 250 (CLAUDE.md); the report was written but not filed as of the 2026-10-15 reminder (it waited on a VideoLAN GitLab account). A public post from the owner's account: theirs to file, never a session's
   - Status: Open
 
+- After .NET 11's release (November 2026), an informational CI run of the tests and parity on net11
+  - Why: Most time is in FFmpeg's native code, so .NET 11 promises little speed here (its raised hardware baseline: ReadyToRun at x86-64-v3; faster Native AOT interface dispatch); the risk is a JIT that changes results (the AVX-512 + tiered-JIT VideoWriter flake shows it can). Stay on net10.0 (LTS); run the tests and the parity comparison on net11, informational, then compare the weekly benchmark, and retarget only for a measured gain with identical results (the owner, 2026-10-22)
+  - Status: Waiting (on .NET 11's release)
+
 ## Maybe
+
+- An end-to-end test of FastYuv's row yadif on a rotated interlaced clip
+  - Why: #461 left it unproven beyond the poison test's geometry (`FastYuvTests.RowsOutsideTheRowsReadChangeNothing` covers each turn with crops): a rotated (90/270) interlaced clip, row yadif with FastYuv's converter and with the default one, against FFmpeg's yadif + transpose, scene and stats byte for byte
+  - Status: Maybe
 
 - An opt-in fast mode that doesn't promise scenedetect's results: measure first
   - Why: The 2026-10-21 profile put 45-87% of CPU in decoding and up to 40% in deinterlacing (1080i), with scenedetect's own maths at a few percent, so exactness costs most where every full frame must be decoded and deinterlaced. Candidates, each changing some output: FFmpeg's `lowres` decoding at 1/2 or 1/4 size (MPEG-1/2, MPEG-4 Part 2, MJPEG: broadcast MPEG-2 above all), skipping h264's deblocking (`skip_loop_filter`), one field instead of deinterlacing on 1080i, scoring on YUV or luma without BGR/HSV. Measure on real broadcast files (MXF/TS MPEG-2, h264): the speed-up and how many cuts move against the exact run, before deciding whether a mode is worth having. The default stays exact (the owner, 2026-10-22: "Maybe row, measure first"); any mode would be opt-in with its deviations documented
