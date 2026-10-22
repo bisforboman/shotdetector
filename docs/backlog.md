@@ -19,10 +19,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Profiled 2026-10-21: one producer thread decodes, deinterlaces and converts in series; on MPEG-2 it is ~80% busy with ~35% of its time serial work while the slice threads idle, and the scoring thread is 85-90% idle. Handing reference-counted frames (`TakeFrame`) to a conversion thread, with row yadif's previous/current/next frames kept alive, should take sequential 1080i MXF from 16.6 s to about 11-12 s (decode-only floor ~10.5 s) and help 10-bit h264, where swscale is 88% of the producer. docs/frame-references.md describes K converter workers, which ShotDetector doesn't use yet, and names the obstacle (row-wise deinterlacing stays on the decoding thread). Medium; changes FrameDecoder; a decision record on the design first
   - Status: Open (design to the owner first)
 
-- Repeated runs on damaged files (samples/broken: truncated.ts, corrupt.mp4, corrupt.ts) give different scene or stats results at the same thread count
-  - Why: Find whether the decoder's frame or slice threads make concealment non-deterministic, whether scenedetect/OpenCV varies the same way across runs, and what "identical" should mean for damaged input. Measured 2026-10-21 (#461, 4 vCPUs, in-process, content with stats, 3 sequential runs each): truncated.ts gave 3 different results at 4 threads (on main too) and 2 at 8; corrupt.mp4 and corrupt.ts 3 different results at both 4 and 8; base.mp4, truncated.mp4, dup_pts.mkv and res_change.ts the same in every run at 4 and 8. CI's exact set includes truncated.ts
-  - Status: Open
-
 ## Waiting
 
 - Parallel detection above 8 CPUs: more than 4 chunks and 16 decoder threads in total
@@ -75,6 +71,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 - The first frame's colour tags read only when they'll be used
   - Why: The review of 3.10.0 (2026-10-19): ShotDetector reads the first frame's chroma location and colour tags once per detection (`FrameTags`: in-process FrameDecoder, else a one-frame ffprobe) also where only a fallback would use them (in-process without FastYuv, where BgrConverter converts each frame from its own tags), about 0.14 s on 4K 10-bit, and on a live rtsp URL it waits for the first frame before detection starts. Reading them lazily, when the executable path or FastYuv first needs them, would save both
   - Status: Maybe
+
+- corrupt.ts: two decoded frames with the same pts — OpenCV numbers both, we keep one
+  - Why: Found 2026-10-22 measuring damaged files (docs/decisions/2026-10-22-damaged-files-best-effort.md): on a stand-in clip's corrupt.ts (a 640x360 29.97 fps Sintel trailer through tools/make-broken.py; the real trailer couldn't be downloaded), the decoder outputs two frames with the same pts (291). OpenCV numbers both (the first as frame 237 at 7.875 s), ShotDetector keeps one, so our cuts come one frame later (09.643 against 09.610) and ~236 stats rows differ; deterministic, at any thread count and on both decoder paths. It is the "frame 236 at 8.24 s, expected 7.87 s" of a chunk fallback message. Check first whether it happens on CI's real samples (corrupt.ts is informational there)
+  - Status: Maybe (the owner, 2026-10-22: Maybe row)
 
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and
 why: [decisions/](decisions/).

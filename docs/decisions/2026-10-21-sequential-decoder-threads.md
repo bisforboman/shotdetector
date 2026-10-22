@@ -24,3 +24,6 @@ run at either count (truncated.ts on main too).
 **1. Keep OpenCV's count.** Damaged files keep concealing like scenedetect (the 2026-10-11 decision), and parallel
 runs, the default for long files from 4 CPUs on, already get the gain from #461. The Waiting row moved to
 docs/backlog-done.md as Won't do.
+
+Note (2026-10-22): "concealing like scenedetect" means the same kind of concealment, not the same bytes on every run:
+corrupt input varies from run to run in both tools (2026-10-22-damaged-files-best-effort.md).

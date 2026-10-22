@@ -89,7 +89,8 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
   (1.11x), 10-bit 23.8 s to 19.5 s (1.22x), the same CPU time, ~30 MB more, identical scene and stats CSVs; MPEG-2
   unchanged. At 3840 x 2160 it gained 1.09x for 125 MB more (398 to 523 MB: each thread holds 4K frames), so larger
   frames keep the CPUs' count. A sequential run keeps OpenCV's count too
-  (docs/decisions/2026-10-11-decoder-threads-like-opencv.md: damaged files conceal like scenedetect's only with it),
+  (docs/decisions/2026-10-11-decoder-threads-like-opencv.md: damaged files conceal the way scenedetect's decoder does
+  only with it, though corrupt input still varies from run to run in both: 2026-10-22-damaged-files-best-effort.md),
   although 8 threads there gave 1.19-1.22x on 1080p h264 as well.
 - Frame buffers (between a reader's decoding thread and the scoring): a sequential run's 8 shared out,
   `ChunkBuffers` = max(2, 8 / chunks), so 4 each in 2 chunks and 2 in 3 or 4 (2026-10-18; it was 8 each). Measured
