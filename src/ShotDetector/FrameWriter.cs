@@ -10,22 +10,44 @@ namespace ShotDetector;
 /// converted frame is rotated clockwise by it (90, 180 or 270), as the executable's transpose/hflip,vflip on bgr24 and
 /// OpenCV's cv::rotate do. Every frame is converted at <paramref name="size"/>, the stream's size from its headers
 /// (OpenCV's buffer, as the executable's scale=): a frame of another size is scaled to it in the same conversion.
+/// Without a decoder (null), it writes <see cref="Frame"/>, a frame taken from one (<see cref="FrameDecoder.TakeFrame"/>):
+/// the same bytes, on another thread than the decoding one.
 /// </summary>
-internal sealed unsafe class FrameWriter(FrameDecoder decoder, (int Width, int Height) size, int turn = 0) : IDisposable
+internal sealed unsafe class FrameWriter(FrameDecoder? decoder, (int Width, int Height) size, int turn = 0) : IDisposable
 {
-    readonly FrameDecoder _d = decoder;
-    readonly BgrConverter _bgr = new(decoder) { Size = size };
+    readonly FrameDecoder? _d = decoder;
+    readonly BgrConverter _bgr = decoder is null ? new() { Size = size } : new(decoder) { Size = size };
     readonly int _turn = turn;
     byte[] _turned = [];
     SwsContext* _toSize;
 
+    /// <summary>The frame written: one taken from the decoder; null: the decoder's current frame.</summary>
+    public DecodedFrame? Frame { get; set; }
+
+    /// <summary>The frame's width in pixels.</summary>
+    public int Width => Frame?.Width ?? Decoder.Width;
+
+    /// <summary>The frame's height in pixels.</summary>
+    public int Height => Frame?.Height ?? Decoder.Height;
+
+    /// <summary>The frame's pixel format name.</summary>
+    public string PixelFormat => Frame?.PixelFormat ?? Decoder.PixelFormat;
+
     /// <summary>Whether the current frame has the stream's size (the YUV pipelines' layout).</summary>
-    public bool HasStreamSize => (_d.Width, _d.Height) == size;
+    public bool HasStreamSize => (Width, Height) == size;
+
+    FrameDecoder Decoder => _d ?? throw new InvalidOperationException("No decoder: set Frame.");
+
+    /// <summary>The whole frame converted (not turned).</summary>
+    ReadOnlySpan<byte> Convert(out int stride) => Frame is { } f ? _bgr.Convert(f, out stride) : _bgr.Convert(out stride);
+
+    /// <summary>Only the slices holding <paramref name="rows"/> converted (not turned).</summary>
+    ReadOnlySpan<byte> Convert(int[] rows, out int stride) => Frame is { } f ? _bgr.Convert(f, rows, out stride) : _bgr.Convert(rows, out stride);
 
     /// <summary>The whole converted frame, turned: its bytes and row stride.</summary>
     ReadOnlySpan<byte> Converted(out int stride)
     {
-        var bgr = _bgr.Convert(out int s);
+        var bgr = Convert(out int s);
         if (_turn == 0)
         {
             stride = s;
@@ -67,18 +89,30 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, (int Width, int H
     /// </summary>
     public void WriteYuv(byte[] dst, bool chroma422, int bytesPerSample = 1, (int[] Luma, int[] Chroma)? rows = null)
     {
-        int w = _d.Width, h = _d.Height, cw = (w + 1) / 2, ch = chroma422 ? h : (h + 1) / 2, o = 0;
+        int w = Width, h = Height, cw = (w + 1) / 2, ch = chroma422 ? h : (h + 1) / 2, o = 0;
         for (int p = 0; p < 3; p++)
         {
             int pw = (p == 0 ? w : cw) * bytesPerSample, ph = p == 0 ? h : ch;
             if (rows is { } r)
             {
-                _d.CopyRows(p, p == 0 ? r.Luma : r.Chroma, dst.AsSpan(o, pw * ph), pw);
+                var wanted = p == 0 ? r.Luma : r.Chroma;
+                if (Frame is { } f)
+                {
+                    // A taken frame is never deinterlaced row by row (its rows are all there): CopyRows' plain copy.
+                    var src = f.GetPlane(p, out int s);
+                    foreach (int y in wanted)
+                        src.Slice(y * s, pw).CopyTo(dst.AsSpan(o + (y * pw), pw));
+                }
+                else
+                {
+                    _d!.CopyRows(p, wanted, dst.AsSpan(o, pw * ph), pw);
+                }
+
                 o += pw * ph;
                 continue;
             }
 
-            var plane = _d.GetPlane(p, out int stride);
+            var plane = Frame is { } frame ? frame.GetPlane(p, out int stride) : Decoder.GetPlane(p, out stride);
             for (int y = 0; y < ph; y++, o += pw)
                 plane.Slice(y * stride, pw).CopyTo(dst.AsSpan(o));
         }
@@ -91,7 +125,7 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, (int Width, int H
     public void WriteResized(byte[] dst, CvResize resizer, int[] rows, (int X, int Y) crop)
     {
         // Turned, the rows read are columns of the decoded frame: the whole frame then.
-        var bgr = _turn == 0 ? _bgr.Convert(rows, out int stride) : Converted(out stride);
+        var bgr = _turn == 0 ? Convert(rows, out int stride) : Converted(out stride);
         resizer.ResizeRows(bgr, stride, crop.X, crop.Y, dst);
     }
 
@@ -103,7 +137,7 @@ internal sealed unsafe class FrameWriter(FrameDecoder decoder, (int Width, int H
     public void WriteRows(byte[] dst, int[] rows, (int X, int Width) crop)
     {
         // Turned, the rows read are columns of the decoded frame: the whole frame then.
-        var bgr = _turn == 0 ? _bgr.Convert(rows, out int stride) : Converted(out stride);
+        var bgr = _turn == 0 ? Convert(rows, out int stride) : Converted(out stride);
         int n = crop.Width * 3;
         for (int i = 0; i < rows.Length; i++)
             bgr.Slice(rows[i] * stride + crop.X * 3, n).CopyTo(dst.AsSpan(i * n, n));

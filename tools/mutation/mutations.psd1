@@ -81,12 +81,18 @@
 
         # Timestamps starting over (two encodes joined): labelled by time, cuts sorted, stats one row per number
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'seconds < _pts[previous] * _timeBase - tolerance)'; Replace = 'false)'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
-        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '&& !(writer.HasStreamSize && decoder.PixelFormat == _pixelFormat);'; Replace = '&& false;'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '&& !(writer.HasStreamSize && writer.PixelFormat == _pixelFormat);'; Replace = '&& false;'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (yuv && info.NewLayout && _stream is null && !Streaming)'; Replace = 'if (false)'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
 
         # A frame in another pixel format than the stream's (4:2:2 and 4:2:0 joined): OpenCV converts it from its own,
         # so FastYuv leaves it to the exact conversion (in-process per frame; the executable reads again on BGR)
-        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '&& decoder.PixelFormat == _pixelFormat);'; Replace = ');'; Tests = 'InProcessTests.PixelFormatChangeTakesTheExactConversion' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '&& writer.PixelFormat == _pixelFormat);'; Replace = ');'; Tests = 'InProcessTests.PixelFormatChangeTakesTheExactConversion' }
+
+        # Converting apart from decoding (ConvertThreads): off by default, never with row-wise yadif (taking a frame would
+        # deinterlace all its rows), and a taken frame's YUV rows where the decoder's CopyRows puts them
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'bool convertApart = _convertThreads > 0 && !(_deinterlace && _yadif is not null);'; Replace = 'bool convertApart = _convertThreads > 0;'; Tests = 'InProcessTests.ConvertThreadGivesTheSameFrames' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'internal int ConvertThreads { get; init; }'; Replace = 'internal int ConvertThreads { get; init; } = 1;'; Tests = 'InProcessTests.ConvertsOnTheDecodingThreadByDefault' }
+        @{ File = 'src/ShotDetector/FrameWriter.cs'; Find = 'src.Slice(y * s, pw).CopyTo(dst.AsSpan(o + (y * pw), pw));'; Replace = 'src.Slice(y * s, pw).CopyTo(dst.AsSpan(o, pw));'; Tests = 'InProcessTests.ConvertThreadGivesTheSameFrames' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' || (format.Success && format.Groups[1].Value != _pixelFormat)'; Replace = ''; Tests = 'InProcessTests.PixelFormatChangeTakesTheExactConversion' }
         @{ File = 'src/ShotDetector/Stats.cs'; Find = 'if (!byPosition.TryGetValue(at.Key, out var merged))'; Replace = 'if (!byPosition.TryGetValue(at.Key, out var merged) || true)'; Tests = 'ThresholdDetectorTests.StatsAtTheSamePositionMergeKeyByKey' }
         @{ File = 'src/ShotDetector/Detectors.cs'; Find = 'average = stored;'; Replace = '{ }'; Tests = 'ThresholdDetectorTests.RepeatedPositionReusesTheStoredAverageWithStats' }

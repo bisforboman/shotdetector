@@ -234,6 +234,9 @@ try
             case "--chunks": // not in --help: CI forces a chunk count on short samples
                 options = options with { Mode = DetectionMode.Parallel, Chunks = NextInt() };
                 break;
+            case "--convert-threads": // not in --help: CI and timings, converting apart from decoding in-process
+                options = options with { ConvertThreads = NextInt() };
+                break;
             case "--always-bt601": // not in --help: compare.py on Windows, whose OpenCV wheel converts with BT.601
                 options = options with { AlwaysBt601 = true };
                 break;
