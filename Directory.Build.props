@@ -24,7 +24,7 @@
     <Version>$(ShotDetectorVersion)</Version>
     <!-- Each product's API guard (SDK package validation): packing fails on a breaking change against its last stable
          version on nuget.org (docs/decisions/, 2026-10-08). -->
-    <ApiBaselineVersion>3.12.0</ApiBaselineVersion>
+    <ApiBaselineVersion>3.13.0</ApiBaselineVersion>
     <FrameReaderApiBaselineVersion>2.10.0</FrameReaderApiBaselineVersion>
   </PropertyGroup>
   <ItemGroup>
