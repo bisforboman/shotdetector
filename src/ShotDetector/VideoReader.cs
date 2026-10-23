@@ -1438,23 +1438,6 @@ internal sealed partial class VideoReader
                     throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg gave no timestamp for frame {_livePts.Count + _livePackets.Count}: {stderr.Result}");
                 long pts = info.Pts;
 
-                // Deinterlacing: the frame before the wanted one, kept for yadif, isn't given.
-                if (keepBefore && pts * liveTimeBase < BetweenFrames(startFrame))
-                {
-                    keepBefore = false;
-                    free.Add(buffer);
-                    continue;
-                }
-
-                // ... and without it first (the seek landed on the wanted frame, a keyframe, or after it), yadif had no
-                // previous frame for the wanted one: again from further back.
-                if (keepBefore && emitted == 0)
-                {
-                    again = true;
-                    againBack = SeekBackAgain(seekBack);
-                    break;
-                }
-
                 // The seek landed after the wanted frame: again from further back.
                 if (emitted == 0 && seek.Length > 1 && SeekLandedLate(pts * liveTimeBase, startFrame))
                 {
@@ -1468,6 +1451,24 @@ internal sealed partial class VideoReader
                 if (yuv && info.NewLayout && _stream is null && !Streaming)
                 {
                     _sizeChanges = again = true;
+                    break;
+                }
+
+                // Deinterlacing: the frame before the wanted one, kept for yadif, isn't given (after
+                // the layout check: in a new layout it switches the read too).
+                if (keepBefore && pts * liveTimeBase < BetweenFrames(startFrame))
+                {
+                    keepBefore = false;
+                    free.Add(buffer);
+                    continue;
+                }
+
+                // ... and without it first (the seek landed on the wanted frame, a keyframe, or after it), yadif had no
+                // previous frame for the wanted one: again from further back.
+                if (keepBefore && emitted == 0)
+                {
+                    again = true;
+                    againBack = SeekBackAgain(seekBack);
                     break;
                 }
 
