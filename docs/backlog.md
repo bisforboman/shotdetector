@@ -43,10 +43,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The conversion thread (C, on by default for sequential HD since 2026-10-22) can't serve row-wise yadif: taking a frame deinterlaces every row, so those runs still decode, deinterlace and convert on one thread. A deferred take that keeps yadif's previous, current and next frames referenced would let the conversion thread compute only the rows it reads, deinterlacing included (then K workers): expected 1080i MXF sequential with row yadif from ~16.6 s to about 12-13 s. Only for the library configuration with FastYuv's `Yadif` (the CLI deinterlaces with FFmpeg's yadif, which C already covers); parallel runs gain little (the chunks keep the cores busy). A FrameReader change (docs/decisions/2026-10-22-decode-split.md, docs/frame-references.md)
   - Status: Maybe (the owner, 2026-10-22: parked)
 
-- The ffmpeg executable's seek with deinterlacing: land before the wanted frame
-  - Why: Found 2026-10-22 (the TS chunk fallback): on interlaced MPEG-TS with `--deinterlace`, a seek for a keyframe's frame (a time range's start) lands on that frame itself, so yadif has no previous frame for it and its pixels differ from a full read's (RangeTests' interlaced-keyframe test fails with `VideoDecoder.FfmpegProcess`). The in-process path reads again from further back since then; the executable's select filter drops the frames before the wanted one unseen, so it would need another sign (a showinfo before the select, or always seeking a GOP further back with yadif). Only the executable decoder with deinterlacing and a start time or seek
-  - Status: Maybe
-
 - An end-to-end test of FastYuv's row yadif on a rotated interlaced clip
   - Why: #461 left it unproven beyond the poison test's geometry (`FastYuvTests.RowsOutsideTheRowsReadChangeNothing` covers each turn with crops): a rotated (90/270) interlaced clip, row yadif with FastYuv's converter and with the default one, against FFmpeg's yadif + transpose, scene and stats byte for byte
   - Status: Maybe

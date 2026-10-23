@@ -659,6 +659,9 @@ internal sealed partial class VideoReader
         seconds > _pts[startFrame] * _timeBase + 0.5 / Fps.Value
         || (startFrame + 1 < _pts.Length && seconds > (_pts[startFrame] + _pts[startFrame + 1]) / 2.0 * _timeBase);
 
+    /// <summary>The time halfway between frame <paramref name="frame"/> and the one before it, in seconds.</summary>
+    double BetweenFrames(int frame) => (_pts[frame - 1] + _pts[frame]) / 2.0 * _timeBase;
+
     /// <summary>How many frames early a seek goes after one that landed late <paramref name="seekBack"/> frames early.</summary>
     internal static int SeekBackAgain(int seekBack) => seekBack * 16;
 
@@ -1226,19 +1229,25 @@ internal sealed partial class VideoReader
         // frames early (to a keyframe before that), keep the original timestamps, and let a select
         // filter drop everything before the wanted frame's pts.
         string[] seek = [], select = [];
+
+        // Deinterlacing after a seek, the frame before the wanted one passes the select too (and is dropped below): yadif
+        // needs it for the wanted frame, and only its arrival shows that the seek decoded it (MPEG-TS can land on the
+        // wanted frame itself, a keyframe; then the read starts again from further back).
+        bool keepBefore = false;
         if (startFrame > 0 && startFrame < _pts.Length)
         {
             int early = Math.Max(startFrame - seekBack, 0);
             if (early > 0)
                 seek = ["-ss", ((_pts[early] - _startPts) * _timeBase).ToString("R", CultureInfo.InvariantCulture), "-copyts"];
+            keepBefore = _deinterlace && early > 0;
 
             // yadif halves the time base, so after it compare times: halfway between the frame before and the wanted one.
             select = ["-vf", _deinterlace
-                ? $"select=gte(t\\,{((_pts[startFrame - 1] + _pts[startFrame]) / 2.0 * _timeBase).ToString("R", CultureInfo.InvariantCulture)})"
+                ? $"select=gte(t\\,{BetweenFrames(keepBefore ? startFrame - 1 : startFrame).ToString("R", CultureInfo.InvariantCulture)})"
                 : $"select=gte(pts\\,{_pts[startFrame]})"];
         }
 
-        string[] limit = count is { } n ? ["-frames:v", n.ToString(CultureInfo.InvariantCulture)] : [];
+        string[] limit = count is { } n ? ["-frames:v", (keepBefore ? n + 1 : n).ToString(CultureInfo.InvariantCulture)] : [];
 
         // The crop (an exact pixel copy) comes after the colour conversion, as OpenCV converts the
         // whole frame and scenedetect slices the result; in the yuv420p pipeline it happens here instead.
@@ -1267,7 +1276,8 @@ internal sealed partial class VideoReader
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
         select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
 
-        // Deinterlacing first, so the frames a seek decodes early still feed yadif, as in the copy it stands for.
+        // Deinterlacing first, so the frames a seek decodes early still feed yadif, as in the copy it stands for (the
+        // select keeps the frame before the wanted one: keepBefore).
         if (_deinterlace)
             select = ["-vf", "yadif" + (select.Length > 0 ? "," + select[1] : "")];
         string prefix = select.Length > 0 ? select[1] + "," : "";
@@ -1427,6 +1437,23 @@ internal sealed partial class VideoReader
                 if (!livePts.TryTake(out var info, Timeout.Infinite, cancel.Token))
                     throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg gave no timestamp for frame {_livePts.Count + _livePackets.Count}: {stderr.Result}");
                 long pts = info.Pts;
+
+                // Deinterlacing: the frame before the wanted one, kept for yadif, isn't given.
+                if (keepBefore && pts * liveTimeBase < BetweenFrames(startFrame))
+                {
+                    keepBefore = false;
+                    free.Add(buffer);
+                    continue;
+                }
+
+                // ... and without it first (the seek landed on the wanted frame, a keyframe, or after it), yadif had no
+                // previous frame for the wanted one: again from further back.
+                if (keepBefore && emitted == 0)
+                {
+                    again = true;
+                    againBack = SeekBackAgain(seekBack);
+                    break;
+                }
 
                 // The seek landed after the wanted frame: again from further back.
                 if (emitted == 0 && seek.Length > 1 && SeekLandedLate(pts * liveTimeBase, startFrame))

@@ -169,7 +169,10 @@
         # ... also when it lands under half a frame late, nearer the next frame (a join of concatenated copies)
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '|| (startFrame + 1 < _pts.Length && seconds > (_pts[startFrame] + _pts[startFrame + 1]) / 2.0 * _timeBase)'; Replace = ''; Tests = 'RangeTests.SeekingToAJoinCloserThanHalfAFrameLosesNoFrames' }
         # ... and, deinterlacing, when it lands on the wanted frame itself: yadif would have no previous frame for it
-        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = ' || (_deinterlace && !before)'; Replace = ''; Tests = 'RangeTests.SeekingAnInterlacedTransportStreamToAKeyframeDeinterlacesAsSequentially' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = ' || (_deinterlace && !before)'; Replace = ''; Tests = 'RangeTests.SeekingInterlacedVideoToAKeyframeDeinterlacesAsSequentially' }
+        # ... the same through the executable: its select keeps the frame before the wanted one, which must come first
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (keepBefore && emitted == 0)'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInterlacedVideoToAKeyframeDeinterlacesAsSequentially' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'keepBefore = _deinterlace && early > 0;'; Replace = 'keepBefore = false;'; Tests = 'RangeTests.SeekingInterlacedVideoToAKeyframeDeinterlacesAsSequentially' }
 
         # MPEG-4 Part 2: the C IDCT (ARM decodes as x86) except where FFmpeg's decoder takes the Xvid IDCT, by its rule:
         # an Xvid signature, or none at all and an Xvid FourCC
