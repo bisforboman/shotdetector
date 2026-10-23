@@ -6,6 +6,14 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.13.1 – 2026-10-23
+
+With the ffmpeg executable, deinterlaced reads from a start time match a full read.
+
+### Fixed
+
+- With `--decoder process` and deinterlacing (`--deinterlace`), a time range's first frame now matches a full read's: a seek that landed on the wanted frame itself (a keyframe in an MPEG-TS) left the deinterlacer without the frame before it, so that frame had other pixels. Such a seek now reads again from further back, as in-process.
+
 ## 3.13.0 – 2026-10-22
 
 Parallel detection of joined MPEG-TS no longer falls back, and HD video read sequentially converts on a second thread.
