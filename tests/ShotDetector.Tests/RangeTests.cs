@@ -184,29 +184,42 @@ public class RangeTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
-    // Interlaced MPEG-TS, deinterlaced in-process: a seek for a keyframe's frame lands on that very frame (decoding starts
+    // Interlaced video, deinterlaced: a seek for a keyframe's frame can land on that very frame (MPEG-TS: decoding starts
     // at the next keyframe after the packet found by time), so yadif would get no previous frame for it, and its pixels
-    // would differ from the sequential read's; such a landing reads again from further back.
-    [Fact]
-    public void SeekingAnInterlacedTransportStreamToAKeyframeDeinterlacesAsSequentially()
+    // would differ from the sequential read's; such a landing reads again from further back. In-process the decoder
+    // says so; the executable keeps the frame before through its select filter to see it. mp4 (an index) as the
+    // control: there the seek lands before the wanted frame.
+    [Theory]
+    [InlineData("ts", false)]
+    [InlineData("ts", true)]
+    [InlineData("mp4", false)]
+    [InlineData("mp4", true)]
+    public void SeekingInterlacedVideoToAKeyframeDeinterlacesAsSequentially(string container, bool inProcess)
     {
         string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
-        if (libs is null)
+        if (inProcess && libs is null)
             return;
-        string ts = Path.Combine(Path.GetTempPath(), $"shotdetector-{Guid.NewGuid():N}.ts");
-        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-vf", "setfield=tff", "-c:v", "mpeg2video", "-flags", "+ildct+ilme", "-g", "12", "-q:v", "3", ts], default);
+        string file = Path.Combine(Path.GetTempPath(), $"shotdetector-{Guid.NewGuid():N}.{container}");
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-vf", "setfield=tff", "-c:v", "mpeg2video", "-flags", "+ildct+ilme", "-g", "12", "-q:v", "3", file], default);
         try
         {
-            var o = new DetectionOptions { FfmpegDirectory = libs, Decoder = VideoDecoder.InProcess, Deinterlace = DeinterlaceMode.Auto };
-            var reader = new VideoReader(ts, o);
+            var o = new DetectionOptions { FfmpegDirectory = libs, Decoder = inProcess ? VideoDecoder.InProcess : VideoDecoder.FfmpegProcess, Deinterlace = DeinterlaceMode.Auto };
+            var reader = new VideoReader(file, o);
             Assert.True(reader.Deinterlaces);
             var all = reader.Frames().Select(f => f.ToArray()).ToList();
-            foreach (int start in new[] { 24, 60, 61 })
-                Assert.Equal(all.Skip(start).Take(3), new VideoReader(ts, o).Frames(start, 3).Select(f => f.ToArray()));
+            foreach (int start in new[] { 1, 2, 24, 60, 61 })
+            {
+                var seeked = new VideoReader(file, o);
+                Assert.Equal(all.Skip(start).Take(3), seeked.Frames(start, 3).Select(f => f.ToArray()));
+                Assert.Equal(Enumerable.Range(start, 3).Select(reader.Position), Enumerable.Range(start, 3).Select(seeked.Position));
+            }
+
+            // To the end (no frame limit).
+            Assert.Equal(all.Skip(60), new VideoReader(file, o).Frames(60, null).Select(f => f.ToArray()));
         }
         finally
         {
-            File.Delete(ts);
+            File.Delete(file);
         }
     }
 
