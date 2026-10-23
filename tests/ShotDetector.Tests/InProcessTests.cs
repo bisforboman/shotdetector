@@ -261,7 +261,9 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
 
     // Row-wise yadif (FastYuv's Yadif) gives FFmpeg's yadif results: per-frame stats from the whole frames and from the
     // sampled rows, from the start and after a seek, 8-bit 4:2:0 and 4:2:2, 10-bit 4:2:2, and with FastYuv (only the rows
-    // its conversion reads deinterlaced: 4:2:0, 4:2:2, 10-bit 4:2:0, cropped).
+    // its conversion reads deinterlaced: 4:2:0, 4:2:2, 10-bit 4:2:0, cropped). Turned a quarter (a display matrix: the
+    // rows the conversion reads come from the frame's columns), with either converter, also against the executable's
+    // yadif and transpose.
     [Theory]
     [InlineData("420", "-pix_fmt yuv420p", "")]
     [InlineData("420-start", "-pix_fmt yuv420p", "start")]
@@ -277,12 +279,35 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
     [InlineData("420-10bit-fastyuv", "-pix_fmt yuv420p10le", "fastyuv")]
     [InlineData("1080i-422-fastyuv", "-t 1 -vf scale=1920:1080,setfield=tff -pix_fmt yuv422p", "fastyuv")]
     [InlineData("1080i-420-fastyuv-crop", "-t 1 -vf scale=1920:1080,setfield=tff -pix_fmt yuv420p", "fastyuv-crop")]
+    [InlineData("420-90", "-pix_fmt yuv420p", "rot90")]
+    [InlineData("420-270", "-pix_fmt yuv420p", "rot270")]
+    [InlineData("420-90-fastyuv", "-pix_fmt yuv420p", "rot90-fastyuv")]
+    [InlineData("420-270-fastyuv-crop", "-t 1 -vf scale=1920:1080,setfield=tff -pix_fmt yuv420p", "rot270-fastyuv-crop")]
+    [InlineData("422-90-fastyuv", "-pix_fmt yuv422p", "rot90-fastyuv")]
+    [InlineData("422-270", "-pix_fmt yuv422p", "rot270")]
+    [InlineData("420-10bit-270-fastyuv", "-pix_fmt yuv420p10le", "rot270-fastyuv")]
+    [InlineData("420-10bit-90", "-pix_fmt yuv420p10le", "rot90")]
     public void RowWiseYadifEqualsFfmpegs(string name, string args, string variant)
     {
         if (Libs is null)
             return;
         string clip = Path.Combine(Path.GetTempPath(), $"shotdetector-yadif-{name}-{Guid.NewGuid():N}.mkv");
         VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.Interlaced, .. args.Split(' '), "-c:v", "ffv1", clip], default);
+
+        // A display matrix (counterclockwise degrees), written on a copy of the stream.
+        int rotation = variant.StartsWith("rot90", StringComparison.Ordinal) ? 90 : variant.StartsWith("rot270", StringComparison.Ordinal) ? -90 : 0;
+        if (rotation != 0)
+            variant = variant.Contains('-') ? variant[(variant.IndexOf('-') + 1)..] : "";
+        void Turn(string path)
+        {
+            if (rotation == 0)
+                return;
+            string turned = Path.ChangeExtension(path, ".turned.mkv");
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-display_rotation", rotation.ToString(System.Globalization.CultureInfo.InvariantCulture), "-i", path, "-c", "copy", turned], default);
+            File.Move(turned, path, true);
+        }
+
+        Turn(clip);
         try
         {
             var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Deinterlace = DeinterlaceMode.On };
@@ -291,7 +316,7 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
                 "start" => options with { StartTime = "2.5" },
                 "full" => options with { FullFrames = true },
                 "fastyuv" => options with { Yuv420Converter = new SwscaleYuv420() },
-                "fastyuv-crop" => options with { Yuv420Converter = new SwscaleYuv420(), Crop = (101, 37, 1501, 899) },
+                "fastyuv-crop" => options with { Yuv420Converter = new SwscaleYuv420(), Crop = rotation == 0 ? (101, 37, 1501, 899) : (37, 101, 899, 1501) },
                 _ => options,
             };
 
@@ -300,12 +325,30 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
             bool deep = args.Contains("10le");
             string reference = Path.ChangeExtension(clip, ".ref.mkv");
             if (deep)
-                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-cpuflags", "0", "-i", clip, "-vf", "yadif", "-c:v", "ffv1", reference], default);
+            {
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-cpuflags", "0", "-noautorotate", "-i", clip, "-vf", "yadif", "-c:v", "ffv1", reference], default);
+                Turn(reference);
+            }
+
             var ffmpegs = deep ? ShotDetection.Detect(reference, options with { Deinterlace = DeinterlaceMode.Off }) : ShotDetection.Detect(clip, options);
             var ours = ShotDetection.Detect(clip, options with { Yadif = new Yadif() });
-            File.Delete(reference);
             Assert.True(ours.Video.DecodedInProcess);
             Assert.Equal(ffmpegs.Stats!.Csv(ffmpegs.Video.Position), ours.Stats!.Csv(ours.Video.Position));
+
+            // Turned: also the executable's yadif, then its transpose (8-bit; above 8 bits from the reference copy, as
+            // FFmpeg's SIMD yadif differs between runs there), with the scenes too.
+            if (rotation != 0)
+            {
+                Assert.Equal(rotation, ours.Video.Rotation);
+                Assert.Equal(options.Yuv420Converter is not null, VideoReader.IsYuv(ours.Video.Reader.Pipeline));
+                var executable = ShotDetection.Detect(deep ? reference : clip, options with { Decoder = VideoDecoder.FfmpegProcess, Deinterlace = deep ? DeinterlaceMode.Off : DeinterlaceMode.On });
+                Assert.False(executable.Video.DecodedInProcess);
+                Assert.Equal(executable.Stats!.Csv(executable.Video.Position), ours.Stats!.Csv(ours.Video.Position));
+                Assert.Equal(Shots.Csv(executable.Shots), Shots.Csv(ours.Shots));
+                Assert.Equal(Shots.Csv(ffmpegs.Shots), Shots.Csv(ours.Shots));
+            }
+
+            File.Delete(reference);
         }
         finally
         {
