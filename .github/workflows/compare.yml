@@ -54,7 +54,7 @@ jobs:
 
       # The branch's own results first: these need no clips, so any FFmpeg on PATH will do.
       - name: The branch's pixel tests
-        run: dotnet test tests/ShotDetector.Tests --filter "FullyQualifiedName~PixelTests|FullyQualifiedName~HsvTests|FullyQualifiedName~ContentScorerTests"
+        run: dotnet test tests/ShotDetector.Tests --filter "FullyQualifiedName~PixelTests|FullyQualifiedName~HsvTests|FullyQualifiedName~ContentScorerTests" --logger GitHubActions
 
       - name: The branch's recorded hash
         run: benchmarks/micro/check-hash.sh

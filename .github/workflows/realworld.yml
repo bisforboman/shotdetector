@@ -229,7 +229,7 @@ jobs:
           for f in $FILMS $OPUS; do
             echo "::group::$f"
             export SHOTDETECTOR_REALWORLD_AUDIO=$(python3 tools/realworld.py "$f" --download | tail -1)
-            if dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~RealWorldAudio"; then r=identical; else r=DIFFERS; status=1; fi
+            if dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~RealWorldAudio" --logger GitHubActions; then r=identical; else r=DIFFERS; status=1; fi
             echo "::endgroup::"
             echo "| $f | $r |" >> results.md
           done

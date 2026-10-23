@@ -120,7 +120,7 @@ jobs:
         uses: ./.github/actions/btbn-ffmpeg
 
       - name: Test
-        run: dotnet test ShotDetector.slnx
+        run: dotnet test ShotDetector.slnx --logger GitHubActions
 
   # Packs, attests and publishes: only our own code and our FFmpeg build (native.yml, from pinned sources) run here.
   release:

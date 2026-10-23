@@ -2,10 +2,13 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Real source paths (not CI's /_/), so a failed test's annotation points at its file (GitHubActions logger). -->
+    <ContinuousIntegrationBuild>false</ContinuousIntegrationBuild>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="GitHubActionsTestLogger" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />

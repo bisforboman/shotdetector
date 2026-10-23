@@ -149,7 +149,7 @@ jobs:
 
       - name: Test
         if: needs.changes.outputs.docs_only != 'true'
-        run: dotnet test ShotDetector.slnx
+        run: dotnet test ShotDetector.slnx --logger GitHubActions
 
       # The resize's and edge detector's outputs on the synthetic set, the same hash on x64 and ARM (benchmarks/micro).
       - name: Microbenchmark hashes as recorded
@@ -164,7 +164,7 @@ jobs:
           for env in DOTNET_EnableAVX2=0 DOTNET_EnableHWIntrinsic=0; do
             echo "== $env"
             env "$env" dotnet test tests/ShotDetector.Tests --no-build \
-              --filter "FullyQualifiedName~PixelTests|FullyQualifiedName~HsvTests|FullyQualifiedName~ContentScorerTests"
+              --filter "FullyQualifiedName~PixelTests|FullyQualifiedName~HsvTests|FullyQualifiedName~ContentScorerTests" --logger GitHubActions
             env "$env" benchmarks/micro/check-hash.sh
           done
 
@@ -255,7 +255,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/differing"
           dotnet build tests/FrameReader.Tests -v q > /dev/null
-          for i in 1 2 3 4 5; do dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~VideoWriter"; done
+          for i in 1 2 3 4 5; do dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~VideoWriter" --logger GitHubActions; done
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
@@ -446,7 +446,7 @@ jobs:
 
       - name: Test
         if: needs.changes.outputs.docs_only != 'true'
-        run: dotnet test ShotDetector.slnx
+        run: dotnet test ShotDetector.slnx --logger GitHubActions
 
       # The resize's and edge detector's outputs on the synthetic set, the same hash on x64 and ARM (benchmarks/micro).
       - name: Microbenchmark hashes as recorded
@@ -473,7 +473,7 @@ jobs:
 
       - name: Test
         if: needs.changes.outputs.docs_only != 'true'
-        run: dotnet test ShotDetector.slnx
+        run: dotnet test ShotDetector.slnx --logger GitHubActions
 
   # The sample clips parity compares on (tools/make-samples.ps1, two minutes on a runner), made once and cached by
   # the script and the FFmpeg series; both sides read the same clips, so a newer daily build making slightly
