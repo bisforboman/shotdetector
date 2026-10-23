@@ -307,17 +307,27 @@ internal sealed partial class VideoReader
     readonly double _startSeconds;
     readonly string _pixelFormat;
     readonly (int W, int H) _codedSize; // the stream's size from its headers, before rotation
-    readonly string? _chromaLocation;
     readonly bool? _xvidIdct;          // MPEG-4 Part 2: whether FFmpeg's decoder takes the Xvid IDCT (Mpeg4Idct); null if not known
-    readonly YuvConversion? _yuvForVideo;         // _yuv420 configured for this video's layout and colours (4:2:0 or 4:2:2)
-    readonly string _yuvLabels;        // the raw-YUV pipe's setparams: every frame labelled with the first frame's colour tags
+
+    // The first frame's chroma location and colour tags (FrameTagsArgs' output), read on first use; null where nothing
+    // would use them (8-bit 4:2:0 without FastYuv, headers only). Shared with the chunks' readers (ProbeResult).
+    readonly Lazy<string?>? _frameTags;
+    readonly Lazy<Colours> _colours;   // what the tags make: the scale filter's chroma location, FastYuv's converter, its labels
 
     /// <summary>
-    /// What a file's probe read: the stream entries (with the first frame's tags where they were read), every frame's pts
-    /// in display order, whether those came from a decoding pass, and the Xvid IDCT. Read-only once built; null for a
-    /// Stream, a URL, streaming and headers only.
+    /// The colour settings made from the stream's tags, with the first frame's over them where those are read: the chroma
+    /// location the executable's scale filter is told (<see cref="ChromaLocation"/>), _yuv420 configured for this video's
+    /// layout and colours (4:2:0, 4:2:2 or 10-bit 4:2:0), and the raw-YUV pipe's setparams (every frame labelled with the
+    /// first frame's colour tags).
     /// </summary>
-    internal sealed record ProbeResult(IReadOnlyDictionary<string, string> Stream, long[] Pts, bool PtsFromFrames, bool? XvidIdct);
+    sealed record Colours(string? ChromaLocation, YuvConversion? YuvForVideo, string YuvLabels);
+
+    /// <summary>
+    /// What a file's probe read: the stream entries, every frame's pts in display order, whether those came from a
+    /// decoding pass, the Xvid IDCT, and the first frame's tags (read once, by whichever reader first needs them; null
+    /// where none would). Read-only once built; null for a Stream, a URL, streaming and headers only.
+    /// </summary>
+    internal sealed record ProbeResult(IReadOnlyDictionary<string, string> Stream, long[] Pts, bool PtsFromFrames, bool? XvidIdct, Lazy<string?>? FrameTags);
 
     /// <summary>This reader's probe, for another reader of the same file with the same options (a chunk's) to reuse.</summary>
     internal ProbeResult? Probed { get; }
@@ -554,15 +564,14 @@ internal sealed partial class VideoReader
 
         // The first frame's chroma location and colour tags over the stream's: OpenCV converts each frame with its own
         // (sws_scale_frame), which are the codec's (an h264 stream's VUI) where a container's header can say otherwise.
-        // Read only where they're used: by FastYuv, and by the executable's scale filter where swscale interpolates the
-        // chroma (not 8-bit 4:2:0; the in-process default path converts with each frame's own).
-        if (probed is null && !headersOnly && (_yuv420 is not null || _pixelFormat is not ("yuv420p" or "yuvj420p")))
-            PreferFrameTags(stream, FrameTags(path, ffprobe, cancellationToken));
-
-        // Where the chroma samples sit, which OpenCV's converter (sws_scale_frame) takes from the frame; ffmpeg's command
-        // line loses it on the way to its filters, so the scale filter is told (every format but 8-bit 4:2:0, whose
-        // unscaled conversion doesn't interpolate chroma).
-        _chromaLocation = stream.GetValueOrDefault("chroma_location") is { } loc and not ("unspecified" or "unknown" or "") ? loc : null;
+        // Wanted only by FastYuv, and by the executable's scale filter where swscale interpolates the chroma (not 8-bit
+        // 4:2:0), and read only when one of them first asks (Colours): the in-process default path converts each frame
+        // with its own and never does (a 4K 10-bit first frame, or a live URL's, isn't waited for).
+        bool wantsTags = !headersOnly && (_yuv420 is not null || _pixelFormat is not ("yuv420p" or "yuvj420p"));
+        _frameTags = probed is not null ? probed.FrameTags
+            : wantsTags ? new Lazy<string?>(() => FrameTags(path, ffprobe, cancellationToken))
+            : null;
+        _colours = new Lazy<Colours>(() => ReadColours(stream));
         FieldOrder = stream.GetValueOrDefault("field_order") switch
         {
             "progressive" => FieldOrder.Progressive,
@@ -585,34 +594,6 @@ internal sealed partial class VideoReader
         _deinterlace = o.Deinterlace == DeinterlaceMode.On
             || (o.Deinterlace == DeinterlaceMode.Auto && FieldOrder is not (FieldOrder.Progressive or FieldOrder.Unknown));
 
-        // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
-        bool fullRange = _pixelFormat is "yuvj420p" or "yuvj422p" || stream.GetValueOrDefault("color_range") == "pc";
-        string colorSpace = _alwaysBt601 ? "bt470bg" : stream.GetValueOrDefault("color_space", "");
-
-        // The raw-YUV pipe (FastYuv on the executable): ffmpeg sets its output up with the first frame's colour tags, and
-        // when a later frame's matrix or range differs (a spliced or concatenated stream) it reconfigures and converts
-        // that frame's samples to the first frame's tags (through RGB), so FastYuv would read other samples than the
-        // decoder's. Labelled with the first frame's tags, every frame reaches the pipe untouched. A yuvj format keeps
-        // its full range: labelled otherwise, ffmpeg converts it.
-        _yuvLabels = YuvLabels(_pixelFormat, stream.GetValueOrDefault("color_space"), stream.GetValueOrDefault("color_range"));
-
-        // 4:2:2 when the converter does that too (FastYuv's does): swscale takes the same unscaled converter for it. 10-bit
-        // 4:2:0 too: swscale scales that one (interpolating the chroma from where it sits), so its converter is for the
-        // size and chroma location as well, and declines sizes it doesn't reproduce.
-        _yuvForVideo = _pixelFormat switch
-        {
-            "yuv420p" or "yuvj420p" => _yuv420?.ForColor(colorSpace, fullRange) is { } c420 ? new(c420.RowToBgr, ChromaRows: c420 as IYuvChromaRows) : null,
-            "yuv422p" or "yuvj422p" => (_yuv420 as IYuv422Converter)?.ForColor(colorSpace, fullRange) is { } c422
-                ? new(c422.RowToBgr, ChromaRows: c422 as IYuvChromaRows)
-                : null,
-
-            // A frame at a time when the converter does that too (FastYuv's does): each chroma row filtered once per frame.
-            "yuv420p10le" => (_yuv420 as IYuv420P10Converter)?.ForVideo(colorSpace, fullRange, _chromaLocation, _codedSize.W, _codedSize.H) is { } c10
-                ? new(c10.RowToBgr, c10 as IYuv420P10FrameConverter, c10 as IYuvChromaRows)
-                : null,
-            _ => null,
-        };
-
         var tb = Fps.Parse(stream["time_base"]);
         _timeBase = tb.Num / (double)tb.Den;
         _startPts = long.TryParse(stream.GetValueOrDefault("start_pts"), out var s) ? s : 0;
@@ -626,7 +607,61 @@ internal sealed partial class VideoReader
         if (missingPts)
             pts = _probesInProcess ? InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions) : FrameTimestamps(ffprobe, path, _inputOptions, cancellationToken);
         _pts = probed?.Pts ?? [.. pts];
-        Probed = probed ?? (Streaming || headersOnly ? null : new(stream, _pts, _ptsFromFrames, _xvidIdct));
+        Probed = probed ?? (Streaming || headersOnly ? null : new(stream, _pts, _ptsFromFrames, _xvidIdct, _frameTags));
+    }
+
+    /// <summary>Whether the first frame's chroma location and colour tags were read (by this reader or a chunk's sharing its probe).</summary>
+    internal bool FrameTagsRead => _frameTags?.IsValueCreated == true;
+
+    /// <summary>
+    /// Where the chroma samples sit, which OpenCV's converter (sws_scale_frame) takes from the frame; ffmpeg's command line
+    /// loses it on the way to its filters, so the executable's scale filter is told (every format but 8-bit 4:2:0, whose
+    /// unscaled conversion doesn't interpolate chroma). Reads the first frame's tags where they're wanted.
+    /// </summary>
+    string? ChromaLocation => _colours.Value.ChromaLocation;
+
+    /// <summary>
+    /// _yuv420 (FastYuv) configured for this video's layout and colours; null without a converter (without reading the
+    /// first frame's tags: the default path never needs them) or where it declines the video.
+    /// </summary>
+    YuvConversion? YuvForVideo => _yuv420 is null ? null : _colours.Value.YuvForVideo;
+
+    /// <summary><see cref="Colours"/> from the stream's entries, with the first frame's tags over them where those are wanted.</summary>
+    Colours ReadColours(Dictionary<string, string> streamEntries)
+    {
+        var stream = new Dictionary<string, string>(streamEntries);
+        if (_frameTags is { } frameTags)
+            PreferFrameTags(stream, frameTags.Value);
+        string? chromaLocation = stream.GetValueOrDefault("chroma_location") is { } loc and not ("unspecified" or "unknown" or "") ? loc : null;
+
+        // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
+        bool fullRange = _pixelFormat is "yuvj420p" or "yuvj422p" || stream.GetValueOrDefault("color_range") == "pc";
+        string colorSpace = _alwaysBt601 ? "bt470bg" : stream.GetValueOrDefault("color_space", "");
+
+        // The raw-YUV pipe (FastYuv on the executable): ffmpeg sets its output up with the first frame's colour tags, and
+        // when a later frame's matrix or range differs (a spliced or concatenated stream) it reconfigures and converts
+        // that frame's samples to the first frame's tags (through RGB), so FastYuv would read other samples than the
+        // decoder's. Labelled with the first frame's tags, every frame reaches the pipe untouched. A yuvj format keeps
+        // its full range: labelled otherwise, ffmpeg converts it.
+        string yuvLabels = YuvLabels(_pixelFormat, stream.GetValueOrDefault("color_space"), stream.GetValueOrDefault("color_range"));
+
+        // 4:2:2 when the converter does that too (FastYuv's does): swscale takes the same unscaled converter for it. 10-bit
+        // 4:2:0 too: swscale scales that one (interpolating the chroma from where it sits), so its converter is for the
+        // size and chroma location as well, and declines sizes it doesn't reproduce.
+        YuvConversion? yuvForVideo = _pixelFormat switch
+        {
+            "yuv420p" or "yuvj420p" => _yuv420?.ForColor(colorSpace, fullRange) is { } c420 ? new(c420.RowToBgr, ChromaRows: c420 as IYuvChromaRows) : null,
+            "yuv422p" or "yuvj422p" => (_yuv420 as IYuv422Converter)?.ForColor(colorSpace, fullRange) is { } c422
+                ? new(c422.RowToBgr, ChromaRows: c422 as IYuvChromaRows)
+                : null,
+
+            // A frame at a time when the converter does that too (FastYuv's does): each chroma row filtered once per frame.
+            "yuv420p10le" => (_yuv420 as IYuv420P10Converter)?.ForVideo(colorSpace, fullRange, chromaLocation, _codedSize.W, _codedSize.H) is { } c10
+                ? new(c10.RowToBgr, c10 as IYuv420P10FrameConverter, c10 as IYuvChromaRows)
+                : null,
+            _ => null,
+        };
+        return new(chromaLocation, yuvForVideo, yuvLabels);
     }
 
     static List<long> FrameTimestamps(string ffprobe, string path, string[] inputOptions, CancellationToken ct)
@@ -1120,7 +1155,7 @@ internal sealed partial class VideoReader
     public FramePipeline Pipeline => !_ffmpegResize && (Width, Height) != (CropRegion.Width, CropRegion.Height)
 
         // swscale's unscaled yuv420p/yuv422p converter (what OpenCV gets) needs an even decoded height (10-bit: any).
-        ? (_yuvForVideo is not null && !_sizeChanges && (TenBit || _codedSize.H % 2 == 0) ? YuvPipeline
+        ? (YuvForVideo is not null && !_sizeChanges && (TenBit || _codedSize.H % 2 == 0) ? YuvPipeline
             : _fullFrames || (!DecodesInProcess && !SampledPays(CropRegion.Width, CropRegion.Height, Width, Height))
                 ? FramePipeline.FullFrameResize : FramePipeline.SampledBgr)
         : FramePipeline.FfmpegScale;
@@ -1284,12 +1319,12 @@ internal sealed partial class VideoReader
 
         // The stream's size, explicitly: a frame of another size (a resolution change) is scaled to it in the same
         // conversion, as OpenCV's sws_scale_frame does into its buffer (ffmpeg would convert, then scale at the encoder).
-        string toBgr = $"scale={_codedSize.W}:{_codedSize.H}:flags=bicubic" + (_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "")
+        string toBgr = $"scale={_codedSize.W}:{_codedSize.H}:flags=bicubic" + (ChromaLocation is { } cl ? ":in_chroma_loc=" + cl : "")
             + (_alwaysBt601 ? ":in_color_matrix=bt601" : "") + ",format=bgr24" + TurnFilters;
         args = pipeline switch
         {
             // The source's own format, so ffmpeg passes the samples through untouched; turned after converting.
-            FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled or FramePipeline.Yuv420P10Sampled => [.. args, "-vf", select[1] + "," + _yuvLabels, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
+            FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled or FramePipeline.Yuv420P10Sampled => [.. args, "-vf", select[1] + "," + _colours.Value.YuvLabels, "-f", "rawvideo", "-pix_fmt", _pixelFormat],
 
             // Like OpenCV: SWS_BICUBIC, colour matrix and range from the stream's tags (BT.601 if untagged).
             FramePipeline.FullFrameResize => [.. args, "-vf", prefix + toBgr + crop,
@@ -1485,7 +1520,7 @@ internal sealed partial class VideoReader
                 }
 
                 if (yuv)
-                    resizer.ResizeYuv(buffer, small, _yuvForVideo!, _codedSize.W, _codedSize.H, Turn, CropRegion.X, CropRegion.Y);
+                    resizer.ResizeYuv(buffer, small, YuvForVideo!, _codedSize.W, _codedSize.H, Turn, CropRegion.X, CropRegion.Y);
                 else if (sampled)
                     resizer.ResizeSampled(buffer, small);
                 else

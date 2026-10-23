@@ -103,6 +103,44 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         Assert.False(new VideoReader(clips.ThreeShots, new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess }).DecodesInProcess);
     }
 
+    // The first frame's chroma location and colour tags are read only where something uses them: FastYuv, and the
+    // executable's scale filter (10-bit, where swscale interpolates the chroma), not the in-process default path, which
+    // converts each frame with its own. A chunk's reader shares the probe's read. (Their values on each path:
+    // SameAsTheFfmpegExecutableForEachFormat's 10bit-h264-vui-topleft, FastYuvTests' 420p10-vui-topleft.)
+    [Fact]
+    public void ReadsTheFirstFramesTagsOnlyWhereTheyreUsed()
+    {
+        if (Libs is null)
+            return;
+        string clip = Path.Combine(Path.GetTempPath(), $"shotdetector-tags-{Guid.NewGuid():N}.mkv");
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-frames:v", "30", "-pix_fmt", "yuv420p10le", "-chroma_sample_location", "left", "-c:v", "ffv1", clip], default);
+        try
+        {
+            var options = new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess };
+            var inProcess = new VideoReader(clip, options);
+            Assert.Equal(30, inProcess.Frames().Count());
+            Assert.True(inProcess.DecodesInProcess);
+            Assert.False(inProcess.FrameTagsRead);
+
+            var executable = new VideoReader(clip, options with { Decoder = VideoDecoder.FfmpegProcess });
+            Assert.False(executable.FrameTagsRead);
+            Assert.Equal(30, executable.Frames().Count());
+            Assert.True(executable.FrameTagsRead);
+
+            var fast = new VideoReader(clip, options with { Yuv420Converter = new SwscaleYuv420() });
+            Assert.False(fast.FrameTagsRead);
+            Assert.Equal(FramePipeline.Yuv420P10Sampled, fast.Pipeline);
+            Assert.True(fast.FrameTagsRead);
+            Assert.Equal(30, fast.Frames().Count());
+            Assert.True(new VideoReader(clip, options with { Yuv420Converter = new SwscaleYuv420() }, fast.Probed!, default).FrameTagsRead);
+            Assert.False(new VideoReader(clip, options, inProcess.Probed!, default).FrameTagsRead);
+        }
+        finally
+        {
+            File.Delete(clip);
+        }
+    }
+
     [Fact]
     public void AutoFindsTheFramesTheLibrariesCannotDecode()
     {
