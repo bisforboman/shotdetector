@@ -11,17 +11,22 @@
 
         # 10-bit: chroma interpolated from where the frame says it sits, as OpenCV's sws_scale_frame does (executable
         # path: in_chroma_loc; in-process sampled rows: the position sws_scale_frame derives)
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(_chromaLocation is { } cl ? ":in_chroma_loc=" + cl : "")'; Replace = '""'; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(ChromaLocation is { } cl ? ":in_chroma_loc=" + cl : "")'; Replace = '""'; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
         @{ File = 'src/FrameReader/BgrConverter.cs'; Find = 'ffmpeg.av_opt_set_int(_toRows, "src_h_chr_pos", hPos, 0);'; Replace = ''; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
 
         # The first frame's chroma location and colour tags over the stream's (the container's header can contradict the
         # codec's, which OpenCV converts with): executable path's in_chroma_loc, FastYuv's colours and siting
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (key is "chroma_location" or "color_space" or "color_range" && value is not ("unspecified" or "unknown" or ""))'; Replace = 'if (false)'; Tests = 'VideoTests.TheFramesChromaLocationAndColourTagsWinOverTheStreams' }
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'PreferFrameTags(stream, FrameTags(path, ffprobe, cancellationToken));'; Replace = '_ = stream;'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'PreferFrameTags(stream, frameTags.Value);'; Replace = '_ = frameTags;'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
+
+        # ... read only where FastYuv or the executable's scale filter uses them (not the in-process default path), once
+        # for a detection's chunks
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'YuvForVideo => _yuv420 is null ? null : _colours.Value.YuvForVideo;'; Replace = 'YuvForVideo => _colours.Value.YuvForVideo;'; Tests = 'InProcessTests.ReadsTheFirstFramesTagsOnlyWhereTheyreUsed' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '_frameTags = probed is not null ? probed.FrameTags'; Replace = '_frameTags = false ? probed!.FrameTags'; Tests = 'InProcessTests.ReadsTheFirstFramesTagsOnlyWhereTheyreUsed' }
 
         # The executable's raw-YUV pipe labels every frame with the first frame's colour tags, so a matrix or range that
         # changes midway doesn't make ffmpeg convert the later frames' samples (FastYuv reads the decoder's)
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'select[1] + "," + _yuvLabels'; Replace = 'select[1]'; Tests = 'FastYuvTests.TagChangeMidwayKeepsTheSamples' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'select[1] + "," + _colours.Value.YuvLabels'; Replace = 'select[1]'; Tests = 'FastYuvTests.TagChangeMidwayKeepsTheSamples' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'colorSpace is { } cs && SetParamsColorSpaces.Contains(cs) ? cs : "unknown"'; Replace = 'colorSpace ?? "unknown"'; Tests = 'UrlOptionTests.TheYuvPipesLabelsAreTheFirstFramesTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'pixelFormat.StartsWith("yuvj", StringComparison.Ordinal) ? "pc"'; Replace = 'false ? "pc"'; Tests = 'UrlOptionTests.TheYuvPipesLabelsAreTheFirstFramesTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'colorRange is "tv" or "pc" ? colorRange : "unknown"'; Replace = 'colorRange ?? "unknown"'; Tests = 'UrlOptionTests.TheYuvPipesLabelsAreTheFirstFramesTags' }
@@ -65,7 +70,7 @@
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.cs'; Find = '(chromaHeight == height ? y : y >> 1, 1);'; Replace = '(y >> 1, 1);'; Tests = 'FastYuvTests.RowsOutsideTheRowsReadChangeNothing' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'return (plan.V.Pos[y], plan.V.Size);'; Replace = 'return (plan.V.Pos[y], 1);'; Tests = 'FastYuvTests.RowsOutsideTheRowsReadChangeNothing' }
         @{ File = 'src/ShotDetector/CvResize.cs'; Find = 'TurnedPixels(width, height, turn, cropX, cropY).Select(p => p.Y)'; Replace = 'TurnedPixels(width, height, turn, cropX, cropY).Select(p => p.X)'; Tests = 'FastYuvTests.RowsOutsideTheRowsReadChangeNothing' }
-        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '=> _yuvForVideo?.ChromaRows is { } chromaRows'; Replace = '=> _yuvForVideo?.ChromaRows is var chromaRows'; Tests = 'FastYuvTests.ConvertersThatDoNotSayWhichRowsGetWholePlanes' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '=> YuvForVideo?.ChromaRows is { } chromaRows'; Replace = '=> YuvForVideo?.ChromaRows is var chromaRows'; Tests = 'FastYuvTests.ConvertersThatDoNotSayWhichRowsGetWholePlanes' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '_rPending.Add((plane, y));'; Replace = ''; Tests = 'InProcessTests.RowWiseYadifEqualsFfmpegs' }
 
         # Chunked runs: twice the CPUs' decoder threads (at most 16) for frame-threaded decoders up to 1080p, shared out among the chunks

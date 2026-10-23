@@ -54,7 +54,7 @@ internal sealed partial class VideoReader
     /// (<see cref="YuvRowsRead(CvResize, IYuvChromaRows, int, int, bool, int, int, int)"/>); null when the converter
     /// doesn't say which (<see cref="IYuvChromaRows"/>): whole planes then.
     /// </summary>
-    internal (int[] Luma, int[] Chroma)? YuvRowsRead(CvResize resizer) => _yuvForVideo?.ChromaRows is { } chromaRows
+    internal (int[] Luma, int[] Chroma)? YuvRowsRead(CvResize resizer) => YuvForVideo?.ChromaRows is { } chromaRows
         ? YuvRowsRead(resizer, chromaRows, _codedSize.W, _codedSize.H, Pipeline == FramePipeline.Yuv422Sampled, Turn, CropRegion.X, CropRegion.Y)
         : null;
 
@@ -347,7 +347,7 @@ internal sealed partial class VideoReader
                         resizer!.ResizePackedRows(buffer, small);
                         break;
                     case FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled or FramePipeline.Yuv420P10Sampled:
-                        resizer!.ResizeYuv(buffer, small, _yuvForVideo!, _codedSize.W, _codedSize.H, Turn, CropRegion.X, CropRegion.Y);
+                        resizer!.ResizeYuv(buffer, small, YuvForVideo!, _codedSize.W, _codedSize.H, Turn, CropRegion.X, CropRegion.Y);
                         break;
                     case FramePipeline.FullFrameResize:
                         resizer!.Resize(buffer, small);
