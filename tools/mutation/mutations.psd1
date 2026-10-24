@@ -1,6 +1,7 @@
 # Mutations for tools/mutation/Invoke-Mutations.ps1: each breaks one guard on purpose (Find must occur exactly once
 # in File; Replace takes its place), and at least one test in Tests (a test class filter) must then fail. A mutation
 # that survives is a guard no test covers. Add one for every new guard that reproduces a scenedetect quirk.
+# Project: the test project the Tests filter runs in (default tests/ShotDetector.Tests).
 @{
     Mutations = @(
         # Time range, frame skip and crop (scenedetect's time, --frame-skip, --crop)
@@ -224,5 +225,15 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'StartEstimate(s) : 0'; Replace = 'StartEstimate(s) - 1 : 0'; Tests = 'FrameSourceAsyncTests.SameAsTheSynchronousDetect' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'cancellationToken.ThrowIfCancellationRequested(); // before each frame is awaited'; Replace = '// mutated'; Tests = 'FrameSourceAsyncTests.CancelsBetweenFrames' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'cancellationToken.ThrowIfCancellationRequested(); // before each frame is pulled'; Replace = '// mutated'; Tests = 'FrameSourceAsyncTests.SynchronousDetectCancelsBeforeEachPull' }
+
+        # FrameReader: the tone and waveform from samples refuse what they can't take (issue #494)
+        @{ File = 'src/FrameReader/ReferenceToneFinder.cs'; Find = 'ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);'; Replace = ''; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ReferenceToneFinder.cs'; Find = 'ArgumentOutOfRangeException.ThrowIfNegativeOrZero(channels);'; Replace = ''; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ReferenceToneFinder.cs'; Find = 'if (interleaved.Length % _channels != 0)'; Replace = 'if (false)'; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ReferenceToneFinder.cs'; Find = 'throw new InvalidOperationException("Finish was called: start a new finder.");'; Replace = '{ }'; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);'; Replace = ''; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'ArgumentOutOfRangeException.ThrowIfNegativeOrZero(channels);'; Replace = ''; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'if (interleaved.Length % _inChannels != 0)'; Replace = 'if (false)'; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'throw new InvalidOperationException("Finish was called: start a new builder.");'; Replace = '{ }'; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
     )
 }

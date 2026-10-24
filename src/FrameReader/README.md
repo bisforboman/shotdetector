@@ -290,6 +290,23 @@ foreach (var tone in ReferenceTone.Find(audio))
     Console.WriteLine($"tone {tone.Start}-{tone.End} at {tone.Level:0.0} dBFS");
 ```
 
+Samples decoded elsewhere (a browser's own decoder, no FFmpeg loaded): `ReferenceToneFinder` and `WaveformBuilder` take
+them a chunk at a time and give what `Find` and `Read` give for the same samples (which run through them). The
+finder's `Add` returns false once `SearchDuration` is read, so decoding can stop there.
+
+```csharp
+var finder = new ReferenceToneFinder(sampleRate, channels, new() { SearchDuration = TimeSpan.FromMinutes(3) });
+var builder = new WaveformBuilder(sampleRate, channels, new() { PixelsPerSecond = 100 });
+foreach (var (samples, time) in decodedPackets) // float, interleaved
+{
+    builder.Add(samples, time);
+    finder.Add(samples, time); // false: the search is done
+}
+
+var tones = finder.Finish();
+var waveform = builder.Finish();
+```
+
 Test media without the ffmpeg executable: `TestMedia.Write(path, options)` makes a synthetic clip from FFmpeg's own
 sources and encoders, in-process, for tests that need real media without committing any. Video sources are
 concatenated in order, so the cuts fall at known frames; interlaced output is flagged and coded as such.

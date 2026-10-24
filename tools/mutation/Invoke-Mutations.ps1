@@ -10,10 +10,12 @@
 param([string]$Root = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent), [int]$Shard = 0, [int]$Shards = 1)
 $ErrorActionPreference = 'Stop'
 $config = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'mutations.psd1')
-$tests = Join-Path $Root 'tests/ShotDetector.Tests'
-
-dotnet build $tests -nologo -v q | Out-Host
-if ($LASTEXITCODE -ne 0) { throw 'The unmutated build fails.' }
+# Each mutation's tests run in its Project (a test project's folder, from the root), ShotDetector.Tests by default.
+$default = 'tests/ShotDetector.Tests'
+foreach ($project in @($config.Mutations | ForEach-Object { if ($_.Project) { $_.Project } else { $default } } | Sort-Object -Unique)) {
+    dotnet build (Join-Path $Root $project) -nologo -v q | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "The unmutated build of $project fails." }
+}
 
 $mine = @(for ($i = $Shard; $i -lt $config.Mutations.Count; $i += $Shards) { $config.Mutations[$i] })
 $results = foreach ($m in $mine) {
@@ -27,6 +29,7 @@ $results = foreach ($m in $mine) {
 
     [IO.File]::WriteAllText($file, $text.Replace($m.Find, $m.Replace))
     try {
+        $tests = Join-Path $Root $(if ($m.Project) { $m.Project } else { $default })
         $out = dotnet test $tests -nologo -v q --filter "FullyQualifiedName~$($m.Tests)" 2>&1
         $result = if ($LASTEXITCODE -ne 0) { if ($out -match ' error CS') { 'KILLED (build)' } else { 'KILLED' } } else { 'SURVIVED' }
     }

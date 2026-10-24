@@ -33,15 +33,14 @@ public sealed record WaveformOptions
 /// Waveform peaks as BBC's audiowaveform computes them: per point (a run of <see cref="SamplesPerPixel"/> samples) and
 /// channel, the minimum and maximum 16-bit sample. <see cref="Save"/> writes its binary .dat format (versions 1 and 2),
 /// which peaks.js and other waveform viewers load. The values equal audiowaveform's where both read the same samples
-/// (WAV, FLAC and other integer PCM); for lossy codecs the two decoders can differ slightly.
+/// (WAV, FLAC and other integer PCM); for lossy codecs the two decoders can differ slightly. For samples decoded
+/// elsewhere (no FFmpeg), <see cref="WaveformBuilder"/> computes the same points a chunk at a time.
 /// </summary>
 public sealed class WaveformData
 {
-    const int MaxChannels = 24; // audiowaveform's WaveformBuffer::MAX_CHANNELS
-
     readonly short[] _data; // per point, per channel: min, max
 
-    WaveformData(int sampleRate, int samplesPerPixel, int channels, short[] data) =>
+    internal WaveformData(int sampleRate, int samplesPerPixel, int channels, short[] data) =>
         (SampleRate, SamplesPerPixel, Channels, _data) = (sampleRate, samplesPerPixel, channels, data);
 
     /// <summary>The audio's sample rate.</summary>
@@ -74,76 +73,14 @@ public sealed class WaveformData
     /// <exception cref="FrameReaderException">Decoding failed.</exception>
     public static WaveformData Read(AudioReader audio, WaveformOptions? options = null, CancellationToken cancellationToken = default)
     {
-        var o = options ?? new WaveformOptions();
-        int rate = audio.SampleRate, inChannels = audio.Channels;
-        int perPixel = o.PixelsPerSecond is { } pps
-            ? (pps > 0 ? rate / pps : throw new ArgumentException("PixelsPerSecond must be positive.", nameof(options)))
-            : o.SamplesPerPixel;
-        if (perPixel < 2)
-            throw new ArgumentException("A point needs at least 2 samples (audiowaveform's minimum zoom).", nameof(options));
-        if (inChannels > MaxChannels)
-            throw new ArgumentException($"audiowaveform handles at most {MaxChannels} channels.", nameof(options));
-        int channels = o.SplitChannels ? inChannels : 1;
-        bool fromFloat = audio.DecodesFloat;
-
-        var data = new List<short>();
-        var min = new int[channels];
-        var max = new int[channels];
-        Array.Fill(min, short.MaxValue);
-        Array.Fill(max, short.MinValue);
-        int count = 0;
-        Span<int> frame = stackalloc int[inChannels];
-        var progress = new ProgressReporter(o.Progress, audio.Duration);
+        var builder = new WaveformBuilder(audio.SampleRate, audio.Channels, options, audio.Duration, integerSamples: !audio.DecodesFloat);
         while (audio.TryRead(out var chunk))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            progress.Report(chunk.Time);
-            var samples = chunk.Samples;
-            for (int i = 0; i < chunk.SampleCount; i++)
-            {
-                for (int c = 0; c < inChannels; c++)
-                    frame[c] = ToShort(samples[i * inChannels + c], fromFloat);
-                if (channels == 1)
-                {
-                    // The channels' mean, truncated toward zero, as audiowaveform mixes them.
-                    int sum = 0;
-                    foreach (int s in frame)
-                        sum += s;
-                    int sample = sum / inChannels;
-                    min[0] = Math.Min(min[0], sample);
-                    max[0] = Math.Max(max[0], sample);
-                }
-                else
-                {
-                    for (int c = 0; c < channels; c++)
-                    {
-                        min[c] = Math.Min(min[c], frame[c]);
-                        max[c] = Math.Max(max[c], frame[c]);
-                    }
-                }
-
-                if (++count == perPixel)
-                    Flush();
-            }
+            builder.Add(chunk.Samples, chunk.Time);
         }
 
-        if (count > 0)
-            Flush(); // the last, partial point
-        progress.Done();
-        return new WaveformData(rate, perPixel, channels, [.. data]);
-
-        void Flush()
-        {
-            for (int c = 0; c < channels; c++)
-            {
-                data.Add((short)min[c]);
-                data.Add((short)max[c]);
-                min[c] = short.MaxValue;
-                max[c] = short.MinValue;
-            }
-
-            count = 0;
-        }
+        return builder.Finish();
     }
 
     /// <summary>As <see cref="Read"/>, off the calling thread.</summary>
