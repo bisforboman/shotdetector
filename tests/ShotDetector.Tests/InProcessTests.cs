@@ -1019,9 +1019,10 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
 
     // Converting on its own thread, the reader stops cleanly: the caller cancelling midway, the caller stopping early,
     // and a stream failing midway (the decoding error, as when converting on the decoding thread). Every taken frame
-    // is let go (a leak would show as the run never ending, not here; the native frames are FFmpeg's).
+    // is let go (a leak would show as the run never ending, not here; the native frames are FFmpeg's). A hang ends
+    // in a TimeoutException after 60 s, which fails the cancelling case too.
     [Fact]
-    public void ConvertThreadStopsCleanly()
+    public async Task ConvertThreadStopsCleanly()
     {
         if (Libs is null)
             return;
@@ -1038,14 +1039,12 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
                         cancel.Cancel();
                 }
             });
-            Assert.True(((IAsyncResult)run).AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(60)), "hung after cancelling");
-            Assert.ThrowsAny<OperationCanceledException>(() => run.GetAwaiter().GetResult());
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run.WaitAsync(TimeSpan.FromSeconds(60)));
             Assert.True(reader.ConvertedOnThread);
         }
 
         var early = Task.Run(() => reader.Frames().Take(5).Count());
-        Assert.True(((IAsyncResult)early).AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(60)), "hung after stopping early");
-        Assert.Equal(5, early.Result);
+        Assert.Equal(5, await early.WaitAsync(TimeSpan.FromSeconds(60)));
 
         // A stream that fails two thirds of the way in: the same error, after the same frames.
         (int Frames, Exception? Error) Failing(int convertThreads)
