@@ -36,7 +36,11 @@ the sample and the tests (docs/decisions/2026-10-17-split-trigger-sample.md). 2.
 probe's extradata and first packet, `BgrConverter.Size`, the CodecOptions guards), not met. 2.8.0: 1 of 21 (the
 InputOptions check, tested through ShotDetector), under 1 in 20 for the first time; the trigger needs two releases in a row. 2.9.0: 0 of 6 (the audio reader's
 discard, the rtsp listen default), fewer than 20 counted, so the window joins the next release's. 2.10.0: 0 of 4 (`CopyRows`,
-`HasFrameThreads`), 0 of 10 since 2.8.0, still fewer than 20: the window joins the next release's again.
+`HasFrameThreads`), 0 of 10 since 2.8.0, still fewer than 20: the window joins the next release's again. Counted early on 2026-10-24,
+when the user asked whether to split: since 2.10.0, 1 of 18 (the test logger in both test projects, no real coupling)
+and none touching FrameReader alone, so 1 of 28 since 2.8.0. Recommended not splitting (a split would move the
+scenedetect comparison of FrameReader changes to after their release, and nothing outside drives FrameReader now);
+the user's choice: ask again with the formal count at the next FrameReader release.
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
