@@ -523,6 +523,24 @@ public sealed record DetectionOptions
     public IProgress<string>? Warnings { get; init; }
 
     /// <summary>
+    /// Told each shot (<see cref="DetectionResult.Shots"/>, in the same order) once, as soon as it is known, by every
+    /// overload of <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/>, DetectAsync and
+    /// DetectStreamAsync (a file path, a Stream, the caller's frames). With one detector and neither
+    /// <see cref="DropShortScenes"/> nor <see cref="MergeLastScene"/>, a shot is told once the cut that ends it is
+    /// confirmed (a few frames later: the adaptive detector's window, the minimum shot length), while the rest of the
+    /// video is still being read, and the last one at the end; otherwise all of them at the end, as a later cut can still
+    /// change them. A file scored in chunks (<see cref="DetectionMode.Parallel"/>, and <see cref="DetectionMode.Auto"/>
+    /// in Detect) tells them in order once every chunk is scored; <see cref="DetectionMode.Sequential"/> tells them while
+    /// decoding. Setting it changes neither the shots nor how the video is read. DetectStreamAsync tells each shot here,
+    /// then yields it. Reported synchronously on the thread that runs the detection (DetectAsync's and DetectStreamAsync's
+    /// background thread), so every shot is told before Detect returns; with <see cref="System.Progress{T}"/>, reports
+    /// arrive on the thread that created it, possibly later. A run that fails or is cancelled has told the shots known by
+    /// then. One exception to "the result's shots": timestamps that start over (two streams joined) make the cuts come out
+    /// of order, and the shots told before that aren't told again from the sorted cuts.
+    /// </summary>
+    public IProgress<Shot>? OnShot { get; init; }
+
+    /// <summary>
     /// Report <see cref="Progress"/> only when the fraction done crosses a multiple of this (0.1: at 10 %, 20 %, ...),
     /// besides the first report and the last: one line per step for a service log, with no throttling of your own.
     /// When the frame count is unknown (streamed input), just the first and the last. Above 0 and at most 1; null (the
@@ -725,7 +743,8 @@ public static class ShotDetection
     /// <see cref="YuvVideo.TimeBase"/> set: a frame more than half a frame from where the rate puts it is an error), at
     /// one size, upright (no rotation is applied). Options: the detectors' settings, stats, the time range
     /// (<see cref="DetectionOptions.StartTime"/>: the frames before it are still enumerated, not converted), frame skip,
-    /// crop, downscale, the frame rate override, merge and drop of short shots, progress and warnings. Not available
+    /// crop, downscale, the frame rate override, merge and drop of short shots, progress, warnings and
+    /// <see cref="DetectionOptions.OnShot"/> (each shot as soon as it is known, while frames are still pulled). Not available
     /// (an <see cref="ArgumentException"/>): <see cref="DetectionOptions.Deinterlace"/>, <see cref="DetectionOptions.Yadif"/>,
     /// <see cref="DetectionOptions.FfmpegResize"/>, <see cref="DetectionOptions.TrimReferenceTone"/>. Ignored, as nothing
     /// is decoded here: <see cref="DetectionOptions.Decoder"/>, <see cref="DetectionOptions.FfmpegDirectory"/>,
@@ -879,6 +898,7 @@ public static class ShotDetection
     /// (the adaptive detector's window, the minimum shot length); the last shot comes at the end.
     /// Stopping the enumeration early, or cancelling, stops ffmpeg. There is no result: warnings
     /// (<see cref="DetectionResult.Warnings"/>) go to <see cref="DetectionOptions.Warnings"/> as soon as they are known.
+    /// A <see cref="DetectionOptions.OnShot"/> is told each shot too, just before it is yielded.
     /// </summary>
     /// <exception cref="ArgumentException">Invalid options.</exception>
     /// <exception cref="ShotDetectionException">The input, ffmpeg or FFmpeg's libraries failed; <see cref="ShotDetectionException.Reason"/>
@@ -976,6 +996,19 @@ public static class ShotDetection
     {
         cancellationToken.ThrowIfCancellationRequested();
         var o = (options ?? new DetectionOptions()).Resolved();
+
+        // DetectStreamAsync's channel (it decides the mode's Auto), and DetectionOptions.OnShot, which only listens.
+        bool streaming = onShot is not null;
+        if (o.OnShot is { } told)
+        {
+            var yielded = onShot;
+            onShot = shot =>
+            {
+                told.Report(shot);
+                yielded?.Invoke(shot);
+            };
+        }
+
         if (o.TrimReferenceTone && videoPath is null)
             throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately).");
         if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null))
@@ -1118,7 +1151,7 @@ public static class ShotDetection
 
         // Parallel: the scores in chunks at once, then the decisions over them in frame order (docs/parallel-detection.md).
         // Why not, when it can't: reported (Warnings) when the caller asked for Parallel.
-        bool parallel = o.ResolvedMode(streaming: onShot is not null) == DetectionMode.Parallel;
+        bool parallel = o.ResolvedMode(streaming) == DetectionMode.Parallel;
         long pixels = (long)video.SourceWidth * video.SourceHeight;
         string? notChunked = !parallel ? null
             : video.FromFrames ? "frames from the caller"
