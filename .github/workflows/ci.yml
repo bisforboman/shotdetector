@@ -716,12 +716,27 @@ jobs:
             echo "#### Informational"; cat broken-info.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
+      # Colour tags that change midway (two h264 halves joined): in-process, the default path and FastYuv convert each
+      # frame with its own colour matrix, range and chroma siting, as OpenCV does, so they're compared exactly. Through
+      # the executable, FastYuv takes the first frame's colour tags and, on 10-bit, the default path the first frame's
+      # siting for the whole video, so their stats differ after the change: informational
+      # (docs/decisions/2026-10-19-per-frame-tags.md, 2026-10-24-per-frame-tags-fastyuv.md).
+      - name: Compare video whose colour tags change midway with scenedetect
+        if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.2' && matrix.part == 'more')
+        run: |
+          status=0
+          info=${{ matrix.decoder == 'process' && '--informational' || '' }}
+          python tools/compare.py samples/informational/sintel_matrix_change.mkv samples/informational/sintel_10bit_siting_change.mkv \
+            --detector all --stats --report tags.md $info ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || status=$?
+          { echo "### Colour tags changing midway$([ -n "$info" ] && echo ' (informational)'), ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat tags.md; } >> "$GITHUB_STEP_SUMMARY"
+          [ -n "$info" ] || exit $status
+
       # Interlaced 10-bit (AVC-Intra 100, ProRes 422) with deinterlacing off: informational, as above (OpenCV can't
       # convert interlaced frames). Progressive 10-bit is in the exact set.
       - name: Compare interlaced 10-bit video with scenedetect (informational)
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.2' && matrix.part == 'more')
         run: |
-          python tools/compare.py samples/informational/*.mov samples/informational/*.mxf samples/informational/*.mkv --detector all --stats --report tenbit.md --informational ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
+          python tools/compare.py samples/informational/*.mov samples/informational/*.mxf samples/informational/sintel_oddwidth.mkv --detector all --stats --report tenbit.md --informational ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || true
           { echo "### Interlaced 10-bit, AVC-Intra and ProRes (informational), ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat tenbit.md; } >> "$GITHUB_STEP_SUMMARY"
 
   # x64 and ARM give the same results end to end: every detector's scene list and per-frame stats on the main
