@@ -16,8 +16,12 @@
 
         # The first frame's chroma location and colour tags over the stream's (the container's header can contradict the
         # codec's, which OpenCV converts with): executable path's in_chroma_loc, FastYuv's colours and siting
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (key is "chroma_location" or "color_space" or "color_range" && value is not ("unspecified" or "unknown" or ""))'; Replace = 'if (false)'; Tests = 'VideoTests.TheFramesChromaLocationAndColourTagsWinOverTheStreams' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (key is "chroma_location" or "color_space" or "color_range" && value is not (null or "unspecified" or "unknown" or ""))'; Replace = 'if (false)'; Tests = 'VideoTests.TheFramesChromaLocationAndColourTagsWinOverTheStreams' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'PreferFrameTags(stream, frameTags.Value);'; Replace = '_ = frameTags;'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
+
+        # ... and in-process, FastYuv converts each frame with its own (a conversion per set of colours), as OpenCV does
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'if (tags == _lastTags)'; Replace = 'if (_lastTags is not null)'; Tests = 'FastYuvTests.InProcessFollowsEachFramesTags' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'PreferFrameTag(stream, "color_space", colorSpace);'; Replace = ''; Tests = 'FastYuvTests.InProcessFollowsEachFramesTags' }
 
         # ... read only where FastYuv or the executable's scale filter uses them (not the in-process default path), once
         # for a detection's chunks
