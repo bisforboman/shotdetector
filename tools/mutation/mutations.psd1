@@ -218,5 +218,11 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (!(Math.Abs(from - expected) <= 0.5 / _framesRate))'; Replace = 'if (false)'; Tests = 'FrameInputTests.FramesMustComeAtTheFrameRate' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_startPts = video.StartPts;'; Replace = '_startPts = 0;'; Tests = 'FrameInputTests.FramesAreAtTheirPtsFromTheStreamsStart' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if ((k - startFrame) % (_frameSkip + 1) == 0)'; Replace = 'if ((k - startFrame) % (_frameSkip + 1) == 1)'; Tests = 'FrameInputTests.SameAsTheFile' }
+
+        # Frames from an asynchronous source (DetectAsync): the start's frames taken one per step, the token checked before each pull
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'while (video.TakesBeforeStart(startSeconds))'; Replace = 'while (false)'; Tests = 'FrameSourceAsyncTests.SameAsTheSynchronousDetect' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'StartEstimate(s) : 0'; Replace = 'StartEstimate(s) - 1 : 0'; Tests = 'FrameSourceAsyncTests.SameAsTheSynchronousDetect' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'cancellationToken.ThrowIfCancellationRequested(); // before each frame is awaited'; Replace = '// mutated'; Tests = 'FrameSourceAsyncTests.CancelsBetweenFrames' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'cancellationToken.ThrowIfCancellationRequested(); // before each frame is pulled'; Replace = '// mutated'; Tests = 'FrameSourceAsyncTests.SynchronousDetectCancelsBeforeEachPull' }
     )
 }

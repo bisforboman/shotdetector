@@ -1,6 +1,6 @@
 // ShotDetector.Tests' check that detection on frames from the caller never touches FFmpeg: run in a process of its own
 // (the test process has FFmpeg.AutoGen loaded by other tests) with no ffmpeg on PATH and no FFmpeg libraries named, it
-// detects on generated frames, then fails if FFmpeg.AutoGen or any of FFmpeg's libraries is loaded.
+// detects on generated frames (synchronously and with DetectAsync), then fails if FFmpeg.AutoGen or any of FFmpeg's libraries is loaded.
 // Usage: FramesWithoutFfmpeg (prints the shots; exit code 0 when nothing of FFmpeg was loaded)
 using System.Diagnostics;
 using ShotDetector;
@@ -41,6 +41,24 @@ var options = new DetectionOptions
 var result = ShotDetection.Detect(video, Frames(), options);
 Console.Write(Shots.Csv(result.Shots, cuts: result.Cuts));
 _ = result.Stats!.Csv(result.Video.Position);
+
+// The same frames from an asynchronous source: the same result, and nothing of FFmpeg either.
+async IAsyncEnumerable<YuvFrame> Awaited()
+{
+    foreach (var frame in Frames())
+    {
+        await Task.Yield();
+        yield return frame;
+    }
+}
+
+var awaited = await ShotDetection.DetectAsync(video, Awaited(), options);
+if (Shots.Csv(awaited.Shots, cuts: awaited.Cuts) != Shots.Csv(result.Shots, cuts: result.Cuts)
+    || awaited.Stats!.Csv(awaited.Video.Position) != result.Stats.Csv(result.Video.Position))
+{
+    Console.Error.WriteLine("DetectAsync's result differs from Detect's.");
+    return 1;
+}
 
 var loaded = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetName().Name).Where(n => n is not null && n.StartsWith("FFmpeg", StringComparison.Ordinal)).ToList();
 var libraries = File.Exists("/proc/self/maps")
