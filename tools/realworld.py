@@ -5,7 +5,7 @@ in samples/realworld/ (gitignored).
 Usage: python tools/realworld.py [name ...] [--detector all] [--fast-yuv] [--report realworld.md]
        python tools/realworld.py --list
        python tools/realworld.py [name ...] --download   (only fetch; for tools/bench.py; AUDIO's names too)
-Any other option goes to tools/compare.py."""
+Any other option goes to tools/compare.py (its annotations' titles start with realworld.py under GitHub Actions)."""
 import argparse
 import hashlib
 import subprocess
@@ -14,6 +14,8 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+from annotate import emit
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / "samples" / "realworld"
@@ -75,13 +77,18 @@ def fetch(name: str) -> Path:
             except (urllib.error.URLError, OSError) as e:
                 path.unlink(missing_ok=True)
                 if attempt == 4:
-                    sys.exit(f"{name}: download failed: {e}")
+                    fail(f"{name}: download failed: {e}")
                 time.sleep(20 * attempt)
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual != sha:
         path.unlink()
-        sys.exit(f"{name}: SHA-256 {actual}, expected {sha} (deleted; the source changed?)")
+        fail(f"{name}: SHA-256 {actual}, expected {sha} (deleted; the source changed?)")
     return path
+
+
+def fail(message: str):
+    emit("error", message, "realworld.py: failed")
+    sys.exit(message)
 
 
 def main():
@@ -102,6 +109,8 @@ def main():
         return
     if "--detector" not in rest:
         rest += ["--detector", "all"]
+    if "--label" not in rest:
+        rest += ["--label", "realworld.py"]
     cmd = [sys.executable, str(ROOT / "tools" / "compare.py"), *map(str, paths), "--stats", *rest]
     sys.exit(subprocess.run(cmd).returncode)
 
