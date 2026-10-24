@@ -7,7 +7,7 @@
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'oneBasedFrames: true'; Replace = 'oneBasedFrames: false'; Tests = 'RangeTests' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'endFrame is { } e && frameCount % stride == 0 && '; Replace = 'endFrame is { } e && '; Tests = 'RangeTests' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (o.FrameSkip > 0 && o.CollectStats)'; Replace = 'if (false)'; Tests = 'RangeTests' }
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'effective = (CropRegion.Width + 1, CropRegion.Height + 1);'; Replace = 'effective = (CropRegion.Width, CropRegion.Height);'; Tests = 'RangeTests' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'effective = (crop.Width + 1, crop.Height + 1);'; Replace = 'effective = (crop.Width, crop.Height);'; Tests = 'RangeTests' }
 
         # 10-bit: chroma interpolated from where the frame says it sits, as OpenCV's sws_scale_frame does (executable
         # path: in_chroma_loc; in-process sampled rows: the position sws_scale_frame derives)
@@ -201,5 +201,16 @@
 
         # Parallel detection: a chunk's reader takes the outer reader's probe instead of probing the file again
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'video.Probed is { } probed ? new VideoReader(path, co, probed, stop.Token) : '; Replace = ''; Tests = 'ParallelTests.ChunksTakeTheOuterReadersProbe' }
+
+        # Frames from the caller (YuvVideo): what a file's result needs and what can't be reproduced without FFmpeg
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (o.Yuv420Converter is null)'; Replace = 'if (false)'; Tests = 'FrameInputTests.NeedsAConverter' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (o.Deinterlace != DeinterlaceMode.Off || o.Yadif is not null)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (o.FfmpegResize)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.PixelFormat is not ("yuv420p" or "yuvj420p"))'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.Height % 2 != 0)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (stride < width || plane.Length < (long)stride * (height - 1) + width)'; Replace = 'if (stride < width)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (!(Math.Abs(from - expected) <= 0.5 / _framesRate))'; Replace = 'if (false)'; Tests = 'FrameInputTests.FramesMustComeAtTheFrameRate' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_startPts = video.StartPts;'; Replace = '_startPts = 0;'; Tests = 'FrameInputTests.SameAsTheFileForH264WithBFrames' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if ((k - startFrame) % (_frameSkip + 1) == 0)'; Replace = 'if ((k - startFrame) % (_frameSkip + 1) == 1)'; Tests = 'FrameInputTests.SameAsTheFile' }
     )
 }

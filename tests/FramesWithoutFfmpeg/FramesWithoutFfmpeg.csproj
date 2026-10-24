@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ShotDetection.Detect on frames from the caller, in a process of its own with no FFmpeg anywhere (FrameInputTests
+    runs it): it fails if FFmpeg.AutoGen or FFmpeg's libraries get loaded. Built with the tests (their
+    ProjectReference), not referenced by them.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ShotDetector\ShotDetector.csproj" />
+    <ProjectReference Include="..\..\src\ShotDetector.FastYuv\ShotDetector.FastYuv.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -705,6 +705,44 @@ public static class ShotDetection
         Run(null, video, options, onShot: null, cancellationToken);
 
     /// <summary>
+    /// Detects shots on frames the caller decoded, without FFmpeg: nothing here loads FFmpeg's libraries or starts
+    /// ffmpeg or ffprobe, so it runs where neither exists (browser WebAssembly, with a managed decoder). The frames are
+    /// converted with <see cref="DetectionOptions.Yuv420Converter"/>, which is required (SwscaleYuv420 from the
+    /// ShotDetector.FastYuv package: there is no other conversion without FFmpeg), then analysed as a file's. Given the
+    /// frames, timestamps and properties FFmpeg gives for a file, the result is the one
+    /// <see cref="Detect(string, DetectionOptions?, CancellationToken)"/> gives for it with the same converter: shots,
+    /// cuts, stats and their CSVs, byte for byte.
+    /// </summary>
+    /// <param name="video">The video's properties, as its headers give them (FFmpeg's values, for a file's results).</param>
+    /// <param name="frames">The decoded frames in presentation order, every frame from the first.</param>
+    /// <param name="options">Detection settings; see the remarks for which apply.</param>
+    /// <param name="cancellationToken">Stops between frames.</param>
+    /// <exception cref="ArgumentException">Invalid options, an unsupported video, or a frame's plane smaller than the frame.</exception>
+    /// <exception cref="ShotDetectionException">The frames don't come at a constant frame rate (<see cref="ShotDetectionError.InvalidInput"/>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    /// <remarks>
+    /// So far 8-bit 4:2:0 (yuv420p, yuvj420p) of an even height, at a constant frame rate (checked, with
+    /// <see cref="YuvVideo.TimeBase"/> set: a frame more than half a frame from where the rate puts it is an error), at
+    /// one size, upright (no rotation is applied). Options: the detectors' settings, stats, the time range
+    /// (<see cref="DetectionOptions.StartTime"/>: the frames before it are still enumerated, not converted), frame skip,
+    /// crop, downscale, the frame rate override, merge and drop of short shots, progress and warnings. Not available
+    /// (an <see cref="ArgumentException"/>): <see cref="DetectionOptions.Deinterlace"/>, <see cref="DetectionOptions.Yadif"/>,
+    /// <see cref="DetectionOptions.FfmpegResize"/>, <see cref="DetectionOptions.TrimReferenceTone"/>. Ignored, as nothing
+    /// is decoded here: <see cref="DetectionOptions.Decoder"/>, <see cref="DetectionOptions.FfmpegDirectory"/>,
+    /// <see cref="DetectionOptions.DecodeThreads"/>, <see cref="DetectionOptions.Streaming"/>,
+    /// <see cref="DetectionOptions.ProbeBytes"/>; the frames are read once, in order (<see cref="DetectionMode.Parallel"/>
+    /// is told why it read sequentially). The result has no <see cref="DetectionResult.VideoPath"/>, so the exports that
+    /// cut the file (images, clips) aren't available; the CSVs, timelines and stats are.
+    /// </remarks>
+    public static DetectionResult Detect(YuvVideo video, IEnumerable<YuvFrame> frames, DetectionOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(video);
+        ArgumentNullException.ThrowIfNull(frames);
+        using var e = frames.GetEnumerator();
+        return Run(null, null, options, onShot: null, cancellationToken, o => new VideoReader(video, e, o));
+    }
+
+    /// <summary>
     /// load-scenes: shots from a scene list CSV instead of detecting them (nothing is decoded; the video is only
     /// probed for its frame rate and length), e.g. to export again from an edited list. The column holds each shot's
     /// start: 1-based frame numbers ("Start Frame", the default), or timecodes/seconds. The time range options, and
@@ -892,12 +930,17 @@ public static class ShotDetection
         }
     }
 
-    static DetectionResult Run(string? videoPath, Stream? videoStream, DetectionOptions? options, Action<Shot>? onShot, CancellationToken cancellationToken)
+    static DetectionResult Run(string? videoPath,
+        Stream? videoStream,
+        DetectionOptions? options,
+        Action<Shot>? onShot,
+        CancellationToken cancellationToken,
+        Func<DetectionOptions, VideoReader>? frames = null)
     {
         using var activity = Tracing.StartActivity("ShotDetection.Detect");
         try
         {
-            var result = RunTraced(videoPath, videoStream, options, onShot, cancellationToken);
+            var result = RunTraced(videoPath, videoStream, options, onShot, cancellationToken, frames);
             if (activity is not null)
             {
                 var v = result.Video.Reader;
@@ -924,7 +967,12 @@ public static class ShotDetection
         }
     }
 
-    static DetectionResult RunTraced(string? videoPath, Stream? videoStream, DetectionOptions? options, Action<Shot>? onShot, CancellationToken cancellationToken)
+    static DetectionResult RunTraced(string? videoPath,
+        Stream? videoStream,
+        DetectionOptions? options,
+        Action<Shot>? onShot,
+        CancellationToken cancellationToken,
+        Func<DetectionOptions, VideoReader>? frames)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var o = (options ?? new DetectionOptions()).Resolved();
@@ -947,7 +995,8 @@ public static class ShotDetection
         // read as a file and deleted at the end. Other streams stream.
         byte[]? prefix = videoStream is null ? null : VideoReader.ReadPrefix(videoStream, o.ProbeBytes, cancellationToken);
         using var spilled = prefix is not null && VideoReader.HeadersLast(prefix) ? VideoReader.Spill(prefix, videoStream!, cancellationToken) : null;
-        var video = spilled is not null ? new VideoReader(spilled.Path, o, cancellationToken)
+        var video = frames is not null ? frames(o)
+            : spilled is not null ? new VideoReader(spilled.Path, o, cancellationToken)
             : videoStream is not null ? new VideoReader(videoStream, prefix!, o, cancellationToken)
             : new VideoReader(videoPath!, o, cancellationToken);
 
@@ -1071,8 +1120,8 @@ public static class ShotDetection
         // Why not, when it can't: reported (Warnings) when the caller asked for Parallel.
         bool parallel = o.ResolvedMode(streaming: onShot is not null) == DetectionMode.Parallel;
         long pixels = (long)video.SourceWidth * video.SourceHeight;
-        string? notChunked = !parallel
-            ? null
+        string? notChunked = !parallel ? null
+            : video.FromFrames ? "frames from the caller"
             : NotChunkable(videoPath is null || spilled is not null || video.Streaming, video.DecodesInProcess, video.PtsFromFrames, startFrame != 0 || endFrame is not null, stride != 1);
         int chunks = parallel && notChunked is null
             ? o.Chunks ?? AutoChunks(Environment.ProcessorCount, video.ExpectedFrames, video.Fps, pixels, o.Mode == DetectionMode.Parallel, o.DecodeThreads)
