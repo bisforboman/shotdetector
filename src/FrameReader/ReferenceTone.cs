@@ -37,12 +37,11 @@ public readonly record struct ToneSegment(TimeSpan Start, TimeSpan End, double L
 /// -40 dBFS; a window is tone when any channel is (so one channel cut for line-up identification still counts).
 /// Consecutive tone windows at a steady level (±1 dB) form a segment, bridging breaks up to
 /// <see cref="ReferenceToneOptions.MaxGap"/>; segments of at least <see cref="ReferenceToneOptions.MinDuration"/> are
-/// reported. Music fails the 90% (harmonics, other notes) or the steady level (decay, expression).
+/// reported. Music fails the 90% (harmonics, other notes) or the steady level (decay, expression). For samples decoded
+/// elsewhere (no FFmpeg), <see cref="ReferenceToneFinder"/> runs the same search a chunk at a time.
 /// </summary>
 public static class ReferenceTone
 {
-    const double WindowSeconds = 0.02, MinPurity = 0.9, MinLevel = -40, LevelTolerance = 1;
-
     /// <summary>
     /// Reads the rest of <paramref name="audio"/> (at its rate and channels), or <see cref="ReferenceToneOptions.SearchDuration"/>
     /// of it, and returns its tone segments.
@@ -54,107 +53,14 @@ public static class ReferenceTone
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public static IReadOnlyList<ToneSegment> Find(AudioReader audio, ReferenceToneOptions? options = null, CancellationToken cancellationToken = default)
     {
-        var o = options ?? new ReferenceToneOptions();
-        if (o.SearchDuration <= TimeSpan.Zero)
-            throw new ArgumentException("SearchDuration is positive when set.", nameof(options));
-        int rate = audio.SampleRate, channels = audio.Channels;
-        int n = Math.Max(1, (int)Math.Round(rate * WindowSeconds));
-        var w = new double[n];
-        double sumW = 0, sumW2 = 0;
-        for (int i = 0; i < n; i++)
-        {
-            w[i] = 0.5 - 0.5 * Math.Cos(2 * Math.PI * (i + 0.5) / n); // Hann
-            (sumW, sumW2) = (sumW + w[i], sumW2 + w[i] * w[i]);
-        }
-
-        // A sine at the frequency: |X|^2 / windowed energy = sumW^2 / (2 sumW2); purity scales that to 1.
-        double purityScale = 2 * sumW2 / (sumW * sumW);
-        double coeff = 2 * Math.Cos(2 * Math.PI * o.Frequency / rate);
-        long gapWindows = (long)(o.MaxGap.TotalSeconds / WindowSeconds), minWindows = (long)Math.Ceiling(o.MinDuration.TotalSeconds / WindowSeconds);
-        double windowLength = (double)n / rate;
-        long maxWindows = o.SearchDuration is { } d ? (long)Math.Ceiling(d.TotalSeconds / windowLength) : long.MaxValue;
-
-        var s1 = new double[channels];
-        var s2 = new double[channels];
-        var energy = new double[channels];
-        var power = new double[channels];
-        var segments = new List<ToneSegment>();
-        TimeSpan? origin = null;
-        long window = 0;
-        int at = 0;
-        long start = -1, last = -1;
-        double level = 0;
-
-        TimeSpan Time(long index) => origin!.Value + TimeSpan.FromSeconds(index * windowLength);
-        void Close()
-        {
-            if (start >= 0 && last + 1 - start >= minWindows)
-                segments.Add(new ToneSegment(Time(start), Time(last + 1), level));
-            start = -1;
-        }
-
-        // How much is read: the search, or the input when it's shorter (issue #273).
-        var searched = o.SearchDuration is { } limit && audio.Duration is { } whole && whole < limit ? whole : o.SearchDuration ?? audio.Duration;
-        var progress = new ProgressReporter(o.Progress, searched);
-        while (window < maxWindows && audio.TryRead(out var chunk))
+        var finder = new ReferenceToneFinder(audio.SampleRate, audio.Channels, options, audio.Duration);
+        while (!finder.IsComplete && audio.TryRead(out var chunk))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            origin ??= chunk.Time;
-            progress.Report(chunk.Time - origin.Value);
-            var samples = chunk.Samples;
-            for (int i = 0; i < chunk.SampleCount && window < maxWindows; i++)
-            {
-                for (int c = 0; c < channels; c++)
-                {
-                    double x = samples[i * channels + c], y = x * w[at];
-                    double s = y + coeff * s1[c] - s2[c];
-                    (s2[c], s1[c]) = (s1[c], s);
-                    energy[c] += y * y;
-                    power[c] += x * x;
-                }
-
-                if (++at < n)
-                    continue;
-
-                // The window's tone level: the loudest channel that is mostly the frequency.
-                double? tone = null;
-                for (int c = 0; c < channels; c++)
-                {
-                    double goertzel = s1[c] * s1[c] + s2[c] * s2[c] - coeff * s1[c] * s2[c];
-                    double db = 10 * Math.Log10(2 * power[c] / n + 1e-30);
-                    if (energy[c] > 0 && goertzel / energy[c] * purityScale >= MinPurity && db >= MinLevel && db > (tone ?? double.MinValue))
-                        tone = db;
-                    s1[c] = s2[c] = energy[c] = power[c] = 0;
-                }
-
-                at = 0;
-
-                if (tone is { } t)
-                {
-                    if (start >= 0 && Math.Abs(t - level) <= LevelTolerance)
-                    {
-                        last = window;
-                    }
-
-                    // Off level: a break while within MaxGap, unless the run is one (perhaps partial) window so far.
-                    else if (start < 0 || last == start || window - last - 1 > gapWindows)
-                    {
-                        Close();
-                        (start, last, level) = (window, window, t);
-                    }
-                }
-                else if (start >= 0 && window - last > gapWindows)
-                {
-                    Close();
-                }
-
-                window++;
-            }
+            finder.Add(chunk.Samples, chunk.Time);
         }
 
-        Close();
-        progress.Done();
-        return segments;
+        return finder.Finish();
     }
 
     /// <summary>As <see cref="Find"/>, off the calling thread.</summary>
