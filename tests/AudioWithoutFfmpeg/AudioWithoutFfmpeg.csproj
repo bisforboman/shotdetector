@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ReferenceToneFinder and WaveformBuilder on samples from the caller, in a process of its own with no FFmpeg anywhere
+    (FrameReader.Tests' AudioFromSamplesTests runs it): it fails if FFmpeg.AutoGen or FFmpeg's libraries get loaded.
+    Built with the tests (their ProjectReference), not referenced by them.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FrameReader\FrameReader.csproj" />
+  </ItemGroup>
+
+</Project>

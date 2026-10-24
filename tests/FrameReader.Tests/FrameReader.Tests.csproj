@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FrameReader\FrameReader.csproj" />
+    <ProjectReference Include="..\AudioWithoutFfmpeg\AudioWithoutFfmpeg.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

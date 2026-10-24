@@ -15,6 +15,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/ClipMaker/ClipMaker.csproj" />
     <Project Path="tests/FrameReader.Tests/FrameReader.Tests.csproj" />
+    <Project Path="tests/AudioWithoutFfmpeg/AudioWithoutFfmpeg.csproj" />
     <Project Path="tests/FramesWithoutFfmpeg/FramesWithoutFfmpeg.csproj" />
     <Project Path="tests/ShotDetector.Tests/ShotDetector.Tests.csproj" />
   </Folder>
