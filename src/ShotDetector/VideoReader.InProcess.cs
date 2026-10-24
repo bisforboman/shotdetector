@@ -62,9 +62,55 @@ internal sealed partial class VideoReader
     /// (<see cref="YuvRowsRead(CvResize, IYuvChromaRows, int, int, bool, int, int, int)"/>); null when the converter
     /// doesn't say which (<see cref="IYuvChromaRows"/>): whole planes then.
     /// </summary>
-    internal (int[] Luma, int[] Chroma)? YuvRowsRead(CvResize resizer) => YuvForVideo?.ChromaRows is { } chromaRows
+    internal (int[] Luma, int[] Chroma)? YuvRowsRead(CvResize resizer) => YuvRowsRead(resizer, YuvForVideo);
+
+    /// <summary><see cref="YuvRowsRead(CvResize)"/> for <paramref name="conversion"/> (a frame's own colours).</summary>
+    (int[] Luma, int[] Chroma)? YuvRowsRead(CvResize resizer, YuvConversion? conversion) => conversion?.ChromaRows is { } chromaRows
         ? YuvRowsRead(resizer, chromaRows, _codedSize.W, _codedSize.H, Pipeline == FramePipeline.Yuv422Sampled, Turn, CropRegion.X, CropRegion.Y)
         : null;
+
+    /// <summary>A decoded frame's colour tags as the decoder names them (null: unspecified).</summary>
+    internal readonly record struct FrameColourTags(string? ColorSpace, string? ColorRange, string? ChromaLocation)
+    {
+        /// <summary>The decoder's current frame's.</summary>
+        public static FrameColourTags Of(FrameReader.FrameDecoder decoder) => new(decoder.ColorSpace, decoder.ColorRange, decoder.ChromaLocation);
+    }
+
+    /// <summary>
+    /// FastYuv's conversion for each frame in-process, from the frame's own colour matrix, range and (10-bit) chroma siting,
+    /// as OpenCV's sws_scale_frame converts each frame with its own: one converter per set of colours, with the decoded rows
+    /// it reads (a 10-bit vertical chroma filter reads other rows for another siting). A frame with the previous frame's
+    /// tags takes its conversion at once (the common case: tags that never change). Used by one thread at a time.
+    /// </summary>
+    sealed class FrameConversions(VideoReader reader, CvResize resizer, (int[] Luma, int[] Chroma)? videoRows)
+    {
+        readonly Dictionary<FrameColour, Conversion?> _byColour = [];
+        FrameColourTags? _lastTags;
+        Conversion? _last;
+
+        /// <summary>A conversion and the decoded rows it reads (null: whole planes).</summary>
+        public sealed record Conversion(YuvConversion Yuv, (int[] Luma, int[] Chroma)? Rows);
+
+        /// <summary>The conversion for a frame with <paramref name="tags"/>; null where FastYuv declines its colours.</summary>
+        public Conversion? For(FrameColourTags tags)
+        {
+            if (tags == _lastTags)
+                return _last;
+            var colour = reader.ColourOf(tags.ColorSpace, tags.ColorRange, tags.ChromaLocation);
+            if (!_byColour.TryGetValue(colour, out var conversion))
+            {
+                // The video's own colours (the first frame's): its conversion and rows as the pipeline was set up with.
+                var video = reader._colours.Value;
+                var yuv = colour == video.Colour ? video.YuvForVideo : reader.YuvConversionFor(colour);
+                conversion = yuv is null ? null : new(yuv, colour == video.Colour ? videoRows : reader.YuvRowsRead(resizer, yuv));
+                _byColour[colour] = conversion;
+            }
+
+            _lastTags = tags;
+            _last = conversion;
+            return conversion;
+        }
+    }
 
     /// <summary>
     /// The rows of a <paramref name="width"/> × <paramref name="height"/> decoded frame that
@@ -111,6 +157,7 @@ internal sealed partial class VideoReader
         // The YUV pipelines: the decoded rows the conversion reads, when the converter says which chroma rows those are
         // (FastYuv's do), so only they are copied (and, with row-wise yadif, deinterlaced); else whole planes.
         var yuvRows = IsYuv(pipeline) ? YuvRowsRead(resizer!) : null;
+        var conversions = IsYuv(pipeline) ? new FrameConversions(this, resizer!, yuvRows) : null;
         var decoderResizer = resizer is null ? null : new CvResize(CropRegion.Width, CropRegion.Height, Width, Height);
         var small = new byte[Width * Height * 3];
 
@@ -121,7 +168,7 @@ internal sealed partial class VideoReader
         // waits. Cancelled by the caller's token, or by us when the caller stops iterating.
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var free = new BlockingCollection<byte[]>();
-        using var full = new BlockingCollection<(byte[] Buffer, long Pts, bool Bgr)>();
+        using var full = new BlockingCollection<(byte[] Buffer, long Pts, bool Bgr, YuvConversion? Yuv)>();
         for (int i = 0; i < _frameBuffers; i++)
             free.Add(new byte[size]);
         double timeBase = 0;
@@ -135,14 +182,15 @@ internal sealed partial class VideoReader
         bool convertApart = convertThreads > 0 && !(_deinterlace && _yadif is not null);
         ConvertedOnThread = convertApart;
         long frameBytes = (long)_codedSize.W * _codedSize.H * 3 * (_pixelFormat.EndsWith("le", StringComparison.Ordinal) || _pixelFormat.EndsWith("be", StringComparison.Ordinal) ? 2 : 1);
-        using var handoff = new BlockingCollection<FrameReader.DecodedFrame>((int)Math.Clamp(HandoffBytes / Math.Max(1, frameBytes), 1, 3));
+        using var handoff = new BlockingCollection<(FrameReader.DecodedFrame Frame, FrameColourTags Tags)>((int)Math.Clamp(HandoffBytes / Math.Max(1, frameBytes), 1, 3));
 
         // Stops both threads: the caller's token, ours, or the conversion thread failing (the caller then gets its error,
         // not a cancellation).
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancel.Token);
 
-        // A frame written into a free buffer, by the decoding thread or the conversion thread (whichever owns writer).
-        (byte[] Buffer, long Pts, bool Bgr) Write(FrameWriter writer, long pts)
+        // A frame written into a free buffer, by the decoding thread or the conversion thread (whichever owns writer). On
+        // the YUV pipelines, converted later with its own colour tags' conversion (FrameConversions).
+        (byte[] Buffer, long Pts, bool Bgr, YuvConversion? Yuv) Write(FrameWriter writer, long pts, FrameColourTags tags)
         {
             var buffer = free.Take(stop.Token);
             FirstFrameSize ??= (writer.Width, writer.Height);
@@ -153,6 +201,10 @@ internal sealed partial class VideoReader
             // only they are slower).
             bool bgr = IsYuv(pipeline)
                 && !(writer.HasStreamSize && writer.PixelFormat == _pixelFormat);
+
+            // Colours FastYuv declines (a frame whose matrix it doesn't have): the same conversion.
+            var conversion = IsYuv(pipeline) && !bgr ? conversions!.For(tags) : null;
+            bgr |= IsYuv(pipeline) && conversion is null;
             if (bgr)
                 BgrFallbackFrames++;
             switch (bgr ? FramePipeline.SampledBgr : pipeline)
@@ -161,7 +213,7 @@ internal sealed partial class VideoReader
                     writer.WriteYuv(buffer,
                         chroma422: pipeline == FramePipeline.Yuv422Sampled,
                         bytesPerSample: pipeline == FramePipeline.Yuv420P10Sampled ? 2 : 1,
-                        yuvRows);
+                        conversion!.Rows);
                     break;
                 case FramePipeline.SampledBgr when bgr:
                     writer.WriteResized(buffer, decoderResizer!, rows!, (CropRegion.X, CropRegion.Y));
@@ -177,7 +229,7 @@ internal sealed partial class VideoReader
                     break;
             }
 
-            return (buffer, pts, bgr);
+            return (buffer, pts, bgr, conversion?.Yuv);
         }
 
         // The conversion thread: the taken frames in order, each let go once written.
@@ -187,12 +239,12 @@ internal sealed partial class VideoReader
             try
             {
                 using var writer = new FrameWriter(null, _codedSize, Turn);
-                foreach (var frame in handoff.GetConsumingEnumerable(stop.Token))
+                foreach (var (frame, tags) in handoff.GetConsumingEnumerable(stop.Token))
                 {
                     using (frame)
                     {
                         writer.Frame = frame;
-                        full.Add(Write(writer, frame.Pts + offset), stop.Token);
+                        full.Add(Write(writer, frame.Pts + offset, tags), stop.Token);
                     }
                 }
 
@@ -269,12 +321,14 @@ internal sealed partial class VideoReader
                         break;
                     }
 
+                    // The frame's colour tags, read here: a taken frame doesn't say them.
+                    var tags = conversions is null ? default : FrameColourTags.Of(decoder);
                     if (writer is null)
                     {
                         var frame = decoder.TakeFrame();
                         try
                         {
-                            handoff.Add(frame, stop.Token);
+                            handoff.Add((frame, tags), stop.Token);
                         }
                         catch
                         {
@@ -284,7 +338,7 @@ internal sealed partial class VideoReader
                     }
                     else
                     {
-                        full.Add(Write(writer, pts + offset), stop.Token);
+                        full.Add(Write(writer, pts + offset, tags), stop.Token);
                     }
 
                     emitted++;
@@ -315,7 +369,7 @@ internal sealed partial class VideoReader
                 } // thrown below, unless decoding failed first
 
                 while (handoff.TryTake(out var left))
-                    left.Dispose();
+                    left.Frame.Dispose();
                 full.CompleteAdding();
             }
 
@@ -325,7 +379,7 @@ internal sealed partial class VideoReader
         try
         {
             byte[]? previous = null;
-            foreach (var (buffer, pts, bgr) in full.GetConsumingEnumerable(cancel.Token))
+            foreach (var (buffer, pts, bgr, yuv) in full.GetConsumingEnumerable(cancel.Token))
             {
                 if (previous is not null)
                     free.Add(previous);
@@ -355,7 +409,7 @@ internal sealed partial class VideoReader
                         resizer!.ResizePackedRows(buffer, small);
                         break;
                     case FramePipeline.Yuv420Sampled or FramePipeline.Yuv422Sampled or FramePipeline.Yuv420P10Sampled:
-                        resizer!.ResizeYuv(buffer, small, YuvForVideo!, _codedSize.W, _codedSize.H, Turn, CropRegion.X, CropRegion.Y);
+                        resizer!.ResizeYuv(buffer, small, yuv!, _codedSize.W, _codedSize.H, Turn, CropRegion.X, CropRegion.Y);
                         break;
                     case FramePipeline.FullFrameResize:
                         resizer!.Resize(buffer, small);

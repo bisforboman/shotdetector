@@ -4,7 +4,7 @@ frame checksums (decoded, single-threaded, b's -idct simple against a's default,
 and whether b's FastYuv files equal a's default ones. Exits 1 unless they do on every 8-bit 4:2:0 and 4:2:2 clip of even
 size (yuv420p, yuvj420p, yuv422p, yuvj422p, turned or not; MPEG-1/2, MJPEG and MPEG-4 Part 2 too, which decode with the
 C IDCT or, Xvid's, the Xvid one; odd widths reported for now; on clips whose colour tags change midway, b's FastYuv
-against a's FastYuv, which differs from the default path there by design): the rest is FFmpeg's rounding on ARM, reported
+through the executable against a's FastYuv, which differs from the default path there by design): the rest is FFmpeg's rounding on ARM, reported
 (docs/decisions/2026-10-17-arm-results.md, 2026-10-18-fastyuv-422.md, 2026-10-18-mpeg4-xvid-idct.md).
 Usage: python3 tools/arch-summary.py <a-dir> <b-dir>"""
 import csv
@@ -86,15 +86,16 @@ def main() -> int:
                  else ("same" if same(a / f"{clip}.file.md5", b / f"{clip}.file.md5") else "differ") for k in kinds]
         fast = [n for n in outputs if n.startswith(clip + ".")]
 
-        # Colour tags that change midway: FastYuv converts every frame with the first frame's, the default path each
-        # frame with its own (parked, docs/decisions/2026-10-19-per-frame-tags.md), so b's FastYuv is held to a's.
+        # Colour tags that change midway: in-process, FastYuv converts each frame with its own, as the default path
+        # does (docs/decisions/2026-10-24-per-frame-tags-fastyuv.md); through the executable it takes the first frame's
+        # (docs/decisions/2026-10-19-per-frame-tags.md), so there b's FastYuv is held to a's.
         own = clip in TAGS_CHANGE
 
         def fastyuv(n: str) -> str:
             return n.replace(".scenes.csv", ".fastyuv.scenes.csv").replace(".stats.csv", ".fastyuv.stats.csv")
 
         def matches(n: str) -> bool:
-            return same(a / (fastyuv(n) if own else n), b / fastyuv(n))
+            return same(a / (fastyuv(n) if own and ".process." in n else n), b / fastyuv(n))
 
         hits = sum(matches(n) for n in fast)
         info = dict(line.split("=", 1) for line in (a / codec).read_text().splitlines() if "=" in line)
@@ -110,7 +111,7 @@ def main() -> int:
             failed.append(clip)
         split = " ".join(f"{d} {sum(matches(n) for n in fast if f'.{d}.' in n)}/{sum(f'.{d}.' in n for n in fast)}"
                          for d in ("inprocess", "process"))
-        mark = (" (required" + (", a's FastYuv" if own else "") + ")") if required else ""
+        mark = (" (required" + (", a's FastYuv through the executable" if own else "") + ")") if required else ""
         print(f"| {clip} | {codec_name},{pix_fmt} | {' | '.join(cells)} | {hits}/{len(fast)} ({split}){mark} |")
     if failed:
         print(f"\nARM with FastYuv differs from x64 on 8-bit 4:2:0 or 4:2:2, or 10-bit 4:2:0: {', '.join(failed)}")
