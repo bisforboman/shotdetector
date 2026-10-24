@@ -74,7 +74,7 @@
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.cs'; Find = '(chromaHeight == height ? y : y >> 1, 1);'; Replace = '(y >> 1, 1);'; Tests = 'FastYuvTests.RowsOutsideTheRowsReadChangeNothing' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'return (plan.V.Pos[y], plan.V.Size);'; Replace = 'return (plan.V.Pos[y], 1);'; Tests = 'FastYuvTests.RowsOutsideTheRowsReadChangeNothing' }
         @{ File = 'src/ShotDetector/CvResize.cs'; Find = 'TurnedPixels(width, height, turn, cropX, cropY).Select(p => p.Y)'; Replace = 'TurnedPixels(width, height, turn, cropX, cropY).Select(p => p.X)'; Tests = 'FastYuvTests.RowsOutsideTheRowsReadChangeNothing' }
-        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '=> YuvForVideo?.ChromaRows is { } chromaRows'; Replace = '=> YuvForVideo?.ChromaRows is var chromaRows'; Tests = 'FastYuvTests.ConvertersThatDoNotSayWhichRowsGetWholePlanes' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '=> conversion?.ChromaRows is { } chromaRows'; Replace = '=> conversion?.ChromaRows is var chromaRows'; Tests = 'FastYuvTests.ConvertersThatDoNotSayWhichRowsGetWholePlanes' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '_rPending.Add((plane, y));'; Replace = ''; Tests = 'InProcessTests.RowWiseYadifEqualsFfmpegs' }
 
         # Chunked runs: twice the CPUs' decoder threads (at most 16) for frame-threaded decoders up to 1080p, shared out among the chunks
