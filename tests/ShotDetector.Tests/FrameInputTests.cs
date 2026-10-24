@@ -120,6 +120,17 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     }
 
     [Fact]
+    public void FramesAreAtTheirPtsFromTheStreamsStart()
+    {
+        // As a file's: (pts - start) in microseconds, frame 0 (at 0) by its number.
+        var video = Video() with { TimeBase = new(1, 100), StartPts = 100 };
+        var frames = Frames(video, 10).Select((f, i) => f with { Pts = 100 + i * 4 });
+        var result = ShotDetection.Detect(video, frames, new DetectionOptions { Yuv420Converter = new SwscaleYuv420() });
+        Assert.Equal(FrameTime.Pts(280_000, 1_000_000, new Fps(25, 1)), result.Video.Position(7));
+        Assert.Equal(FrameTime.Pts(0, 25, new Fps(25, 1)), result.Video.Position(0));
+    }
+
+    [Fact]
     public void WithoutTimestampsFramesAreAtTheirNumberOverTheRate()
     {
         var video = Video();

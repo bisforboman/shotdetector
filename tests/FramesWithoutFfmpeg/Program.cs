@@ -2,6 +2,7 @@
 // (the test process has FFmpeg.AutoGen loaded by other tests) with no ffmpeg on PATH and no FFmpeg libraries named, it
 // detects on generated frames, then fails if FFmpeg.AutoGen or any of FFmpeg's libraries is loaded.
 // Usage: FramesWithoutFfmpeg (prints the shots; exit code 0 when nothing of FFmpeg was loaded)
+using System.Diagnostics;
 using ShotDetector;
 using ShotDetector.FastYuv;
 
@@ -25,7 +26,18 @@ IEnumerable<YuvFrame> Frames()
     }
 }
 
-var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, Yuv420Converter = new SwscaleYuv420(), Mode = DetectionMode.Parallel };
+// A listener and progress too: the span's tags and the progress reports read the reader's decoder and pipeline.
+using var listener = new ActivityListener { ShouldListenTo = _ => true, Sample = (ref _) => ActivitySamplingResult.AllDataAndRecorded };
+ActivitySource.AddActivityListener(listener);
+int reports = 0;
+var options = new DetectionOptions
+{
+    Detector = DetectorKind.Content,
+    CollectStats = true,
+    Yuv420Converter = new SwscaleYuv420(),
+    Mode = DetectionMode.Parallel,
+    Progress = new Progress<DetectionProgress>(_ => Interlocked.Increment(ref reports)),
+};
 var result = ShotDetection.Detect(video, Frames(), options);
 Console.Write(Shots.Csv(result.Shots, cuts: result.Cuts));
 _ = result.Stats!.Csv(result.Video.Position);
