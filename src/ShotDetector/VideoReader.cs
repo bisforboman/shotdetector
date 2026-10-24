@@ -248,9 +248,14 @@ internal sealed partial class VideoReader
         return result;
     }
 
-    /// <summary>ffprobe's printed seconds (six decimals) as a TimeSpan; null for N/A.</summary>
+    /// <summary>
+    /// ffprobe's printed seconds (six decimals) as a TimeSpan, to the nearest tick (TimeSpan.FromSeconds truncates:
+    /// 4.56 would be 4.5599999); null for N/A.
+    /// </summary>
     internal static TimeSpan? Seconds(string? text) =>
-        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double s) ? TimeSpan.FromSeconds(s) : null;
+        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double s) && double.IsFinite(s)
+            ? TimeSpan.FromTicks((long)Math.Round(s * TimeSpan.TicksPerSecond))
+            : null;
 
     readonly string _ffprobe;
 
@@ -568,9 +573,7 @@ internal sealed partial class VideoReader
         // packet (one more short probe; for a URL a second connection, so a URL decodes as its file does on ARM too).
         if (Codec == "mpeg4" && !headersOnly)
             _xvidIdct = probed is not null ? probed.XvidIdct : XvidIdct(path, ffprobe, cancellationToken);
-        Duration = double.TryParse(stream.GetValueOrDefault("duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out double length)
-            ? TimeSpan.FromSeconds(length)
-            : null;
+        Duration = Seconds(stream.GetValueOrDefault("duration"));
         _deinterlace = o.Deinterlace == DeinterlaceMode.On
             || (o.Deinterlace == DeinterlaceMode.Auto && FieldOrder is not (FieldOrder.Progressive or FieldOrder.Unknown));
 
