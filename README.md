@@ -178,6 +178,14 @@ decode failure (`DecodeFailed`) or a failed export (`ExportFailed`). ShotDetecto
 `ShotDetectionException`'s `InnerException`. Both are a `FrameReader.MediaException` (since 3.0, issue #239), so code
 that also calls FrameReader directly catches either with one `catch (MediaException)`, and each keeps its own `Reason`.
 
+Frames from another decoder (a managed one, in the browser): `ShotDetection.Detect(YuvVideo, IEnumerable<YuvFrame>,
+options)` takes decoded 8-bit 4:2:0 planes (with strides) and the video's properties as FFmpeg reports them (average
+frame rate, time base and start pts, first frame's colour tags), and gives the file's result, byte for byte, with the
+same converter. Nothing on that path loads FFmpeg or starts ffmpeg, so it needs `Yuv420Converter` (ShotDetector.FastYuv's
+`SwscaleYuv420`): there is no other conversion without FFmpeg. So far a constant frame rate (checked), one frame size,
+no rotation; deinterlacing and `FfmpegResize` aren't available, the time range, crop, downscale, frame skip and stats
+are (docs/decisions/2026-10-24-managedcodecs-showcase.md).
+
 Each detection is an OpenTelemetry-ready span: `.AddSource(ShotDetection.ActivitySourceName)` shows
 "ShotDetection.Detect" with the video's size, frame rate, pipeline, frames and shots.
 

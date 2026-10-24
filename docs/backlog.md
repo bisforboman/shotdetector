@@ -15,6 +15,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-19: on x86 one known, stats only: a video whose colour tags change midway, with FastYuv or, on a 10-bit siting change, the executable's default path (every cut exact; the per-frame-tags row in Maybe, the informational samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
+- Shot detection in the browser: a showcase app on browser-wasm decoding with ManagedCodecs (github.com/bisforboman/ManagedCodecs) and converting with ShotDetector.FastYuv, fed to ShotDetector through a public frame-source API
+  - Why: ManagedCodecs' H.264 and MJPEG decoders are bit-exact with FFmpeg and already run on browser-wasm, and FastYuv converts in managed code, so detection can run with no native binaries at all and give a file's results (docs/decisions/2026-10-24-managedcodecs-showcase.md). The owner's shape (2026-10-24): ShotDetector takes decoded YUV frames from any decoder (not a ManagedCodecs backend inside FrameReader); the showcase lives in a new repository (e.g. bisforboman/shotdetector-web, own CI and GitHub Pages, ManagedCodecs as a submodule until it is on NuGet), plain HTML + JSExport with decoding in a web worker, MIT with FastYuv a separate, replaceable DLL in the bundle. First version: 8-bit 4:2:0 H.264 in MP4 at a constant frame rate, trailers rather than films (ManagedCodecs decodes at 2.3-3.6x FFmpeg's time on one thread). Exactness first: before any UI, ManagedCodecs + FastYuv must give the same scene and stats CSVs as the FFmpeg path, natively and under WASM
+  - Status: In progress (2026-10-24: the frame-source API, `ShotDetection.Detect(YuvVideo, IEnumerable<YuvFrame>)`, branch frame-source-api; then the showcase repository)
+
 ## Waiting
 
 - Parallel detection above 8 CPUs: more than 4 chunks and 16 decoder threads in total
@@ -38,10 +42,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Waiting (on .NET 11's release)
 
 ## Maybe
-
-- ManagedCodecs (github.com/bisforboman/ManagedCodecs) as an optional managed decoder backend in FrameReader: H.264 and MJPEG in MP4/AVI without FFmpeg's libraries
-  - Why: Its H.264 (Constrained Baseline to High 4:4:4, interlaced included) and MJPEG decoders are bit-exact with FFmpeg, and FastYuv already converts (and row-deinterlaces) in managed code, so a whole pipeline without native binaries could give the same results: Native AOT without the FFmpeg libraries, WebAssembly (shot detection in a browser), the same bytes on x64, ARM and WASM. Not a replacement: 2.3-3.6x FFmpeg's decode time on one thread (decoding is most of detection's time), MP4/AVI only (no MPEG-2, MXF, TS, HEVC, VP9, AV1), no error concealment (fall back to FFmpeg on a damaged picture), and its MJPEG must match the C IDCT we pin. First step: decode our h264 MP4 samples with it plus FastYuv and compare scene and stats CSVs and time against FFmpeg; then a parity CI leg (`--decoder managed`). Whether ShotDetector should run in a browser or with no native files is the owner's product decision (the owner, 2026-10-23: a Maybe row)
-  - Status: Maybe
 
 - Option B: a FrameReader deferred take so FastYuv's row yadif converts off the decode thread
   - Why: The conversion thread (C, on by default for sequential HD since 2026-10-22) can't serve row-wise yadif: taking a frame deinterlaces every row, so those runs still decode, deinterlace and convert on one thread. A deferred take that keeps yadif's previous, current and next frames referenced would let the conversion thread compute only the rows it reads, deinterlacing included (then K workers): expected 1080i MXF sequential with row yadif from ~16.6 s to about 12-13 s. Only for the library configuration with FastYuv's `Yadif` (the CLI deinterlaces with FFmpeg's yadif, which C already covers); parallel runs gain little (the chunks keep the cores busy). A FrameReader change (docs/decisions/2026-10-22-decode-split.md, docs/frame-references.md)

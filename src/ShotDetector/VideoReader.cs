@@ -187,7 +187,7 @@ internal sealed partial class VideoReader
     /// (in-process when the libraries load, else one ffprobe call: for a URL, another request), as detection doesn't
     /// need it.
     /// </summary>
-    public IReadOnlyList<StreamInfo>? Streams => _stream is not null
+    public IReadOnlyList<StreamInfo>? Streams => _stream is not null || _frames is not null
         ? null
         : _streams ??= _probesInProcess ? InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions) : FfprobeStreams();
 
@@ -539,27 +539,7 @@ internal sealed partial class VideoReader
             : double.TryParse(stream.GetValueOrDefault("duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out double secs)
                 ? (long)Math.Floor(secs * rate.Value + 0.5) : 0;
 
-        // Crop like scenedetect: inclusive corners. The "effective size" its downscale factor comes
-        // from is one pixel larger than the crop in both directions (its crop setter adds 1 to the far
-        // corner and detect_scenes adds 1 again), while the frame is sliced to the real crop. Reproduced as is.
-        CropRegion = (0, 0, SourceWidth, SourceHeight);
-        var effective = (SourceWidth, SourceHeight);
-        if (o.Crop is { } c)
-        {
-            int minX = Math.Min(c.X0, c.X1), minY = Math.Min(c.Y0, c.Y1), maxX = Math.Max(c.X0, c.X1), maxY = Math.Max(c.Y0, c.Y1);
-            if (minX < 0 || minY < 0)
-                throw new ArgumentException("Crop coordinates must be >= 0.");
-            if (minX >= SourceWidth || minY >= SourceHeight)
-                throw new ArgumentException("Crop starts outside the video.");
-            CropRegion = (minX, minY, Math.Min(maxX + 1, SourceWidth) - minX, Math.Min(maxY + 1, SourceHeight) - minY);
-            effective = (CropRegion.Width + 1, CropRegion.Height + 1);
-        }
-
-        (Width, Height) = o.Downscale is { } d
-            ? d <= 1
-                ? (CropRegion.Width, CropRegion.Height)
-                : (Math.Max(1, (int)Math.Round(CropRegion.Width / (double)d)), Math.Max(1, (int)Math.Round(CropRegion.Height / (double)d)))
-            : DownscaledSize(effective.SourceWidth, effective.SourceHeight, CropRegion.Width, CropRegion.Height);
+        (CropRegion, Width, Height) = AnalysedSize(SourceWidth, SourceHeight, o);
         _pixelFormat = stream.GetValueOrDefault("pix_fmt", "");
 
         // The first frame's chroma location and colour tags over the stream's: OpenCV converts each frame with its own
@@ -1063,6 +1043,8 @@ internal sealed partial class VideoReader
     /// </summary>
     public FrameTime Position(int frame)
     {
+        if (_frames is not null)
+            return FramePosition(frame);
         int packet = frame - _liveStart is int k && k >= 0 && k < _livePackets.Count ? _livePackets[k] : frame;
         long? pts = Streaming ? (frame < _livePts.Count ? _livePts[frame] : null) : (packet < _pts.Length ? _pts[packet] : null);
         if (pts is { } p)
@@ -1094,6 +1076,8 @@ internal sealed partial class VideoReader
     /// </summary>
     internal int SeekFrame(double seconds)
     {
+        if (_frames is not null)
+            return FramesSeekFrame(seconds);
         if (Streaming)
             throw new NotSupportedException("A streamed input can't be seeked; StartTime isn't available.");
         if (seconds <= 0 || _pts.Length == 0)
@@ -1121,6 +1105,35 @@ internal sealed partial class VideoReader
     /// The last scene ends one frame after it.
     /// </summary>
     internal FrameTime PositionAfterDecoding(int frameCount) => FrameTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps);
+
+    /// <summary>
+    /// The part of the upright frame analysed and the size the detectors see: crop like scenedetect, inclusive corners. The
+    /// "effective size" its downscale factor comes from is one pixel larger than the crop in both directions (its crop
+    /// setter adds 1 to the far corner and detect_scenes adds 1 again), while the frame is sliced to the real crop.
+    /// Reproduced as is.
+    /// </summary>
+    internal static ((int X, int Y, int Width, int Height) Crop, int Width, int Height) AnalysedSize(int sourceWidth, int sourceHeight, DetectionOptions o)
+    {
+        var crop = (X: 0, Y: 0, Width: sourceWidth, Height: sourceHeight);
+        var effective = (Width: sourceWidth, Height: sourceHeight);
+        if (o.Crop is { } c)
+        {
+            int minX = Math.Min(c.X0, c.X1), minY = Math.Min(c.Y0, c.Y1), maxX = Math.Max(c.X0, c.X1), maxY = Math.Max(c.Y0, c.Y1);
+            if (minX < 0 || minY < 0)
+                throw new ArgumentException("Crop coordinates must be >= 0.");
+            if (minX >= sourceWidth || minY >= sourceHeight)
+                throw new ArgumentException("Crop starts outside the video.");
+            crop = (minX, minY, Math.Min(maxX + 1, sourceWidth) - minX, Math.Min(maxY + 1, sourceHeight) - minY);
+            effective = (crop.Width + 1, crop.Height + 1);
+        }
+
+        var (width, height) = o.Downscale is { } d
+            ? d <= 1
+                ? (crop.Width, crop.Height)
+                : (Math.Max(1, (int)Math.Round(crop.Width / (double)d)), Math.Max(1, (int)Math.Round(crop.Height / (double)d)))
+            : DownscaledSize(effective.Width, effective.Height, crop.Width, crop.Height);
+        return (crop, width, height);
+    }
 
     /// <summary>PySceneDetect 0.7.1's compute_downscale_factor + resize size (Python round = half to even).</summary>
     internal static (int W, int H) DownscaledSize(int width, int height, int minWidth = 256) => DownscaledSize(width, height, width, height, minWidth);
@@ -1217,6 +1230,13 @@ internal sealed partial class VideoReader
         cancellationToken.ThrowIfCancellationRequested();
         if (count is <= 0)
             yield break;
+        if (_frames is not null)
+        {
+            foreach (var frame in FramesFromCaller(startFrame, count, cancellationToken))
+                yield return frame;
+            yield break;
+        }
+
         if (Streaming && startFrame > 0)
             throw new NotSupportedException("A streamed input can't be seeked.");
         if (DecodesInProcess)

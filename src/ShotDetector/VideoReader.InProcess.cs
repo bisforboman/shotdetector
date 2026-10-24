@@ -8,9 +8,17 @@ internal sealed partial class VideoReader
     /// Whether frames are decoded in this process (<see cref="VideoDecoder.InProcess"/>, or <see cref="VideoDecoder.Auto"/>
     /// with FFmpeg 8's libraries available) rather than by the ffmpeg executable. Inputs it doesn't handle use the
     /// executable: URLs whose protocol the libraries lack (and Streaming on a path), codecs the libraries have no decoder
-    /// for, and rotations other than quarter turns.
+    /// for, and rotations other than quarter turns. Never frames from the caller (<see cref="FromFrames"/>), which nothing
+    /// decodes: their reader asks nothing of FFmpeg.
     /// </summary>
-    public bool DecodesInProcess => _decoder != VideoDecoder.FfmpegProcess && (_stream is not null || !Streaming || _urlInProcess)
+    public bool DecodesInProcess => _frames is null && DecodesWithLibraries();
+
+    /// <summary>
+    /// <see cref="DecodesInProcess"/> for a decoder's input. A method of its own, never inlined, so compiling
+    /// DecodesInProcess doesn't load FFmpeg.AutoGen for frames from the caller (browser WebAssembly has no FFmpeg).
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    bool DecodesWithLibraries() => _decoder != VideoDecoder.FfmpegProcess && (_stream is not null || !Streaming || _urlInProcess)
         && !_inProcessGaveNothing && !_alwaysBt601
         && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory))
         && FrameReader.FrameDecoder.HasDecoder(Codec)
