@@ -81,7 +81,7 @@ jobs:
         shell: bash
         run: |
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
-            --detector all --stats --report parity.md || true
+            --detector all --stats --report parity.md --informational || true
           { echo "### scenedetect 0.7.2 on ${{ matrix.os }} (informational)"; cat parity.md 2>/dev/null || echo "No report."; } >> "$GITHUB_STEP_SUMMARY"
 
       # Outside native/, so the comparison above keeps its decoder; only the parallel check gets them (--ffmpeg-dir).

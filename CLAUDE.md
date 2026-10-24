@@ -196,7 +196,10 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - GitHub Actions queues can stall; re-run rather than diagnose when every job was cancelled at ~15 min.
 - Failed tests show as check-run annotations (test name, message, file/line; GitHubActionsTestLogger, `--logger
   GitHubActions` on every `dotnet test` step but mutation's), readable where job logs aren't: `gh api
-  repos/bisforboman/shotdetector/check-runs/<id>/annotations`. GitHub keeps 10 per step, 50 per run.
+  repos/bisforboman/shotdetector/check-runs/<id>/annotations`. GitHub keeps 10 per step, 50 per run. So do
+  comparisons that differ: compare.py (and realworld.py through it) writes an error per differing sample (detectors,
+  first difference, the run's options; at most 9 + one naming the rest) and a notice with the counts; `--informational`
+  (the `|| true` steps) writes the notice alone, naming the samples (tools/annotate.py, `--test` in the build job).
 - Workflows: external actions are pinned by commit SHA with the tag in a comment (`uses: actions/checkout@<sha> # v7`;
   Dependabot moves both), and each workflow's token defaults to `contents: read`: pin a new action the same way
   (`git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>`) and give a job that needs more its own `permissions`.
