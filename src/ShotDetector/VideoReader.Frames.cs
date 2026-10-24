@@ -167,9 +167,7 @@ internal sealed partial class VideoReader
     {
         if (seconds <= 0)
             return 0;
-        int estimate = FrameAt(seconds);
-        if (FrameCountHint > 0)
-            estimate = (int)Math.Clamp(estimate, 0, FrameCountHint - 1);
+        int estimate = StartEstimate(seconds);
         while (estimate >= _framesRead)
         {
             if (!TakeFrame())
@@ -183,6 +181,26 @@ internal sealed partial class VideoReader
         throw new ShotDetectionException(ShotDetectionError.InvalidInput,
             string.Create(CultureInfo.InvariantCulture, $"Frame {estimate} is at {at} s, too far from the start time {seconds} s for a constant frame rate."));
     }
+
+    /// <summary>The frame <see cref="FramesSeekFrame"/> starts from: round(seconds × fps), clamped to the frame count when known.</summary>
+    int StartEstimate(double seconds)
+    {
+        int estimate = FrameAt(seconds);
+        return FrameCountHint > 0 ? (int)Math.Clamp(estimate, 0, FrameCountHint - 1) : estimate;
+    }
+
+    /// <summary>
+    /// Whether a run's start (<see cref="Position"/> of frame 0, then <see cref="SeekFrame"/> to
+    /// <paramref name="startSeconds"/>) would take another frame from the caller. The run takes those one at a time
+    /// (<see cref="TakeBeforeStart"/>), each in a step of its own, so its driver can put each in the feed first; the start
+    /// then finds them taken. False for every other input.
+    /// </summary>
+    internal bool TakesBeforeStart(double? startSeconds) =>
+        _frames is not null && !_framesStarted && !_framesEnded
+        && _framesRead <= (startSeconds is { } s && s > 0 ? StartEstimate(s) : 0);
+
+    /// <summary>Takes one of the frames <see cref="TakesBeforeStart"/> wants.</summary>
+    internal void TakeBeforeStart() => TakeFrame();
 
     /// <summary>
     /// <see cref="Frames(int, int?, CancellationToken, int)"/> for frames from the caller: the frames before

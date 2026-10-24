@@ -17,7 +17,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
 
     [Theory]
     [MemberData(nameof(Cases))]
-    public void SameAsTheFile(string name)
+    public async Task SameAsTheFile(string name)
     {
         if (Libs is null)
             return;
@@ -44,7 +44,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             "parallel" => options with { Mode = DetectionMode.Parallel },
             _ => options,
         };
-        AssertSame(clips.ThreeShots, options);
+        await AssertSame(clips.ThreeShots, options);
     }
 
     // H.264 with B-frames at 29.97 fps in mp4 (an edit list, decode order unlike presentation order, timestamps whose
@@ -55,20 +55,22 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     [InlineData(DetectorKind.Content, "mp4")]
     [InlineData(DetectorKind.Histogram, "mp4")]
     [InlineData(DetectorKind.Content, "ts")]
-    public void SameAsTheFileForH264WithBFrames(DetectorKind detector, string container)
+    public async Task SameAsTheFileForH264WithBFrames(DetectorKind detector, string container)
     {
         if (Libs is null || H264Clip() is not { } mp4)
             return;
         string clip = container == "ts" ? Path.ChangeExtension(mp4, ".ts") : mp4;
         if (container == "ts")
             Assert.NotEqual(0, FrameReader.MediaProbe.Probe(clip).Video!.StartPts);
-        AssertSame(clip, new DetectionOptions { Detector = detector, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() });
+        await AssertSame(clip, new DetectionOptions { Detector = detector, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() });
     }
 
     [Fact]
-    public void NeedsAConverter()
+    public async Task NeedsAConverter()
     {
         var e = Assert.Throws<ArgumentException>(() => ShotDetection.Detect(Video(), Frames(Video(), 3)));
+        Assert.Contains("Yuv420Converter", e.Message);
+        e = await Assert.ThrowsAsync<ArgumentException>(() => ShotDetection.DetectAsync(Video(), FrameSourceAsyncTests.Yielding(Frames(Video(), 3))));
         Assert.Contains("Yuv420Converter", e.Message);
     }
 
@@ -80,7 +82,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     [InlineData("odd")]
     [InlineData("colour")]
     [InlineData("plane")]
-    public void RejectsWhatItCantReproduce(string name)
+    public async Task RejectsWhatItCantReproduce(string name)
     {
         var video = name switch
         {
@@ -101,22 +103,30 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         if (name == "plane")
             frames = frames.Select(f => f with { U = f.U[..^4] });
         Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video, frames, options));
+        await Assert.ThrowsAsync<ArgumentException>(() => ShotDetection.DetectAsync(video, FrameSourceAsyncTests.Yielding(frames), options));
     }
 
     [Theory]
     [InlineData(1, false)]
     [InlineData(3, true)]
     [InlineData(30, true)]
-    public void FramesMustComeAtTheFrameRate(int late, bool fails)
+    public async Task FramesMustComeAtTheFrameRate(int late, bool fails)
     {
         // Frame 5 is `late` hundredths of a second after where the rate puts it: up to half a frame (0.02 s) is fine.
         var video = Video() with { TimeBase = new(1, 100) };
         var frames = Frames(video, 10).Select((f, i) => f with { Pts = i * 4 + (i == 5 ? late : 0) });
         var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420() };
         if (fails)
+        {
             Assert.Equal(ShotDetectionError.InvalidInput, Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(video, frames, options)).Reason);
+            Assert.Equal(ShotDetectionError.InvalidInput,
+                (await Assert.ThrowsAsync<ShotDetectionException>(() => ShotDetection.DetectAsync(video, FrameSourceAsyncTests.Yielding(frames), options))).Reason);
+        }
         else
+        {
             Assert.Equal(10, ShotDetection.Detect(video, frames, options).FrameCount);
+            Assert.Equal(10, (await ShotDetection.DetectAsync(video, FrameSourceAsyncTests.Yielding(frames), options)).FrameCount);
+        }
     }
 
     [Fact]
@@ -168,12 +178,22 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     }
 
     // The frames of a file, as a decoder gives them, and the file's result for them.
-    static void AssertSame(string path, DetectionOptions options)
+    static async Task AssertSame(string path, DetectionOptions options)
     {
         var file = ShotDetection.Detect(path, options);
         Assert.True(file.Video.DecodedInProcess);
         var (video, frames) = Decoded(path);
         var ours = ShotDetection.Detect(video, frames, options);
+
+        // The same frames from an asynchronous source (DetectAsync) give the same result.
+        var awaited = await ShotDetection.DetectAsync(video, FrameSourceAsyncTests.Yielding(Decoded(path).Frames, every: 5), options);
+        Assert.Equal(ours.FrameCount, awaited.FrameCount);
+        Assert.Equal(ours.Shots, awaited.Shots);
+        Assert.Equal(Shots.Csv(ours.Shots, cuts: ours.Cuts), Shots.Csv(awaited.Shots, cuts: awaited.Cuts));
+        Assert.Equal(ours.Stats?.Csv(ours.Video.Position), awaited.Stats?.Csv(awaited.Video.Position));
+        Assert.Equal(ours.Warnings, awaited.Warnings);
+        Assert.Equal((ours.Video.ProcessedWidth, ours.Video.ProcessedHeight, ours.Video.FrameRate, ours.Video.OpenCvFrameCount, ours.Video.Duration),
+            (awaited.Video.ProcessedWidth, awaited.Video.ProcessedHeight, awaited.Video.FrameRate, awaited.Video.OpenCvFrameCount, awaited.Video.Duration));
         Assert.Equal(file.FrameCount, ours.FrameCount);
         Assert.Equal(file.MinSceneLengthFrames, ours.MinSceneLengthFrames);
         Assert.Equal(file.Cuts, ours.Cuts);
