@@ -6,6 +6,27 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.14.0 – 2026-10-24
+
+Shot detection on frames from another decoder, without FFmpeg
+
+### New
+
+- `ShotDetection.Detect(YuvVideo, IEnumerable<YuvFrame>, options)`: shot detection on frames another decoder decoded,
+  without FFmpeg (nothing on this path loads FFmpeg's libraries or starts ffmpeg, so it can run in the browser with a
+  managed decoder). It takes 8-bit 4:2:0 planes with their strides and pts, and the video's properties as FFmpeg reports
+  them, and gives the file's result byte for byte with the same converter, which is required: `Yuv420Converter = new
+  SwscaleYuv420()` from ShotDetector.FastYuv. Constant frame rate (checked), one size, no rotation; the time range,
+  crop, downscale, frame skip and stats apply, deinterlacing and `FfmpegResize` don't.
+
+### Faster
+
+- Detection no longer decodes the video's first frame an extra time, before it starts, where nothing uses that frame's
+  chroma location and colour tags: in-process without FastYuv, which converts each frame with its own tags. They are
+  read only when the ffmpeg executable path (10-bit and other formats whose conversion interpolates the chroma) or
+  FastYuv's converter first needs them. That was about 0.14 s per detection on 4K 10-bit video, and for an http(s) URL
+  decoded in-process a second connection that waited for the first frame. Same results.
+
 ## 3.13.1 – 2026-10-23
 
 With the ffmpeg executable, deinterlaced reads from a start time match a full read.
