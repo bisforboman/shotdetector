@@ -357,7 +357,9 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
     }
 
     // An mp4 without faststart (headers last) goes to a temporary file and is read as the file is: the same stats,
-    // whether the whole stream fit in the probe's first bytes or not; the file is gone afterwards.
+    // whether the whole stream fit in the probe's first bytes or not; the file is gone afterwards. Other test classes
+    // pipe mp4s at the same time and their spills look the same, so a new one only fails the test if it outlives
+    // theirs (their detection ends within seconds; a leaked one stays).
     [Theory]
     [InlineData(16 << 20)]
     [InlineData(4096)]
@@ -373,6 +375,9 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Null(piped.VideoPath); // exports need a path of the caller's
         Assert.Equal(expected.Stats!.Csv(expected.Video.Position), piped.Stats!.Csv(piped.Video.Position));
         Assert.Equal(Shots.Csv(expected.Shots), Shots.Csv(piped.Shots));
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (Spills().Except(before).Any() && DateTime.UtcNow < deadline)
+            Thread.Sleep(100);
         Assert.Empty(Spills().Except(before));
     }
 
