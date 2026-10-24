@@ -758,7 +758,54 @@ public static class ShotDetection
         ArgumentNullException.ThrowIfNull(video);
         ArgumentNullException.ThrowIfNull(frames);
         using var e = frames.GetEnumerator();
-        return Run(null, null, options, onShot: null, cancellationToken, o => new VideoReader(video, e, o));
+        var feed = new FrameFeed();
+        return Run(null,
+            null,
+            options,
+            onShot: null,
+            cancellationToken,
+            o => new VideoReader(video, feed, o),
+            () =>
+            {
+                if (feed.NeedsFrame)
+                {
+                    cancellationToken.ThrowIfCancellationRequested(); // before each frame is pulled
+                    if (e.MoveNext())
+                        feed.Put(e.Current);
+                    else
+                        feed.End();
+                }
+            });
+    }
+
+    /// <summary>
+    /// <see cref="Detect(YuvVideo, IEnumerable{YuvFrame}, DetectionOptions?, CancellationToken)"/> on frames from an
+    /// asynchronous source: the same options, refusals and result (shots, cuts, stats and their CSVs, byte for byte), the
+    /// frames pulled the same way (one at a time, none ahead). It runs on the caller's own awaits, never on another thread
+    /// (no <see cref="Task.Run(Action)"/>): between frames it awaits <paramref name="frames"/>, so on a single-threaded host
+    /// (browser WebAssembly, a web worker) the event loop runs whenever the source yields to it, and a cancel arriving there
+    /// stops the run at the next frame. A source that never yields runs the whole detection before this returns.
+    /// </summary>
+    /// <param name="video">The video's properties, as its headers give them (FFmpeg's values, for a file's results).</param>
+    /// <param name="frames">The decoded frames in presentation order, every frame from the first; enumerated once, with
+    /// <paramref name="cancellationToken"/>, and disposed when the run ends, fails or is cancelled.</param>
+    /// <param name="options">Detection settings, as for the synchronous overload. <see cref="DetectionOptions.Progress"/>,
+    /// <see cref="DetectionOptions.Warnings"/> and <see cref="DetectionOptions.OnShot"/> are told from inside the run, on
+    /// whichever thread continues after the source's await.</param>
+    /// <param name="cancellationToken">Checked before each frame is pulled.</param>
+    /// <returns>The detection's result.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="video"/> or <paramref name="frames"/> is null (thrown at once).</exception>
+    /// <exception cref="ArgumentException">Invalid options, an unsupported video, or a frame's plane smaller than the frame (in the task).</exception>
+    /// <exception cref="ShotDetectionException">The frames don't come at a constant frame rate (<see cref="ShotDetectionError.InvalidInput"/>, in the task).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled (in the task).</exception>
+    public static Task<DetectionResult> DetectAsync(YuvVideo video,
+        IAsyncEnumerable<YuvFrame> frames,
+        DetectionOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(video);
+        ArgumentNullException.ThrowIfNull(frames);
+        return RunAsync(video, frames, options, cancellationToken);
     }
 
     /// <summary>
@@ -955,39 +1002,110 @@ public static class ShotDetection
         DetectionOptions? options,
         Action<Shot>? onShot,
         CancellationToken cancellationToken,
-        Func<DetectionOptions, VideoReader>? frames = null)
+        Func<DetectionOptions, VideoReader>? frames = null,
+        Action? beforeStep = null)
     {
         using var activity = Tracing.StartActivity("ShotDetection.Detect");
         try
         {
-            var result = RunTraced(videoPath, videoStream, options, onShot, cancellationToken, frames);
-            if (activity is not null)
+            // The steps to the end; frames from the caller go into the feed before each step but the first.
+            DetectionResult result;
+            using (var steps = Steps(videoPath, videoStream, options, onShot, cancellationToken, frames).GetEnumerator())
             {
-                var v = result.Video.Reader;
-                activity.SetTag("shotdetector.video.width", v.SourceWidth);
-                activity.SetTag("shotdetector.video.height", v.SourceHeight);
-                activity.SetTag("shotdetector.video.fps", v.Fps.Value);
-                activity.SetTag("shotdetector.pipeline", v.Pipeline.ToString());
-                activity.SetTag("shotdetector.decoder", v.DecodesInProcess ? "inprocess" : "process");
-                activity.SetTag("shotdetector.streaming", v.Streaming);
-                activity.SetTag("shotdetector.chunks", result.Video.Chunks);
-                activity.SetTag("shotdetector.frames", result.FrameCount);
-                activity.SetTag("shotdetector.shots", result.Shots.Count);
+                while (!Stepped(steps, out result))
+                    beforeStep?.Invoke();
             }
 
+            Traced(activity, result);
             return result;
         }
         catch (Exception e)
         {
-            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, e.Message);
-            activity?.AddException(e);
-            if (e is ShotDetectionException d)
-                activity?.SetTag("shotdetector.error", d.Reason.ToString());
+            Failed(activity, e);
             throw;
         }
     }
 
-    static DetectionResult RunTraced(string? videoPath,
+    /// <summary>
+    /// The frame-source run on an asynchronous source: <see cref="Steps"/> as <see cref="Run"/> drives them, the next frame
+    /// awaited before each step that takes one. No other thread: the run continues wherever the source's await does.
+    /// </summary>
+    static async Task<DetectionResult> RunAsync(YuvVideo video, IAsyncEnumerable<YuvFrame> frames, DetectionOptions? options, CancellationToken cancellationToken)
+    {
+        using var activity = Tracing.StartActivity("ShotDetection.Detect");
+        try
+        {
+            var feed = new FrameFeed();
+            DetectionResult result;
+            var source = frames.GetAsyncEnumerator(cancellationToken);
+            await using (source.ConfigureAwait(false))
+            {
+                using var steps = Steps(null, null, options, null, cancellationToken, o => new VideoReader(video, feed, o)).GetEnumerator();
+                while (!Stepped(steps, out result))
+                {
+                    if (feed.NeedsFrame)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested(); // before each frame is awaited
+                        if (await source.MoveNextAsync().ConfigureAwait(false))
+                            feed.Put(source.Current);
+                        else
+                            feed.End();
+                    }
+                }
+            }
+
+            Traced(activity, result);
+            return result;
+        }
+        catch (Exception e)
+        {
+            Failed(activity, e);
+            throw;
+        }
+    }
+
+    /// <summary>One step of the run: true with the result once it has one.</summary>
+    static bool Stepped(IEnumerator<DetectionResult?> steps, out DetectionResult result)
+    {
+        if (!steps.MoveNext())
+            throw new InvalidOperationException("The run's steps ended without a result.");
+        result = steps.Current!;
+        return steps.Current is not null;
+    }
+
+    /// <summary>The run's span: what it read and found.</summary>
+    static void Traced(System.Diagnostics.Activity? activity, DetectionResult result)
+    {
+        if (activity is not null)
+        {
+            var v = result.Video.Reader;
+            activity.SetTag("shotdetector.video.width", v.SourceWidth);
+            activity.SetTag("shotdetector.video.height", v.SourceHeight);
+            activity.SetTag("shotdetector.video.fps", v.Fps.Value);
+            activity.SetTag("shotdetector.pipeline", v.Pipeline.ToString());
+            activity.SetTag("shotdetector.decoder", v.DecodesInProcess ? "inprocess" : "process");
+            activity.SetTag("shotdetector.streaming", v.Streaming);
+            activity.SetTag("shotdetector.chunks", result.Video.Chunks);
+            activity.SetTag("shotdetector.frames", result.FrameCount);
+            activity.SetTag("shotdetector.shots", result.Shots.Count);
+        }
+    }
+
+    /// <summary>The run's span: why it failed.</summary>
+    static void Failed(System.Diagnostics.Activity? activity, Exception e)
+    {
+        activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, e.Message);
+        activity?.AddException(e);
+        if (e is ShotDetectionException d)
+            activity?.SetTag("shotdetector.error", d.Reason.ToString());
+    }
+
+    /// <summary>
+    /// The run, as steps: null where its next action takes a frame from the caller (the driver puts one in the
+    /// <see cref="FrameFeed"/> first, awaited in <see cref="RunAsync"/>), then the result. A file's or a stream's run goes
+    /// through to the end without stopping (<see cref="Run"/>).
+    /// </summary>
+    static IEnumerable<DetectionResult?> Steps(string? videoPath,
         Stream? videoStream,
         DetectionOptions? options,
         Action<Shot>? onShot,
@@ -1081,6 +1199,16 @@ public static class ShotDetection
         // Cuts as scenedetect keeps them (its cutting list, later sorted and de-duplicated).
         var cuts = new List<FrameTime>();
         var shots = new List<Shot>();
+
+        // Frames from the caller: those the start reads (frame 0, and up to the start time), one per step, so an asynchronous
+        // source is awaited between them as between the others (DetectAsync).
+        double? startSeconds = o.StartTime is null ? null : TimecodeSeconds(o.StartTime, video.Fps, oneBasedFrames: true);
+        while (video.TakesBeforeStart(startSeconds))
+        {
+            yield return null;
+            video.TakeBeforeStart();
+        }
+
         var start = video.Position(0);
         FrameTime? lastCut = null;
         void Cut(FrameTime cut)
@@ -1112,7 +1240,7 @@ public static class ShotDetection
 
         // scenedetect's `time -s` seeks (1-based frame numbers); `-e`/`-d` become whole frames at the
         // average rate (FrameTimecode rounds half to even) and are compared as frame numbers.
-        int startFrame = o.StartTime is null ? 0 : video.SeekFrame(TimecodeSeconds(o.StartTime, video.Fps, oneBasedFrames: true));
+        int startFrame = startSeconds is { } seconds ? video.SeekFrame(seconds) : 0;
         static long Frames(string value, Fps fps) => (long)Math.Round(TimecodeSeconds(value, fps) * fps.Value);
         long? endFrame = o.EndTime is not null ? Frames(o.EndTime, video.Fps)
             : o.RangeDuration is not null ? Frames(o.RangeDuration, video.Fps) + startFrame
@@ -1224,6 +1352,8 @@ public static class ShotDetection
                 readToEnd = false;
                 break;
             }
+
+            yield return null; // the next frame is taken next
         }
 
         WarnHls();
@@ -1258,7 +1388,7 @@ public static class ShotDetection
             }
         }
 
-        return new()
+        yield return new()
         {
             VideoPath = videoPath,
             Video = new DetectedVideo(video) { Chunks = chunks, ChunkFallback = fallback },
