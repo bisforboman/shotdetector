@@ -99,7 +99,7 @@ jobs:
       - name: Compare with scenedetect
         if: needs.changes.outputs.docs_only != 'true'
         run: |
-          python tools/realworld.py ${{ matrix.video }} --report realworld.md ${{ contains(matrix.video, 'bbb_10s') && '--ours-args "--crop 0 0 600 400"' || '' }} || status=$?
+          python tools/realworld.py ${{ matrix.video }} --report realworld.md || status=$?
           { echo "### ${{ matrix.video }}"; cat realworld.md; } >> "$GITHUB_STEP_SUMMARY"
           exit ${status:-0}
 
