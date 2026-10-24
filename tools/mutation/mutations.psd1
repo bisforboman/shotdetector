@@ -125,6 +125,8 @@
         # Auto chunks with half the CPUs (none below 4) and for frames up to 3840 x 2160 (docs/decisions/2026-10-18-parallel-auto-4cpus.md)
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'Math.Min(4, cpus / 2)'; Replace = 'Math.Min(4, cpus)'; Tests = 'ParallelTests.AutomaticChunks' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (!forced && pixels > AutoChunksMaxPixels)'; Replace = 'if (false)'; Tests = 'ParallelTests.AutomaticChunksBySizeModeAndThreads' }
+        # DetectionOptions.OnShot only listens: Auto still chunks a file for Detect (only DetectStreamAsync's channel reads sequentially)
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'o.ResolvedMode(streaming) == DetectionMode.Parallel'; Replace = 'o.ResolvedMode(onShot is not null) == DetectionMode.Parallel'; Tests = 'OnShotTests.FilePathInChunksTellsTheResultsShots' }
 
         # Streamed input
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (o.StartTime is not null && video.Streaming)'; Replace = 'if (false)'; Tests = 'VideoTests' }
