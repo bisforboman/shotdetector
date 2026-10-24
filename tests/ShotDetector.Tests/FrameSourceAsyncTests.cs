@@ -182,10 +182,10 @@ public class FrameSourceAsyncTests
         {
             foreach (var frame in Frames(video))
             {
-                pulled++;
-                yield return frame;
-                if (pulled == 10)
+                // Cancelled as the 10th frame is given: the run takes it, then pulls no more.
+                if (++pulled == 10)
                     cancel.Cancel();
+                yield return frame;
             }
         }
 
