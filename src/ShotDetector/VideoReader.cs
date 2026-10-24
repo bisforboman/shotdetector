@@ -325,7 +325,13 @@ internal sealed partial class VideoReader
     /// layout and colours (4:2:0, 4:2:2 or 10-bit 4:2:0), and the raw-YUV pipe's setparams (every frame labelled with the
     /// first frame's colour tags).
     /// </summary>
-    sealed record Colours(string? ChromaLocation, YuvConversion? YuvForVideo, string YuvLabels);
+    sealed record Colours(string? ChromaLocation, YuvConversion? YuvForVideo, string YuvLabels, FrameColour Colour, Dictionary<string, string> Stream);
+
+    /// <summary>
+    /// What a frame is converted with: its colour matrix, whether it's full range, and (10-bit 4:2:0, the only layout whose
+    /// conversion interpolates chroma) where its chroma samples sit; null for the others.
+    /// </summary>
+    internal readonly record struct FrameColour(string ColorSpace, bool FullRange, string? ChromaLocation);
 
     /// <summary>
     /// What a file's probe read: the stream entries, every frame's pts in display order, whether those came from a
@@ -616,10 +622,7 @@ internal sealed partial class VideoReader
         if (_frameTags is { } frameTags)
             PreferFrameTags(stream, frameTags.Value);
         string? chromaLocation = stream.GetValueOrDefault("chroma_location") is { } loc and not ("unspecified" or "unknown" or "") ? loc : null;
-
-        // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
-        bool fullRange = _pixelFormat is "yuvj420p" or "yuvj422p" || stream.GetValueOrDefault("color_range") == "pc";
-        string colorSpace = _alwaysBt601 ? "bt470bg" : stream.GetValueOrDefault("color_space", "");
+        var colour = ColourOf(stream, chromaLocation);
 
         // The raw-YUV pipe (FastYuv on the executable): ffmpeg sets its output up with the first frame's colour tags, and
         // when a later frame's matrix or range differs (a spliced or concatenated stream) it reconfigures and converts
@@ -628,10 +631,41 @@ internal sealed partial class VideoReader
         // its full range: labelled otherwise, ffmpeg converts it.
         string yuvLabels = YuvLabels(_pixelFormat, stream.GetValueOrDefault("color_space"), stream.GetValueOrDefault("color_range"));
 
+        return new(chromaLocation, YuvConversionFor(colour), yuvLabels, colour, streamEntries);
+    }
+
+    /// <summary>
+    /// The colours a frame with these tags (the decoder's names; null where unspecified) is converted with: its own over
+    /// the stream's, as <see cref="ReadColours"/> takes the first frame's, so a frame with the first frame's tags gets the
+    /// video's.
+    /// </summary>
+    internal FrameColour ColourOf(string? colorSpace, string? colorRange, string? chromaLocation)
+    {
+        var stream = new Dictionary<string, string>(_colours.Value.Stream);
+        PreferFrameTag(stream, "color_space", colorSpace);
+        PreferFrameTag(stream, "color_range", colorRange);
+        PreferFrameTag(stream, "chroma_location", chromaLocation);
+        return ColourOf(stream, stream.GetValueOrDefault("chroma_location") is { } loc and not ("unspecified" or "unknown" or "") ? loc : null);
+    }
+
+    /// <summary>The colours of a frame whose tags (over the stream's) are <paramref name="stream"/>.</summary>
+    FrameColour ColourOf(Dictionary<string, string> stream, string? chromaLocation)
+    {
+        // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
+        bool fullRange = _pixelFormat is "yuvj420p" or "yuvj422p" || stream.GetValueOrDefault("color_range") == "pc";
+        string colorSpace = _alwaysBt601 ? "bt470bg" : stream.GetValueOrDefault("color_space", "");
+        return new(colorSpace, fullRange, TenBit ? chromaLocation : null);
+    }
+
+    /// <summary>_yuv420 configured for this video's layout and these colours; null where it declines them.</summary>
+    internal YuvConversion? YuvConversionFor(FrameColour colour)
+    {
+        var (colorSpace, fullRange, chromaLocation) = colour;
+
         // 4:2:2 when the converter does that too (FastYuv's does): swscale takes the same unscaled converter for it. 10-bit
         // 4:2:0 too: swscale scales that one (interpolating the chroma from where it sits), so its converter is for the
         // size and chroma location as well, and declines sizes it doesn't reproduce.
-        YuvConversion? yuvForVideo = _pixelFormat switch
+        return _pixelFormat switch
         {
             "yuv420p" or "yuvj420p" => _yuv420?.ForColor(colorSpace, fullRange) is { } c420 ? new(c420.RowToBgr, ChromaRows: c420 as IYuvChromaRows) : null,
             "yuv422p" or "yuvj422p" => (_yuv420 as IYuv422Converter)?.ForColor(colorSpace, fullRange) is { } c422
@@ -644,7 +678,6 @@ internal sealed partial class VideoReader
                 : null,
             _ => null,
         };
-        return new(chromaLocation, yuvForVideo, yuvLabels);
     }
 
     static List<long> FrameTimestamps(string ffprobe, string path, string[] inputOptions, CancellationToken ct)
@@ -838,10 +871,15 @@ internal sealed partial class VideoReader
             int eq = line.IndexOf('=');
             if (eq < 0)
                 continue;
-            string key = line[..eq], value = line[(eq + 1)..];
-            if (key is "chroma_location" or "color_space" or "color_range" && value is not ("unspecified" or "unknown" or ""))
-                stream[key] = value;
+            PreferFrameTag(stream, line[..eq], line[(eq + 1)..]);
         }
+    }
+
+    /// <summary>One of a frame's tags over the stream's, where the frame says one.</summary>
+    static void PreferFrameTag(Dictionary<string, string> stream, string key, string? value)
+    {
+        if (key is "chroma_location" or "color_space" or "color_range" && value is not (null or "unspecified" or "unknown" or ""))
+            stream[key] = value;
     }
 
     /// <summary>ffprobe's arguments for the codec tag, extradata and first packet of the first video stream (hex dumps).</summary>

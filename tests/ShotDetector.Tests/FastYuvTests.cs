@@ -550,6 +550,50 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
         static List<string> Hashes(VideoReader reader) => [.. reader.Frames().Select(f => Convert.ToHexString(SHA256.HashData(f)))];
     }
 
+    // In-process, FastYuv converts each frame with its own colour matrix, range and (10-bit) chroma siting, as OpenCV
+    // does, not the first frame's: the joined clip's halves give the frames each half gives alone (and, on x64, the
+    // default path's), converting on the decoding thread and on a thread of its own.
+    [Theory]
+    [InlineData("yuv420p", "colormatrix=bt470bg", "colormatrix=bt709", "")]
+    [InlineData("yuv420p", "colormatrix=bt470bg", "colormatrix=bt470bg:fullrange=on", "scale=out_range=full")]
+    [InlineData("yuv420p10le", "colormatrix=bt470bg:chromaloc=0", "colormatrix=bt470bg:chromaloc=2", "")]
+    [InlineData("yuv420p10le", "colormatrix=bt470bg", "colormatrix=bt709", "")]
+    [InlineData("yuv422p", "colormatrix=bt470bg", "colormatrix=bt709", "")]
+    public void InProcessFollowsEachFramesTags(string format, string firstTags, string secondTags, string secondFilter)
+    {
+        if (Libs is null || !VideoReader.Run("ffmpeg", ["-hide_banner", "-encoders"], default).Contains(" libx264 ", StringComparison.Ordinal))
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetector-fastyuv-frame-tags-").FullName;
+        try
+        {
+            string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts");
+            string[] encode = ["-pix_fmt", format, "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb"];
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-t", "2", .. encode, "-x264-params", firstTags, a], default);
+            string[] filter = secondFilter.Length > 0 ? ["-vf", secondFilter] : [];
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "2", "-i", clips.ThreeShots, "-t", "2", .. filter, .. encode, "-x264-params", secondTags, "-output_ts_offset", "2", b], default);
+            File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
+
+            var options = new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() };
+            var halves = Hashes(new VideoReader(a, options)).Concat(Hashes(new VideoReader(b, options))).ToList();
+            foreach (int threads in new[] { 0, 1 })
+            {
+                var reader = new VideoReader(joined, options with { ConvertThreads = threads });
+                Assert.True(VideoReader.IsYuv(reader.Pipeline));
+                var frames = Hashes(reader);
+                Assert.Equal(halves, frames);
+                Assert.Equal(0, reader.BgrFallbackFrames);
+                if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
+                    Assert.Equal(Hashes(new VideoReader(joined, options with { Yuv420Converter = null, ConvertThreads = threads })), frames);
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+
+        static List<string> Hashes(VideoReader reader) => [.. reader.Frames().Select(f => Convert.ToHexString(SHA256.HashData(f)))];
+    }
+
     // A turned clip read from a start frame (the exact seek) gives the frames a read from the start gives there, with
     // FastYuv as without, through both decoders.
     [Theory]
