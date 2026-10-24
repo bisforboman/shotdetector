@@ -280,7 +280,7 @@ def main() -> int:
         print(report(rows, a.tolerance))
     if a.report:
         Path(a.report).write_text(report(rows, a.tolerance), encoding="utf-8")
-    variant = " ".join(x for x in [
+    variant = "; ".join(x for x in [
         f"--compat {a.compat}" if a.compat else "", "--fast-yuv" if a.fast_yuv else "",
         f"scenedetect args: {a.scenedetect_args}" if a.scenedetect_args else "",
         f"ours args: {a.ours_args}" if a.ours_args else "",
