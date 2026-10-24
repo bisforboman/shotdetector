@@ -180,8 +180,8 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(file.Shots, ours.Shots);
         Assert.Equal(Shots.Csv(file.Shots, cuts: file.Cuts), Shots.Csv(ours.Shots, cuts: ours.Cuts));
         Assert.Equal(file.Stats?.Csv(file.Video.Position), ours.Stats?.Csv(ours.Video.Position));
-        Assert.Equal((file.Video.ProcessedWidth, file.Video.ProcessedHeight, file.Video.FrameRate, file.Video.OpenCvFrameCount),
-            (ours.Video.ProcessedWidth, ours.Video.ProcessedHeight, ours.Video.FrameRate, ours.Video.OpenCvFrameCount));
+        Assert.Equal((file.Video.ProcessedWidth, file.Video.ProcessedHeight, file.Video.FrameRate, file.Video.OpenCvFrameCount, file.Video.Duration),
+            (ours.Video.ProcessedWidth, ours.Video.ProcessedHeight, ours.Video.FrameRate, ours.Video.OpenCvFrameCount, ours.Video.Duration));
 
         // Parallel asked for: both read sequentially, for their own reason.
         static string Why(string warning) => warning.Split(": ")[0];
@@ -218,7 +218,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             TimeBase = info.TimeBase,
             StartPts = info.StartPts ?? 0,
             FrameCount = info.FrameCount,
-            Duration = FrameReader.MediaProbe.Probe(path).Duration,
+            Duration = info.DurationPts is { } d ? TimeSpan.FromTicks((long)Math.Round(d * 1e7 * info.TimeBase.Num / info.TimeBase.Den / 10) * 10) : null,
             Codec = info.Codec,
         };
         return (video, Frames());
@@ -234,6 +234,14 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
                 yield return new YuvFrame(y, ys, u, us, v, vs) { Pts = decoder.Pts };
             }
         }
+    }
+
+    /// <summary>ffprobe's seconds become the nearest tick: TimeSpan.FromSeconds(4.56) is 4.5599999.</summary>
+    [Fact]
+    public void DurationIsTheNearestTick()
+    {
+        Assert.Equal(TimeSpan.FromTicks(45_600_000), VideoReader.Seconds("4.560000"));
+        Assert.Null(VideoReader.Seconds("N/A"));
     }
 
     static YuvVideo Video() => new() { Width = 64, Height = 48, FrameRate = new(25, 1) };
