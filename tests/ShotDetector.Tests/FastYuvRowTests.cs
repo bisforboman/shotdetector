@@ -235,8 +235,8 @@ public class FastYuvRowTests
     {
         var yuv = new byte[IYuv420Converter.FrameSize(width, 2)];
         int[] cols = [.. Enumerable.Range(0, Math.Min(width, bgrBytes / 3)), column];
-        var bgr = new byte[bgrBytes];
-        Assert.Throws<ArgumentOutOfRangeException>(() => new SwscaleYuv420().RowToBgr(yuv, width, 2, 0, cols, bgr));
+        var bgr = new byte[bgrBytes + 256]; // room past the row, so code that didn't check would write there, not past the array
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SwscaleYuv420().RowToBgr(yuv, width, 2, 0, cols, bgr.AsSpan(0, bgrBytes)));
     }
 
     static (SwscaleYuv420 Vector, SwscaleYuv420 Scalar) Converters(string colorSpace, bool fullRange)
