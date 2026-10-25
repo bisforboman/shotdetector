@@ -27,7 +27,7 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - At the next FrameReader release, count the commits touching both products again (docs/frame-reader-product.md, "When to reconsider")
   - Why: 2.8.0 counted 1 of 21, under 1 in 20 for the first time; the trigger needs two releases in a row over at least 20 counted commits, and then means asking the owner, not splitting. 2.9.0 counted 0 of 6 and 2.10.0 0 of 4 (0 of 10 joined), too few: the window joins the next release's
-  - Status: Waiting (on the next FrameReader release)
+  - Status: Waiting (on the next FrameReader release; at 2.11.0 the trigger was met and the owner chose not to split, docs/decisions/2026-10-24-framereader-stays.md)
 
 - Move to FFmpeg 9's libraries (FFmpeg.AutoGen 9, Native packages on 9.0.x) when opencv-python's Linux wheels bundle FFmpeg 9
   - Why: scenedetect's frames come from OpenCV's FFmpeg; moving earlier risks bytes OpenCV doesn't give, and drops system FFmpeg 8 in-process

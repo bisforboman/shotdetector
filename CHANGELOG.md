@@ -6,6 +6,20 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.15.0 – 2026-10-24
+
+Shots as they're found and cancellable detection on frames from another decoder; in-process FastYuv follows each frame's colour tags.
+
+### New
+
+- `ShotDetection.DetectAsync(YuvVideo, IAsyncEnumerable<YuvFrame>, ...)`: detection on frames from an asynchronous source, run on the caller's own awaits (no other thread), so a single-threaded host such as browser WebAssembly stays responsive and can cancel between frames; the result is the synchronous `Detect`'s for the same frames (issue #492).
+- `DetectionOptions.OnShot` is told each shot as soon as it is known, on the thread that runs the detection, by every `Detect` overload (a file, a Stream, your own frames): with one detector while the video is still being read, with several at the end.
+
+### Fixed
+
+- A video's duration is exact to the tick: it was cut to the tick below (4.56 s was 4.5599999 s), so `shotdetect probe` printed 00:00:04.559.
+- ShotDetector.FastYuv, decoding in-process: a video whose colour matrix, range or (10-bit) chroma siting changes midway is now converted with each frame's own tags, as OpenCV does, not the first frame's for the whole video, so its per-frame stats match scenedetect's after the change too.
+
 ## 3.14.0 – 2026-10-24
 
 Shot detection on frames from another decoder, without FFmpeg
