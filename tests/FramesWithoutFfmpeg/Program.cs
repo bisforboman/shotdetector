@@ -1,6 +1,7 @@
 // ShotDetector.Tests' check that detection on frames from the caller never touches FFmpeg: run in a process of its own
 // (the test process has FFmpeg.AutoGen loaded by other tests) with no ffmpeg on PATH and no FFmpeg libraries named, it
-// detects on generated frames (synchronously and with DetectAsync), then fails if FFmpeg.AutoGen or any of FFmpeg's libraries is loaded.
+// detects on generated frames (synchronously, with DetectAsync, and in ranges merged: ScoreRange, RangeScores' bytes,
+// Merge), then fails if FFmpeg.AutoGen or any of FFmpeg's libraries is loaded.
 // Usage: FramesWithoutFfmpeg (prints the shots; exit code 0 when nothing of FFmpeg was loaded)
 using System.Diagnostics;
 using ShotDetector;
@@ -57,6 +58,31 @@ if (Shots.Csv(awaited.Shots, cuts: awaited.Cuts) != Shots.Csv(result.Shots, cuts
     || awaited.Stats!.Csv(awaited.Video.Position) != result.Stats.Csv(result.Video.Position))
 {
     Console.Error.WriteLine("DetectAsync's result differs from Detect's.");
+    return 1;
+}
+
+// The frames in three ranges (from the frame before each to one past its end), each through its bytes, merged: the
+// sequential result (Parallel isn't for ranges: the host splits the video), and nothing of FFmpeg either.
+var sequential = options with { Mode = DetectionMode.Auto, Progress = null };
+var expected = ShotDetection.Detect(video, Frames(), sequential);
+var all = Frames().ToList();
+int[] starts = [0, 34, 67];
+var ranges = new List<RangeScores>();
+for (int i = 0; i < starts.Length; i++)
+{
+    int from = Math.Max(0, starts[i] - 1), to = i + 1 < starts.Length ? starts[i + 1] + 1 : all.Count;
+    var scores = i == 1
+        ? await ShotDetection.ScoreRangeAsync(video, Awaited().Skip(from).Take(to - from), starts[i], sequential)
+        : ShotDetection.ScoreRange(video, all.Skip(from).Take(to - from), starts[i], sequential);
+    ranges.Add(RangeScores.FromBytes(scores.ToBytes()));
+}
+
+var merged = ShotDetection.Merge(video, ranges, sequential);
+if (Shots.Csv(merged.Shots, cuts: merged.Cuts) != Shots.Csv(expected.Shots, cuts: expected.Cuts)
+    || merged.Stats!.Csv(merged.Video.Position) != expected.Stats!.Csv(expected.Video.Position)
+    || merged.FrameCount != expected.FrameCount)
+{
+    Console.Error.WriteLine("The merged ranges' result differs from Detect's.");
     return 1;
 }
 
