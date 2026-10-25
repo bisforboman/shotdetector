@@ -1,0 +1,40 @@
+name: Debug FastYuv timings
+on:
+  push:
+    branches: ['debug/**']
+permissions:
+  contents: read
+jobs:
+  time:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04-arm, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Row tests on this CPU
+        run: dotnet test tests/ShotDetector.Tests --filter "FullyQualifiedName~FastYuvRowTests" --logger GitHubActions
+      - name: Timings
+        run: |
+          set -o pipefail
+          git worktree add ../base a3fadd6
+          git worktree add ../step2 f5e7c6f
+          for d in ../base ../step2 .; do dotnet build -c Release "$d/benchmarks/micro" -v q; done
+          for r in 1 2 3; do
+            for d in ../base ../step2 .; do
+              side=$(basename "$(cd "$d" && pwd)")
+              dotnet run -c Release --no-build --project "$d/benchmarks/micro" -- --set synthetic --filter fastyuv --rounds 15 > "micro-$side.txt"
+            done
+          done
+          for f in micro-*.txt; do
+            body=$(grep -E "fastyuv|outputs:|best of" "$f" | sed 's/  */ /g' | awk 'BEGIN{ORS="%0A"} {print}')
+            echo "::notice title=$f $(nproc) CPUs $(uname -m)::$body"
+          done
+          grep -h "all outputs" micro-*.txt
