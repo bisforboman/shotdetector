@@ -308,6 +308,10 @@ edges for every frame. **The current numbers are in the summaries of the
 and CPU counts, with less memory and similar or less CPU time; the ffmpeg executable costs more CPU and memory than
 decoding in-process (its own process and frame queues, issue #12). All give identical results.
 
+**History:** every run on `main` also commits its numbers as JSON to the
+[`bench-data`](https://github.com/bisforboman/shotdetector/tree/bench-data) branch, one file per runner under `runs/`
+(the schema is in its README, from [benchmarks/bench-data.md](benchmarks/bench-data.md)), so the trend can be charted.
+
 In-process decoding uses FFmpeg's shared libraries inside our process, as OpenCV does: the `FrameReader.Native`
 packages or the CLI's bundled ones, or a system install. It is the default whenever they load
 (`Decoder = VideoDecoder.Auto`; from `FfmpegDirectory` / `--ffmpeg-dir`, else next to the app, else the system's
