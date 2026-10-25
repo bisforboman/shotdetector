@@ -69,6 +69,20 @@
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'h.Size <= cw && v.Size > 2'; Replace = 'h.Size <= cw'; Tests = 'FastYuvTests.TenBitDeclinesWhatItDoesNotReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '_codedSize.W, _codedSize.H, Turn, CropRegion.X'; Replace = '_codedSize.W, _codedSize.H, 0, CropRegion.X'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
 
+        # FastYuv's 8-bit rows with Vector128: blocks of 16 pixels only where they fit the row, start at an even column (whole
+        # chroma samples) and write only the columns asked for; a plan per set of columns and width; the columns checked
+        # (the reads and writes aren't); the vectors used wherever Vector128 is accelerated
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.cs'; Find = 'if ((uint)x >= (uint)limit)'; Replace = 'if (false)'; Tests = 'FastYuvRowTests.RefusesAColumnOutsideTheRow' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.cs'; Find = 'if (Vectorized && bgrRow.Length >= width * 3 && DenseEnough(cols)'; Replace = 'if (Vectorized && DenseEnough(cols)'; Tests = 'FastYuvRowTests.RefusesAColumnOutsideTheRow' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.Vector.cs'; Find = 'if (sorted.Length > 0 && (sorted[0] < 0 || sorted[^1] >= width))'; Replace = 'if (false)'; Tests = 'FastYuvRowTests.RefusesAColumnOutsideTheRow' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.Vector.cs'; Find = 'internal bool Vectorized { get; set; } = Vector128.IsHardwareAccelerated;'; Replace = 'internal bool Vectorized { get; set; }'; Tests = 'FastYuvRowTests.ConvertersUseTheVectorsWhereAccelerated' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.Vector.cs'; Find = 'if (plan is null || plan.Width != width || !cols.SequenceEqual(plan.Cols))'; Replace = 'if (plan is null || plan.Width != width)'; Tests = 'FastYuvRowTests.ColumnsChangedInPlaceOrAnotherWidthGetTheirOwnPlan' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.Vector.cs'; Find = 'if (plan is null || plan.Width != width || !cols.SequenceEqual(plan.Cols))'; Replace = 'if (plan is null || !cols.SequenceEqual(plan.Cols))'; Tests = 'FastYuvRowTests.ColumnsChangedInPlaceOrAnotherWidthGetTheirOwnPlan' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.Vector.cs'; Find = 'if (x0 + BlockPixels > width || end - i < MinColumnsPerBlock)'; Replace = 'if (end - i < MinColumnsPerBlock)'; Tests = 'FastYuvRowTests.BlocksStayWithinTheRow' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.Vector.cs'; Find = 'int x0 = sorted[i] & ~1, end = i;'; Replace = 'int x0 = sorted[i], end = i;'; Tests = 'FastYuvRowTests.BlocksGiveTheTablesBytesForEveryYuv' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.Vector.cs'; Find = 'if (end - i == BlockPixels)'; Replace = 'if (end - i > 0)'; Tests = 'FastYuvRowTests.SameBytesAndUntouchedPixelsAtAnyWidth' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.Vector.cs'; Find = '.Fill(0xFF);'; Replace = '.Fill(0x7F);'; Tests = 'FastYuvRowTests.SameBytesAndUntouchedPixelsAtAnyWidth' }
+
         # In-process YUV pipelines take only the rows the conversion reads (FrameDecoder.CopyRows; with row-wise yadif only
         # those computed): the resize's luma rows (turned: the rows under its pixels) and the chroma rows the converter's
         # taps read (8-bit: its own row's or y / 2; 10-bit: the vertical filter's); whole planes for a converter that doesn't say

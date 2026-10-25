@@ -22,7 +22,7 @@ namespace ShotDetector.FastYuv;
 /// And 10-bit 4:2:0, yuv420p10le (<see cref="IYuv420P10Converter"/>): swscale scales that one (no unscaled converter),
 /// so the port follows x86's scaled path, its MMXEXT vertical scaler and output, for even widths.
 /// </summary>
-public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, IYuv420P10Converter, IYuvChromaRows
+public sealed partial class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, IYuv420P10Converter, IYuvChromaRows
 {
     /// <summary>ff_yuv2rgb_coeffs (crv, cbu, cgu, cgv), indexed by AVColorSpace.</summary>
     internal static readonly int[][] Coeffs =
@@ -95,6 +95,8 @@ public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, IYuv420P
             _vrTerm[i] = MulHi(c, vrCoeff);
             _vgTerm[i] = MulHi(c, vgCoeff);
         }
+
+        _vectorTerms = new(yCoeff, yOffset, ubCoeff, ugCoeff, vrCoeff, vgCoeff);
     }
 
     /// <inheritdoc/>
@@ -149,23 +151,38 @@ public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, IYuv420P
         // One range check per pixel (a column the row has, a pixel bgrRow has) instead of one per access: the tables
         // take any byte, and Clip any sum of three terms.
         var row = new Planes(luma, u, v, bgrRow, this);
-        int limit = Math.Min(width, bgrRow.Length / 3);
-        foreach (int x in cols)
+        if (Vectorized && bgrRow.Length >= width * 3 && DenseEnough(cols) && PlanFor(cols, width) is { HasBlocks: true } plan)
         {
-            if ((uint)x >= (uint)limit)
-                throw new ArgumentOutOfRangeException(nameof(cols), x, "a column outside the row");
-            row.Pixel(x);
+            // Blocks of 16 pixels that the columns fill enough, with vectors, and the plan's other columns.
+            Planes.ByPlan(row, plan, _vectorTerms);
+            return;
         }
+
+        Planes.Pixels(row, cols, Math.Min(width, bgrRow.Length / 3));
     }
 
     /// <summary>One row's planes and the converter's tables, read without range checks (callers check the column).</summary>
-    readonly ref struct Planes(ReadOnlySpan<byte> luma, ReadOnlySpan<byte> u, ReadOnlySpan<byte> v, Span<byte> bgr, SwscaleYuv420 c)
+    private readonly ref partial struct Planes(ReadOnlySpan<byte> luma, ReadOnlySpan<byte> u, ReadOnlySpan<byte> v, Span<byte> bgr, SwscaleYuv420 c)
     {
         readonly ref byte _luma = ref MemoryMarshal.GetReference(luma), _u = ref MemoryMarshal.GetReference(u), _v = ref MemoryMarshal.GetReference(v);
         readonly ref byte _bgr = ref MemoryMarshal.GetReference(bgr), _clip = ref MemoryMarshal.GetArrayDataReference(Clip);
         readonly ref int _y = ref MemoryMarshal.GetArrayDataReference(c._yTerm), _ub = ref MemoryMarshal.GetArrayDataReference(c._ubTerm);
         readonly ref int _ug = ref MemoryMarshal.GetArrayDataReference(c._ugTerm), _vr = ref MemoryMarshal.GetArrayDataReference(c._vrTerm);
         readonly ref int _vg = ref MemoryMarshal.GetArrayDataReference(c._vgTerm);
+
+        /// <summary>The pixels at <paramref name="cols"/> (each below <paramref name="limit"/>, the pixels both the row and bgr have).</summary>
+        // Not inlined, so its profile (tiered PGO) is its own: inlined into RowToBgr after a narrow video, whose plans
+        // never come here, it ran markedly slower for a wider video in the same process.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void Pixels(Planes row, ReadOnlySpan<int> cols, int limit)
+        {
+            foreach (int x in cols)
+            {
+                if ((uint)x >= (uint)limit)
+                    throw new ArgumentOutOfRangeException(nameof(cols), x, "a column outside the row");
+                row.Pixel(x);
+            }
+        }
 
         /// <summary>Pixel x (0 &lt;= x &lt; the row's width and bgr's pixels) to BGR.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
