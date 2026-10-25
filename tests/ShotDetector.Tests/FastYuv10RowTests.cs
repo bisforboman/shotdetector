@@ -243,6 +243,21 @@ public class FastYuv10RowTests
         Assert.Equal(sparse.Length, none.Singles.Length);
     }
 
+    // The horizontal filter's blocks: 8 pairs whose chroma samples are consecutive and whose filters start at consecutive
+    // samples, from the left; a gap in either moves the next block past it.
+    [Fact]
+    public void HorizontalBlocksNeedConsecutiveSamplesAndPositions()
+    {
+        int[] hPos = [.. Enumerable.Range(0, 64).Select(i => Math.Clamp(i - 1, 0, 60))]; // clamped at both edges
+        int[] chromaCols = [.. Enumerable.Range(0, 64).Where(i => i != 30)];
+        var blocks = new int[chromaCols.Length / 8 + 1];
+        int count = SwscaleYuv420P10.HorizontalBlocks(chromaCols, hPos, blocks);
+
+        // Sample 0's filter starts where sample 1's does, sample 30 is missing, 61's filter starts where 62's does.
+        Assert.Equal([1, 9, 17, 31, 39, 47], blocks.Take(count).Select(k => chromaCols[k]));
+        Assert.All(blocks.Take(count), k => Assert.Equal(chromaCols[k] + 7, chromaCols[k + 7]));
+    }
+
     // One converter for every frame keeps the plan it made for the first frame's columns; columns changed in place get
     // their own, and the same columns at another width work with the same plan (it depends on the columns alone).
     [Fact]

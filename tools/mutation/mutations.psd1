@@ -83,6 +83,23 @@
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.Vector.cs'; Find = 'if (end - i == BlockPixels)'; Replace = 'if (end - i > 0)'; Tests = 'FastYuvRowTests.SameBytesAndUntouchedPixelsAtAnyWidth' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.Vector.cs'; Find = '.Fill(0xFF);'; Replace = '.Fill(0x7F);'; Tests = 'FastYuvRowTests.SameBytesAndUntouchedPixelsAtAnyWidth' }
 
+        # FastYuv's 10-bit conversion with Vector128: pixel blocks of 16 from an even column over their 8 chroma samples
+        # (consecutive in the row's terms), with enough columns, stored directly only where the columns ask for exactly
+        # those pixels once each in order; a plan per set of columns; horizontal chroma blocks only over consecutive
+        # samples and filter positions, x86's pmaddwd blocks only for 4 taps; the vectors used wherever accelerated
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = 'int x0 = x & ~1, asked = 0;'; Replace = 'int x0 = x, asked = 0;'; Tests = 'FastYuv10RowTests.SameBytesAndUntouchedPixelsAtAnyWidth' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = 'if (chromaCols[k0 + i] != c0 + i)'; Replace = 'if (false)'; Tests = 'FastYuv10RowTests.BlocksNeedTheirChromaAndEnoughColumns' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = 'if (k0 < 0 || k0 + BlockPixels / 2 > chromaCols.Length)'; Replace = 'if (k0 < 0)'; Tests = 'FastYuv10RowTests.SameBytesAndUntouchedPixelsAtAnyWidth' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = 'if (asked < SwscaleYuv420.MinColumnsPerBlock)'; Replace = 'if (asked < 1)'; Tests = 'FastYuv10RowTests.BlocksNeedTheirChromaAndEnoughColumns' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = 'isDirect = count[x0 + i] == 1 && Cols[j0 + i] == x0 + i;'; Replace = 'isDirect = Cols[j0 + i] == x0 + i;'; Tests = 'FastYuv10RowTests.SameBytesAndUntouchedPixelsAtAnyWidth' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = 'isDirect = count[x0 + i] == 1 && Cols[j0 + i] == x0 + i;'; Replace = 'isDirect = count[x0 + i] == 1;'; Tests = 'FastYuv10RowTests.SameBytesAndUntouchedPixelsAtAnyWidth' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = 'if (plan is null || !cols.SequenceEqual(plan.Cols))'; Replace = 'if (plan is null)'; Tests = 'FastYuv10RowTests.ColumnsChangedInPlaceOrAnotherWidthGetTheirOwnPlan' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = 'internal bool Vectorized { get; set; } = Vector128.IsHardwareAccelerated;'; Replace = 'internal bool Vectorized { get; set; }'; Tests = 'FastYuv10RowTests.ConvertersUseTheVectorsWhereAccelerated' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = 'while (m < HorizontalBlockSamples && chromaCols[k + m] == i + m && hPos[i + m] == hPos[i] + m)'; Replace = 'while (m < HorizontalBlockSamples && hPos[i + m] == hPos[i] + m)'; Tests = 'FastYuv10RowTests.HorizontalBlocksNeedConsecutiveSamplesAndPositions' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = 'while (m < HorizontalBlockSamples && chromaCols[k + m] == i + m && hPos[i + m] == hPos[i] + m)'; Replace = 'while (m < HorizontalBlockSamples && chromaCols[k + m] == i + m)'; Tests = 'FastYuv10RowTests.HorizontalBlocksNeedConsecutiveSamplesAndPositions' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = ': Sse2.IsSupported ? (size == 4 ? Horizontal.X86 : Horizontal.Scalar)'; Replace = ': Sse2.IsSupported ? Horizontal.X86'; Tests = 'FastYuv10RowTests.ConvertersUseTheVectorsWhereAccelerated' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs'; Find = ': PortableHorizontal ? Horizontal.Portable'; Replace = ': false ? Horizontal.Portable'; Tests = 'FastYuv10RowTests.ConvertersUseTheVectorsWhereAccelerated' }
+
         # In-process YUV pipelines take only the rows the conversion reads (FrameDecoder.CopyRows; with row-wise yadif only
         # those computed): the resize's luma rows (turned: the rows under its pixels) and the chroma rows the converter's
         # taps read (8-bit: its own row's or y / 2; 10-bit: the vertical filter's); whole planes for a converter that doesn't say
