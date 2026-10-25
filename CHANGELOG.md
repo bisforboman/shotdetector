@@ -6,6 +6,14 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.16.1 – 2026-10-25
+
+Stats take much less memory per frame.
+
+### Faster
+
+- Collecting stats (`CollectStats`, `--stats`) keeps much less memory per frame, and writing the stats CSV allocates less and takes less time; the stats and their CSV are the same as before.
+
 ## 3.16.0 – 2026-10-25
 
 Detection split into ranges for several workers, merged to the exact result; faster FastYuv conversion with SIMD on x64, ARM64 and WebAssembly.
