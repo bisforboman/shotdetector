@@ -139,7 +139,15 @@
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'ConvertThreads = o.ConvertThreads ?? 0 };'; Replace = 'ConvertThreads = o.ConvertThreads };'; Tests = 'InProcessTests.ChunksConvertOnTheirDecodingThreadsByDefault' }
         @{ File = 'src/ShotDetector/FrameWriter.cs'; Find = 'src.Slice(y * s, pw).CopyTo(dst.AsSpan(o + (y * pw), pw));'; Replace = 'src.Slice(y * s, pw).CopyTo(dst.AsSpan(o, pw));'; Tests = 'InProcessTests.ConvertThreadGivesTheSameFrames' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' || (format.Success && format.Groups[1].Value != _pixelFormat)'; Replace = ''; Tests = 'InProcessTests.PixelFormatChangeTakesTheExactConversion' }
-        @{ File = 'src/ShotDetector/Stats.cs'; Find = 'if (!byPosition.TryGetValue(at.Key, out var merged))'; Replace = 'if (!byPosition.TryGetValue(at.Key, out var merged) || true)'; Tests = 'ThresholdDetectorTests.StatsAtTheSamePositionMergeKeyByKey' }
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = 'if (!byPosition.TryGetValue(at.Key, out int r))'; Replace = 'if (!byPosition.TryGetValue(at.Key, out int r) || true)'; Tests = 'ThresholdDetectorTests.StatsAtTheSamePositionMergeKeyByKey' }
+        # Stats' rows in frame order only while each position comes after the one before and is another (one Key, one
+        # (Seconds, FrameNum): frame numbers and timestamps below 2^53); a frame's keys kept in the order set (Entries)
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = 'if (!After(at, previous))'; Replace = 'if (false)'; Tests = 'ThresholdDetectorTests.StatsAtTheSamePositionMergeKeyByKey' }
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = 'at.TbDen >= 0 && '; Replace = ''; Tests = 'StatsTests.EqualPositionsWithDifferentSecondsShareARow' }
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = ' && at.TbDen <= 1L << 53'; Replace = ''; Tests = 'StatsTests.EqualPositionsWithDifferentSecondsShareARow' }
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = ' && at.Value is >= -(1L << 53) and <= 1L << 53'; Replace = ''; Tests = 'StatsTests.EqualPositionsWithDifferentSecondsShareARow' }
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = 'at.Seconds > p.Seconds || (at.Seconds == p.Seconds && at.FrameNum > p.FrameNum)'; Replace = 'at.Seconds >= p.Seconds'; Tests = 'StatsTests.ARepeatedPositionIsOneRow' }
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = 'if (Array.IndexOf(_orders[state], k) < 0)'; Replace = 'if (true)'; Tests = 'StatsTests.EntriesKeepEachFramesKeyOrder' }
         @{ File = 'src/ShotDetector/Detectors.cs'; Find = 'average = stored;'; Replace = '{ }'; Tests = 'ThresholdDetectorTests.RepeatedPositionReusesTheStoredAverageWithStats' }
         @{ File = 'src/ShotDetector/FrameTime.cs'; Find = 'return (Value / g, TbDen / g);'; Replace = 'return (Value, TbDen);'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
 
