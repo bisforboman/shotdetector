@@ -7,6 +7,14 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.11.0 – 2026-10-24
+
+Reference tone and waveforms from samples you decode yourself, without FFmpeg.
+
+### New
+
+- `ReferenceToneFinder` and `WaveformBuilder` find reference tone and make waveform points from samples you decode yourself, a chunk at a time (`Add`, then `Finish`), without loading FFmpeg: the same results `ReferenceTone.Find` and `WaveformData.Read` give, which now run through them.
+
 ## 2.10.0 – 2026-10-21
 
 Copy only the rows you need of a frame, and whether a decoder frame-threads.

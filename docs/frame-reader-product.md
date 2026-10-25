@@ -40,7 +40,9 @@ discard, the rtsp listen default), fewer than 20 counted, so the window joins th
 when the user asked whether to split: since 2.10.0, 1 of 18 (the test logger in both test projects, no real coupling)
 and none touching FrameReader alone, so 1 of 28 since 2.8.0. Recommended not splitting (a split would move the
 scenedetect comparison of FrameReader changes to after their release, and nothing outside drives FrameReader now);
-the user's choice: ask again with the formal count at the next FrameReader release.
+the user's choice: ask again with the formal count at the next FrameReader release. 2.11.0: 1 of 25 (the same
+test-logger commit), 1 of 35 since 2.8.0, met with enough commits; the user's choice: don't split, keep counting
+(docs/decisions/2026-10-24-framereader-stays.md).
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
