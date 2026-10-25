@@ -10,9 +10,11 @@ write per-frame metrics (scenedetect -s, shotdetect --stats; content computes ed
 --decoder process doesn't run.
 
 Usage: python tools/bench.py <video>... [--detector adaptive|content|threshold|hist|hash] [--runs 1]
-                             [--threads N] [--fast-yuv] [--stats] [--report bench.md]
+                             [--threads N] [--fast-yuv] [--stats] [--report bench.md] [--json bench.json]
+--json writes the table's numbers as JSON (benchmark.yml keeps them on the bench-data branch).
 Builds first: dotnet build src/ShotDetector.Cli -c Release (and compare.py's --fast-yuv build for --fast-yuv)."""
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -85,6 +87,7 @@ def main():
     ap.add_argument("--fast-yuv", action="store_true")
     ap.add_argument("--stats", action="store_true", help="both tools write a stats CSV")
     ap.add_argument("--report")
+    ap.add_argument("--json", help="also write the table's numbers to this file as JSON")
     a = ap.parse_args()
     exe = str(FAST_DIR / EXE_NAME if a.fast_yuv else EXE)
     sd_cmd = {"hist": "detect-hist", "hash": "detect-hash"}.get(a.detector, f"detect-{a.detector}")
@@ -107,10 +110,12 @@ def main():
     if not a.stats:
         tools.append(("shotdetect --decoder process", [exe, "-i", "{v}", "-d", a.detector, "--decoder", "process", *threads]))
     table = ["| Video | Frames | Tool | Wall | fps | CPU | Peak MB | vs scenedetect |", "|---|---|---|---|---|---|---|---|"]
+    rows = []
     for video in a.videos:
         n = frames(video)
         base = None
-        for name, cmd in tools:
+        for tool, cmd in tools:
+            name = tool
             results = []
             for _ in range(a.runs):
                 stats.unlink(missing_ok=True)  # a fresh file each run, written in full
@@ -126,9 +131,22 @@ def main():
             table.append(f"| {Path(video).name} | {n} | {name} | {wall:.1f} s | {n / wall:.0f} | {cpu_s} | {peak:.0f} | "
                          f"{'1.00x' if wall == base else f'{wall / base:.2f}x'} |")
             print(table[-1], flush=True)
+            rows.append({"video": Path(video).name, "frames": n, "tool": tool.removesuffix(suffix),
+                         "in_process": "(in-process)" in name, "chunks": int(m.group(1)) if m else None,
+                         "wall_s": round(wall, 3), "fps": round(n / wall, 1), "cpu_s": round(cpu, 3) if resource else None,
+                         "peak_mb": round(peak, 1), "scenedetect_wall_s": round(base, 3), "ratio": round(wall / base, 4)})
     print("\n".join(table))
     if a.report:
         Path(a.report).write_text("\n".join(table) + "\n", encoding="utf-8")
+    if a.json:
+        try:
+            from importlib.metadata import version
+            sd_version = version("scenedetect")
+        except Exception:
+            sd_version = None
+        Path(a.json).write_text(json.dumps({
+            "detector": a.detector, "stats": a.stats, "runs": a.runs, "threads": a.threads, "fast_yuv": a.fast_yuv,
+            "cpus": cpus, "scenedetect": sd_version, "rows": rows}, indent=1) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
