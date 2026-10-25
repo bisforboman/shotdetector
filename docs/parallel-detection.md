@@ -127,6 +127,25 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
   three different stats files in three sequential runs), so chunks can't be compared there; dropped frames are caught
   by the positions.
 
+## Frame-source ranges (for hosts)
+
+The same split for frames the caller decodes (2026-10-25, docs/decisions/2026-10-25-frame-source-ranges.md): a browser
+host decodes a long video in several Web Workers, each with its own single-threaded runtime and no shared memory, and
+there is no file to seek, so the host does what `ScoreChunked` does and ShotDetector does the rest.
+
+- **Scores per range:** each worker calls `ShotDetection.ScoreRange(video, frames, firstFrame, options)` with the
+  range's frames from `firstFrame - 1` (the frame the first score compares with, as a chunk starts one frame early) to
+  one frame past the range's end, and posts `RangeScores.ToBytes()`. The host picks the starts: the frame before each is
+  a keyframe, or the worker decodes from an earlier one and drops the frames before `firstFrame - 1`.
+- **Decisions once, in order:** `ShotDetection.Merge(video, ranges, options)` runs `Steps` with the ranges' scores in
+  place of the frames, exactly as the chunked file path's scores, so the decisions, stats and result are the same code.
+- **The overlap check** is the chunked path's: a range's frames from the next range's start on must score (and carry
+  pts) as the next range's do. With no sequential fallback, a mismatch is an error that names the frame.
+- **Identified by pts:** Merge runs the constant-rate check over every frame from frame 0's pts, as the frame-source
+  Detect does per frame, which plays the part of the file path's check against the probe's positions.
+- **What can't be split** is refused rather than read sequentially: a time range, frame skip and
+  `DetectionMode.Parallel`. Every detector works, with stats too (threshold's dedupe by position stays in Decide).
+
 ## Prototype (2026-10-16)
 
 Exactness, scene list and stats CSV byte for byte against sequential: all 35 samples and variants with 7 detector
