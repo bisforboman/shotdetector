@@ -5,6 +5,9 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
+using System.Runtime.Intrinsics.Wasm;
+using System.Runtime.Intrinsics.X86;
 
 namespace ShotDetector.FastYuv;
 
@@ -18,8 +21,132 @@ namespace ShotDetector.FastYuv;
 // from an even column (8 whole chroma samples, whose terms must be consecutive in the row's terms), converted at once:
 // stored directly where the columns ask for exactly those 16 pixels in order, else into a scratch block from which
 // the pixels asked for are copied; the other columns go a pixel at a time.
+//
+// The horizontal chroma filter (hScale16To15) 8 samples at a time where the pairs' chroma samples run on consecutively
+// and so do the filter's positions for them (every sample but a few at the plane's edges), so each tap's 8 source samples
+// are one load. On x86 (4 taps), pmaddwd of each tap pair's samples interleaved with their coefficients, the two pairs'
+// sums added: the integers of the SSSE3 path it replaces there (pmaddwd per sample's four taps, then phaddd), which
+// reads samples as signed 16-bit words like this one, and still takes the samples outside the blocks. Elsewhere, in
+// 32-bit lanes: each tap's samples widened unsigned times its coefficients (stored by tap), summed: the scalar code's int
+// arithmetic, wrapping alike. Both then >> 9 and min 0x7FFF. For 10-bit samples all of these agree (the signed and
+// unsigned readings differ only from 32768 on).
+//
+// The vertical filter's chroma terms (YSCALEYUV2PACKEDX, YSCALEYUV2RGBX) 8 pairs at a time in 16-bit lanes, as the MMXEXT
+// code has them: each filtered sample truncated to 16 bits (Narrow; the scalar code's (short)), pmulhw (x86's own; ARM64's
+// smull, smull2 and the products' high halves; else the products in 32-bit lanes, >> 16, narrowed: each fits 16 bits),
+// paddw and psubw wrapping as the scalar code's (short) casts, the terms widened back to 32 bits.
 internal sealed partial class SwscaleYuv420P10
 {
+    /// <summary>The samples one horizontal block filters.</summary>
+    const int HorizontalBlockSamples = 8;
+
+    /// <summary>How the horizontal filter runs.</summary>
+    internal enum Horizontal
+    {
+        /// <summary>A sample at a time.</summary>
+        Scalar,
+
+        /// <summary>x86: blocks with pmaddwd (4 taps), SSSE3 for the other samples.</summary>
+        X86,
+
+        /// <summary>Blocks with Vector128 in 32-bit lanes, the other samples one at a time.</summary>
+        Portable,
+    }
+
+    /// <summary>The horizontal filter for one frame's conversion: its arrays, the pairs' chroma samples, the blocks.</summary>
+    readonly unsafe ref struct HorizontalFilter(Horizontal vectors, short* coeffs, int* pos, int size, int* taps, short* tapPairs, int chromaWidth, int* chromaCol, int pairs, int* blocks, int blockCount)
+    {
+        public readonly Horizontal Vectors = vectors;
+        public readonly short* Coeffs = coeffs, TapPairs = tapPairs;
+        public readonly int* Pos = pos, Taps = taps, ChromaCol = chromaCol, Blocks = blocks;
+        public readonly int Size = size, ChromaWidth = chromaWidth, Pairs = pairs, BlockCount = blockCount;
+    }
+
+    /// <summary>
+    /// Whether the horizontal filter takes the portable vectors even on x86 (tests compare them with the scalar code
+    /// there too).
+    /// </summary>
+    internal bool PortableHorizontal { get; set; }
+
+    /// <summary>
+    /// How the horizontal filter of <paramref name="size"/> taps runs: x86's way on x86 (with 4 taps; else scalar),
+    /// portable vectors on ARM64 and wasm, scalar without <see cref="Vectorized"/>.
+    /// </summary>
+    internal Horizontal HorizontalVectors(int size) =>
+        !Vectorized ? Horizontal.Scalar
+        : PortableHorizontal ? Horizontal.Portable
+        : Sse2.IsSupported ? (size == 4 ? Horizontal.X86 : Horizontal.Scalar)
+        : AdvSimd.Arm64.IsSupported || PackedSimd.IsSupported ? Horizontal.Portable
+        : Horizontal.Scalar;
+
+    /// <summary>
+    /// The horizontal filter's blocks for these chroma samples, into <paramref name="blocks"/> (the first pair of each):
+    /// from the left, 8 pairs whose chroma samples are consecutive and whose filter positions are too. Returns how many.
+    /// </summary>
+    internal static int HorizontalBlocks(ReadOnlySpan<int> chromaCols, int[] hPos, int[] blocks)
+    {
+        int count = 0;
+        for (int k = 0; k + HorizontalBlockSamples <= chromaCols.Length;)
+        {
+            int i = chromaCols[k], m = 1;
+            while (m < HorizontalBlockSamples && chromaCols[k + m] == i + m && hPos[i + m] == hPos[i] + m)
+                m++;
+            if (m < HorizontalBlockSamples)
+            {
+                k++;
+                continue;
+            }
+
+            blocks[count++] = k;
+            k += HorizontalBlockSamples;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// x86's hScale16To15 of 8 consecutive chroma samples whose 4-tap filters start at consecutive samples
+    /// (<paramref name="src"/> at the first one's), with the coefficients by tap pair (<paramref name="tapPairs"/> at the
+    /// first sample's, the next pair <paramref name="stride"/> on).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static unsafe void HorizontalBlockX86(ushort* src, short* tapPairs, int stride, int* dst)
+    {
+        // Taps 0 and 1, then 2 and 3: samples x + t and x + t + 1 side by side, as each sample's coefficients are.
+        var a = Vector128.Load((short*)src);
+        var b = Vector128.Load((short*)src + 1);
+        var lo = Sse2.MultiplyAddAdjacent(Sse2.UnpackLow(a, b), Vector128.Load(tapPairs));
+        var hi = Sse2.MultiplyAddAdjacent(Sse2.UnpackHigh(a, b), Vector128.Load(tapPairs + 8));
+        a = Vector128.Load((short*)src + 2);
+        b = Vector128.Load((short*)src + 3);
+        lo += Sse2.MultiplyAddAdjacent(Sse2.UnpackLow(a, b), Vector128.Load(tapPairs + stride));
+        hi += Sse2.MultiplyAddAdjacent(Sse2.UnpackHigh(a, b), Vector128.Load(tapPairs + stride + 8));
+        var max = Vector128.Create(0x7FFF);
+        Vector128.Min(lo >> 9, max).Store(dst);
+        Vector128.Min(hi >> 9, max).Store(dst + 4);
+    }
+
+    /// <summary>
+    /// hScale16To15 of 8 consecutive chroma samples whose filters start at consecutive samples (<paramref name="src"/>
+    /// at the first one's), with the taps' coefficients by tap (<paramref name="taps"/> at the first sample's).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static unsafe void HorizontalBlock(ushort* src, int* taps, int stride, int size, int* dst)
+    {
+        Vector128<int> lo = Vector128<int>.Zero, hi = Vector128<int>.Zero;
+        for (int t = 0; t < size; t++)
+        {
+            var (s0, s1) = Vector128.Widen(Vector128.Load(src + t));
+            int* c = taps + t * stride;
+            lo += s0.AsInt32() * Vector128.Load(c);
+            hi += s1.AsInt32() * Vector128.Load(c + 4);
+        }
+
+        var max = Vector128.Create(0x7FFF);
+        Vector128.Min(lo >> 9, max).Store(dst);
+        Vector128.Min(hi >> 9, max).Store(dst + 4);
+    }
+
     const int BlockPixels = 16;
 
     PixelPlan? _pixelPlan;
@@ -242,5 +369,62 @@ internal sealed partial class SwscaleYuv420P10
 
         // The shifts are the operator: on wasm, Mono compiles Vector128.ShiftRightArithmetic as a call.
         return Vector128.Narrow((a0 * yCoeff) >> 16, (a1 * yCoeff) >> 16);
+    }
+
+    /// <summary><see cref="ChromaTermsAsm"/>'s first pairs - pairs % 8, eight at a time in 16-bit lanes; returns how many it did.</summary>
+    unsafe int ChromaTermsVector(int* f, int* rowOffset, int* vCoeff, int vSize, int pairs, int* tb, int* tg, int* tr)
+    {
+        var ub = Vector128.Create((short)_ubCoeff);
+        var ug = Vector128.Create((short)_ugCoeff);
+        var vg = Vector128.Create((short)_vgCoeff);
+        var vr = Vector128.Create((short)_vrCoeff);
+        var offset = Vector128.Create((short)1024);
+        int k = 0;
+        for (; k <= pairs - 8; k += 8)
+        {
+            Vector128<short> ua = Vector128.Create((short)VRounder), va = ua;
+            for (int t = 0; t < vSize; t++)
+            {
+                var c = Vector128.Create((short)vCoeff[t]);
+                int* fu = f + rowOffset[t] + k;
+                ua += MulHi(Vector128.Narrow(Vector128.Load(fu), Vector128.Load(fu + 4)), c);
+                va += MulHi(Vector128.Narrow(Vector128.Load(fu + pairs), Vector128.Load(fu + pairs + 4)), c);
+            }
+
+            Vector128<short> uu = ua - offset, vv = va - offset;
+            StoreWidened(MulHi(uu, ub), tb + k);
+            StoreWidened(MulHi(uu, ug) + MulHi(vv, vg), tg + k);
+            StoreWidened(MulHi(vv, vr), tr + k);
+        }
+
+        return k;
+    }
+
+    /// <summary>pmulhw: the high half of each lane's signed 32-bit product.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static Vector128<short> MulHi(Vector128<short> a, Vector128<short> b)
+    {
+        if (Sse2.IsSupported)
+            return Sse2.MultiplyHigh(a, b);
+        if (AdvSimd.Arm64.IsSupported)
+        {
+            return AdvSimd.Arm64.UnzipOdd(
+                AdvSimd.MultiplyWideningLower(a.GetLower(), b.GetLower()).AsInt16(),
+                AdvSimd.MultiplyWideningUpper(a, b).AsInt16());
+        }
+
+        // The shifts are the operator: on wasm, Mono compiles Vector128.ShiftRightArithmetic as a call.
+        var (a0, a1) = Vector128.Widen(a);
+        var (b0, b1) = Vector128.Widen(b);
+        return Vector128.Narrow((a0 * b0) >> 16, (a1 * b1) >> 16);
+    }
+
+    /// <summary>8 16-bit values sign-extended to 32 bits, at <paramref name="dst"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static unsafe void StoreWidened(Vector128<short> v, int* dst)
+    {
+        var (lo, hi) = Vector128.Widen(v);
+        lo.Store(dst);
+        hi.Store(dst + 4);
     }
 }

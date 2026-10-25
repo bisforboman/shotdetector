@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
+using System.Runtime.Intrinsics.X86;
 using ShotDetector;
 using ShotDetector.FastYuv;
 
@@ -19,15 +21,17 @@ public class FastYuv10RowTests
 
     // Each row of a 65536-wide frame holds every 16-bit luma word (shifted along the row from row to row), over chroma
     // planes of the 10-bit extremes, limited range's 64 and 940, and noise: the pixels of every row, a frame at a time
-    // and a row at a time, with chroma left (a 4-tap horizontal filter), center (1 tap) and topleft. The last two rows
-    // take swscale's C output, the others the MMXEXT one the vectors do.
+    // and a row at a time, with chroma left (a 4-tap horizontal filter), center (1 tap) and topleft, the horizontal
+    // filter with this CPU's vectors and with portable ones. The last two rows take swscale's C output, the others the
+    // MMXEXT one the vectors do. Except on x86's horizontal filter (pmaddwd: signed words, as before), any 16-bit chroma
+    // words give the scalar code's bytes too.
     [Theory]
     [MemberData(nameof(Colours))]
     public void EveryLumaWordGivesTheScalarsBytes(string colorSpace, bool fullRange)
     {
         const int Width = 65536, Height = 12;
         int[] all = Enumerable.Range(0, Width).ToArray(), rows = Enumerable.Range(0, Height).ToArray();
-        foreach (string chroma in new[] { "zero", "max", "limited", "noise" })
+        foreach (string chroma in new[] { "zero", "max", "limited", "noise", "words" })
         {
             var yuv = Frame(Width, Height, chroma, new Random(chroma.Length));
             var luma = MemoryMarshal.Cast<byte, ushort>(yuv.AsSpan(0, Width * Height * 2));
@@ -37,27 +41,30 @@ public class FastYuv10RowTests
                     luma[y * Width + x] = (ushort)(x + y * 4099);
             }
 
-            foreach (string siting in new[] { "left", "center", "topleft" })
+            foreach (var (siting, portable) in new[] { ("left", false), ("left", true), ("center", false), ("topleft", false), ("topleft", true) })
             {
-                var (vector, scalar) = Converters(colorSpace, fullRange, siting, Width, Height);
+                var (vector, scalar) = Converters(colorSpace, fullRange, siting, Width, Height, portable);
+                if (chroma == "words" && vector.HorizontalVectors(4) == SwscaleYuv420P10.Horizontal.X86)
+                    continue;
                 var a = new byte[Height * Width * 3];
                 var b = new byte[Height * Width * 3];
                 scalar.FrameToBgr(yuv, Width, Height, rows, all, a);
                 vector.FrameToBgr(yuv, Width, Height, rows, all, b);
-                Same(a, b, $"{chroma} chroma, {siting}, a frame at a time");
+                Same(a, b, $"{chroma} chroma, {siting}, portable {portable}, a frame at a time");
                 foreach (int y in new[] { 0, 5, Height - 1 })
                 {
                     Array.Clear(b);
                     vector.RowToBgr(yuv, Width, Height, y, all, b.AsSpan(0, Width * 3));
-                    Same(a.AsSpan(y * Width * 3, Width * 3), b.AsSpan(0, Width * 3), $"{chroma} chroma, {siting}, row {y}");
+                    Same(a.AsSpan(y * Width * 3, Width * 3), b.AsSpan(0, Width * 3), $"{chroma} chroma, {siting}, portable {portable}, row {y}");
                 }
             }
         }
     }
 
-    // Noise planes at even widths (from the narrowest every siting takes) around the block size and the tail, with the columns a resize reads, all, random subsets
-    // of many densities, shuffled ones with repeats, all twice, backwards and with each pair swapped: the same bytes both ways, packed and a row at a time, and nothing
-    // written outside the columns' pixels.
+    // Noise planes at even widths (from the narrowest every siting takes) around the block size and the tail, with the
+    // columns a resize reads, all, random subsets of many densities, shuffled ones with repeats, all twice, backwards and
+    // with each pair swapped: the same bytes both ways (the horizontal filter with this CPU's vectors and with portable
+    // ones), packed and a row at a time, and nothing written outside the columns' pixels.
     [Theory]
     [InlineData(8)]
     [InlineData(10)]
@@ -82,9 +89,12 @@ public class FastYuv10RowTests
         var rnd = new Random(width);
         int height = 9 + rnd.Next(6);
         var yuv = Frame(width, height, "noise", rnd);
-        foreach (var (colorSpace, fullRange, siting) in new[] { ("unknown", false, "center"), ("bt709", true, "left"), ("bt2020nc", false, "topleft") })
+        foreach (var (colorSpace, fullRange, siting, portable) in new[]
         {
-            var (vector, scalar) = Converters(colorSpace, fullRange, siting, width, height);
+            ("unknown", false, "center", false), ("bt709", true, "left", false), ("bt709", true, "left", true), ("bt2020nc", false, "topleft", true),
+        })
+        {
+            var (vector, scalar) = Converters(colorSpace, fullRange, siting, width, height, portable);
             foreach (int[] cols in ColumnSets(width, rnd))
             {
                 // A frame at a time: some rows (the last two among them), packed, with room after them that stays as it was.
@@ -130,20 +140,23 @@ public class FastYuv10RowTests
         var resizer = new CvResize(width, height, dw, dh);
         int[] rows = resizer.SourceRows, cols = resizer.SourceCols;
         var yuv = Frame(width, height, "noise", new Random(width));
-        var (vector, scalar) = Converters("bt709", false, "left", width, height);
-        int n = cols.Length * 3;
-        var a = new byte[rows.Length * n];
-        var b = new byte[rows.Length * n];
-        scalar.FrameToBgr(yuv, width, height, rows, cols, a);
-        vector.FrameToBgr(yuv, width, height, rows, cols, b);
-        Same(a, b, $"{width}x{height}");
-        Array.Clear(b);
-        Parallel.For(0, 4, p =>
+        foreach (bool portable in new[] { false, true })
         {
-            int first = p * rows.Length / 4, end = (p + 1) * rows.Length / 4;
-            vector.FrameToBgr(yuv, width, height, rows.AsSpan(first, end - first), cols, b.AsSpan(first * n, (end - first) * n));
-        });
-        Same(a, b, $"{width}x{height} in chunks");
+            var (vector, scalar) = Converters("bt709", false, "left", width, height, portable);
+            int n = cols.Length * 3;
+            var a = new byte[rows.Length * n];
+            var b = new byte[rows.Length * n];
+            scalar.FrameToBgr(yuv, width, height, rows, cols, a);
+            vector.FrameToBgr(yuv, width, height, rows, cols, b);
+            Same(a, b, $"{width}x{height}, portable {portable}");
+            Array.Clear(b);
+            Parallel.For(0, 4, p =>
+            {
+                int first = p * rows.Length / 4, end = (p + 1) * rows.Length / 4;
+                vector.FrameToBgr(yuv, width, height, rows.AsSpan(first, end - first), cols, b.AsSpan(first * n, (end - first) * n));
+            });
+            Same(a, b, $"{width}x{height}, portable {portable}, in chunks");
+        }
     }
 
     // Blocks: 16 pixels from an even column inside the row, over 8 consecutive chroma samples; direct ones where the
@@ -288,14 +301,32 @@ public class FastYuv10RowTests
     }
 
     // Converters take the vectors wherever Vector128 is accelerated (CI's x64 and ARM runners), so the tests above
-    // compare two paths there.
+    // compare two paths there. The horizontal filter: x86's blocks and SSSE3 on x86 (4 taps), portable vectors on ARM64
+    // and wasm (and where tests ask for them), else scalar.
     [Fact]
-    public void ConvertersUseTheVectorsWhereAccelerated() =>
-        Assert.Equal(Vector128.IsHardwareAccelerated, SwscaleYuv420P10.For("bt709", true, "left", 64, 16)!.Vectorized);
+    public void ConvertersUseTheVectorsWhereAccelerated()
+    {
+        var converter = SwscaleYuv420P10.For("bt709", true, "left", 64, 16)!;
+        Assert.Equal(Vector128.IsHardwareAccelerated, converter.Vectorized);
+        Assert.False(converter.PortableHorizontal);
+        var expected = !Vector128.IsHardwareAccelerated ? SwscaleYuv420P10.Horizontal.Scalar
+            : Sse2.IsSupported ? SwscaleYuv420P10.Horizontal.X86
+            : AdvSimd.Arm64.IsSupported ? SwscaleYuv420P10.Horizontal.Portable
+            : SwscaleYuv420P10.Horizontal.Scalar;
+        Assert.Equal(expected, converter.HorizontalVectors(4));
+        Assert.Equal(expected == SwscaleYuv420P10.Horizontal.X86 ? SwscaleYuv420P10.Horizontal.Scalar : expected, converter.HorizontalVectors(1));
+        converter.PortableHorizontal = true;
+        Assert.Equal(Vector128.IsHardwareAccelerated ? SwscaleYuv420P10.Horizontal.Portable : SwscaleYuv420P10.Horizontal.Scalar, converter.HorizontalVectors(4));
+        converter.Vectorized = false;
+        Assert.Equal(SwscaleYuv420P10.Horizontal.Scalar, converter.HorizontalVectors(4));
+    }
 
-    static (SwscaleYuv420P10 Vector, SwscaleYuv420P10 Scalar) Converters(string colorSpace, bool fullRange, string siting, int width, int height) =>
-        (Vectorized(SwscaleYuv420P10.For(colorSpace, fullRange, siting, width, height)!, true),
-            Vectorized(SwscaleYuv420P10.For(colorSpace, fullRange, siting, width, height)!, false));
+    static (SwscaleYuv420P10 Vector, SwscaleYuv420P10 Scalar) Converters(string colorSpace, bool fullRange, string siting, int width, int height, bool portable = false)
+    {
+        var vector = Vectorized(SwscaleYuv420P10.For(colorSpace, fullRange, siting, width, height)!, true);
+        vector.PortableHorizontal = portable;
+        return (vector, Vectorized(SwscaleYuv420P10.For(colorSpace, fullRange, siting, width, height)!, false));
+    }
 
     static SwscaleYuv420P10 Vectorized(SwscaleYuv420P10 converter, bool on)
     {
@@ -303,7 +334,10 @@ public class FastYuv10RowTests
         return converter;
     }
 
-    /// <summary>A yuv420p10le frame: luma noise, chroma 0, 1023, limited range's 64 and 940 (alternating), or noise.</summary>
+    /// <summary>
+    /// A yuv420p10le frame: luma noise, chroma 0, 1023, limited range's 64 and 940 (alternating), 10-bit noise, or any
+    /// 16-bit words.
+    /// </summary>
     static byte[] Frame(int width, int height, string chroma, Random rnd)
     {
         var yuv = new byte[IYuv420P10Converter.FrameSize(width, height)];
@@ -316,6 +350,7 @@ public class FastYuv10RowTests
                 "zero" => 0,
                 "max" => 1023,
                 "limited" => (i / 3) % 2 == 0 ? 64 : 940,
+                "words" => rnd.Next(65536),
                 _ => rnd.Next(1024),
             });
         }
