@@ -4,6 +4,9 @@
 // (C) 2009-2010 Konstantin Shishkov. Licensed under the GNU Lesser General Public License,
 // version 2.1 or (at your option) any later version; see COPYING.LGPL.
 
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
 namespace ShotDetector.FastYuv;
 
 /// <summary>
@@ -143,15 +146,37 @@ public sealed class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, IYuv420P
 
         // The asm saturates to 16 bits after each add, but every term here is within ±300, so
         // saturation never triggers and plain adds are exact; the final clamp to 0..255 is a lookup.
-        var clip = Clip;
+        // One range check per pixel (a column the row has, a pixel bgrRow has) instead of one per access: the tables
+        // take any byte, and Clip any sum of three terms.
+        var row = new Planes(luma, u, v, bgrRow, this);
+        int limit = Math.Min(width, bgrRow.Length / 3);
         foreach (int x in cols)
         {
-            int yy = _yTerm[luma[x]] + ClipOffset;
-            int U = u[x >> 1], V = v[x >> 1];
-            int o = x * 3;
-            bgrRow[o] = clip[_ubTerm[U] + yy];
-            bgrRow[o + 1] = clip[_ugTerm[U] + _vgTerm[V] + yy];
-            bgrRow[o + 2] = clip[_vrTerm[V] + yy];
+            if ((uint)x >= (uint)limit)
+                throw new ArgumentOutOfRangeException(nameof(cols), x, "a column outside the row");
+            row.Pixel(x);
+        }
+    }
+
+    /// <summary>One row's planes and the converter's tables, read without range checks (callers check the column).</summary>
+    readonly ref struct Planes(ReadOnlySpan<byte> luma, ReadOnlySpan<byte> u, ReadOnlySpan<byte> v, Span<byte> bgr, SwscaleYuv420 c)
+    {
+        readonly ref byte _luma = ref MemoryMarshal.GetReference(luma), _u = ref MemoryMarshal.GetReference(u), _v = ref MemoryMarshal.GetReference(v);
+        readonly ref byte _bgr = ref MemoryMarshal.GetReference(bgr), _clip = ref MemoryMarshal.GetArrayDataReference(Clip);
+        readonly ref int _y = ref MemoryMarshal.GetArrayDataReference(c._yTerm), _ub = ref MemoryMarshal.GetArrayDataReference(c._ubTerm);
+        readonly ref int _ug = ref MemoryMarshal.GetArrayDataReference(c._ugTerm), _vr = ref MemoryMarshal.GetArrayDataReference(c._vrTerm);
+        readonly ref int _vg = ref MemoryMarshal.GetArrayDataReference(c._vgTerm);
+
+        /// <summary>Pixel x (0 &lt;= x &lt; the row's width and bgr's pixels) to BGR.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Pixel(int x)
+        {
+            int yy = Unsafe.Add(ref _y, Unsafe.Add(ref _luma, x)) + ClipOffset;
+            int cu = Unsafe.Add(ref _u, x >> 1), cv = Unsafe.Add(ref _v, x >> 1);
+            ref byte o = ref Unsafe.Add(ref _bgr, x * 3);
+            o = Unsafe.Add(ref _clip, Unsafe.Add(ref _ub, cu) + yy);
+            Unsafe.Add(ref o, 1) = Unsafe.Add(ref _clip, Unsafe.Add(ref _ug, cu) + Unsafe.Add(ref _vg, cv) + yy);
+            Unsafe.Add(ref o, 2) = Unsafe.Add(ref _clip, Unsafe.Add(ref _vr, cv) + yy);
         }
     }
 }
