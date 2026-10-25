@@ -496,7 +496,7 @@ public static partial class ShotDetection
         Line(nameof(o.MinSceneLength), o.MinSceneLength);
         Line(nameof(o.MinContentVal), o.MinContentVal);
         Line(nameof(o.FrameWindow), o.FrameWindow);
-        Line(nameof(o.Weights), o.Weights);
+        Line(nameof(o.Weights), Weights(o.Weights));
         Line(nameof(o.LumaOnly), o.LumaOnly);
         Line(nameof(o.KernelSize), o.KernelSize);
         Line(nameof(o.Bins), o.Bins);
@@ -504,7 +504,7 @@ public static partial class ShotDetection
         Line(nameof(o.HashLowpass), o.HashLowpass);
         Line(nameof(o.FadeBias), o.FadeBias);
         Line(nameof(o.MinOutLength), o.MinOutLength); // MinSceneDuration and MinOutDuration are in these strings once resolved
-        Line(nameof(o.Crop), o.Crop);
+        Line(nameof(o.Crop), o.Crop is { } c ? $"{c.X0},{c.Y0},{c.X1},{c.Y1}" : null);
         Line(nameof(o.FullFrames), o.FullFrames);
         Line(nameof(o.AlwaysBt601), o.AlwaysBt601);
         Line(nameof(o.Yuv420Converter), o.Yuv420Converter?.GetType().FullName);
@@ -525,7 +525,7 @@ public static partial class ShotDetection
             Line(p + nameof(st.FilterMode), st.FilterMode);
             Line(p + nameof(st.MinContentVal), st.MinContentVal);
             Line(p + nameof(st.FrameWindow), st.FrameWindow);
-            Line(p + nameof(st.Weights), st.Weights);
+            Line(p + nameof(st.Weights), st.Weights is { } w ? Weights(w) : null);
             Line(p + nameof(st.LumaOnly), st.LumaOnly);
             Line(p + nameof(st.KernelSize), st.KernelSize);
             Line(p + nameof(st.Bins), st.Bins);
@@ -542,12 +542,12 @@ public static partial class ShotDetection
         {
             null => "none",
             double d => d.ToString("R", CultureInfo.InvariantCulture),
-            (double, double, double, double) w => $"{Text(w.Item1)},{Text(w.Item2)},{Text(w.Item3)},{Text(w.Item4)}",
-            (int, int, int, int) c => $"{c.Item1},{c.Item2},{c.Item3},{c.Item4}",
             Fps f => $"{f.Num}/{f.Den}",
             IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
             _ => value.ToString() ?? "",
         };
+
+        static string Weights((double Hue, double Sat, double Lum, double Edges) w) => $"{Text(w.Hue)},{Text(w.Sat)},{Text(w.Lum)},{Text(w.Edges)}";
     }
 
     /// <summary>Scores computed elsewhere (<see cref="Merge"/>) for <see cref="Steps"/>, in place of the frames', with the warnings that came with them.</summary>

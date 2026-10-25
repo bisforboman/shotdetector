@@ -137,6 +137,8 @@ public sealed class RangeScores
         string fingerprint = r.String();
         int firstFrame = r.Count();
         int frameCount = r.Count();
+        if (frameCount > int.MaxValue - 1 - firstFrame)
+            throw Invalid("These RangeScores bytes are inconsistent (the range ends past the largest frame index).");
         var pts = new long[r.Count(8)];
         for (int i = 0; i < pts.Length; i++)
             pts[i] = r.Int64();
