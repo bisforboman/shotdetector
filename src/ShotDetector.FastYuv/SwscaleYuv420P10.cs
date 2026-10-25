@@ -23,7 +23,7 @@ namespace ShotDetector.FastYuv;
 /// tables clip it. Even widths only (an odd width takes another path, full chroma interpolation, in C). A frame at a
 /// time (<see cref="IYuv420P10FrameConverter"/>), each chroma row is filtered horizontally once, as swscale does.
 /// </summary>
-internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRows
+internal sealed partial class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRows
 {
     /// <summary>av_chroma_location_enum_to_pos for ffprobe's chroma_location names (null: unspecified, so center).</summary>
     static readonly Dictionary<string, (int H, int V)> ChromaPositions = new()
@@ -217,7 +217,8 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
 
             // Slot s: U's filtered samples at 2 * s * pairs, V's right after.
             filtered = pool.Rent(Math.Max(2 * chromaRows * pairs, 1));
-            ConvertRows(plan, yuv, width, height, rows, cols, bgr, packed, pairOf, chromaCols, pairs, slot, filtered, terms);
+            var pixels = PixelPlanFor(cols, chromaCols.AsSpan(0, pairs));
+            ConvertRows(plan, pixels, yuv, width, height, rows, cols, bgr, packed, pairOf, chromaCols, pairs, slot, filtered, terms);
         }
         finally
         {
@@ -233,10 +234,11 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
     /// <summary>
     /// <see cref="Convert"/>'s loops, given its buffers: the columns' chroma samples (<paramref name="chromaCols"/>,
     /// <paramref name="pairs"/> of them, and which one each column takes), the chroma rows' slots, the filtered rows and
-    /// a row's chroma terms (<paramref name="terms"/>, 3 × pairs). Apart from Convert's try/finally, so the JIT keeps
-    /// the loops' locals in registers.
+    /// a row's chroma terms (<paramref name="terms"/>, 3 × pairs), and the pixels' plan (null: a pixel at a time). Apart
+    /// from Convert's try/finally, so the JIT keeps the loops' locals in registers.
     /// </summary>
     unsafe void ConvertRows(Plan plan,
+        PixelPlan? pixels,
         ReadOnlySpan<byte> yuv,
         int width,
         int height,
@@ -293,7 +295,10 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
                         if (asm)
                         {
                             ChromaTermsAsm(f, rowOffset, vCoeff, vSize, pairs, tb, tg, tr);
-                            PixelsAsm(luma, col, pairOfColumn, n, tb, tg, tr, rowOutput, packed);
+                            if (pixels is not null)
+                                PixelsByPlan(pixels, luma, col, pairOfColumn, tb, tg, tr, rowOutput, packed);
+                            else
+                                PixelsAsm(luma, col, pairOfColumn, n, tb, tg, tr, rowOutput, packed);
                         }
                         else
                         {
@@ -349,13 +354,19 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
         for (int j = 0; j < n; j++)
         {
             int x = cols[j], k = pairOf[j];
-            int y15 = Math.Min(luma[x] << 5, 0x7FFF);
-            int yy = MulHi((short)(4 + (y15 >> 4) - yOffset), yCoeff);
-            byte* o = output + Offset(packed, j, x);
-            o[0] = PackUs(yy + tb[k]);
-            o[1] = PackUs(yy + tg[k]);
-            o[2] = PackUs(yy + tr[k]);
+            Pixel(luma, x, tb[k], tg[k], tr[k], yOffset, yCoeff, output + Offset(packed, j, x));
         }
+    }
+
+    /// <summary>One pixel of <see cref="PixelsAsm"/>: luma x's term and the pair's chroma terms, to <paramref name="o"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static unsafe void Pixel(ushort* luma, int x, int tb, int tg, int tr, int yOffset, int yCoeff, byte* o)
+    {
+        int y15 = Math.Min(luma[x] << 5, 0x7FFF);
+        int yy = MulHi((short)(4 + (y15 >> 4) - yOffset), yCoeff);
+        o[0] = PackUs(yy + tb);
+        o[1] = PackUs(yy + tg);
+        o[2] = PackUs(yy + tr);
     }
 
     /// <summary>
