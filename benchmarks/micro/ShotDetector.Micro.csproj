@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Microbenchmarks of the per-frame pixel work: CvResize.ResizeRows and EdgeDetector.Detect, on real frames (the
-    films tools/realworld.py downloads) and a seeded synthetic set, with a SHA-256 of the outputs. README.md here.
+    Microbenchmarks of the per-frame pixel work: CvResize.ResizeRows, EdgeDetector.Detect and FastYuv's conversion, on
+    real frames (the films tools/realworld.py downloads) and a seeded synthetic set, with a SHA-256 of the outputs.
+    README.md here.
     In ShotDetector.slnx so CI builds it (it can't rot), never packed; reaches the internals through
     src/ShotDetector's InternalsVisibleTo, so it measures the code as it is in the tree.
   -->
@@ -13,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ShotDetector\ShotDetector.csproj" />
+    <ProjectReference Include="..\..\src\ShotDetector.FastYuv\ShotDetector.FastYuv.csproj" />
   </ItemGroup>
 
 </Project>
