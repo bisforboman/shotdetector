@@ -230,7 +230,7 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.PixelFormat is not ("yuv420p" or "yuvj420p"))'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.Height % 2 != 0)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (stride < width || plane.Length < (long)stride * (height - 1) + width)'; Replace = 'if (stride < width)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
-        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (!(Math.Abs(from - expected) <= 0.5 / _framesRate))'; Replace = 'if (false)'; Tests = 'FrameInputTests.FramesMustComeAtTheFrameRate' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (!(Math.Abs(from - expected) <= 0.5 / rate))'; Replace = 'if (false)'; Tests = 'FrameInputTests.FramesMustComeAtTheFrameRate' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_startPts = video.StartPts;'; Replace = '_startPts = 0;'; Tests = 'FrameInputTests.FramesAreAtTheirPtsFromTheStreamsStart' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if ((k - startFrame) % (_frameSkip + 1) == 0)'; Replace = 'if ((k - startFrame) % (_frameSkip + 1) == 1)'; Tests = 'FrameInputTests.SameAsTheFile' }
 
@@ -239,6 +239,30 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'StartEstimate(s) : 0'; Replace = 'StartEstimate(s) - 1 : 0'; Tests = 'FrameSourceAsyncTests.SameAsTheSynchronousDetect' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'cancellationToken.ThrowIfCancellationRequested(); // before each frame is awaited'; Replace = '// mutated'; Tests = 'FrameSourceAsyncTests.CancelsBetweenFrames' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'cancellationToken.ThrowIfCancellationRequested(); // before each frame is pulled'; Replace = '// mutated'; Tests = 'FrameSourceAsyncTests.SynchronousDetectCancelsBeforeEachPull' }
+        # Frame-source detection in ranges (ScoreRange, RangeScores' bytes, Merge): what a range can't honour, ranges that
+        # don't make up the video, overlap frames that differ, frames off the constant-rate grid, bytes it can't read
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (firstFrame is < 0 or >= int.MaxValue)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (k <= firstFrame && firstFrame > 0)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.FrameSkip != 0)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.Mode == DetectionMode.Parallel)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (list[i].Fingerprint != fingerprint)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.MergeRefusesAnotherVideoOrOtherOptions' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (list[0].FirstFrame != 0)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.MergeRefusesRangesThatDontMakeUpTheVideo' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (list.Any(r => r.Metrics.Length != detectors))'; Replace = 'if (false)'; Tests = 'FrameRangeTests.MergeRefusesRangesThatDontMakeUpTheVideo' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (b.FirstFrame <= a.FirstFrame)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.MergeRefusesRangesThatDontMakeUpTheVideo' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (aEnd < b.FirstFrame)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.MergeRefusesRangesThatDontMakeUpTheVideo' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (aEnd == b.FirstFrame)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.MergeRefusesRangesThatDontMakeUpTheVideo' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'long? x = k - aFrom < a.Pts.Length ? a.Pts[k - aFrom] : null, y = k - bFrom < b.Pts.Length ? b.Pts[k - bFrom] : null;'; Replace = 'long? x = 0, y = 0;'; Tests = 'FrameRangeTests.MergeRefusesFramesNotWhereTheirPtsPutThem' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (!Equals(x, y))'; Replace = 'if (false)'; Tests = 'FrameRangeTests.MergeRefusesAnOverlapFrameThatDiffers' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'VideoReader.CheckConstantRate(pts[0], pts[k], k, reader.FramesTimeBase, reader.FramesRate);'; Replace = '_ = k;'; Tests = 'FrameRangeTests.MergeRefusesFramesNotWhereTheirPtsPutThem' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (_framePts.Count > 0 && _frameBase == 0)'; Replace = 'if (_framePts.Count > 0)'; Tests = 'FrameRangeTests.RangesMergeIntoTheSequentialResult' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_framesRead = frameBase;'; Replace = '_framesRead = 0;'; Tests = 'FrameRangeTests.RangesMergeIntoTheSequentialResult' }
+        @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (bytes.Length < Magic.Length + 2 || !bytes[..Magic.Length].SequenceEqual(Magic))'; Replace = 'if (bytes.Length < Magic.Length + 2)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
+        @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (version != FormatVersion)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
+        @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (Checksum(body) != BinaryPrimitives.ReadUInt64LittleEndian(bytes[^8..]))'; Replace = 'if (false)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
+        @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (!r.AtEnd)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
+        @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (detectors is < 1 or > MaxDetectors)'; Replace = 'if (detectors is < 0 or > MaxDetectors)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
+        @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (frameCount > int.MaxValue - 1 - firstFrame)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
 
         # FrameReader: the tone and waveform from samples refuse what they can't take (issue #494)
         @{ File = 'src/FrameReader/ReferenceToneFinder.cs'; Find = 'ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);'; Replace = ''; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
