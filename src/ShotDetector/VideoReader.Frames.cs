@@ -15,7 +15,8 @@ internal sealed partial class VideoReader
     readonly double _framesRate;             // the video's own rate, for the constant-rate check
     readonly List<long> _framePts = [];      // each frame's pts as it arrives
     readonly int _frameSkip;                 // frames FrameSkip won't analyse aren't converted
-    int _framesRead;                         // frames taken from _frames
+    readonly int _frameBase;                 // the first frame's index in the video (a range's, ShotDetection.ScoreRange); 0 otherwise
+    int _framesRead;                         // the index after the last frame taken from _frames
     bool _framesEnded;
     YuvFrame _currentFrame;                  // the last frame taken: valid until the next MoveNext
 
@@ -25,7 +26,10 @@ internal sealed partial class VideoReader
     /// <param name="video">What the headers would say.</param>
     /// <param name="frames">The frames, not yet started.</param>
     /// <param name="o">The resolved options.</param>
-    internal VideoReader(YuvVideo video, IEnumerator<YuvFrame> frames, DetectionOptions o)
+    /// <param name="frameBase">The index in the video of the first frame <paramref name="frames"/> gives: 0, or a range's
+    /// first frame (<see cref="ShotDetection.ScoreRange(YuvVideo, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/>),
+    /// whose frames aren't checked for the constant rate here (that needs frame 0's pts: <see cref="ShotDetection.Merge"/> checks them).</param>
+    internal VideoReader(YuvVideo video, IEnumerator<YuvFrame> frames, DetectionOptions o, int frameBase = 0)
     {
         if (o.Yuv420Converter is null)
         {
@@ -59,6 +63,8 @@ internal sealed partial class VideoReader
         _frameBuffers = o.FrameBuffers;
         _frameSkip = o.FrameSkip;
         _frames = frames;
+        _frameBase = frameBase;
+        _framesRead = frameBase;
         SourceWidth = video.Width;
         SourceHeight = video.Height;
         _codedSize = (video.Width, video.Height);
@@ -107,18 +113,10 @@ internal sealed partial class VideoReader
         if (_framesTimed)
         {
             // Frame k at k / rate from the first, within half a frame: no variable rate, no frame the decoder dropped
-            // (a file's frames are labelled by their packets, which frames from the caller can't say).
-            if (_framePts.Count > 0)
-            {
-                double from = (f.Pts - _framePts[0]) * _timeBase, expected = _framesRead / _framesRate;
-                if (!(Math.Abs(from - expected) <= 0.5 / _framesRate))
-                {
-                    throw new ShotDetectionException(ShotDetectionError.InvalidInput,
-                        string.Create(CultureInfo.InvariantCulture,
-                            $"Frame {_framesRead} is {from:0.######} s after the first, not {expected:0.######} s: frames from the caller must come at a constant frame rate (variable frame rate and dropped frames aren't supported yet)."));
-                }
-            }
-
+            // (a file's frames are labelled by their packets, which frames from the caller can't say). A range's frames
+            // are checked from frame 0's when the ranges are merged.
+            if (_framePts.Count > 0 && _frameBase == 0)
+                CheckConstantRate(_framePts[0], f.Pts, _framesRead, _timeBase, _framesRate);
             _framePts.Add(f.Pts);
         }
 
@@ -136,6 +134,50 @@ internal sealed partial class VideoReader
         }
     }
 
+    /// <summary>
+    /// Frame <paramref name="frame"/> (at <paramref name="pts"/>) at frame / rate after frame 0 (at <paramref name="firstPts"/>),
+    /// within half a frame; else a <see cref="ShotDetectionException"/> (<see cref="ShotDetectionError.InvalidInput"/>), its
+    /// message followed by <paramref name="where"/>. The sequential run's check of each frame and the merge's of every range's.
+    /// </summary>
+    internal static void CheckConstantRate(long firstPts, long pts, int frame, double timeBase, double rate, string where = "")
+    {
+        double from = (pts - firstPts) * timeBase, expected = frame / rate;
+        if (!(Math.Abs(from - expected) <= 0.5 / rate))
+        {
+            throw new ShotDetectionException(ShotDetectionError.InvalidInput,
+                string.Create(CultureInfo.InvariantCulture,
+                    $"Frame {frame} is {from:0.######} s after the first, not {expected:0.######} s: frames from the caller must come at a constant frame rate (variable frame rate and dropped frames aren't supported yet).")
+                + where);
+        }
+    }
+
+    /// <summary>Whether the frames carry pts (<see cref="YuvVideo.TimeBase"/> set).</summary>
+    internal bool FramesTimed => _framesTimed;
+
+    /// <summary>The frames' own rate (the video's average rate, not the <see cref="DetectionOptions.FrameRate"/> override).</summary>
+    internal double FramesRate => _framesRate;
+
+    /// <summary>The time base of the frames' pts in seconds.</summary>
+    internal double FramesTimeBase => _timeBase;
+
+    /// <summary>Each frame's pts as it arrived, from the first given (<c>frameBase</c>); empty without <see cref="YuvVideo.TimeBase"/>.</summary>
+    internal IReadOnlyList<long> FramePts => _framePts;
+
+    /// <summary>
+    /// A reader for frames already read elsewhere (<see cref="ShotDetection.Merge"/>): <paramref name="count"/> frames from
+    /// frame 0, at <paramref name="pts"/> (one each, or none when untimed), so <see cref="Position"/> gives each frame's as
+    /// the sequential run's reader does. Nothing more is taken from the caller.
+    /// </summary>
+    internal void LoadFrames(IReadOnlyList<long> pts, int count)
+    {
+        if (_frameBase != 0 || _framesRead != 0)
+            throw new InvalidOperationException("Frames are loaded into a new reader from frame 0 only.");
+        _framePts.AddRange(pts);
+        _framesRead = count;
+        _framesEnded = true;
+        _framesStarted = true;
+    }
+
     /// <summary>The frame's position, as <see cref="Position"/> computes a file's: from its pts, else from its number.</summary>
     FrameTime FramePosition(int frame)
     {
@@ -145,9 +187,9 @@ internal sealed partial class VideoReader
         {
         }
 
-        if (_framesTimed && frame < _framePts.Count)
+        if (_framesTimed && frame - _frameBase is >= 0 and var given && given < _framePts.Count)
         {
-            double ms = (_framePts[frame] - _startPts) * _timeBase * 1000;
+            double ms = (_framePts[given] - _startPts) * _timeBase * 1000;
             long micros = (long)Math.Round(ms * 1000);
             if (micros > 0)
                 return FrameTime.Pts(micros, 1_000_000, Fps);

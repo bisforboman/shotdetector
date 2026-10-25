@@ -634,7 +634,7 @@ public sealed record DetectionResult
 /// exception: one that happens inside (decoding in-process, reading the audio) is its InnerException, with the same
 /// message. Invalid options are an <see cref="ArgumentException"/>; cancelling, <see cref="OperationCanceledException"/>.
 /// </summary>
-public static class ShotDetection
+public static partial class ShotDetection
 {
     /// <summary>
     /// The <see cref="System.Diagnostics.ActivitySource"/> name: each detection is one span ("ShotDetection.Detect")
@@ -1065,7 +1065,8 @@ public static class ShotDetection
     }
 
     /// <summary>One step of the run: true with the result once it has one.</summary>
-    static bool Stepped(IEnumerator<DetectionResult?> steps, out DetectionResult result)
+    static bool Stepped<T>(IEnumerator<T?> steps, out T result)
+        where T : class
     {
         if (!steps.MoveNext())
             throw new InvalidOperationException("The run's steps ended without a result.");
@@ -1103,14 +1104,16 @@ public static class ShotDetection
     /// <summary>
     /// The run, as steps: null where its next action takes a frame from the caller (the driver puts one in the
     /// <see cref="FrameFeed"/> first, awaited in <see cref="RunAsync"/>), then the result. A file's or a stream's run goes
-    /// through to the end without stopping (<see cref="Run"/>).
+    /// through to the end without stopping (<see cref="Run"/>). With <paramref name="prescored"/> (<see cref="Merge"/>), its
+    /// scores take the place of the frames': the decisions run over them as over a chunked file's.
     /// </summary>
     static IEnumerable<DetectionResult?> Steps(string? videoPath,
         Stream? videoStream,
         DetectionOptions? options,
         Action<Shot>? onShot,
         CancellationToken cancellationToken,
-        Func<DetectionOptions, VideoReader>? frames)
+        Func<DetectionOptions, VideoReader>? frames,
+        Prescored? prescored = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var o = (options ?? new DetectionOptions()).Resolved();
@@ -1127,20 +1130,7 @@ public static class ShotDetection
             };
         }
 
-        if (o.TrimReferenceTone && videoPath is null)
-            throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately).");
-        if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null))
-            throw new ArgumentException("TrimReferenceTone sets the time range itself; leave StartTime, EndTime and RangeDuration unset.");
-        if (o.FrameSkip < 0)
-            throw new ArgumentException("FrameSkip must be at least 0.");
-        if (o.ProgressStep is { } step && !(step > 0 && step <= 1))
-            throw new ArgumentException("ProgressStep must be above 0 and at most 1.");
-        if (o.FrameSkip > 0 && o.CollectStats)
-            throw new ArgumentException("FrameSkip must be 0 when collecting stats (as in scenedetect).");
-        if (o.EndTime is not null && o.RangeDuration is not null)
-            throw new ArgumentException("EndTime and Duration cannot both be set.");
-        if (o.Downscale is < 1)
-            throw new ArgumentException("Downscale must be at least 1.");
+        CheckOptions(o, videoPath);
 
         // A streamed mp4 without "faststart" (headers last) can't be read from a pipe: it goes to a temporary file first,
         // read as a file and deleted at the end. Other streams stream.
@@ -1174,6 +1164,8 @@ public static class ShotDetection
         }
 
         WarnHls();
+        foreach (string warning in prescored?.Warnings ?? [])
+            Warn(warning);
         IReadOnlyList<FrameReader.ToneSegment>? tone = null;
         if (o.TrimReferenceTone)
         {
@@ -1187,9 +1179,7 @@ public static class ShotDetection
             throw new ArgumentException("StartTime isn't available for a streamed input (a Stream, a URL, or Streaming = true).");
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.Fps);
 
-        // One detector per settings entry (the single-detector options are the shorthand); each gets the same frames.
-        bool single = o.Detectors is not { Count: > 0 };
-        var settings = single ? [new DetectorSettings(o.Detector) { Threshold = o.Threshold }] : o.Detectors!;
+        var settings = Settings(o);
         var stats = o.CollectStats ? new Stats() : null;
         var detectors = settings.Select(st => Build(st, o, video, minSceneLen, stats)).ToList();
 
@@ -1294,7 +1284,8 @@ public static class ShotDetection
         string? fallback = null;
         var gate = new object();
         int scoredFrames = 0;
-        var chunked = chunks > 1
+        var chunked = prescored is not null ? prescored.Scores
+            : chunks > 1
             ? ScoreChunked(videoPath!,
                 o,
                 video,
@@ -1400,6 +1391,25 @@ public static class ShotDetection
             ReferenceTone = tone,
             Warnings = warnings,
         };
+    }
+
+    /// <summary>The checks of the resolved options every run makes before reading anything (an <see cref="ArgumentException"/>).</summary>
+    static void CheckOptions(DetectionOptions o, string? videoPath)
+    {
+        if (o.TrimReferenceTone && videoPath is null)
+            throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately).");
+        if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null))
+            throw new ArgumentException("TrimReferenceTone sets the time range itself; leave StartTime, EndTime and RangeDuration unset.");
+        if (o.FrameSkip < 0)
+            throw new ArgumentException("FrameSkip must be at least 0.");
+        if (o.ProgressStep is { } step && !(step > 0 && step <= 1))
+            throw new ArgumentException("ProgressStep must be above 0 and at most 1.");
+        if (o.FrameSkip > 0 && o.CollectStats)
+            throw new ArgumentException("FrameSkip must be 0 when collecting stats (as in scenedetect).");
+        if (o.EndTime is not null && o.RangeDuration is not null)
+            throw new ArgumentException("EndTime and Duration cannot both be set.");
+        if (o.Downscale is < 1)
+            throw new ArgumentException("Downscale must be at least 1.");
     }
 
     /// <summary>
@@ -1614,6 +1624,10 @@ public static class ShotDetection
             .ToArray();
         return (all, all[0].Count, [.. Enumerable.Range(0, chunks).Select(i => (chunkStats[i], bounds[i], i == chunks - 1 ? int.MaxValue : bounds[i + 1]))]);
     }
+
+    /// <summary>One detector's settings per entry of <see cref="DetectionOptions.Detectors"/> (the single-detector options are the shorthand); each gets the same frames.</summary>
+    static IReadOnlyList<DetectorSettings> Settings(DetectionOptions o) =>
+        o.Detectors is not { Count: > 0 } ? [new DetectorSettings(o.Detector) { Threshold = o.Threshold }] : o.Detectors;
 
     static IDetector Build(DetectorSettings st, DetectionOptions o, VideoReader video, int minSceneLen, Stats? stats)
     {

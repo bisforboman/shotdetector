@@ -39,6 +39,19 @@ public sealed class Stats
         }
     }
 
+    /// <summary>The recorded metrics of frames from..to-1, in frame order.</summary>
+    internal IEnumerable<(int Frame, string Key, double Value)> Entries(int from, int to)
+    {
+        foreach (var (frame, row) in _rows)
+        {
+            if (frame >= from && frame < to)
+            {
+                foreach (var (key, value) in row)
+                    yield return (frame, key, value);
+            }
+        }
+    }
+
     /// <summary>A recorded metric, or null.</summary>
     public double? Get(int frame, string key) =>
         _rows.TryGetValue(frame, out var row) && row.TryGetValue(key, out var v) ? v : null;
