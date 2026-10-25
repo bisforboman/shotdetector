@@ -45,7 +45,7 @@ public static partial class ShotDetection
     /// phase runs across the ranges) and <see cref="DetectionMode.Parallel"/> (the host does the chunking).
     /// <see cref="DetectionOptions.Progress"/> is told the range's frames (<see cref="DetectionProgress.FramesProcessed"/>
     /// counts those from <paramref name="firstFrame"/> on; <see cref="DetectionProgress.ExpectedFrames"/> is 0, as the range
-    /// ends where the frames stop), the last report once they have. <see cref="DetectionOptions.OnShot"/> isn't: shots are
+    /// ends where the frames stop; with <see cref="DetectionOptions.ProgressStep"/> set, only the first report and the last), the last report once they have. <see cref="DetectionOptions.OnShot"/> isn't: shots are
     /// decided in <see cref="Merge"/>. Every frame's position comes from its pts (<see cref="YuvFrame.Pts"/>), and
     /// <see cref="Merge"/> checks every range's frames against frame 0's on the constant-rate grid, which also catches a
     /// wrong <paramref name="firstFrame"/>.
@@ -295,10 +295,16 @@ public static partial class ShotDetection
                 var reader = new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o);
                 for (int k = 1; k < pts.Length; k++)
                 {
-                    int owner = list.FindLastIndex(r => r.FirstFrame <= k);
-                    string where = string.Create(CultureInfo.InvariantCulture,
-                        $" (frame {k} of the range from frame {list[owner].FirstFrame}: are its frames the ones from that frame?)");
-                    VideoReader.CheckConstantRate(pts[0], pts[k], k, reader.FramesTimeBase, reader.FramesRate, where);
+                    try
+                    {
+                        VideoReader.CheckConstantRate(pts[0], pts[k], k, reader.FramesTimeBase, reader.FramesRate);
+                    }
+                    catch (ShotDetectionException e)
+                    {
+                        int owner = list.FindLastIndex(r => r.FirstFrame <= k);
+                        throw new ShotDetectionException(e.Reason, e.Message + string.Create(CultureInfo.InvariantCulture,
+                            $" (frame {k} of the range from frame {list[owner].FirstFrame}: are its frames the ones from that frame?)"));
+                    }
                 }
             }
 

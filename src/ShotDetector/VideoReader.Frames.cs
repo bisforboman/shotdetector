@@ -136,18 +136,17 @@ internal sealed partial class VideoReader
 
     /// <summary>
     /// Frame <paramref name="frame"/> (at <paramref name="pts"/>) at frame / rate after frame 0 (at <paramref name="firstPts"/>),
-    /// within half a frame; else a <see cref="ShotDetectionException"/> (<see cref="ShotDetectionError.InvalidInput"/>), its
-    /// message followed by <paramref name="where"/>. The sequential run's check of each frame and the merge's of every range's.
+    /// within half a frame; else a <see cref="ShotDetectionException"/> (<see cref="ShotDetectionError.InvalidInput"/>). The
+    /// sequential run's check of each frame and the merge's of every range's.
     /// </summary>
-    internal static void CheckConstantRate(long firstPts, long pts, int frame, double timeBase, double rate, string where = "")
+    internal static void CheckConstantRate(long firstPts, long pts, int frame, double timeBase, double rate)
     {
         double from = (pts - firstPts) * timeBase, expected = frame / rate;
         if (!(Math.Abs(from - expected) <= 0.5 / rate))
         {
             throw new ShotDetectionException(ShotDetectionError.InvalidInput,
                 string.Create(CultureInfo.InvariantCulture,
-                    $"Frame {frame} is {from:0.######} s after the first, not {expected:0.######} s: frames from the caller must come at a constant frame rate (variable frame rate and dropped frames aren't supported yet).")
-                + where);
+                    $"Frame {frame} is {from:0.######} s after the first, not {expected:0.######} s: frames from the caller must come at a constant frame rate (variable frame rate and dropped frames aren't supported yet)."));
         }
     }
 

@@ -59,7 +59,7 @@ the same with frames it decodes itself?
 - **OnShot and Progress.** Merge tells `OnShot` the shots as Detect tells them (as each cut is confirmed with one
   detector and neither DropShortScenes nor MergeLastScene, else all at the end), all before it returns; it reports no
   `Progress`. ScoreRange tells `Progress` its range's frames (`FramesProcessed` from `firstFrame` on, `ExpectedFrames`
-  0 as the range ends where the frames stop; a first report before any frame, the last once they all are) and never
+  0 as the range ends where the frames stop; a first report before any frame, the last once they all are, and with `ProgressStep` set only those two) and never
   `OnShot`. `Warnings`: the ranges' warnings (none so far) are told again by Merge and listed once each in the result.
 - **The bytes** (`RangeScores.ToBytes`/`FromBytes`), little-endian: "SDRS", a 16-bit format version (1), the
   fingerprint (UTF-8, length-prefixed), `firstFrame`, the scored frame count, the frames' pts (from the frame before),
