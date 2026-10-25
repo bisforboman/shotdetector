@@ -1,12 +1,14 @@
 // Microbenchmarks of the per-frame pixel work (README.md here): CvResize.ResizeRows from each source size to
-// scenedetect's processed size, and EdgeDetector.Detect on the V plane of the resized frames. Per case, the best-of-N
-// microseconds per frame and a SHA-256 of the outputs, so a change in results shows next to a change in speed.
+// scenedetect's processed size, EdgeDetector.Detect on the V plane of the resized frames, and ShotDetector.FastYuv's
+// yuv420p conversion. Per case, the best-of-N microseconds per frame and a SHA-256 of the outputs, so a change in results
+// shows next to a change in speed.
 // Usage: dotnet run -c Release --project benchmarks/micro -- [--hash-only] [--set all|real|synthetic]
 //        [--frames N] [--rounds N] [--filter TEXT] [--films DIR] [--video FILE]...
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using ShotDetector;
+using ShotDetector.FastYuv;
 using ShotDetector.Micro;
 
 var o = Options.Parse(args);
@@ -129,6 +131,50 @@ namespace ShotDetector.Micro
             }).ToArray();
             var edges = new EdgeDetector(dw, dh);
             yield return new Case(s.Set, $"edges  {s.Name} at {dw}x{dh}", lum, dw * dh, (v, dst) => edges.Detect(v, dst));
+
+            // ShotDetector.FastYuv's yuv420p conversion where the resize reads (SourceRows x SourceCols, as ResizeYuv
+            // asks), and of whole rows, on yuv420p planes made from the frames (any planes do: the cost doesn't depend
+            // on the values, and the hash only has to be the same between builds).
+            var yuv = s.Frames.Select(f => Yuv420(f, s.Width, s.Height)).ToArray();
+            var fast = new SwscaleYuv420();
+            int[] rows = resizer.SourceRows, all = Enumerable.Range(0, s.Width).ToArray();
+            foreach (var (what, cols) in new[] { ("sampled", resizer.SourceCols), ("rows", all) })
+            {
+                if (what == "rows" && resizer.SourceCols.Length == s.Width)
+                    continue; // the resize reads every column: the same case
+                yield return new Case(s.Set, $"fastyuv {s.Name} {what} {rows.Length}x{cols.Length}", yuv, rows.Length * stride, (f, dst) =>
+                {
+                    for (int i = 0; i < rows.Length; i++)
+                        fast.RowToBgr(f, s.Width, s.Height, rows[i], cols, dst.AsSpan(i * stride, stride));
+                });
+            }
+        }
+
+        /// <summary>A yuv420p frame from a BGR one: Y from all three channels, U and V from 2x2 blocks' blue and red.</summary>
+        static byte[] Yuv420(byte[] bgr, int w, int h)
+        {
+            int cw = (w + 1) / 2, ch = (h + 1) / 2;
+            var yuv = new byte[IYuv420Converter.FrameSize(w, h)];
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    int i = (y * w + x) * 3;
+                    yuv[y * w + x] = (byte)((bgr[i] + 2 * bgr[i + 1] + bgr[i + 2]) >> 2);
+                }
+            }
+
+            for (int y = 0; y < ch; y++)
+            {
+                for (int x = 0; x < cw; x++)
+                {
+                    int i = (Math.Min(2 * y, h - 1) * w + Math.Min(2 * x, w - 1)) * 3;
+                    yuv[w * h + y * cw + x] = bgr[i];
+                    yuv[w * h + cw * ch + y * cw + x] = bgr[i + 2];
+                }
+            }
+
+            return yuv;
         }
     }
 

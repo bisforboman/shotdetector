@@ -2,9 +2,11 @@
 
 The per-frame pixel work, on its own: `CvResize.ResizeRows` from each source size to scenedetect's processed size
 (`VideoReader.DownscaledSize`: 426x240, 640x360 and 1920x1080 to 256x144, 1280x534 to 256x107), and
-`EdgeDetector.Detect` on the V plane of those resized frames (what `--stats` and edge weights run). The project
-references src/ShotDetector (through its `InternalsVisibleTo`), so it always measures the code in the tree, not a
-copy of it.
+`EdgeDetector.Detect` on the V plane of those resized frames (what `--stats` and edge weights run), and
+ShotDetector.FastYuv's yuv420p to BGR conversion (`SwscaleYuv420.RowToBgr`) of the pixels that resize reads
+(`sampled`: `SourceRows` x `SourceCols`, as `CvResize.ResizeYuv` asks) and of those rows whole (`rows`), on yuv420p
+planes made from the frames. The project references src/ShotDetector (through its `InternalsVisibleTo`) and
+src/ShotDetector.FastYuv, so it always measures the code in the tree, not a copy of it.
 
 ```
 dotnet run -c Release --project benchmarks/micro                 # both sets, timings and hashes
