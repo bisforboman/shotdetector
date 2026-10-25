@@ -277,6 +277,12 @@ public class FrameRangeTests
         var noOverlap = Score(video, all, 0, 33, options, extra: 0);
         Assert.Contains("Range 0 ends at frame 32, without range 1's first frame (33)", Refused(() => ShotDetection.Merge(video, [noOverlap, b, c], options)).Message);
         Assert.Throws<ArgumentException>(() => ShotDetection.Merge(video, [], options));
+
+        // Bytes of the right fingerprint whose detector counts differ (only forged ones can).
+        string fingerprint = ShotDetection.Fingerprint(video, options.Resolved());
+        var one = new RangeScores(fingerprint, 0, 2, [40, 44], [[1, 2]], null, []);
+        var two = new RangeScores(fingerprint, 1, 1, [40, 44], [[2], [3]], null, []);
+        Assert.Contains("different numbers of detectors", Refused(() => ShotDetection.Merge(video, [one, two], options)).Message);
     }
 
     [Fact]

@@ -397,9 +397,7 @@ public static partial class ShotDetection
                 metrics[d].AddRange(r.Metrics[d].Take(to - r.FirstFrame));
             if (timed)
             {
-                int skip = r.FirstFrame > 0 ? 1 : 0; // the frame before
-                if (r.Pts.Length < skip + (to - r.FirstFrame))
-                    throw Invalid($"Range {i} (from frame {r.FirstFrame}) has no pts for some of its frames: every range of a timed video carries its frames' pts.");
+                int skip = r.FirstFrame > 0 ? 1 : 0; // the frame before (a range without pts failed the overlap check)
                 pts.AddRange(r.Pts.Skip(skip).Take(to - r.FirstFrame));
             }
 
