@@ -5,13 +5,15 @@ name: Benchmark
 # films (tools/bench.py, best of 3), in the run summary, plus both with --stats (the content detector then computes
 # edges for every frame, so EdgeDetector's speed is tracked); README "Performance" comes from it. Then
 # benchmarks/micro, the resize and edge detector alone. On demand and weekly: a hosted runner is quieter than a
-# desktop, but numbers still vary by a few percent between runs.
+# desktop, but numbers still vary by a few percent between runs. Each runner's numbers also go into one JSON file
+# (tools/bench_record.py), an artifact, which runs on main commit to the bench-data branch (runs/, its README:
+# benchmarks/bench-data.md), so their history can be charted.
 on:
   workflow_dispatch:
   schedule:
     - cron: '43 3 * * 0'
 
-# The token only reads the repository.
+# The token only reads the repository; the publish job alone writes (to the bench-data branch).
 permissions:
   contents: read
 
@@ -76,15 +78,15 @@ jobs:
           python tools/realworld.py $films --download
           echo "### ${{ matrix.rid }}: $(nproc) CPUs ($(lscpu | sed -n 's/^Model name: *//p' | head -1)), $(free -g | awk '/Mem:/ {print $2}') GB" >> "$GITHUB_STEP_SUMMARY"
           for d in content adaptive; do
-            python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector $d --runs 3 --report bench.md
+            python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector $d --runs 3 --report bench.md --json bench-$d.json
             { echo "### detect-$d, all $(nproc) CPUs"; cat bench.md; } >> "$GITHUB_STEP_SUMMARY"
           done
           # Per-frame stats: scenedetect -s against shotdetect --stats in-process; edges on every frame.
-          python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --stats --runs 3 --report bench-stats.md
+          python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --stats --runs 3 --report bench-stats.md --json bench-content-stats.json
           { echo "### detect-content --stats, all $(nproc) CPUs"; cat bench-stats.md; } >> "$GITHUB_STEP_SUMMARY"
           # A small container's view: both tools and their children pinned to 2 CPUs (issue #12). bench.py leaves out
           # --parallel and --sequential there: chunks need 4 CPUs, so they'd repeat the default's row.
-          taskset -c 0,1 python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --runs 3 --report bench2.md
+          taskset -c 0,1 python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --runs 3 --report bench2.md --json bench-content-2cpu.json
           { echo "### detect-content, 2 CPUs (sequential: chunks need 4)"; cat bench2.md; } >> "$GITHUB_STEP_SUMMARY"
 
       # The per-frame pixel work alone (benchmarks/micro: the resize and the edge detector, best of 15 rounds, real
@@ -95,3 +97,77 @@ jobs:
           dotnet build -c Release benchmarks/micro -v q
           dotnet run -c Release --no-build --project benchmarks/micro -- --films samples/realworld | tee micro.txt
           { echo "### benchmarks/micro, us per frame"; echo '```text'; cat micro.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # Everything above as one JSON file (schema: benchmarks/bench-data.md), also when a step failed after some ran.
+      - name: Record
+        if: ${{ !cancelled() }}
+        run: |
+          variants=""
+          for v in content adaptive content-stats content-2cpu; do
+            [ -f bench-$v.json ] && variants="$variants $v=bench-$v.json"
+          done
+          [ -n "$variants" ] || [ -f micro.txt ] || { echo "nothing measured, nothing recorded"; exit 0; }
+          mkdir -p bench-data
+          python tools/bench_record.py --rid ${{ matrix.rid }} --micro micro.txt \
+            --out "bench-data/$(date -u +%F)-$GITHUB_RUN_ID-${{ matrix.rid }}.json" $variants
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: ${{ !cancelled() }}
+        with:
+          name: bench-data-${{ matrix.rid }}
+          path: bench-data/*.json
+          if-no-files-found: ignore
+
+  # Runs on main (weekly, or dispatched there) add their files to the bench-data branch under runs/, created as an
+  # orphan branch the first time; other branches' runs keep only the artifact. Plain git with this job's token, never
+  # a force-push: on a rejected push it starts again from the branch's new tip. (Pushes made with GITHUB_TOKEN start
+  # no workflows.)
+  publish:
+    needs: benchmark
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        continue-on-error: true  # neither runner got as far as recording
+        with:
+          pattern: bench-data-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/runs
+
+      - name: Commit to bench-data
+        env:
+          RUNS: ${{ runner.temp }}/runs
+        run: |
+          shopt -s nullglob
+          files=("$RUNS"/*.json)
+          if [ ${#files[@]} -eq 0 ]; then echo "no runner recorded data"; exit 0; fi
+          cp benchmarks/bench-data.md "$RUNNER_TEMP/README.md"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            if git fetch -q --depth=1 origin bench-data 2>/dev/null; then
+              git checkout -q -f -B bench-data FETCH_HEAD
+            else
+              git checkout -q --detach && { git branch -q -D bench-data 2>/dev/null || true; }
+              git checkout -q --orphan bench-data
+              git rm -rq --cached . && git clean -fdxq
+            fi
+            mkdir -p runs
+            cp "${files[@]}" runs/
+            cp "$RUNNER_TEMP/README.md" README.md
+            (cd runs && ls *.json | grep -v '^index\.json$' | sort | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin], indent=1))' > index.json)
+            git add README.md runs
+            git diff --cached --quiet || git commit -qm "Benchmark run $GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT)"
+            if git push -q origin HEAD:refs/heads/bench-data; then
+              git log -1 --stat --format='%H %s'
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt), starting again from the branch's tip"
+            sleep $((attempt * 5))
+          done
+          exit 1
