@@ -105,7 +105,7 @@ public class StatsTests
         const long Big = (1L << 53) + 1;
         FrameTime[] positions = kind switch
         {
-            "seconds" => [FrameTime.FromSeconds(0, Fps25), FrameTime.FromSeconds(0.01, Fps25)],
+            "seconds" => [FrameTime.FromSeconds(0, Fps25), FrameTime.FromSeconds(double.Epsilon, Fps25)], // held as their bits: 0 and 1
             "pts" => [FrameTime.Pts(Big, 1, Fps25), FrameTime.Pts(3 * Big, 3, Fps25)],
             _ => [FrameTime.Pts(3, 3 * Big, Fps25), FrameTime.Pts(1, Big, Fps25)],
         };
