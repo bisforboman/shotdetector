@@ -1,0 +1,45 @@
+name: Debug FastYuv 10-bit timings
+on:
+  push:
+    branches: ['debug/**']
+permissions:
+  contents: read
+jobs:
+  time:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04-arm, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Row tests on this CPU
+        run: dotnet test tests/ShotDetector.Tests --filter "FullyQualifiedName~FastYuv10RowTests|FullyQualifiedName~FastYuvRowTests" --logger GitHubActions
+      - name: Timings
+        run: |
+          set -o pipefail
+          # main (with the benchmark cases), the pixel step, this branch, and this branch with the horizontal filter
+          # scalar off x86 (is the portable horizontal filter worth it on ARM?)
+          git worktree add ../main 6b2d9aa
+          git worktree add ../pixels 523794a
+          git worktree add ../hscalar HEAD
+          sed -i 's/: AdvSimd.Arm64.IsSupported || PackedSimd.IsSupported ? Horizontal.Portable/: PackedSimd.IsSupported ? Horizontal.Portable/' ../hscalar/src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs
+          grep -c ": PackedSimd.IsSupported ? Horizontal.Portable" ../hscalar/src/ShotDetector.FastYuv/SwscaleYuv420P10.Vector.cs
+          for d in ../main ../pixels ../hscalar .; do dotnet build -c Release "$d/benchmarks/micro" -v q; done
+          for r in 1 2 3; do
+            for d in ../main ../pixels ../hscalar .; do
+              side=$(basename "$(cd "$d" && pwd)")
+              dotnet run -c Release --no-build --project "$d/benchmarks/micro" -- --set synthetic --filter fastyuv1 --rounds 15 > "micro-$side.txt"
+            done
+          done
+          for f in micro-*.txt; do
+            body=$(grep -E "fastyuv|outputs:|best of" "$f" | sed 's/  */ /g' | awk 'BEGIN{ORS="%0A"} {print}')
+            echo "::notice title=$f $(nproc) CPUs $(uname -m)::$body"
+          done
+          grep -h "all outputs" micro-*.txt
