@@ -197,7 +197,7 @@ public sealed class RangeScores
     static ShotDetectionException Invalid(string message) => new(ShotDetectionError.InvalidInput, message);
 
     /// <summary>FNV-1a, 64-bit, over the bytes before it: catches a truncated or damaged message (not a forged one).</summary>
-    static ulong Checksum(ReadOnlySpan<byte> bytes)
+    internal static ulong Checksum(ReadOnlySpan<byte> bytes)
     {
         ulong hash = 14695981039346656037;
         foreach (byte b in bytes)

@@ -345,6 +345,8 @@ public static partial class ShotDetection
         if (list[0].FirstFrame != 0)
             throw Invalid($"The first range must start at frame 0, not {list[0].FirstFrame}.");
         int detectors = list[0].Metrics.Length;
+        if (list.Any(r => r.Metrics.Length != detectors))
+            throw Invalid("The ranges hold scores of different numbers of detectors.");
         bool timed = list.Any(r => r.Pts.Length > 0);
         for (int i = 1; i < list.Count; i++)
         {
@@ -356,6 +358,18 @@ public static partial class ShotDetection
                 throw Invalid($"Frames {aEnd} to {b.FirstFrame - 1} are in no range: range {i - 1} ends at frame {aEnd - 1}, range {i} starts at frame {b.FirstFrame}.");
             if (aEnd == b.FirstFrame)
                 throw Invalid($"Range {i - 1} ends at frame {aEnd - 1}, without range {i}'s first frame ({b.FirstFrame}) to compare: a range's frames go to one frame past its end.");
+            if (timed)
+            {
+                // b's frames from its frame before (b.FirstFrame - 1), a's from its own (a.FirstFrame - 1, or 0).
+                int aFrom = Math.Max(0, a.FirstFrame - 1), bFrom = b.FirstFrame - 1;
+                for (long k = bFrom; k < Math.Min(aEnd, bEnd); k++)
+                {
+                    long? x = k - aFrom < a.Pts.Length ? a.Pts[k - aFrom] : null, y = k - bFrom < b.Pts.Length ? b.Pts[k - bFrom] : null;
+                    if (x != y)
+                        throw Invalid($"Frame {k} is at pts {x?.ToString(CultureInfo.InvariantCulture) ?? "none"} in range {i - 1} and {y?.ToString(CultureInfo.InvariantCulture) ?? "none"} in range {i}: not the same frame.");
+                }
+            }
+
             for (long k = b.FirstFrame; k < Math.Min(aEnd, bEnd); k++)
             {
                 for (int d = 0; d < detectors; d++)
@@ -366,18 +380,6 @@ public static partial class ShotDetection
                         throw Invalid($"Frame {k}'s score differs between range {i - 1} ({Score(x)}) and range {i} ({Score(y)}, detector {d}): range {i}'s frames aren't "
                             + "the ones a sequential decode gives (a range not starting at a keyframe, an open GOP's leading frames, a decoder that depends on earlier frames).");
                     }
-                }
-            }
-
-            if (timed)
-            {
-                // b's frames from its frame before (b.FirstFrame - 1), a's from its own (a.FirstFrame - 1, or 0).
-                int aFrom = Math.Max(0, a.FirstFrame - 1), bFrom = b.FirstFrame - 1;
-                for (long k = bFrom; k < Math.Min(aEnd, bEnd); k++)
-                {
-                    long? x = k - aFrom < a.Pts.Length ? a.Pts[k - aFrom] : null, y = k - bFrom < b.Pts.Length ? b.Pts[k - bFrom] : null;
-                    if (x != y)
-                        throw Invalid($"Frame {k} is at pts {x?.ToString(CultureInfo.InvariantCulture) ?? "none"} in range {i - 1} and {y?.ToString(CultureInfo.InvariantCulture) ?? "none"} in range {i}: not the same frame.");
                 }
             }
         }
