@@ -6,6 +6,19 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.16.0 – 2026-10-25
+
+Detection split into ranges for several workers, merged to the exact result; faster FastYuv conversion with SIMD on x64, ARM64 and WebAssembly.
+
+### New
+
+- `ShotDetection.ScoreRange` (and `ScoreRangeAsync`) and `ShotDetection.Merge`: score a long video's frames in ranges, each on its own runtime (browser Web Workers, no shared memory), carry each range's `RangeScores` between them as bytes (`ToBytes`, `FromBytes`), and merge them into exactly the result `Detect` gives for the whole video; ranges that don't fit together, or whose overlap frames differ from the next range's, are refused.
+
+### Faster
+
+- ShotDetector.FastYuv: 10-bit (yuv420p10le) video converts to BGR faster on every platform, with SIMD (`Vector128`: x64, ARM64 and WebAssembly) for the pixels, the vertical chroma filter and, where the samples read are next to each other, the horizontal one. The bytes are the same as before.
+- ShotDetector.FastYuv: 8-bit yuv420p and yuv422p rows convert to BGR faster, with SIMD where the columns read are close together (`Vector128`: x64, ARM64 and WebAssembly) and without range checks elsewhere. The bytes are the same as before.
+
 ## 3.15.0 – 2026-10-24
 
 Shots as they're found and cancellable detection on frames from another decoder; in-process FastYuv follows each frame's colour tags.
