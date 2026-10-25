@@ -425,6 +425,7 @@ public class FrameRangeTests
         static byte[] Sealed(byte[] body) => [.. body, .. BitConverter.GetBytes(RangeScores.Checksum(body))];
         Assert.Contains("left over", Message(Sealed([.. bytes[..^12], 0, 0, 0, 0, 0])));
         Assert.Contains("detector count", Message(new RangeScores("", 0, 0, [], [], null, []).ToBytes()));
+        Assert.Contains("past the largest frame index", Message(new RangeScores("", int.MaxValue - 2, 2, [], [[1, 2]], null, []).ToBytes()));
         var huge = bytes[..^8].ToArray();
         int counts = 4 + 2 + 4 + BitConverter.ToInt32(huge, 6);
         BitConverter.GetBytes(int.MaxValue).CopyTo(huge, counts + 4);
