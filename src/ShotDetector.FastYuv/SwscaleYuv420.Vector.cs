@@ -41,7 +41,7 @@ public sealed partial class SwscaleYuv420
     /// Whether the columns are dense enough for blocks, on average over the stretch they span (first to last: the
     /// resize's are in order). Sparser ones (wide frames: pairs a few pixels apart) skip the plan and its check.
     /// </summary>
-    static bool DenseEnough(ReadOnlySpan<int> cols) =>
+    internal static bool DenseEnough(ReadOnlySpan<int> cols) =>
         cols.Length >= MinColumnsPerBlock && (long)cols.Length * BlockPixels >= MinColumnsPerBlock * (Math.Abs((long)cols[^1] - cols[0]) + 1);
 
     /// <summary>

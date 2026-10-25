@@ -1,6 +1,6 @@
 // Microbenchmarks of the per-frame pixel work (README.md here): CvResize.ResizeRows from each source size to
 // scenedetect's processed size, EdgeDetector.Detect on the V plane of the resized frames, and ShotDetector.FastYuv's
-// yuv420p conversion. Per case, the best-of-N microseconds per frame and a SHA-256 of the outputs, so a change in results
+// yuv420p, yuv422p and yuv420p10le conversions. Per case, the best-of-N microseconds per frame and a SHA-256 of the outputs, so a change in results
 // shows next to a change in speed.
 // Usage: dotnet run -c Release --project benchmarks/micro -- [--hash-only] [--set all|real|synthetic]
 //        [--frames N] [--rounds N] [--filter TEXT] [--films DIR] [--video FILE]...
@@ -134,9 +134,15 @@ namespace ShotDetector.Micro
 
             // ShotDetector.FastYuv's yuv420p conversion where the resize reads (SourceRows x SourceCols, as ResizeYuv
             // asks), and of whole rows, on yuv420p planes made from the frames (any planes do: the cost doesn't depend
-            // on the values, and the hash only has to be the same between builds).
-            var yuv = s.Frames.Select(f => Yuv420(f, s.Width, s.Height)).ToArray();
+            // on the values, and the hash only has to be the same between builds). Then the same for yuv422p (its own
+            // chroma row per row), and yuv420p10le with left-sited chroma (h264's: a 4-tap horizontal chroma filter) as
+            // the pipeline converts it, all the pixels the resize reads in one call (FrameToBgr, packed).
+            var yuv = s.Frames.Select(f => Yuv(f, s.Width, s.Height, (s.Height + 1) / 2, tenBit: false)).ToArray();
+            var yuv422 = s.Frames.Select(f => Yuv(f, s.Width, s.Height, s.Height, tenBit: false)).ToArray();
+            var yuv10 = s.Frames.Select(f => Yuv(f, s.Width, s.Height, (s.Height + 1) / 2, tenBit: true)).ToArray();
             var fast = new SwscaleYuv420();
+            IYuv422Converter fast422 = fast;
+            var fast10 = (IYuv420P10FrameConverter)((IYuv420P10Converter)fast).ForVideo("bt709", false, "left", s.Width, s.Height)!;
             int[] rows = resizer.SourceRows, all = Enumerable.Range(0, s.Width).ToArray();
             foreach (var (what, cols) in new[] { ("sampled", resizer.SourceCols), ("rows", all) })
             {
@@ -147,20 +153,44 @@ namespace ShotDetector.Micro
                     for (int i = 0; i < rows.Length; i++)
                         fast.RowToBgr(f, s.Width, s.Height, rows[i], cols, dst.AsSpan(i * stride, stride));
                 });
+                yield return new Case(s.Set, $"fastyuv422 {s.Name} {what} {rows.Length}x{cols.Length}", yuv422, rows.Length * stride, (f, dst) =>
+                {
+                    for (int i = 0; i < rows.Length; i++)
+                        fast422.RowToBgr(f, s.Width, s.Height, rows[i], cols, dst.AsSpan(i * stride, stride));
+                });
+                yield return new Case(s.Set, $"fastyuv10 {s.Name} {what} {rows.Length}x{cols.Length}", yuv10, rows.Length * cols.Length * 3, (f, dst) =>
+                    fast10.FrameToBgr(f, s.Width, s.Height, rows, cols, dst));
             }
         }
 
-        /// <summary>A yuv420p frame from a BGR one: Y from all three channels, U and V from 2x2 blocks' blue and red.</summary>
-        static byte[] Yuv420(byte[] bgr, int w, int h)
+        /// <summary>
+        /// A yuv420p, yuv422p (<paramref name="chromaHeight"/> the height) or yuv420p10le frame from a BGR one: Y from all
+        /// three channels, U and V from the blue and red of each chroma sample's top left pixel; 10-bit samples are the
+        /// 8-bit ones scaled to 0..1023.
+        /// </summary>
+        static byte[] Yuv(byte[] bgr, int w, int h, int chromaHeight, bool tenBit)
         {
-            int cw = (w + 1) / 2, ch = (h + 1) / 2;
-            var yuv = new byte[IYuv420Converter.FrameSize(w, h)];
+            int cw = (w + 1) / 2, ch = chromaHeight, size = w * h + 2 * cw * ch, step = ch == h ? 1 : 2;
+            var yuv = new byte[tenBit ? 2 * size : size];
+            void Set(int i, int v)
+            {
+                if (!tenBit)
+                {
+                    yuv[i] = (byte)v;
+                    return;
+                }
+
+                int ten = (v << 2) | (v >> 6);
+                yuv[2 * i] = (byte)ten;
+                yuv[(2 * i) + 1] = (byte)(ten >> 8);
+            }
+
             for (int y = 0; y < h; y++)
             {
                 for (int x = 0; x < w; x++)
                 {
                     int i = (y * w + x) * 3;
-                    yuv[y * w + x] = (byte)((bgr[i] + 2 * bgr[i + 1] + bgr[i + 2]) >> 2);
+                    Set(y * w + x, (bgr[i] + 2 * bgr[i + 1] + bgr[i + 2]) >> 2);
                 }
             }
 
@@ -168,9 +198,9 @@ namespace ShotDetector.Micro
             {
                 for (int x = 0; x < cw; x++)
                 {
-                    int i = (Math.Min(2 * y, h - 1) * w + Math.Min(2 * x, w - 1)) * 3;
-                    yuv[w * h + y * cw + x] = bgr[i];
-                    yuv[w * h + cw * ch + y * cw + x] = bgr[i + 2];
+                    int i = (Math.Min(step * y, h - 1) * w + Math.Min(2 * x, w - 1)) * 3;
+                    Set(w * h + y * cw + x, bgr[i]);
+                    Set(w * h + cw * ch + y * cw + x, bgr[i + 2]);
                 }
             }
 

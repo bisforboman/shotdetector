@@ -5,7 +5,8 @@ The per-frame pixel work, on its own: `CvResize.ResizeRows` from each source siz
 `EdgeDetector.Detect` on the V plane of those resized frames (what `--stats` and edge weights run), and
 ShotDetector.FastYuv's yuv420p to BGR conversion (`SwscaleYuv420.RowToBgr`) of the pixels that resize reads
 (`sampled`: `SourceRows` x `SourceCols`, as `CvResize.ResizeYuv` asks) and of those rows whole (`rows`), on yuv420p
-planes made from the frames. The project references src/ShotDetector (through its `InternalsVisibleTo`) and
+planes made from the frames; the same for yuv422p (`fastyuv422`) and for yuv420p10le with left-sited chroma
+(`fastyuv10`, `FrameToBgr` as `CvResize.ResizeYuvFrame` calls it). The project references src/ShotDetector (through its `InternalsVisibleTo`) and
 src/ShotDetector.FastYuv, so it always measures the code in the tree, not a copy of it.
 
 ```

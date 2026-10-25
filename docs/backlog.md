@@ -55,6 +55,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Detection on a file reads it twice: `MediaProbe.Packets` over every packet (VideoReader's probe, `packets: !headersOnly && !Streaming`), then decoding. The pre-scan feeds the frame labels (`PacketOf`), the frame count (progress, chunk boundaries) and MPEG-PS timestamps; doing without it means getting those during the pass or later. Worth it for files larger than RAM on slow shares (a read costs size / throughput: 20 GB at 100 MB/s is 200 s); it would also make #452's shared audio-and-detection pass worth revisiting (closed 2026-10-21: starting both at the same time already shares the read today)
   - Status: Maybe
 
+- FastYuv's row yadif on 9-16-bit video with Vector128
+  - Why: Its 8-bit rows already use portable `Vector128` (and `Vector256`), but `Row16` (interlaced 10-bit such as AVC-Intra and ProRes, with the in-process FastYuv `Yadif`) is scalar on every platform. The 10-bit conversion it feeds became 2-4x faster in #508. A port would need 32-bit lanes (16-bit samples' differences don't fit 16 bits), its own exactness argument, and timings on CI's ARM runners. It pays only for interlaced 10-bit sources deinterlaced in-process, which CI treats as informational
+  - Status: Maybe
+
 - FastYuv: 10-bit 4:2:0 of odd width
   - Why: FastYuv returns null there (swscale's scaled path forces full chroma interpolation, done in C; docs/fastyuv-10bit-422.md, "Odd sizes"), so on ARM such videos keep ARM's conversion rounding instead of x86's results; the one ARM gap left in the formats FastYuv covers. Rare (odd widths are unusual in 10-bit sources)
   - Status: Maybe

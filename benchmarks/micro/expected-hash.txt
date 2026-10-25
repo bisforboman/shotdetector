@@ -1,4 +1,4 @@
 # benchmarks/micro --hash-only --set synthetic, on every platform (ci.yml checks it on x64 and ARM).
 # Change it only in a PR that changes the synthetic set or the case list; a code change must leave it as it is.
 inputs  7970fbddd02272acca84ac0e61c233b268af2fc28f2119e7d7b34b98890c9957
-outputs 4909b87d41c72037c1d8598033b1c68e3af56f0b15428e6b4d52c56363efc1a1
+outputs 2cb92926a9bc59d4a0f99764aecd10b81fa2d1a7112fa77da6c81710fc114892

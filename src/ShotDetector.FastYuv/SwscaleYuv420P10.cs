@@ -23,7 +23,7 @@ namespace ShotDetector.FastYuv;
 /// tables clip it. Even widths only (an odd width takes another path, full chroma interpolation, in C). A frame at a
 /// time (<see cref="IYuv420P10FrameConverter"/>), each chroma row is filtered horizontally once, as swscale does.
 /// </summary>
-internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRows
+internal sealed partial class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRows
 {
     /// <summary>av_chroma_location_enum_to_pos for ffprobe's chroma_location names (null: unspecified, so center).</summary>
     static readonly Dictionary<string, (int H, int V)> ChromaPositions = new()
@@ -127,6 +127,15 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
         public readonly int Width = width, Height = height, ChromaWidth = (width + 1) / 2, ChromaHeight = (height + 1) / 2;
         public readonly SwscaleFilter H = h, V = v;
 
+        /// <summary>The horizontal filter's coefficients by tap: tap t of chroma sample i at t * ChromaWidth + i.</summary>
+        public readonly int[] HTaps = ByTap(h, (width + 1) / 2);
+
+        /// <summary>
+        /// A 4-tap filter's coefficients by pair of taps, each sample's two side by side (pmaddwd's layout): taps 2p and
+        /// 2p + 1 of chroma sample i at p * 2 * ChromaWidth + 2 * i (empty for other filters).
+        /// </summary>
+        public readonly short[] HTapPairs = ByTapPair(h, (width + 1) / 2);
+
         public static Plan? For(int width, int height, int hChrPos, int vChrPos)
         {
             // Odd widths: swscale forces full chroma interpolation (C code) for RGB output.
@@ -140,6 +149,32 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
             // Tiny frames: a filter wider than its plane, or a vertical filter of one or two taps (swscale's
             // yuv2packed1/yuv2packed2 then, not ported).
             return h.Size <= cw && v.Size > 2 ? new Plan(width, height, h, v) : null;
+        }
+
+        static int[] ByTap(SwscaleFilter h, int cw)
+        {
+            var taps = new int[h.Size * cw];
+            for (int i = 0; i < cw; i++)
+            {
+                for (int t = 0; t < h.Size; t++)
+                    taps[t * cw + i] = h.Coeffs[i * h.Size + t];
+            }
+
+            return taps;
+        }
+
+        static short[] ByTapPair(SwscaleFilter h, int cw)
+        {
+            if (h.Size != 4)
+                return [];
+            var pairs = new short[4 * cw];
+            for (int i = 0; i < cw; i++)
+            {
+                for (int t = 0; t < 4; t++)
+                    pairs[(t >> 1) * 2 * cw + 2 * i + (t & 1)] = h.Coeffs[i * 4 + t];
+            }
+
+            return pairs;
         }
     }
 
@@ -180,7 +215,7 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
 
         int cw = plan.ChromaWidth, ch = plan.ChromaHeight, vSize = plan.V.Size, n = cols.Length;
         var pool = System.Buffers.ArrayPool<int>.Shared;
-        int[] pairOf = pool.Rent(n), chromaCols = pool.Rent(n), slot = pool.Rent(ch), terms = pool.Rent(3 * Math.Max(n, 1));
+        int[] pairOf = pool.Rent(n), chromaCols = pool.Rent(n), slot = pool.Rent(ch), terms = pool.Rent(3 * Math.Max(n, 1)), hBlocks = pool.Rent(n / 8 + 1);
         int[]? filtered = null;
         try
         {
@@ -217,7 +252,10 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
 
             // Slot s: U's filtered samples at 2 * s * pairs, V's right after.
             filtered = pool.Rent(Math.Max(2 * chromaRows * pairs, 1));
-            ConvertRows(plan, yuv, width, height, rows, cols, bgr, packed, pairOf, chromaCols, pairs, slot, filtered, terms);
+            var pixels = PixelPlanFor(cols, chromaCols.AsSpan(0, pairs));
+            var horizontal = HorizontalVectors(plan.H.Size);
+            int blocks = horizontal == Horizontal.Scalar ? 0 : HorizontalBlocks(chromaCols.AsSpan(0, pairs), plan.H.Pos, hBlocks);
+            ConvertRows(plan, pixels, horizontal, yuv, width, height, rows, cols, bgr, packed, pairOf, chromaCols, pairs, slot, filtered, terms, hBlocks.AsSpan(0, blocks));
         }
         finally
         {
@@ -225,6 +263,7 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
             pool.Return(chromaCols);
             pool.Return(slot);
             pool.Return(terms);
+            pool.Return(hBlocks);
             if (filtered is not null)
                 pool.Return(filtered);
         }
@@ -233,10 +272,13 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
     /// <summary>
     /// <see cref="Convert"/>'s loops, given its buffers: the columns' chroma samples (<paramref name="chromaCols"/>,
     /// <paramref name="pairs"/> of them, and which one each column takes), the chroma rows' slots, the filtered rows and
-    /// a row's chroma terms (<paramref name="terms"/>, 3 × pairs). Apart from Convert's try/finally, so the JIT keeps
-    /// the loops' locals in registers.
+    /// a row's chroma terms (<paramref name="terms"/>, 3 × pairs), the pixels' plan (null: a pixel at a time), and how
+    /// the horizontal filter runs and its blocks (<see cref="HorizontalBlocks"/>). Apart from Convert's try/finally, so
+    /// the JIT keeps the loops' locals in registers.
     /// </summary>
     unsafe void ConvertRows(Plan plan,
+        PixelPlan? pixels,
+        Horizontal horizontal,
         ReadOnlySpan<byte> yuv,
         int width,
         int height,
@@ -249,16 +291,17 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
         int pairs,
         int[] slot,
         int[] filtered,
-        int[] terms)
+        int[] terms,
+        ReadOnlySpan<int> hBlocks)
     {
         int cw = plan.ChromaWidth, ch = plan.ChromaHeight, hSize = plan.H.Size, vSize = plan.V.Size, n = cols.Length;
         int* rowOffset = stackalloc int[vSize];
         int* vCoeff = stackalloc int[vSize];
         fixed (byte* frame = yuv, output = bgr)
         {
-            fixed (short* hCoeffs = plan.H.Coeffs)
+            fixed (short* hCoeffs = plan.H.Coeffs, hTapPairs = plan.HTapPairs)
             {
-                fixed (int* hPos = plan.H.Pos, f = filtered, tb = terms, pairOfColumn = pairOf, chromaCol = chromaCols, col = cols)
+                fixed (int* hPos = plan.H.Pos, hTaps = plan.HTaps, blocks = hBlocks, f = filtered, tb = terms, pairOfColumn = pairOf, chromaCol = chromaCols, col = cols)
                 {
                     // The filters keep every read inside the planes (initFilter's border handling), so pointers.
                     ushort* lumaPlane = (ushort*)frame, uPlane = lumaPlane + width * height, vPlane = uPlane + cw * ch;
@@ -267,8 +310,9 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
                         if (slot[c] < 0)
                             continue;
                         int* fu = f + 2 * slot[c] * pairs;
-                        HorizontalRow(uPlane + c * cw, hCoeffs, hPos, hSize, chromaCol, pairs, fu);
-                        HorizontalRow(vPlane + c * cw, hCoeffs, hPos, hSize, chromaCol, pairs, fu + pairs);
+                        var h = new HorizontalFilter(horizontal, hCoeffs, hPos, hSize, hTaps, hTapPairs, cw, chromaCol, pairs, blocks, hBlocks.Length);
+                        HorizontalRow(uPlane + c * cw, h, fu);
+                        HorizontalRow(vPlane + c * cw, h, fu + pairs);
                     }
 
                     int* tg = tb + pairs, tr = tg + pairs;
@@ -293,7 +337,10 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
                         if (asm)
                         {
                             ChromaTermsAsm(f, rowOffset, vCoeff, vSize, pairs, tb, tg, tr);
-                            PixelsAsm(luma, col, pairOfColumn, n, tb, tg, tr, rowOutput, packed);
+                            if (pixels is not null)
+                                PixelsByPlan(pixels, luma, col, pairOfColumn, tb, tg, tr, rowOutput, packed);
+                            else
+                                PixelsAsm(luma, col, pairOfColumn, n, tb, tg, tr, rowOutput, packed);
                         }
                         else
                         {
@@ -307,17 +354,40 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
     }
 
     /// <summary>
-    /// hScale16To15 of one chroma row at the pairs' chroma samples (<paramref name="chromaCol"/>) into
-    /// <paramref name="dst"/>.
+    /// hScale16To15 of one chroma row at the pairs' chroma samples (<see cref="HorizontalFilter.ChromaCol"/>) into
+    /// <paramref name="dst"/>: the filter's blocks with vectors, the other samples as <see cref="HorizontalSamples"/>.
     /// </summary>
-    static unsafe void HorizontalRow(ushort* src, short* hCoeffs, int* hPos, int hSize, int* chromaCol, int pairs, int* dst)
+    static unsafe void HorizontalRow(ushort* src, in HorizontalFilter h, int* dst)
     {
         int k = 0;
-        if (hSize == 4 && Ssse3.IsSupported)
+        for (int b = 0; b < h.BlockCount; b++)
+        {
+            int start = h.Blocks[b], i = h.ChromaCol[start];
+            HorizontalSamples(src, h, k, start, dst);
+            if (h.Vectors == Horizontal.X86)
+                HorizontalBlockX86(src + h.Pos[i], h.TapPairs + 2 * i, 2 * h.ChromaWidth, dst + start);
+            else
+                HorizontalBlock(src + h.Pos[i], h.Taps + i, h.ChromaWidth, h.Size, dst + start);
+            k = start + HorizontalBlockSamples;
+        }
+
+        HorizontalSamples(src, h, k, h.Pairs, dst);
+    }
+
+    /// <summary>
+    /// hScale16To15 of the pairs from <paramref name="k"/> to <paramref name="end"/>: on x86 four at a time where the
+    /// filter has 4 taps (SSSE3), else one at a time.
+    /// </summary>
+    static unsafe void HorizontalSamples(ushort* src, in HorizontalFilter h, int k, int end, int* dst)
+    {
+        int* chromaCol = h.ChromaCol, hPos = h.Pos;
+        short* hCoeffs = h.Coeffs;
+        int hSize = h.Size;
+        if (hSize == 4 && h.Vectors == Horizontal.X86 && Ssse3.IsSupported)
         {
             // Four samples at a time: each one's four taps (10-bit samples and coefficients as words) multiplied and
             // summed pairwise (pmaddwd), then the pairs (phaddd): the scalar loop's integers.
-            for (; k <= pairs - 4; k += 4)
+            for (; k <= end - 4; k += 4)
             {
                 int i0 = chromaCol[k], i1 = chromaCol[k + 1], i2 = chromaCol[k + 2], i3 = chromaCol[k + 3];
                 var a = Sse2.MultiplyAddAdjacent(
@@ -330,7 +400,7 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
             }
         }
 
-        for (; k < pairs; k++)
+        for (; k < end; k++)
         {
             int i = chromaCol[k];
             dst[k] = HScale(src + hPos[i], hCoeffs + i * hSize, hSize);
@@ -349,13 +419,19 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
         for (int j = 0; j < n; j++)
         {
             int x = cols[j], k = pairOf[j];
-            int y15 = Math.Min(luma[x] << 5, 0x7FFF);
-            int yy = MulHi((short)(4 + (y15 >> 4) - yOffset), yCoeff);
-            byte* o = output + Offset(packed, j, x);
-            o[0] = PackUs(yy + tb[k]);
-            o[1] = PackUs(yy + tg[k]);
-            o[2] = PackUs(yy + tr[k]);
+            Pixel(luma, x, tb[k], tg[k], tr[k], yOffset, yCoeff, output + Offset(packed, j, x));
         }
+    }
+
+    /// <summary>One pixel of <see cref="PixelsAsm"/>: luma x's term and the pair's chroma terms, to <paramref name="o"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static unsafe void Pixel(ushort* luma, int x, int tb, int tg, int tr, int yOffset, int yCoeff, byte* o)
+    {
+        int y15 = Math.Min(luma[x] << 5, 0x7FFF);
+        int yy = MulHi((short)(4 + (y15 >> 4) - yOffset), yCoeff);
+        o[0] = PackUs(yy + tb);
+        o[1] = PackUs(yy + tg);
+        o[2] = PackUs(yy + tr);
     }
 
     /// <summary>
@@ -386,31 +462,12 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
 
     /// <summary>
     /// YSCALEYUV2PACKEDX and YSCALEYUV2RGBX's chroma terms for each pair: from vRounder, each tap's pmulhw added with paddw
-    /// (16 bits, wrapping), then the coefficients. Four pairs at a time where vectors are fast (the same integers).
+    /// (16 bits, wrapping), then the coefficients. Eight pairs at a time in 16-bit lanes with <see cref="Vectorized"/>
+    /// (the same integers: see SwscaleYuv420P10.Vector.cs).
     /// </summary>
     unsafe void ChromaTermsAsm(int* f, int* rowOffset, int* vCoeff, int vSize, int pairs, int* tb, int* tg, int* tr)
     {
-        int k = 0;
-        if (Vector128.IsHardwareAccelerated)
-        {
-            Vector128<int> ub = Vector128.Create(_ubCoeff), ug = Vector128.Create(_ugCoeff), vg = Vector128.Create(_vgCoeff), vr = Vector128.Create(_vrCoeff);
-            for (; k <= pairs - 4; k += 4)
-            {
-                Vector128<int> ua = Vector128.Create(VRounder), va = ua;
-                for (int t = 0; t < vSize; t++)
-                {
-                    var c = Vector128.Create(vCoeff[t]);
-                    int* fu = f + rowOffset[t] + k;
-                    ua = Short(ua + MulHi(Vector128.Load(fu), c));
-                    va = Short(va + MulHi(Vector128.Load(fu + pairs), c));
-                }
-
-                Vector128<int> uu = Short(ua - Vector128.Create(1024)), vv = Short(va - Vector128.Create(1024));
-                MulHi(uu, ub).Store(tb + k);
-                Short(MulHi(uu, ug) + MulHi(vv, vg)).Store(tg + k);
-                MulHi(vv, vr).Store(tr + k);
-            }
-        }
+        int k = Vectorized ? ChromaTermsVector(f, rowOffset, vCoeff, vSize, pairs, tb, tg, tr) : 0;
 
         for (; k < pairs; k++)
         {
@@ -451,12 +508,6 @@ internal sealed class SwscaleYuv420P10 : IYuv420P10FrameConverter, IYuvChromaRow
             tr[k] = _yoffs + _rV[cv];
         }
     }
-
-    /// <summary>pmulhw on each lane's low 16 bits: the high half of the signed product.</summary>
-    static Vector128<int> MulHi(Vector128<int> a, Vector128<int> b) => (Short(a) * Short(b)) >> 16;
-
-    /// <summary>Each lane's low 16 bits, sign-extended: (short) per lane.</summary>
-    static Vector128<int> Short(Vector128<int> v) => (v << 16) >> 16;
 
     /// <summary>hScale16To15_c for 10-bit input: the filter's sum shifted by depth - 1 (9), at most 15 bits.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
