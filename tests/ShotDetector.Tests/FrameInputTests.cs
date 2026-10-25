@@ -209,16 +209,85 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.False(ours.Video.DecodedInProcess);
     }
 
-    /// <summary>The file's properties as FFmpeg gives them, and its frames decoded as the file path decodes them.</summary>
-    static (YuvVideo Video, IEnumerable<YuvFrame> Frames) Decoded(string path)
+    // A file split at its keyframes, each range decoded on a decoder of its own from its keyframe (a host's Web Workers:
+    // the keyframe is the frame before the range's first, which its scores compare with), merges into the sequential
+    // frame-source result: H.264 with B-frames, and the mpeg4 clip.
+    [Theory]
+    [InlineData("h264", DetectorKind.Adaptive)]
+    [InlineData("h264", DetectorKind.Histogram)]
+    [InlineData("mpeg4", DetectorKind.Content)]
+    [InlineData("mpeg4", DetectorKind.Hash)]
+    public void RangesFromKeyframesMergeIntoTheSequentialResult(string clip, DetectorKind detector)
     {
-        var info = FrameReader.MediaProbe.Probe(path).Video!;
+        if (Libs is null || (clip == "h264" ? H264Clip() : clips.ThreeShots) is not { } path)
+            return;
+        var options = new DetectionOptions { Detector = detector, CollectStats = true, Yuv420Converter = new SwscaleYuv420() };
+        var (video, frames) = Decoded(path);
+        var pts = frames.Select(f => f.Pts).ToList();
+        var expected = ShotDetection.Detect(video, Decoded(path).Frames, options);
+
+        // Two or three ranges, from the keyframes nearest a third and two thirds of the way.
+        List<long> keyframes;
+        using (var keys = new FrameReader.FrameDecoder(path, DecoderOptions(path) with { KeyframesOnly = true }))
+        {
+            keyframes = [];
+            while (keys.Next())
+                keyframes.Add(keys.Pts);
+        }
+
+        var inner = keyframes.Select(p => pts.IndexOf(p)).Where(k => k > 0 && k < pts.Count - 2).ToList();
+        Assert.NotEmpty(inner);
+        int[] starts = [0, .. new[] { pts.Count / 3, 2 * pts.Count / 3 }.Select(t => inner.MinBy(k => Math.Abs(k - t)) + 1).Distinct()];
+        var ranges = new List<RangeScores>();
+        for (int i = 0; i < starts.Length; i++)
+        {
+            int first = starts[i], end = i + 1 < starts.Length ? starts[i + 1] : pts.Count;
+            var given = first == 0 ? Decoded(path).Frames : Decoded(path, from: pts[first - 1]);
+            var scores = ShotDetection.ScoreRange(video, given.Take(end + 1 - Math.Max(0, first - 1)), first, options);
+            ranges.Add(RangeScores.FromBytes(scores.ToBytes()));
+        }
+
+        var merged = ShotDetection.Merge(video, ranges, options);
+        Assert.Equal(expected.FrameCount, merged.FrameCount);
+        Assert.Equal(expected.Cuts, merged.Cuts);
+        Assert.Equal(expected.Shots, merged.Shots);
+        Assert.Equal(Shots.Csv(expected.Shots, cuts: expected.Cuts), Shots.Csv(merged.Shots, cuts: merged.Cuts));
+        Assert.Equal(expected.Stats!.Csv(expected.Video.Position), merged.Stats!.Csv(merged.Video.Position));
+        Assert.True(expected.Shots.Count > 1);
+    }
+
+    /// <summary>The decoder options the file path decodes with: no autorotation, its IDCT.</summary>
+    static FrameReader.FrameDecoderOptions DecoderOptions(string path)
+    {
         var reader = new VideoReader(path, new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess });
-        var decoderOptions = new FrameReader.FrameDecoderOptions
+        return new FrameReader.FrameDecoderOptions
         {
             Autorotate = false,
             CodecOptions = VideoReader.IdctOptions(reader.Codec, reader.UsesXvidIdct) is [var key, var value] ? new Dictionary<string, string> { [key[1..]] = value } : null,
         };
+    }
+
+    /// <summary>The file's frames from the keyframe at <paramref name="from"/> on, decoded after a seek to it.</summary>
+    static IEnumerable<YuvFrame> Decoded(string path, long from)
+    {
+        using var decoder = new FrameReader.FrameDecoder(path, DecoderOptions(path));
+        decoder.Seek(from);
+        while (decoder.Next())
+        {
+            if (decoder.Pts < from)
+                continue;
+            var y = decoder.GetPlane(0, out int ys).ToArray();
+            var u = decoder.GetPlane(1, out int us).ToArray();
+            var v = decoder.GetPlane(2, out int vs).ToArray();
+            yield return new YuvFrame(y, ys, u, us, v, vs) { Pts = decoder.Pts };
+        }
+    }
+
+    /// <summary>The file's properties as FFmpeg gives them, and its frames decoded as the file path decodes them.</summary>
+    static (YuvVideo Video, IEnumerable<YuvFrame> Frames) Decoded(string path)
+    {
+        var info = FrameReader.MediaProbe.Probe(path).Video!;
+        var decoderOptions = DecoderOptions(path);
         string colorSpace, colorRange;
         using (var first = new FrameReader.FrameDecoder(path, decoderOptions))
         {
