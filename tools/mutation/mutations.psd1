@@ -269,6 +269,10 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'StartEstimate(s) : 0'; Replace = 'StartEstimate(s) - 1 : 0'; Tests = 'FrameSourceAsyncTests.SameAsTheSynchronousDetect' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'cancellationToken.ThrowIfCancellationRequested(); // before each frame is awaited'; Replace = '// mutated'; Tests = 'FrameSourceAsyncTests.CancelsBetweenFrames' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'cancellationToken.ThrowIfCancellationRequested(); // before each frame is pulled'; Replace = '// mutated'; Tests = 'FrameSourceAsyncTests.SynchronousDetectCancelsBeforeEachPull' }
+        # The decoding pass for per-frame timestamps (MPEG-PS packets without a pts) stops when cancelled (issue #523):
+        # FrameReader's interrupt callback ends a read that waits, and VideoReader hands the pass its token
+        @{ File = 'src/ShotDetector/InProcessProbe.cs'; Find = 'InputOptions = Options(inputOptions), CancellationToken = cancellationToken });'; Replace = 'InputOptions = Options(inputOptions) });'; Tests = 'FrameTimestampsTests.InProcessStopsAtAStalledRead' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions, cancellationToken)'; Replace = 'InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions)'; Tests = 'FrameTimestampsTests.CancellingDetectionStopsThePass' }
         # Frame-source detection in ranges (ScoreRange, RangeScores' bytes, Merge): what a range can't honour, ranges that
         # don't make up the video, overlap frames that differ, frames off the constant-rate grid, bytes it can't read
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (firstFrame is < 0 or >= int.MaxValue)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }

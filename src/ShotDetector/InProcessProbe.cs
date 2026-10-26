@@ -129,17 +129,24 @@ internal static unsafe class InProcessProbe
 
     /// <summary>
     /// <c>ffprobe -select_streams v:0 -show_entries frame=pts,pkt_dts</c> as VideoReader uses it (MPEG-PS, packets
-    /// without pts): each decoded frame's pts when set and non-zero, else its packet's dts, in output order.
+    /// without pts): each decoded frame's pts when set and non-zero, else its packet's dts, in output order. It decodes
+    /// the whole input, so <paramref name="cancellationToken"/> stops it between frames and where FFmpeg waits on a read.
     /// </summary>
-    public static List<long> FrameTimestamps(string path, string? libraryDirectory, string[]? inputOptions = null)
+    public static List<long> FrameTimestamps(string path,
+        string? libraryDirectory,
+        string[]? inputOptions = null,
+        CancellationToken cancellationToken = default)
     {
         var result = new List<long>();
         try
         {
             InProcess.Load(libraryDirectory);
-            using var decoder = new FrameDecoder(path, new FrameDecoderOptions { InputOptions = Options(inputOptions) });
+            using var decoder = new FrameDecoder(path, new FrameDecoderOptions { InputOptions = Options(inputOptions), CancellationToken = cancellationToken });
             while (decoder.Next())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
                 result.Add(decoder.FramePts is long p && p != 0 ? p : decoder.FramePacketDts ?? 0);
+            }
         }
         catch (FrameReaderException e)
         {
