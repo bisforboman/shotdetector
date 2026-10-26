@@ -338,7 +338,7 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true' && matrix.rid == 'win-x64'
         run: |
           dotnet tool restore > /dev/null
-          dotnet tool run stylebro-migrate format ShotDetector.slnx --verify-no-changes
+          dotnet tool run bro format ShotDetector.slnx --verify-no-changes
 
       - name: Publish
         if: needs.changes.outputs.docs_only != 'true'

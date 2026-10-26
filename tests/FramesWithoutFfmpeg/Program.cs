@@ -86,7 +86,7 @@ if (Shots.Csv(merged.Shots, cuts: merged.Cuts) != Shots.Csv(expected.Shots, cuts
     return 1;
 }
 
-var loaded = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetName().Name).Where(n => n is not null && n.StartsWith("FFmpeg", StringComparison.Ordinal)).ToList();
+var loaded = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetName().Name).OfType<string>().Where(n => n.StartsWith("FFmpeg", StringComparison.Ordinal)).ToList();
 var libraries = File.Exists("/proc/self/maps")
     ? File.ReadAllLines("/proc/self/maps").Select(l => l.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "")
         .Where(p => Path.GetFileName(p) is var f && (f.StartsWith("libav", StringComparison.Ordinal) || f.StartsWith("libsw", StringComparison.Ordinal) || f.StartsWith("libpostproc", StringComparison.Ordinal)))

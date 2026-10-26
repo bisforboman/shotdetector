@@ -17,9 +17,9 @@ if [ -n "$files" ]; then
   for f in $files; do mkdir -p "$keep/$(dirname "$f")"; git show ":$f" > "$keep/$f"; done
 
   dotnet tool restore > /dev/null || exit 1
-  if ! dotnet tool run stylebro-migrate format ShotDetector.slnx --include $files > /dev/null; then
-    echo "pre-commit: stylebro-migrate format failed; run it yourself to see why:"
-    echo "  dotnet tool run stylebro-migrate format ShotDetector.slnx"
+  if ! dotnet tool run bro format ShotDetector.slnx --include $files > /dev/null; then
+    echo "pre-commit: bro format failed; run it yourself to see why:"
+    echo "  dotnet tool run bro format ShotDetector.slnx"
     exit 1
   fi
   # dotnet format makes a file's line endings consistent and writes the lines it changes with CRLF: a file whose only

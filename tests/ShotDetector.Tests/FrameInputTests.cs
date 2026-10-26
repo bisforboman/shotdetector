@@ -156,7 +156,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     // no ffmpeg on PATH and no FFmpeg libraries named, FramesWithoutFfmpeg detects on generated frames and checks that
     // neither FFmpeg.AutoGen nor any of FFmpeg's libraries got loaded (the system's would be found if anything tried).
     [Fact]
-    public void LoadsNothingOfFfmpeg()
+    public async Task LoadsNothingOfFfmpeg()
     {
         var bin = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
         string check = Path.Combine(bin.Parent!.Parent!.Parent!.Parent!.FullName, "FramesWithoutFfmpeg", "bin", bin.Parent.Name, bin.Name, "FramesWithoutFfmpeg.dll");
@@ -174,7 +174,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         string err = p.StandardError.ReadToEnd();
         p.WaitForExit();
         Assert.True(p.ExitCode == 0, $"FramesWithoutFfmpeg failed ({p.ExitCode}): {err}");
-        Assert.StartsWith("Timecode List:", output.Result);
+        Assert.StartsWith("Timecode List:", await output);
     }
 
     // The frames of a file, as a decoder gives them, and the file's result for them.
