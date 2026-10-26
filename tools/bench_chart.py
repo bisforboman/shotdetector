@@ -58,7 +58,8 @@ def ratios(run: dict, variant: str | None) -> list[tuple[str, float]]:
     """(film, ratio) of the default tool's rows in a variant (None: every row, a bench.py file)."""
     out = []
     for r in run.get("rows") or []:
-        if (variant is None or r.get("variant") == variant) and r.get("tool") == TOOL and isinstance(r.get("ratio"), (int, float)):
+        if (variant is None or r.get("variant") == variant) and r.get("tool") == TOOL \
+                and isinstance(r.get("ratio"), (int, float)):
             out.append((film(r.get("video")), float(r["ratio"])))
     return out
 
