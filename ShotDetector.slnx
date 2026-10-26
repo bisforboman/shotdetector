@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/micro/ShotDetector.Micro.csproj" />
+    <Project Path="benchmarks/wasm/Native/ShotDetector.WasmBench.Native.csproj" />
   </Folder>
   <Folder Name="/examples/">
     <Project Path="examples/ShotDetector.Example/ShotDetector.Example.csproj" />

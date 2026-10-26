@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Bench.cs natively, with the frames read from a file: the reference the WebAssembly run's CSVs must equal, and its
+    timings (benchmark.yml, ../README.md). In ShotDetector.slnx so CI builds the shared code (the wasm project needs a
+    workload and isn't).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ShotDetector.WasmBench</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Bench.cs" Link="Bench.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\ShotDetector\ShotDetector.csproj" />
+    <ProjectReference Include="..\..\..\src\ShotDetector.FastYuv\ShotDetector.FastYuv.csproj" />
+  </ItemGroup>
+
+</Project>
