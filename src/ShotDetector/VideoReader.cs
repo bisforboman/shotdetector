@@ -594,7 +594,11 @@ internal sealed partial class VideoReader
         // from a decoding pass, which only such files pay for.
         _ptsFromFrames = probed?.PtsFromFrames ?? missingPts;
         if (missingPts)
-            pts = _probesInProcess ? InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions) : FrameTimestamps(ffprobe, path, _inputOptions, cancellationToken);
+        {
+            o.OnFrameTimestamps?.Invoke();
+            pts = _probesInProcess ? InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions, cancellationToken) : FrameTimestamps(ffprobe, path, _inputOptions, cancellationToken);
+        }
+
         _pts = probed?.Pts ?? [.. pts];
         Probed = probed ?? (Streaming || headersOnly ? null : new(stream, _pts, _ptsFromFrames, _xvidIdct, _frameTags));
     }

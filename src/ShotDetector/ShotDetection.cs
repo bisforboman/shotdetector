@@ -366,6 +366,9 @@ public sealed record DetectionOptions
     /// <summary>Tests: called each time a reader probes the file (not when it takes another reader's probe).</summary>
     internal Action? OnProbe { get; init; }
 
+    /// <summary>Tests: called as a reader starts its decoding pass for per-frame timestamps (packets without a pts).</summary>
+    internal Action? OnFrameTimestamps { get; init; }
+
     /// <summary>
     /// compare.py on Windows (the CLI's hidden <c>--always-bt601</c>): convert with BT.601 coefficients whatever the
     /// colour tags say, as the Windows OpenCV wheel does (docs/decisions/); decodes with the ffmpeg executable.
