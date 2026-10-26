@@ -44,7 +44,19 @@ rows[]          one per film x tool x variant, bench.py's table:
 micro           benchmarks/micro on the films and the synthetic set, or null when it didn't run:
                 { rounds, cpus, arch, inputs_sha256, outputs_sha256,
                   cases[]: { set (real | synthetic), case, us_per_frame (best round), outputs_sha256_16 } }
+wasm            benchmarks/wasm (x64 only; null or missing elsewhere and in older files): ShotDetection.Detect on
+                decoded frames (FastYuv's converter) on browser-wasm, AOT-compiled, under Node, and natively on the same
+                frames (the first `frames` of the film, pre-decoded to raw yuv420p and read from a file):
+                { runtime, native_runtime (.NET's description), node (`node --version`), aot (true), runs (best of N),
+                  cases[]: { film (file name), detector (content | adaptive), stats, width, height, frames,
+                             wall_ms (best run), read_ms (reading the frames from the file, in that run),
+                             detect_ms (wall_ms - read_ms), ns_per_pixel (detect_ms per pixel of all frames),
+                             gc_peak_mb (managed heap's peak, GC.GetTotalMemory, over the runs),
+                             wasm_heap_mb (the WebAssembly memory at the end of that film's process: its peak),
+                             shots, native_detect_ms, native_ns_per_pixel (the native run's, same frames),
+                             ratio (ns_per_pixel / native_ns_per_pixel),
+                             csv_equal (the scene and stats CSVs equal the native run's, byte for byte) } }
 ```
 
-A variant, row or micro section is missing when its step failed in that run. Numbers belong to the runner they were
+A variant, row, micro or wasm section is missing when its step failed in that run. Numbers belong to the runner they were
 taken on: GitHub's hosted runners are a mix of CPUs, so compare like with like (`runner.cpu`).
