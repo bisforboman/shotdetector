@@ -298,5 +298,13 @@
         @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'ArgumentOutOfRangeException.ThrowIfNegativeOrZero(channels);'; Replace = ''; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'if (interleaved.Length % _inChannels != 0)'; Replace = 'if (false)'; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'throw new InvalidOperationException("Finish was called: start a new builder.");'; Replace = '{ }'; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
+
+        # FrameReader: a whole-file job's token reaches FFmpeg's interrupt callback, so a waiting network read stops (issue #522)
+        @{ File = 'src/FrameReader/Audio.cs'; Find = 'InputOptions = o.InputOptions, CancellationToken = cancellationToken }'; Replace = 'InputOptions = o.InputOptions }'; Tests = 'CancellationTests.AudioConvertStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/Video.cs'; Find = 'new ProbeOptions { CancellationToken = cancellationToken }'; Replace = 'null'; Tests = 'CancellationTests.VideoTranscodeStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/Video.cs'; Find = 'Deinterlace = deinterlace, CancellationToken = cancellationToken }'; Replace = 'Deinterlace = deinterlace }'; Tests = 'CancellationTests.VideoTranscodeStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/Video.cs'; Find = 'new AudioReaderOptions { CancellationToken = cancellationToken }'; Replace = 'null'; Tests = 'CancellationTests.VideoTranscodeStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/MediaProbe.cs'; Find = 'options = (options ?? new ProbeOptions()) with { CancellationToken = cancellationToken };'; Replace = '{ }'; Tests = 'CancellationTests.ProbeJsonStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/Demuxer.cs'; Find = 'if (cancellationToken.IsCancellationRequested)'; Replace = 'if (false)'; Tests = 'CancellationTests.ProbeJsonStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
     )
 }
