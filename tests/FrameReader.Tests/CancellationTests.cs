@@ -85,8 +85,10 @@ public class CancellationTests
             TestMedia.Write(ts, new TestMediaOptions { Video = ["testsrc2=d=10"], Audio = "sine=duration=10", AudioEncoder = "aac", VideoEncoder = "mpeg4", VideoQuality = 3 });
 
             var options = new VideoTranscodeOptions { Encoder = "mpeg4" };
+
+            // The probe finds the streams in half the file: it waits only when it gets less.
             await StopsWhenCancelled(ts,
-                2,
+                whole == 0 ? 16 : 2,
                 (url, token) => Video.TranscodeAsync(url, Path.Combine(dir, "out.mkv"), options, token),
                 server => server.Requested(whole + 1),
                 whole);
