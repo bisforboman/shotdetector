@@ -80,11 +80,16 @@ jobs:
           echo "### ${{ matrix.rid }}: $(nproc) CPUs ($(lscpu | sed -n 's/^Model name: *//p' | head -1)), $(free -g | awk '/Mem:/ {print $2}') GB" >> "$GITHUB_STEP_SUMMARY"
           for d in content adaptive; do
             python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector $d --runs 3 --report bench.md --json bench-$d.json
-            { echo "### detect-$d, all $(nproc) CPUs"; cat bench.md; } >> "$GITHUB_STEP_SUMMARY"
+            # Above content's table, a chart of shotdetect's time against scenedetect's per film (tools/bench_chart.py).
+            { echo "### detect-$d, all $(nproc) CPUs"
+              if [ $d = content ]; then python tools/bench_chart.py run --rid ${{ matrix.rid }} bench-$d.json || true; fi
+              cat bench.md; } >> "$GITHUB_STEP_SUMMARY"
           done
           # Per-frame stats: scenedetect -s against shotdetect --stats in-process; edges on every frame.
           python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --stats --runs 3 --report bench-stats.md --json bench-content-stats.json
-          { echo "### detect-content --stats, all $(nproc) CPUs"; cat bench-stats.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### detect-content --stats, all $(nproc) CPUs"
+            python tools/bench_chart.py run --rid ${{ matrix.rid }} bench-content-stats.json || true
+            cat bench-stats.md; } >> "$GITHUB_STEP_SUMMARY"
           # A small container's view: both tools and their children pinned to 2 CPUs (issue #12). bench.py leaves out
           # --parallel and --sequential there: chunks need 4 CPUs, so they'd repeat the default's row.
           taskset -c 0,1 python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector content --runs 3 --report bench2.md --json bench-content-2cpu.json
@@ -194,6 +199,7 @@ jobs:
           files=("$RUNS"/*.json)
           if [ ${#files[@]} -eq 0 ]; then echo "no runner recorded data"; exit 0; fi
           cp benchmarks/bench-data.md "$RUNNER_TEMP/README.md"
+          cp tools/bench_chart.py "$RUNNER_TEMP/"  # for the trend: the bench-data checkout below has no tools/
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           for attempt in 1 2 3 4 5; do
@@ -218,3 +224,13 @@ jobs:
             sleep $((attempt * 5))
           done
           exit 1
+
+      # The trend over main's last runs: bench-data's runs/ with this run's files (pushed or not), as charts in this
+      # job's summary (tools/bench_chart.py). Nothing when the step above stopped before checking the branch out.
+      - name: Trend
+        if: ${{ !cancelled() }}
+        run: |
+          shopt -s nullglob
+          files=(runs/*.json)
+          [ ${#files[@]} -gt 0 ] && [ -f "$RUNNER_TEMP/bench_chart.py" ] || { echo "no runs, no trend"; exit 0; }
+          { echo "### Trend on main"; python3 "$RUNNER_TEMP/bench_chart.py" trend --last 12 "${files[@]}"; } >> "$GITHUB_STEP_SUMMARY" || true
