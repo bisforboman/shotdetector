@@ -233,4 +233,5 @@ jobs:
           shopt -s nullglob
           files=(runs/*.json)
           [ ${#files[@]} -gt 0 ] && [ -f "$RUNNER_TEMP/bench_chart.py" ] || { echo "no runs, no trend"; exit 0; }
-          { echo "### Trend on main"; python3 "$RUNNER_TEMP/bench_chart.py" trend --last 12 "${files[@]}"; } >> "$GITHUB_STEP_SUMMARY" || true
+          charts=$(python3 "$RUNNER_TEMP/bench_chart.py" trend --last 12 "${files[@]}" || true)
+          [ -z "$charts" ] || printf '### Trend on main\n\n%s\n' "$charts" >> "$GITHUB_STEP_SUMMARY"

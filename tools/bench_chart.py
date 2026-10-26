@@ -63,7 +63,8 @@ def ratios(run: dict, variant: str | None) -> list[tuple[str, float]]:
     return out
 
 
-def chart(title: str, labels: list[str], values: list[float], kind: str, y: str, ref: float | None = 1.0) -> str:
+def chart(title: str, labels: list[str], values: list[float], kind: str, y: str,
+          ref: float | None = 1.0) -> str:
     """One xychart-beta block; `ref` draws a constant line (1: as fast as scenedetect) and keeps it on the y axis."""
     top = max(values) * 1.1
     if ref is not None:
