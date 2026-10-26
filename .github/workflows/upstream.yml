@@ -279,7 +279,7 @@ jobs:
 
           To move to it (one PR):
           - [ ] The analyzers' version in \`Directory.Packages.props\` and the tool's in \`.config/dotnet-tools.json\`.
-          - [ ] \`dotnet tool restore\`, \`dotnet tool run stylebro-migrate format ShotDetector.slnx\`, then \`--verify-no-changes\` and a build with warnings as errors.
+          - [ ] \`dotnet tool restore\`, \`dotnet tool run bro format ShotDetector.slnx\`, then \`--verify-no-changes\` and a build with warnings as errors.
           - [ ] Keep today's style where a new rule or setting would change it across the code (\`.editorconfig\`), and list the files the formatter changed in the PR.
           EOF
           )"

@@ -87,7 +87,7 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   pre-commit hook formats the staged .cs files (`git config core.hooksPath .githooks` once per clone; ~15-30 s, only
   when .cs files are staged; it stops a commit whose .cs files also have unstaged changes, and one that rewrites a file's line endings, as CI's
   line-endings job does). By hand: `dotnet tool run
-  stylebro-migrate format ShotDetector.slnx` (the version is in .config/dotnet-tools.json, with the analyzers' in
+  bro format ShotDetector.slnx` (StyleBro.Tool; `stylebro-migrate` until 0.8.0) (the version is in .config/dotnet-tools.json, with the analyzers' in
   Directory.Packages.props; both move in one PR, by hand: Dependabot's NuGet updater only moves a prerelease to
   prereleases of the same version or a stable, so upstream.yml files an issue for a newer StyleBro); CI checks it
   with `--verify-no-changes` (clean on Linux too since StyleBro 0.6.0). Feedback on StyleBro goes to its GitHub issues.
