@@ -294,6 +294,19 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
     }
 
+    // A detector's real stats: WriteCsv streams them (positions in order) and gives Csv's text, which the merging path gives too.
+    [Theory]
+    [InlineData(DetectorKind.Adaptive)]
+    [InlineData(DetectorKind.Content)]
+    [InlineData(DetectorKind.Threshold)]
+    [InlineData(DetectorKind.Histogram)]
+    public void StatsCsvIsTheSameWrittenRowByRow(DetectorKind detector)
+    {
+        var result = ShotDetection.Detect(clips.ThreeShots, new() { Detector = detector, CollectStats = true });
+        string csv = StatsTests.Csv(result.Stats!, result.Video.Position);
+        Assert.InRange(csv.Count(c => c == '\n'), 150, 151); // the header and a row a frame, but the first's for some detectors
+    }
+
     // Streamed containers: the same frames, timestamps and stats as the file they came from.
     [Theory]
     [InlineData("mkv")]

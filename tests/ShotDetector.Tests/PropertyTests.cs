@@ -76,7 +76,7 @@ public class PropertyTests
                 .Append('\n');
         }
 
-        Assert.Equal(expected.ToString(), stats.Csv(Position));
+        Assert.Equal(expected.ToString(), StatsTests.Csv(stats, Position));
     });
 
     // sorted(set(cuts)): ascending, no two equal, every cut represented by the first cut equal to it.

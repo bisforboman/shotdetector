@@ -1,5 +1,5 @@
+using System.Diagnostics;
 using System.Globalization;
-using System.Text;
 
 namespace ShotDetector;
 
@@ -65,17 +65,69 @@ public sealed class Stats
             : null;
     }
 
+    /// <summary>The stats file's text: <see cref="WriteCsv(TextWriter, Func{int, FrameTime})"/> into a string.</summary>
     /// <param name="position">Maps a frame index to its position (rows are keyed by position).</param>
     public string Csv(Func<int, FrameTime> position)
     {
-        int[] sorted = [.. Enumerable.Range(0, _names.Count).Order(Comparer<int>.Create((a, b) => string.CompareOrdinal(_names[a], _names[b])))]; // Python sorts by code point
-        var sb = new StringBuilder("Frame Number,Timecode");
-        foreach (int k in sorted)
-            sb.Append(',').Append(_names[k]);
-        sb.Append('\n');
-        int header = sb.Length;
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        WriteCsv(writer, position);
+        return writer.ToString();
+    }
 
-        // Usually every row's position comes after the one before: each row is its own, in frame order, written as it comes.
+    /// <summary>
+    /// Writes the stats file (<see cref="Csv"/>'s text, character for character) to <paramref name="writer"/>, a row at a
+    /// time, without building the whole file first.
+    /// </summary>
+    /// <param name="writer">Where the text goes.</param>
+    /// <param name="position">Maps a frame index to its position (rows are keyed by position).</param>
+    /// <remarks>
+    /// It streams while every recorded frame's position comes after the one before (by seconds, then frame number): a
+    /// first pass over the positions checks that, then each row is written as it is formatted. Where positions repeat or
+    /// go back (two encodes joined), rows sharing a position are merged and all of them sorted before the first is
+    /// written: their values are held in memory (not their text) and the rows still go to the writer one at a time.
+    /// <paramref name="position"/> is called up to twice per recorded frame and must give the same answer each time.
+    /// The caller owns the writer: this method neither flushes nor disposes it.
+    /// </remarks>
+    public void WriteCsv(TextWriter writer, Func<int, FrameTime> position) => WriteCsv(writer, position, merge: false);
+
+    /// <param name="writer">Where the text goes.</param>
+    /// <param name="position">Maps a frame index to its position (rows are keyed by position).</param>
+    /// <param name="merge">Takes the merging path even where positions come in order (tests compare the two).</param>
+    internal void WriteCsv(TextWriter writer, Func<int, FrameTime> position, bool merge)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(position);
+        int[] sorted = [.. Enumerable.Range(0, _names.Count).Order(Comparer<int>.Create((a, b) => string.CompareOrdinal(_names[a], _names[b])))]; // Python sorts by code point
+        writer.Write("Frame Number,Timecode");
+        foreach (int k in sorted)
+        {
+            writer.Write(',');
+            writer.Write(_names[k]);
+        }
+
+        writer.Write('\n');
+        if (merge || !InOrder(position))
+        {
+            MergedByPosition(writer, sorted, position);
+            return;
+        }
+
+        // Every row's position comes after the one before: each row is its own, in frame order, written as it comes.
+        for (int i = 0; i < _length; i++)
+        {
+            if (_rows[i] == 0)
+                continue;
+            int[] keys = _orders[_rows[i]];
+            Position(writer, position(_first + i));
+            foreach (int k in sorted)
+                Value(writer, Array.IndexOf(keys, k) >= 0 ? _columns[k][i] : null);
+            writer.Write('\n');
+        }
+    }
+
+    /// <summary>Whether every recorded frame's position comes <see cref="After"/> the one before.</summary>
+    bool InOrder(Func<int, FrameTime> position)
+    {
         FrameTime? previous = null;
         for (int i = 0; i < _length; i++)
         {
@@ -83,20 +135,11 @@ public sealed class Stats
                 continue;
             var at = position(_first + i);
             if (!After(at, previous))
-            {
-                sb.Length = header;
-                return MergedByPosition(sb, sorted, position);
-            }
-
+                return false;
             previous = at;
-            int[] keys = _orders[_rows[i]];
-            Position(sb, at);
-            foreach (int k in sorted)
-                Value(sb, Array.IndexOf(keys, k) >= 0 ? _columns[k][i] : null);
-            sb.Append('\n');
         }
 
-        return sb.ToString();
+        return true;
     }
 
     /// <summary>
@@ -113,7 +156,7 @@ public sealed class Stats
     /// when the exact times are), so a later frame's metrics overwrite an earlier one's at the same position, key by key;
     /// metrics the later frame doesn't set keep the earlier values. Rows sorted by (Seconds, FrameNum), stably.
     /// </summary>
-    string MergedByPosition(StringBuilder sb, int[] sorted, Func<int, FrameTime> position)
+    void MergedByPosition(TextWriter writer, int[] sorted, Func<int, FrameTime> position)
     {
         var byPosition = new Dictionary<(long, long), int>();
         var rows = new List<(FrameTime At, double?[] Values)>();
@@ -134,18 +177,47 @@ public sealed class Stats
 
         foreach (var (at, values) in rows.OrderBy(p => p.At.Seconds).ThenBy(p => p.At.FrameNum))
         {
-            Position(sb, at);
+            Position(writer, at);
             foreach (int k in sorted)
-                Value(sb, values[k]);
-            sb.Append('\n');
+                Value(writer, values[k]);
+            writer.Write('\n');
         }
-
-        return sb.ToString();
     }
 
-    static void Position(StringBuilder sb, FrameTime at) => sb.Append(at.FrameNum + 1).Append(',').Append(at.Timecode());
+    static void Position(TextWriter writer, FrameTime at)
+    {
+        Span<char> number = stackalloc char[20];
+        bool formatted = (at.FrameNum + 1).TryFormat(number, out int length, provider: CultureInfo.InvariantCulture);
+        Debug.Assert(formatted, "a long has at most 20 characters");
+        writer.Write(number[..length]);
+        writer.Write(',');
+        writer.Write(at.Timecode());
+    }
 
-    static void Value(StringBuilder sb, double? value) => sb.Append(',').Append(value is { } v ? PyFloat(v) : "None");
+    static void Value(TextWriter writer, double? value)
+    {
+        writer.Write(',');
+        if (value is { } v)
+            WritePyFloat(writer, v);
+        else
+            writer.Write("None");
+    }
+
+    /// <summary><see cref="PyFloat"/>'s text, without a string where it is .NET's own ("R", no exponent) plus ".0".</summary>
+    internal static void WritePyFloat(TextWriter writer, double d)
+    {
+        Span<char> buffer = stackalloc char[32];
+        if (Math.Abs(d) < 1e16 && d.TryFormat(buffer, out int length, "R", CultureInfo.InvariantCulture) && buffer[..length].IndexOf('E') < 0)
+        {
+            writer.Write(buffer[..length]);
+            if (buffer[..length].IndexOf('.') < 0)
+                writer.Write(".0");
+        }
+        else
+        {
+            writer.Write(PyFloat(d));
+        }
+    }
 
     /// <summary>The key's column, added on its first use.</summary>
     int KeyIndex(string key)
