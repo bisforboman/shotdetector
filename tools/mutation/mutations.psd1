@@ -147,6 +147,11 @@
         @{ File = 'src/ShotDetector/Stats.cs'; Find = ' && at.TbDen <= 1L << 53'; Replace = ''; Tests = 'StatsTests.EqualPositionsWithDifferentSecondsShareARow' }
         @{ File = 'src/ShotDetector/Stats.cs'; Find = ' && at.Value is >= -(1L << 53) and <= 1L << 53'; Replace = ''; Tests = 'StatsTests.EqualPositionsWithDifferentSecondsShareARow' }
         @{ File = 'src/ShotDetector/Stats.cs'; Find = 'at.Seconds > p.Seconds || (at.Seconds == p.Seconds && at.FrameNum > p.FrameNum)'; Replace = 'at.Seconds >= p.Seconds'; Tests = 'StatsTests.ARepeatedPositionIsOneRow' }
+        # WriteCsv streams (each row written before the next position is asked for) while positions come in order
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = 'if (merge || !InOrder(position))'; Replace = 'if (true)'; Tests = 'StatsTests.WriteCsvWritesEachRowBeforeFormattingTheNext' }
+        # WritePyFloat writes .NET's own text only where PyFloat would (below 1e16, no exponent)
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = 'if (Math.Abs(d) < 1e16 && '; Replace = 'if ('; Tests = 'StatsTests.WritePyFloatIsPyFloat' }
+        @{ File = 'src/ShotDetector/Stats.cs'; Find = " && buffer[..length].IndexOf('E') < 0)"; Replace = ')'; Tests = 'StatsTests.WritePyFloatIsPyFloat' }
         @{ File = 'src/ShotDetector/Stats.cs'; Find = 'if (Array.IndexOf(_orders[state], k) < 0)'; Replace = 'if (true)'; Tests = 'StatsTests.EntriesKeepEachFramesKeyOrder' }
         @{ File = 'src/ShotDetector/Detectors.cs'; Find = 'average = stored;'; Replace = '{ }'; Tests = 'ThresholdDetectorTests.RepeatedPositionReusesTheStoredAverageWithStats' }
         @{ File = 'src/ShotDetector/FrameTime.cs'; Find = 'return (Value / g, TbDen / g);'; Replace = 'return (Value, TbDen);'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }

@@ -407,7 +407,7 @@ public class ThresholdDetectorTests
         stats.Set(0, "b", 2);
         stats.Set(2, "a", 3);                  // later frame at position 0: overwrites a, keeps b
         stats.Set(1, "a", 4);
-        Assert.Equal("Frame Number,Timecode,a,b\n1,00:00:00.000,3.0,2.0\n2,00:00:00.040,4.0,None\n", stats.Csv(position));
+        Assert.Equal("Frame Number,Timecode,a,b\n1,00:00:00.000,3.0,2.0\n2,00:00:00.040,4.0,None\n", StatsTests.Csv(stats, position));
     }
 }
 
