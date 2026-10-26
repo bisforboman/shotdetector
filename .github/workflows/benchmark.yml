@@ -4,7 +4,8 @@ name: Benchmark
 # default mode (in-process, with our bundled FFmpeg libraries) and with the ffmpeg executable, on the real-world
 # films (tools/bench.py, best of 3), in the run summary, plus both with --stats (the content detector then computes
 # edges for every frame, so EdgeDetector's speed is tracked); README "Performance" comes from it. Then
-# benchmarks/micro, the resize and edge detector alone. On demand and weekly: a hosted runner is quieter than a
+# benchmarks/micro, the resize and edge detector alone, and on x64 the frame-source path on browser-wasm under Node
+# (benchmarks/wasm). On demand and weekly: a hosted runner is quieter than a
 # desktop, but numbers still vary by a few percent between runs. Each runner's numbers also go into one JSON file
 # (tools/bench_record.py), an artifact, which runs on main commit to the bench-data branch (runs/, its README:
 # benchmarks/bench-data.md), so their history can be charted.
@@ -98,6 +99,49 @@ jobs:
           dotnet run -c Release --no-build --project benchmarks/micro -- --films samples/realworld | tee micro.txt
           { echo "### benchmarks/micro, us per frame"; echo '```text'; cat micro.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
+      # ShotDetection.Detect on decoded frames (FastYuv's converter: what a page decoding in the browser runs) on
+      # browser-wasm, compiled ahead of time with the defaults (SIMD, exception handling), under Node, and the same code
+      # natively (benchmarks/wasm, its README): the first frames of two films decoded once to raw yuv420p and read from
+      # the file. The step fails when the WebAssembly run's CSVs differ from the native run's. x64 only, in this job: the
+      # ARM job takes longer anyway, so the workflow's time hardly grows.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        if: matrix.rid == 'linux-x64'
+        with:
+          node-version: '22'
+
+      - name: WebAssembly
+        if: matrix.rid == 'linux-x64'
+        run: |
+          set -o pipefail
+          dotnet workload install wasm-tools
+          publish() { dotnet publish benchmarks/wasm/Wasm -c Release -v q -nologo -warnaserror -p:RunAOTCompilation=true; }
+          # NETSDK1147: the workload can list as installed with its packs missing; installing it again brings them.
+          publish || { dotnet workload install wasm-tools; publish; }
+          dotnet build benchmarks/wasm/Native -c Release -v q -nologo
+          bundle=benchmarks/wasm/Wasm/bin/Release/net10.0/browser-wasm/AppBundle
+          raw="$RUNNER_TEMP/frames.yuv"
+          i=0
+          for spec in bbb_640x360_h264.mp4:2000 sintel_trailer_1920x1080_h264.mp4:1000; do
+            film=${spec%%:*} frames=${spec##*:} i=$((i + 1))
+            # In ffprobe's own order, whatever the list's: width, height, color_space, avg_frame_rate.
+            IFS=, read -r w h cs rate < <(ffprobe -v error -select_streams v:0 -show_entries stream=width,height,color_space,avg_frame_rate -of csv=p=0 "samples/realworld/$film")
+            ffmpeg -v error -i "samples/realworld/$film" -frames:v "$frames" -f rawvideo -pix_fmt yuv420p -y "$raw"
+            input="$film=$raw,$w,$h,$rate,$frames,$cs"
+            dotnet benchmarks/wasm/Native/bin/Release/net10.0/ShotDetector.WasmBench.Native.dll "$input" > "native-run-$i.json"
+            # The runtime's own notes come on stdout, starting MONO_WASM.
+            node "$bundle/main.mjs" "$input" | { grep -v '^MONO_WASM:' || true; } > "wasm-run-$i.json"
+          done
+          rm -f "$raw"
+          rm -rf benchmarks/wasm/*/bin benchmarks/wasm/*/obj
+          status=0
+          python tools/bench_record.py --wasm-report --wasm wasm-run-1.json --wasm wasm-run-2.json \
+            --wasm-native native-run-1.json --wasm-native native-run-2.json > wasm.md || status=$?
+          { echo "### WebAssembly (AOT, Node $(node --version)) and native: Detect on decoded frames, best of 3"
+            echo "ns/px: detection alone, per pixel of the frames (the file reads left out); wasm memory: the process's WebAssembly memory at the end"
+            echo; cat wasm.md; } >> "$GITHUB_STEP_SUMMARY"
+          [ $status -eq 0 ] || echo "::error title=WebAssembly benchmark::a case's CSVs differ from the native run's, or a case is missing (summary)"
+          exit $status
+
       # Everything above as one JSON file (schema: benchmarks/bench-data.md), also when a step failed after some ran.
       - name: Record
         if: ${{ !cancelled() }}
@@ -106,9 +150,12 @@ jobs:
           for v in content adaptive content-stats content-2cpu; do
             [ -f bench-$v.json ] && variants="$variants $v=bench-$v.json"
           done
-          [ -n "$variants" ] || [ -f micro.txt ] || { echo "nothing measured, nothing recorded"; exit 0; }
+          wasm=""
+          for f in wasm-run-*.json; do [ -f "$f" ] && wasm="$wasm --wasm $f"; done
+          for f in native-run-*.json; do [ -f "$f" ] && wasm="$wasm --wasm-native $f"; done
+          [ -n "$variants$wasm" ] || [ -f micro.txt ] || { echo "nothing measured, nothing recorded"; exit 0; }
           mkdir -p bench-data
-          python tools/bench_record.py --rid ${{ matrix.rid }} --micro micro.txt \
+          python tools/bench_record.py --rid ${{ matrix.rid }} --micro micro.txt $wasm \
             --out "bench-data/$(date -u +%F)-$GITHUB_RUN_ID-${{ matrix.rid }}.json" $variants
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

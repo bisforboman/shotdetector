@@ -3,9 +3,12 @@
 Combines bench.py's --json files (one per variant: all CPUs, --stats, 2 CPUs...), benchmarks/micro's output and
 the run's context (commit, version, runner, tool versions) into the schema the bench-data README describes.
 
-Usage: python tools/bench_record.py --rid linux-x64 --out run.json [--micro micro.txt] label=bench.json...
+Usage: python tools/bench_record.py --rid linux-x64 --out run.json [--micro micro.txt]
+           [--wasm wasm.json... --wasm-native native.json...] label=bench.json...
 The labels name the variants (benchmark.yml: content, adaptive, content-stats, content-2cpu).
-`--micro-only micro.txt` prints the parsed micro output, to check the parser."""
+`--micro-only micro.txt` prints the parsed micro output, to check the parser.
+`--wasm-report` (with --wasm and --wasm-native, no --out) prints the WebAssembly cases as a Markdown table and exits 1
+when a case's CSVs differ from the native run's or a case is missing on either side (benchmarks/wasm)."""
 import argparse
 import json
 import os
@@ -38,6 +41,53 @@ def parse_micro(text: str) -> dict:
     return out
 
 
+def wasm_section(wasm_files: list[str], native_files: list[str]) -> dict:
+    """benchmarks/wasm's output: the WebAssembly run's cases (one file per film, so each has its process's WebAssembly
+    memory) with the native run's on the same frames, matched by film, detector and stats."""
+    def load(files):
+        runs = [json.loads(l) for f in files if Path(f).exists()
+                for l in Path(f).read_text(encoding="utf-8").splitlines() if l.startswith("{")]
+        cases = {}
+        for r in runs:
+            for c in r["cases"]:
+                cases[(c["film"], c["detector"], c["stats"])] = {**c, "heap_bytes": r.get("heap_bytes")}
+        return runs, cases
+
+    wasm_runs, wasm = load(wasm_files)
+    native_runs, native = load(native_files)
+    out = {"runtime": wasm_runs[0]["runtime"] if wasm_runs else None,
+           "native_runtime": native_runs[0]["runtime"] if native_runs else None,
+           "node": sh("node", "--version").strip() or None, "aot": True,
+           "runs": wasm_runs[0]["runs"] if wasm_runs else None, "cases": []}
+    for key in list(wasm) + [k for k in native if k not in wasm]:
+        w, n = wasm.get(key), native.get(key)
+        c = w or n
+        out["cases"].append({
+            "film": c["film"], "detector": c["detector"], "stats": c["stats"], "width": c["width"], "height": c["height"],
+            "frames": c["frames"],
+            "wall_ms": w and w["wall_ms"], "read_ms": w and w["read_ms"], "detect_ms": w and w["detect_ms"],
+            "ns_per_pixel": w and w["ns_per_pixel"], "gc_peak_mb": w and round(w["gc_peak_bytes"] / 2**20, 1),
+            "wasm_heap_mb": w and w["heap_bytes"] and round(w["heap_bytes"] / 2**20, 1), "shots": c["shots"],
+            "native_detect_ms": n and n["detect_ms"], "native_ns_per_pixel": n and n["ns_per_pixel"],
+            "ratio": round(w["ns_per_pixel"] / n["ns_per_pixel"], 2) if w and n and n["ns_per_pixel"] else None,
+            "csv_equal": bool(w and n and w["frames"] == n["frames"] and w["scene_csv_sha256"] == n["scene_csv_sha256"]
+                              and w["stats_csv_sha256"] == n["stats_csv_sha256"]),
+        })
+    return out
+
+
+def wasm_report(section: dict) -> tuple[str, bool]:
+    """The step summary's table, and whether every case's CSVs equal the native run's."""
+    lines = ["| film | detector | frames | wasm ns/px | native ns/px | wasm / native | read ms | wasm memory MB | CSVs equal |",
+             "|---|---|---:|---:|---:|---:|---:|---:|---|"]
+    for c in section["cases"]:
+        lines.append(f"| {c['film']} | {c['detector']}{' --stats' if c['stats'] else ''} | {c['frames']} | "
+                     f"{c['ns_per_pixel']} | {c['native_ns_per_pixel']} | {c['ratio']} | {c['read_ms']} | "
+                     f"{c['wasm_heap_mb']} | {'yes' if c['csv_equal'] else '**no**'} |")
+    ok = bool(section["cases"]) and all(c["csv_equal"] for c in section["cases"])
+    return "\n".join(lines) + "\n", ok
+
+
 def sh(*cmd: str) -> str:
     try:
         return subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
@@ -68,10 +118,17 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--micro")
     ap.add_argument("--micro-only")
+    ap.add_argument("--wasm", action="append", default=[])
+    ap.add_argument("--wasm-native", action="append", default=[])
+    ap.add_argument("--wasm-report", action="store_true")
     a = ap.parse_args()
     if a.micro_only:
         print(json.dumps(parse_micro(Path(a.micro_only).read_text(encoding="utf-8")), indent=1))
         return
+    if a.wasm_report:
+        table, ok = wasm_report(wasm_section(a.wasm, a.wasm_native))
+        print(table, end="")
+        sys.exit(0 if ok else 1)
     if not a.rid or not a.out:
         sys.exit("--rid and --out are needed")
     env = os.environ.get
@@ -91,6 +148,7 @@ def main():
         "variants": [],
         "rows": [],
         "micro": None,
+        "wasm": None,
     }
     for v in a.variants:
         label, _, path = v.partition("=")
@@ -105,9 +163,12 @@ def main():
                            "cpus": bench.get("cpus"), **r} for r in rows]
     if a.micro and Path(a.micro).exists():
         record["micro"] = parse_micro(Path(a.micro).read_text(encoding="utf-8"))
+    if any(Path(f).exists() for f in a.wasm + a.wasm_native):
+        record["wasm"] = wasm_section(a.wasm, a.wasm_native)
     Path(a.out).write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
     print(f"{a.out}: {len(record['rows'])} rows in {len(record['variants'])} variants, "
-          f"{len(record['micro']['cases']) if record['micro'] else 0} micro cases")
+          f"{len(record['micro']['cases']) if record['micro'] else 0} micro cases, "
+          f"{len(record['wasm']['cases']) if record['wasm'] else 0} wasm cases")
 
 
 if __name__ == "__main__":

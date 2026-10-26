@@ -19,10 +19,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The first recorded benchmark run (bench-data, 2026-10-25, run 40233248479) has `shotdetect --decoder process` at 1.04-1.30x scenedetect 0.7.2's time on every film, on x64 and ARM and on 2 CPUs, while the in-process default is 0.41-0.92x. It is the path library users get without FrameReader.Native, and both tools read ffmpeg's decoded frames, so the gap is ours: the rawvideo pipe, ffmpeg's BGR conversion and remap, the reader thread, or no chunking (sequential by design). Profile it on one film (CPU in ffmpeg vs in .NET, the pipe's throughput, what `remap` costs), then propose fixes with their expected gain
   - Status: Open
 
-- A WebAssembly benchmark in benchmark.yml: ShotDetector's frame-source path on browser-wasm AOT under Node
-  - Why: The browser's speed was asked about twice and measured only with one-off scratch harnesses (2026-10-24/25). The frame-source `Detect` needs no decoder: pre-decoded YUV frames from a sample (ffmpeg rawvideo at build time) through `Detect` with FastYuv under Node, timing conversion, resize and detection, recorded to bench-data with the other numbers, so a regression in the wasm path shows week to week (FastYuv's SIMD, #503/#508, took 7.8 to 3.4 ns a pixel there). Needs the wasm-tools workload on the runner (its NETSDK1147 re-install gotcha)
-  - Status: Open
-
 ## Waiting
 
 - Parallel detection above 8 CPUs: more than 4 chunks and 16 decoder threads in total
