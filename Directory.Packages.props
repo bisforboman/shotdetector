@@ -4,7 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
-    <PackageVersion Include="FsCheck.Xunit" Version="3.5.0" />
+    <PackageVersion Include="FsCheck.Xunit" Version="3.6.0" />
     <!-- The GitHubActions test logger in CI: each failed test as a check-run annotation (readable via the API). -->
     <PackageVersion Include="GitHubActionsTestLogger" Version="3.0.5" />
     <!-- FFmpeg 8's bindings: 9.x binds FFmpeg 9's libraries (other struct layouts), which ours aren't. -->
