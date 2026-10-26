@@ -82,7 +82,7 @@ public class CancellationTests
         await InTempFolder(async dir =>
         {
             string ts = Path.Combine(dir, "clip.ts");
-            TestMedia.Write(ts, new TestMediaOptions { Video = ["testsrc2=d=10"], Audio = "sine=duration=10", VideoEncoder = "mpeg4", VideoQuality = 3 });
+            TestMedia.Write(ts, new TestMediaOptions { Video = ["testsrc2=d=10"], Audio = "sine=duration=10", AudioEncoder = "aac", VideoEncoder = "mpeg4", VideoQuality = 3 });
 
             var options = new VideoTranscodeOptions { Encoder = "mpeg4" };
             await StopsWhenCancelled(ts,
