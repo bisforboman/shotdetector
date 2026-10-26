@@ -39,13 +39,14 @@ public static unsafe class Audio
     /// <param name="input">A file or URL FFmpeg can read.</param>
     /// <param name="output">The file to write; its name picks the container and encoder unless the options do.</param>
     /// <param name="options">Filter, encoder, bit rate; null: plain conversion.</param>
-    /// <param name="cancellationToken">Stops between frames (<see cref="OperationCanceledException"/>; the output is left unfinished).</param>
+    /// <param name="cancellationToken">Stops between frames, and interrupts opening the input and reads where FFmpeg waits (a
+    /// network read) (<see cref="OperationCanceledException"/>; the output is left unfinished).</param>
     /// <exception cref="FrameReaderException">The input can't be read or has no audio
     /// (<see cref="FrameReaderError.InvalidInput"/>), the libraries lack the encoder, a filter or the muxer, or writing failed.</exception>
     public static void Convert(string input, string output, AudioConvertOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new AudioConvertOptions();
-        using var reader = new AudioReader(input, new AudioReaderOptions { InputOptions = o.InputOptions });
+        using var reader = new AudioReader(input, new AudioReaderOptions { InputOptions = o.InputOptions, CancellationToken = cancellationToken });
         AVFormatContext* fmt = null;
         Encoder? encoder = null;
         AVFrame* feed = ffmpeg.av_frame_alloc();

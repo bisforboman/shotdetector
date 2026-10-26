@@ -34,7 +34,7 @@ public static unsafe class MediaProbe
     /// unknown values as ffprobe's JSON does. Opens each stream's decoder, as ffprobe does, for its coded size and the like.
     /// </summary>
     /// <param name="path">What to open; also the JSON's <c>filename</c>.</param>
-    /// <param name="options">Input options (<see cref="ProbeOptions.InputOptions"/>); the rest is unused.</param>
+    /// <param name="options">Input options (<see cref="ProbeOptions.InputOptions"/>) and <see cref="ProbeOptions.CancellationToken"/>; the rest is unused.</param>
     /// <exception cref="FrameReaderException">The libraries didn't load, or FFmpeg can't open the input.</exception>
     public static string ProbeJson(string path, ProbeOptions? options = null)
     {
@@ -51,8 +51,16 @@ public static unsafe class MediaProbe
     }
 
     /// <summary>As <see cref="ProbeJson"/>, off the calling thread.</summary>
-    public static Task<string> ProbeJsonAsync(string path, ProbeOptions? options = null, CancellationToken cancellationToken = default) =>
-        Task.Run(() => ProbeJson(path, options), cancellationToken);
+    /// <param name="path">What to open; also the JSON's <c>filename</c>.</param>
+    /// <param name="options">Input options (<see cref="ProbeOptions.InputOptions"/>) and cancellation; the rest is unused.</param>
+    /// <param name="cancellationToken">Interrupts opening and reading the input where FFmpeg waits (a network read):
+    /// <see cref="OperationCanceledException"/>. When it can't be cancelled, <see cref="ProbeOptions.CancellationToken"/> does.</param>
+    public static Task<string> ProbeJsonAsync(string path, ProbeOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.CanBeCanceled)
+            options = (options ?? new ProbeOptions()) with { CancellationToken = cancellationToken };
+        return Task.Run(() => ProbeJson(path, options), cancellationToken);
+    }
 
     static MediaInfo Probe(string path, StreamInput? io, ProbeOptions? options)
     {
