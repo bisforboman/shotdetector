@@ -59,10 +59,11 @@ public sealed record VideoFrameReaderOptions
 /// <summary>A decoded, converted frame: valid until the next read from its <see cref="VideoFrameReader"/>.</summary>
 public readonly ref struct VideoFrame
 {
-    internal VideoFrame(int index, long pts, TimeSpan time, int width, int height, FrameFormat format, ReadOnlySpan<byte> data)
+    internal VideoFrame(int index, long pts, TimeSpan time, int width, int height, FrameFormat format, ReadOnlySpan<byte> data, FrameTags tags)
     {
         (Index, Pts, Time, Width, Height, FrameFormat) = (index, pts, time, width, height, format);
         Data = data;
+        Tags = tags;
     }
 
     /// <summary>
@@ -91,7 +92,37 @@ public readonly ref struct VideoFrame
     /// <see cref="FrameFormat.Yuv420p"/> the three planes one after another). Copy it to keep it past the next read.
     /// </summary>
     public ReadOnlySpan<byte> Data { get; }
+
+    /// <summary>
+    /// The pixels' aspect ratio (width over height of one pixel) as ffmpeg's filters give it for this frame: the stream's
+    /// (else the codec's), swapped by a rotation and adjusted by scaling to another shape (0/1: not known, taken as square).
+    /// </summary>
+    public Rational SampleAspectRatio => Tags.Sar.den == 0 ? new(0, 1) : new(Tags.Sar.num, Tags.Sar.den);
+
+    /// <summary>FFmpeg's colour range name of <see cref="Data"/> (tv, pc); null if unspecified (taken as tv for YUV and gray).</summary>
+    public string? ColorRange => Name(ffmpeg.av_color_range_name(Tags.Range), Tags.Range == AVColorRange.AVCOL_RANGE_UNSPECIFIED);
+
+    /// <summary>FFmpeg's colour space (matrix) name of <see cref="Data"/> (bt709, gbr for RGB, ...); null if unspecified.</summary>
+    public string? ColorSpace => Name(ffmpeg.av_color_space_name(Tags.Space), Tags.Space == AVColorSpace.AVCOL_SPC_UNSPECIFIED);
+
+    /// <summary>FFmpeg's colour primaries name (bt709, ...), as the source's; null if unspecified.</summary>
+    public string? ColorPrimaries => Name(ffmpeg.av_color_primaries_name(Tags.Primaries), Tags.Primaries == AVColorPrimaries.AVCOL_PRI_UNSPECIFIED);
+
+    /// <summary>FFmpeg's transfer characteristic name (bt709, ...), as the source's; null if unspecified.</summary>
+    public string? ColorTransfer => Name(ffmpeg.av_color_transfer_name(Tags.Transfer), Tags.Transfer == AVColorTransferCharacteristic.AVCOL_TRC_UNSPECIFIED);
+
+    /// <summary>The tags ffmpeg's frame carries at this point of its filters (what an <see cref="ImageEncoder"/> needs).</summary>
+    internal FrameTags Tags { get; }
+
+    static string? Name(string? name, bool unspecified) => unspecified ? null : name;
 }
+
+/// <summary>A converted frame's aspect ratio and colour tags, as FFmpeg holds them.</summary>
+internal readonly record struct FrameTags(AVRational Sar,
+    AVColorRange Range,
+    AVColorSpace Space,
+    AVColorPrimaries Primaries,
+    AVColorTransferCharacteristic Transfer);
 
 /// <summary>Receives a frame read for the time at <paramref name="index"/> in the list given (<see cref="VideoFrameReader.ReadAt"/>).</summary>
 /// <param name="index">The time's position in the list.</param>
@@ -142,20 +173,25 @@ public sealed unsafe class VideoFrameReader : IDisposable
             throw new ArgumentException("Width and Height are both set (positive) or both left out.", nameof(options));
         if (_options.MaxWidth is { } max && (max <= 0 || _options.Width is not null))
             throw new ArgumentException("MaxWidth is positive and not set with Width and Height.", nameof(options));
-        _format = _options.FrameFormat switch
-        {
-            FrameFormat.Bgr24 => AVPixelFormat.AV_PIX_FMT_BGR24,
-            FrameFormat.Rgb24 => AVPixelFormat.AV_PIX_FMT_RGB24,
-            FrameFormat.Bgra32 => AVPixelFormat.AV_PIX_FMT_BGRA,
-            FrameFormat.Rgba32 => AVPixelFormat.AV_PIX_FMT_RGBA,
-            FrameFormat.Gray8 => AVPixelFormat.AV_PIX_FMT_GRAY8,
-            FrameFormat.Yuv420p => AVPixelFormat.AV_PIX_FMT_YUV420P,
-            _ => throw new ArgumentException($"Unknown format {_options.FrameFormat}.", nameof(options)),
-        };
+        _format = PixelFormat(_options.FrameFormat) is var f && f != AVPixelFormat.AV_PIX_FMT_NONE
+            ? f
+            : throw new ArgumentException($"Unknown format {_options.FrameFormat}.", nameof(options));
         if (_options.FrameRate is { } r && (r.Num <= 0 || r.Den <= 0))
             throw new ArgumentException("FrameRate is positive.", nameof(options));
         _decoder = open(_options.Decoder);
     }
+
+    /// <summary>FFmpeg's pixel format for a <see cref="FrameFormat"/>; NONE for an unknown one.</summary>
+    internal static AVPixelFormat PixelFormat(FrameFormat format) => format switch
+    {
+        FrameFormat.Bgr24 => AVPixelFormat.AV_PIX_FMT_BGR24,
+        FrameFormat.Rgb24 => AVPixelFormat.AV_PIX_FMT_RGB24,
+        FrameFormat.Bgra32 => AVPixelFormat.AV_PIX_FMT_BGRA,
+        FrameFormat.Rgba32 => AVPixelFormat.AV_PIX_FMT_RGBA,
+        FrameFormat.Gray8 => AVPixelFormat.AV_PIX_FMT_GRAY8,
+        FrameFormat.Yuv420p => AVPixelFormat.AV_PIX_FMT_YUV420P,
+        _ => AVPixelFormat.AV_PIX_FMT_NONE,
+    };
 
     /// <summary>The stream's time base in seconds per <see cref="VideoFrame.Pts"/> unit.</summary>
     public Rational TimeBase => _decoder.TimeBase;
@@ -473,7 +509,17 @@ public sealed unsafe class VideoFrameReader : IDisposable
             data = _packed;
         }
 
-        frame = new VideoFrame(_index, pts, time, width, height, _options.FrameFormat, data);
+        // The aspect ratio as the scale filter sets its output's: the input's times the change in shape (0/1 stays).
+        var sar = src->sample_aspect_ratio;
+        sar = sar.num != 0
+            ? ffmpeg.av_mul_q(new AVRational { num = height * src->width, den = width * src->height }, sar)
+            : new AVRational { num = 0, den = 1 };
+
+        // Gray as ffmpeg's link negotiates it: full range, no matrix, although swscale copies the luma unchanged.
+        var tags = _options.FrameFormat == FrameFormat.Gray8
+            ? new FrameTags(sar, AVColorRange.AVCOL_RANGE_JPEG, AVColorSpace.AVCOL_SPC_UNSPECIFIED, _out->color_primaries, _out->color_trc)
+            : new FrameTags(sar, _out->color_range, _out->colorspace, _out->color_primaries, _out->color_trc);
+        frame = new VideoFrame(_index, pts, time, width, height, _options.FrameFormat, data, tags);
     }
 
     /// <summary>The size frames come out at: Width and Height, or MaxWidth's cap, or the frame's own.</summary>
