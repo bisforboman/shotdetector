@@ -80,10 +80,9 @@ try {
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -vf scale=853:480 -c:v libvpx-vp9 -crf 32 -b:v 0 -row-mt 1 `
       -cpu-used 4 informational/sintel_oddwidth.mkv
     # Colour tags that change midway: two h264 halves joined, each SPS with its own (a spliced or concatenated stream).
-    # OpenCV converts every frame with its own, and so does in-process decoding and FastYuv through the executable
-    # (docs/decisions/2026-10-24-per-frame-tags-fastyuv.md, 2026-10-27-per-frame-tags-executable.md); through the
-    # executable, the default path takes the first frame's chroma siting for the whole video
-    # (docs/decisions/2026-10-19-per-frame-tags.md): its stats differ after the change, cuts don't. 8-bit with the
+    # OpenCV converts every frame with its own, and so does every path here (docs/decisions/2026-10-24-per-frame-tags-fastyuv.md,
+    # 2026-10-27-per-frame-tags-executable.md: through the executable, FastYuv from showinfo's per-frame tags and the
+    # default path by reading the file again from a siting change, as ffmpeg's scale filter takes one). 8-bit with the
     # matrix changing (BT.601 to BT.709), 10-bit with the siting (left to top left).
     foreach ($clip in @(
             @{ Name = "sintel_matrix_change.mkv"; Format = "yuv420p"; First = "colormatrix=bt470bg"; Second = "colormatrix=bt709" },

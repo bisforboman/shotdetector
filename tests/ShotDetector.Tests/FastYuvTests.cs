@@ -498,6 +498,10 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
                 if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
                     Assert.Equal(Hashes(core), Hashes(fast));
 
+                // The executable's scale filter was told the first frame's siting (the codec's, not the container's), so
+                // it never had to read again from a change.
+                Assert.Equal(0, core.SitingRestarts);
+
                 // No frame left the fast path: its frames' size and pixel format are the stream's (a false "other
                 // format" would read on a BGR pipeline with the same bytes, only slower).
                 Assert.Equal(pipeline.Length > 0 ? Enum.Parse<FramePipeline>(pipeline) : core.Pipeline, fast.Pipeline);

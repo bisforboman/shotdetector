@@ -12,8 +12,18 @@
 
         # 10-bit: chroma interpolated from where the frame says it sits, as OpenCV's sws_scale_frame does (executable
         # path: in_chroma_loc; in-process sampled rows: the position sws_scale_frame derives)
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(ChromaLocation is { } cl ? ":in_chroma_loc=" + cl : "")'; Replace = '""'; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(siting is { } cl ? ":in_chroma_loc=" + cl : "")'; Replace = '""'; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
         @{ File = 'src/FrameReader/BgrConverter.cs'; Find = 'ffmpeg.av_opt_set_int(_toRows, "src_h_chr_pos", hPos, 0);'; Replace = ''; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
+
+        # ... each frame's, where the siting changes midway: the executable reads a file again from the change with the
+        # new in_chroma_loc (its scale filter takes one), dropping the earlier encode's frames that share the later one's
+        # first times, counting its own frames and keeping the frame labels found so far; a stream says it couldn't
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'bool followSiting = !yuv && _pixelFormat is not ("yuv420p" or "yuvj420p");'; Replace = 'bool followSiting = false;'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'string? siting = restart is null ? ChromaLocation : restart.Location;'; Replace = 'string? siting = ChromaLocation;'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'bool waitingForSiting = restart is not null, stopped = false;'; Replace = 'bool waitingForSiting = false, stopped = false;'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'string[] limit = count is { } n && restart is null ?'; Replace = 'string[] limit = count is { } n ?'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (!Streaming && restart is null)'; Replace = 'if (!Streaming)'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'SitingChangeNotFollowed = true;'; Replace = ';'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
 
         # The first frame's chroma location and colour tags over the stream's (the container's header can contradict the
         # codec's, which OpenCV converts with): executable path's in_chroma_loc, FastYuv's colours and siting
@@ -233,7 +243,7 @@
 
         # MPEG-TS: a seek that lands after the wanted frame (no index) starts over from further back, on both paths
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (emitted == 0 && seek.Length > 1 && SeekLandedLate(pts * liveTimeBase, startFrame))'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (emitted == 0 && !again && seek.Length > 1)'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (emitted == 0 && !again && next is null && seek.Length > 1)'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'if (emitted == 0 && seeked && (SeekLandedLate(pts * timeBase, startFrame) || (_deinterlace && !before)))'; Replace = 'if (false)'; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'late |= seeked && emitted == 0;'; Replace = ''; Tests = 'RangeTests.SeekingInATransportStreamLosesNoFrames' }
         # ... also when it lands under half a frame late, nearer the next frame (a join of concatenated copies)
