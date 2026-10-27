@@ -17,7 +17,7 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - Chunk the ffmpeg-executable path: several ffmpeg processes, each with the exact `-copyts` + `select` seek and `-frames:v`, through `ScoreChunked` and its overlap check
   - Why: The profile (docs/decisions/2026-10-27-executable-path-fixes.md) found ffmpeg setting the pace on about 2.4 of 4 cores; two concurrent halves took ffmpeg alone about a fifth off on long films at the same CPU, and it is the only lever found for the 640x360 / whole-frame class, which doesn't use remap. Today `NotChunkable` refuses "decoded by the ffmpeg executable". Needs a CI job comparing chunked with sequential runs on the process path, in its gate's `needs`; the overlap check falls back to sequential on any mismatch
-  - Status: Open (after the loop-filter PR)
+  - Status: In progress (2026-10-27)
 
 ## Waiting
 
