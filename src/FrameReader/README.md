@@ -32,7 +32,7 @@ using FrameReader;
 
 using var reader = new VideoFrameReader("video.mp4", new VideoFrameReaderOptions
 {
-    Width = 160, Height = 90,          // both or neither (neither: the frame's own size)
+    Width = 160, Height = 90,          // both or neither (neither: the frame's own size; or MaxWidth, below)
     FrameFormat = FrameFormat.Gray8,   // Bgr24 (default), Rgb24, Bgra32, Rgba32, Gray8, Yuv420p
 });
 while (reader.TryRead(out var frame))
@@ -41,6 +41,10 @@ while (reader.TryRead(out var frame))
     ReadOnlySpan<byte> pixels = frame.Data; // Width x Height, rows packed
 }
 ```
+
+`MaxWidth = 1280` instead of `Width` and `Height` caps the width and keeps the aspect ratio, as ffmpeg's
+`scale='min(1280,iw)':-2` does: a wider frame is scaled down, a narrower one keeps its width, and the height follows,
+rounded to an even number (measured after autorotate).
 
 Seeking and thumbnails: `reader.Seek(time)` positions the reader so the next frame is the one `ffmpeg -ss T -i X`
 gives (the first at or after the time: from the keyframe before it, decoding forward, as ffmpeg's accurate seek does;

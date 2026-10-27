@@ -333,5 +333,12 @@
         @{ File = 'src/FrameReader/Video.cs'; Find = 'new AudioReaderOptions { CancellationToken = cancellationToken }'; Replace = 'null'; Tests = 'CancellationTests.VideoTranscodeStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/MediaProbe.cs'; Find = 'options = (options ?? new ProbeOptions()) with { CancellationToken = cancellationToken };'; Replace = '{ }'; Tests = 'CancellationTests.ProbeJsonStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/Demuxer.cs'; Find = 'if (cancellationToken.IsCancellationRequested)'; Replace = 'if (false)'; Tests = 'CancellationTests.ProbeJsonStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
+        # FrameReader: MaxWidth is ffmpeg's scale='min(N,iw)':-2 (issue #542): never upscaled, the height rounded to the
+        # nearest even number (ties up), 0 filled in with the input's; not with Width and Height
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'int outWidth = Math.Min(max, width);'; Replace = 'int outWidth = max;'; Tests = 'VideoFrameReaderTests.MaxWidthIsFfmpegsMinWidthAndEvenHeight'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'int outHeight = (int)((outWidth * (long)height + twice / 2) / twice * 2);'; Replace = 'int outHeight = (int)(outWidth * (long)height / twice * 2);'; Tests = 'VideoFrameReaderTests.MaxWidthIsFfmpegsMinWidthAndEvenHeight'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'return (outWidth, outHeight == 0 ? height : outHeight);'; Replace = 'return (outWidth, outHeight);'; Tests = 'VideoFrameReaderTests.MaxWidthIsFfmpegsMinWidthAndEvenHeight'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '(max <= 0 || _options.Width is not null)'; Replace = '(max <= 0)'; Tests = 'VideoFrameReaderTests.FrameTimesStartAtZeroAndSizesMustComeInPairs'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '(max <= 0 || _options.Width is not null)'; Replace = '(_options.Width is not null)'; Tests = 'VideoFrameReaderTests.FrameTimesStartAtZeroAndSizesMustComeInPairs'; Project = 'tests/FrameReader.Tests' }
     )
 }
