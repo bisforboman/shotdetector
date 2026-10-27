@@ -27,7 +27,9 @@ sintel_10bit_siting_change.mkv, its default path on the siting change. Take up t
 
 **C, built as**: on the executable's YUV pipelines, a frame's showinfo line is held until its colour line
 (`color_range:... color_space:...`, which showinfo prints for every frame after the frame's line and any side data) and
-handed over with both: matrix and range from that line, siting from the frame's `cl:`. Each frame then takes
+handed over with both: matrix and range from that line, siting from the frame's `cl:`. A tag cut short there (ffmpeg's other threads can write into the middle of a line: the muxer's dts
+warning on variable frame rate, which ARM's arch-diff caught on vfr_24_48.mp4) is the previous frame's, not a name
+FastYuv would decline. Each frame then takes
 `FrameConversions`' conversion for its tags over the stream's, the same choice as in-process (a frame with the previous
 frame's tags at once, one converter per set of colours). The raw-YUV pipe's labels stay the first frame's
 (`setparams`, #432): they keep ffmpeg from converting the samples, and showinfo sits before them, so it reports the

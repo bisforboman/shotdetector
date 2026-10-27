@@ -25,9 +25,12 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'PreferFrameTag(stream, "color_space", colorSpace);'; Replace = ''; Tests = 'FastYuvTests.InProcessFollowsEachFramesTags' }
 
         # ... and through the executable, from showinfo: the siting on the frame's line, the matrix and range on the line
-        # after it; colours FastYuv declines send the video to the BGR pipelines
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'livePts.Add(waiting with { Tags = waiting.Tags with { ColorRange = colours.Groups[1].Value, ColorSpace = colours.Groups[2].Value } });'; Replace = 'livePts.Add(waiting);'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'new(null, null, siting.Success ? siting.Groups[1].Value : null));'; Replace = 'new(null, null, null));'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
+        # after it (a tag cut short by another thread's output is the previous frame's); colours FastYuv declines send the
+        # video to the BGR pipelines
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'livePts.Add(waiting with { Tags = previous = tags });'; Replace = 'livePts.Add(waiting);'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'previous = previous with { ChromaLocation = SitingField(line) ?? previous.ChromaLocation });'; Replace = 'previous = previous with { ChromaLocation = null });'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'ColorSpace = ColourSpaces.Contains(space) ? space : frame.ColorSpace,'; Replace = 'ColorSpace = space,'; Tests = 'FastYuvTests.ShowinfoTagsCutShortAreThePreviousFramesTags' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'GeneratedRegex(@" cl:([a-z]+) ")]'; Replace = 'GeneratedRegex(@" cl:([a-z]+)")]'; Tests = 'FastYuvTests.ShowinfoTagsCutShortAreThePreviousFramesTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'conversion?.Yuv ?? YuvForVideo!'; Replace = 'YuvForVideo!'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (yuv && conversion is null && _stream is null && !Streaming)'; Replace = 'if (false)'; Tests = 'FastYuvTests.ExecutableTakesTheDefaultPathForColoursFastYuvDeclines' }
 

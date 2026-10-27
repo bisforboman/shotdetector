@@ -555,6 +555,25 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
         static List<string> Hashes(VideoReader reader) => [.. reader.Frames().Select(f => Convert.ToHexString(SHA256.HashData(f)))];
     }
 
+    // showinfo's per-frame tags, read whole: ffmpeg's other threads can write into the middle of a line (the muxer's dts
+    // warning on variable frame rate), and a tag cut short there is the previous frame's, not a name FastYuv declines.
+    [Fact]
+    public void ShowinfoTagsCutShortAreThePreviousFramesTags()
+    {
+        const string prefix = "[Parsed_showinfo_0 @ 0x7f2e74001ac0] ";
+        const string warning = "Application provided invalid, non monotonically increasing dts to muxer in stream 0: 695 >= 695";
+        var frame = new VideoReader.FrameColourTags("bt709", "tv", "left");
+        Assert.Equal(frame with { ColorSpace = "bt470bg", ColorRange = "pc" },
+            VideoReader.ColourTags(prefix + "color_range:pc color_space:bt470bg color_primaries:unknown color_trc:unknown", frame));
+        Assert.Equal(frame with { ColorRange = "pc" }, VideoReader.ColourTags(prefix + "color_range:pc color_space:unknown" + warning, frame));
+        Assert.Equal(frame with { ColorRange = "pc" }, VideoReader.ColourTags(prefix + "color_range:pc color_space:bt470" + warning, frame));
+        Assert.Null(VideoReader.ColourTags(prefix + "color_range:unknown" + warning, frame));
+        Assert.Null(VideoReader.ColourTags(prefix + "n:   1 pts:     42 pts_time:0.042   duration:     41 duration_time:0.041   fmt:yuv420p cl:left sar:0/1 s:854x480 i:P iskey:0 type:B ", frame));
+
+        Assert.Equal("topleft", VideoReader.SitingField(prefix + "n:   2 pts:   9917 fmt:yuv420p10le cl:topleft sar:0/1 s:854x480 i:P "));
+        Assert.Null(VideoReader.SitingField(prefix + "n:   2 pts:   9917 fmt:yuv420p10le cl:top" + warning));
+    }
+
     // Through the executable, a frame whose colours FastYuv declines (the GBR matrix) sends the video to the BGR pipelines
     // from there, as a new size does: the default path's frames from that frame on, on any platform (before it,
     // FastYuv's, which are the default path's on x64). libx264; skipped without it.

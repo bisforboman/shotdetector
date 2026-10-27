@@ -1427,8 +1427,11 @@ internal sealed partial class VideoReader
                 // The YUV pipelines convert each frame with its own colour tags, as OpenCV does: its chroma siting is on
                 // showinfo's frame line, its matrix and range on a line of their own after it (and any side data), which
                 // showinfo prints for every frame before the frame goes on, so a frame is handed over once that line is
-                // read (or, without one, at the next frame's line or the end).
+                // read (or, without one, at the next frame's line or the end). A tag missing from its line, or garbled
+                // (ffmpeg's other threads can write into the middle of a line: the muxer's dts warnings on variable frame
+                // rate), is the previous frame's.
                 (long Pts, bool NewLayout, string Size, FrameColourTags Tags)? pending = null;
+                FrameColourTags previous = default;
                 string? line;
                 while ((line = proc.StandardError.ReadLine()) is not null)
                 {
@@ -1440,11 +1443,10 @@ internal sealed partial class VideoReader
 
                         // showinfo sees the decoded frame, before the output's -pix_fmt conversion.
                         var format = FormatField().Match(line);
-                        var siting = ChromaLocationField().Match(line);
                         (long, bool, string, FrameColourTags) info = (long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture),
                             frame.Groups[2].Value != streamSize || (format.Success && format.Groups[1].Value != _pixelFormat),
                             frame.Groups[2].Value,
-                            new(null, null, siting.Success ? siting.Groups[1].Value : null));
+                            previous = previous with { ChromaLocation = SitingField(line) ?? previous.ChromaLocation });
                         if (yuv)
                             pending = info;
                         else
@@ -1452,10 +1454,9 @@ internal sealed partial class VideoReader
                         continue;
                     }
 
-                    var colours = ColourLine().Match(line);
-                    if (colours.Success && pending is { } waiting)
+                    if (pending is { } waiting && ColourTags(line, waiting.Tags) is { } tags)
                     {
-                        livePts.Add(waiting with { Tags = waiting.Tags with { ColorRange = colours.Groups[1].Value, ColorSpace = colours.Groups[2].Value } });
+                        livePts.Add(waiting with { Tags = previous = tags });
                         pending = null;
                         continue;
                     }
@@ -1733,12 +1734,38 @@ internal sealed partial class VideoReader
     [System.Text.RegularExpressions.GeneratedRegex(@" fmt:(\S+) ")]
     private static partial System.Text.RegularExpressions.Regex FormatField();
 
-    [System.Text.RegularExpressions.GeneratedRegex(@" cl:(\S+) ")]
+    [System.Text.RegularExpressions.GeneratedRegex(@" cl:([a-z]+) ")]
     private static partial System.Text.RegularExpressions.Regex ChromaLocationField();
 
     // showinfo's line after a frame's (FFmpeg's names; "unknown" where unspecified).
-    [System.Text.RegularExpressions.GeneratedRegex(@"\] color_range:(\S+) color_space:(\S+)")]
+    [System.Text.RegularExpressions.GeneratedRegex(@"\] color_range:([a-z]*)(?= |$)(?: color_space:([a-z0-9-]*)(?= |$))?")]
     private static partial System.Text.RegularExpressions.Regex ColourLine();
+
+    // FFmpeg's names (av_chroma_location_name, av_color_range_name, av_color_space_name).
+    static readonly HashSet<string> Sitings = ["unspecified", "left", "center", "topleft", "top", "bottomleft", "bottom"];
+    static readonly HashSet<string> Ranges = ["unknown", "tv", "pc"];
+    static readonly HashSet<string> ColourSpaces = [.. SetParamsColorSpaces, "reserved"];
+
+    /// <summary>The chroma siting on a showinfo frame line; null where it has none of FFmpeg's names (a garbled line).</summary>
+    internal static string? SitingField(string line) =>
+        ChromaLocationField().Match(line) is { Success: true } m && Sitings.Contains(m.Groups[1].Value) ? m.Groups[1].Value : null;
+
+    /// <summary>
+    /// A frame's colour range and matrix from showinfo's colour line, each one <paramref name="frame"/>'s where the line
+    /// has none of FFmpeg's names for it (garbled: another thread's output written into it); null if it isn't that line.
+    /// </summary>
+    internal static FrameColourTags? ColourTags(string line, FrameColourTags frame)
+    {
+        var m = ColourLine().Match(line);
+        if (!m.Success)
+            return null;
+        string range = m.Groups[1].Value, space = m.Groups[2].Value;
+        return frame with
+        {
+            ColorRange = Ranges.Contains(range) ? range : frame.ColorRange,
+            ColorSpace = ColourSpaces.Contains(space) ? space : frame.ColorSpace,
+        };
+    }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"config in time_base: (\d+)/(\d+)")]
     private static partial System.Text.RegularExpressions.Regex TimeBaseLine();
