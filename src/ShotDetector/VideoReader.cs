@@ -626,7 +626,7 @@ internal sealed partial class VideoReader
     {
         var stream = new Dictionary<string, string>(streamEntries);
         if (_frameTags is { } frameTags)
-            _ = frameTags;
+            PreferFrameTags(stream, frameTags.Value);
         string? chromaLocation = stream.GetValueOrDefault("chroma_location") is { } loc and not ("unspecified" or "unknown" or "") ? loc : null;
         var colour = ColourOf(stream, chromaLocation);
 
@@ -1096,7 +1096,7 @@ internal sealed partial class VideoReader
         long? pts = Streaming ? (frame < _livePts.Count ? _livePts[frame] : null) : (packet < _pts.Length ? _pts[packet] : null);
         if (pts is { } p)
         {
-            double ms = (p - _startPts) * _timeBase * 1000;
+            double ms = (Streaming ? p : p - _startPts) * _timeBase * 1000;
             long micros = (long)Math.Round(ms * 1000);
             if (micros > 0)
                 return FrameTime.Pts(micros, 1_000_000, Fps);
