@@ -42,5 +42,21 @@ frame's conversion. `FastYuvTests.ExecutableFollowsEachFramesTags` (each half of
 Measured on the two built clips, every detector with `--stats` against scenedetect 0.7.2, `--decoder process
 --fast-yuv`, FFmpeg 8.1: 0 stats cells, 0 CSV cells and every cut exact on both (before: stats differing after the
 change on both, as in the 2026-10-24 table). Every other sample gives byte-identical scene lists and stats through the
-executable, default path and FastYuv. CI compares the two clips exactly through the executable with FastYuv; the
-executable's default path stays informational on them until D.
+executable, default path and FastYuv. CI compares the two clips exactly through the executable with FastYuv.
+
+**D, built as**: on the executable's BGR pipelines, for formats whose conversion interpolates chroma (not 8-bit 4:2:0),
+each frame's siting (showinfo's `cl:`, else the stream's) is compared with the `in_chroma_loc` the scale filter was
+told. On a difference, a file is read again from that frame (the first packet at its time) with the exact seek and
+the new `in_chroma_loc`. In two encodes joined, the earlier one's last frames can share the later one's first times
+(the built clips do): the read that goes on drops the frames before the first with its siting (given already), counts
+its own frames (no `-frames:v`, which would count the dropped ones), keeps the frame labels found so far (0.7.1's), and
+never restarts at or before where it went on from. A stream (stdin, a URL) can't be read again: it keeps the first
+frame's siting and `DetectionResult.Warnings` says so. `VideoTests.TheExecutableFollowsEachFramesChromaSiting` (three
+encodes joined, left, top left, left, in Matroska with keyframes every 10 frames so the seek decodes the shared frames:
+each part gives the frames it gives alone, from the start, from a start frame and for a count, with 0.7.1's labels of
+a copy without the change, and in-process's frames; streamed, the warning) checks it.
+
+Measured on sintel_10bit_siting_change.mkv, every detector with `--stats` against scenedetect 0.7.2, `--decoder
+process`, FFmpeg 8.1: 0 stats cells, 0 CSV cells and every cut exact (before: stats differing after the change). Every
+other sample gives byte-identical scene lists and stats through the executable, default path and FastYuv. CI compares
+both clips exactly on every path, and arch-diff holds ARM's FastYuv to x64's default path on them like any other clip.
