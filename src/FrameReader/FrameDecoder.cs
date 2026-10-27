@@ -20,6 +20,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     AVFrame* _frame;
     readonly int _stream;
     readonly AVRational _timeBase;
+    readonly AVRational _sar; // the container's sample aspect ratio, which ffmpeg's command line puts on every frame (0/1: none)
     bool _draining, _done;
 
     // Deinterlacing: decoded frames go through buffer -> yadif -> buffersink (as ffmpeg's -vf yadif), and _frame is
@@ -127,6 +128,7 @@ public sealed unsafe class FrameDecoder : IDisposable
                 throw new FrameReaderException(FrameReaderError.InvalidInput, "The input has no video stream.");
             var st = _fmt->streams[_stream];
             _timeBase = st->time_base;
+            _sar = st->sample_aspect_ratio;
             var codec = ffmpeg.avcodec_find_decoder(st->codecpar->codec_id);
             if (codec == null)
                 throw new FrameReaderException(FrameReaderError.InvalidInput, $"No decoder for {st->codecpar->codec_id} in these FFmpeg libraries.");
@@ -734,6 +736,8 @@ public sealed unsafe class FrameDecoder : IDisposable
             {
                 if (_hwDevice != null && (AVPixelFormat)into->format == _hwFormat)
                     FromHardware(into);
+                if (_sar.num != 0)
+                    into->sample_aspect_ratio = _sar; // ffmpeg's decoder side: the stream's aspect ratio wins (sar_override)
                 return true;
             }
 
