@@ -1086,6 +1086,7 @@ public static partial class ShotDetection
     /// <summary>The run's span: what it read and found.</summary>
     static void Traced(System.Diagnostics.Activity? activity, DetectionResult result)
     {
+        Console.Error.WriteLine($"DEBUG pipeline={result.Video.Reader.Pipeline} chunks={result.Video.Chunks} {result.Video.Reader.Width}x{result.Video.Reader.Height}");
         if (activity is not null)
         {
             var v = result.Video.Reader;

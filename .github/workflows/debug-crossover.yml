@@ -1,0 +1,54 @@
+name: Debug crossover
+on:
+  push:
+    branches: ['debug/**']
+permissions:
+  contents: read
+jobs:
+  time:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+      - uses: ./.github/actions/btbn-ffmpeg
+        with:
+          platform: ${{ runner.arch == 'ARM64' && 'linuxarm64' || 'linux64' }}
+      - name: Build
+        run: |
+          dotnet build src/ShotDetector.Cli -c Release -v q
+          dotnet build src/ShotDetector.Cli -c Release -p:WithFastYuv=true -o artifacts/cli-fastyuv -v q
+      - name: Films
+        run: python3 tools/realworld.py --download bbb_640x360_h264.mp4 tears_of_steel_1280x534_h264.mov sintel_trailer_1920x1080_h264.mp4
+      - name: Clips
+        run: |
+          set -e
+          nproc; grep -m1 'model name' /proc/cpuinfo || true
+          mkdir -p clips
+          s=samples/realworld/sintel_trailer_1920x1080_h264.mp4
+          t=samples/realworld/tears_of_steel_1280x534_h264.mov
+          enc="-an -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p"
+          for wh in 640x360 854x480 1024x576 1152x648 1280x720 1600x900 1920x1080; do
+            ffmpeg -v error -i $s -vf "scale=${wh/x/:}" $enc clips/sintel_$wh.mp4
+          done
+          for wh in 1152x480 1280x534 1920x800; do
+            ffmpeg -v error -ss 120 -i $t -frames:v 1500 -vf "scale=${wh/x/:}" $enc clips/tos_$wh.mp4
+          done
+          ffmpeg -v error -ss 120 -i $t -frames:v 600 -vf "scale=3840:1600" $enc clips/tos_3840x1600.mp4
+          ls -la clips
+      - name: Time
+        env:
+          FASTYUV: artifacts/cli-fastyuv/shotdetect
+          BBB: samples/realworld/bbb_640x360_h264.mp4
+        run: |
+          echo "### $RUNNER_ARCH, $(nproc) CPUs" >> "$GITHUB_STEP_SUMMARY"
+          python3 debug/crossover.py src/ShotDetector.Cli/bin/Release/net10.0/shotdetect 5 \
+            clips/sintel_640x360.mp4 clips/sintel_854x480.mp4 clips/sintel_1024x576.mp4 clips/tos_1152x480.mp4 \
+            clips/sintel_1152x648.mp4 clips/tos_1280x534.mp4 clips/sintel_1280x720.mp4 clips/sintel_1600x900.mp4 \
+            clips/tos_1920x800.mp4 clips/sintel_1920x1080.mp4 clips/tos_3840x1600.mp4

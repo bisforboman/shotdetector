@@ -1324,6 +1324,7 @@ internal sealed partial class VideoReader
     /// all of the pixels; equal at 1280x534, 16%; sampled far ahead at 1080p, 7%). Same results either way.
     /// </summary>
     internal static bool SampledPays(int sourceWidth, int sourceHeight, int width, int height) =>
+        Environment.GetEnvironmentVariable("SD_FORCE") is "full" ? false : Environment.GetEnvironmentVariable("SD_FORCE") is "sampled" ? true :
         Math.Min(1.0, 2.0 * width / sourceWidth) * Math.Min(1.0, 2.0 * height / sourceHeight) < 0.25;
 
     /// <summary>
