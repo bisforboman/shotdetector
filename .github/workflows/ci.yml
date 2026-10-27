@@ -612,12 +612,14 @@ jobs:
 
       # Parallel detection (DetectionOptions.Mode): three chunks on every sample, byte for byte the sequential
       # result (all five detectors, stats, 0.7.2 and 0.7.1 mode); what a chunk can't reproduce (MPEG-PS) reads sequentially.
+      # On this job's decoder: in-process, or through the ffmpeg executable (a process per chunk). Both modes in the
+      # 0.7.2 jobs (the 0.7.1 job would repeat its process run).
       - name: Parallel against sequential
-        if: needs.changes.outputs.docs_only != 'true' && matrix.decoder == 'inprocess' && matrix.part == 'compare'
+        if: needs.changes.outputs.docs_only != 'true' && matrix.scenedetect == '0.7.2' && matrix.part == 'compare'
         run: |
           status=0
           python tools/compare-parallel.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg             --chunks 3 --report parallel.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || status=$?
-          { echo "### Parallel against sequential, ${{ matrix.path }} path"; cat parallel.md; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Parallel against sequential, ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat parallel.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
       # Time range, frame skip and crop must give scenedetect's results too (constant frame rate clips).
