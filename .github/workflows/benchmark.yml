@@ -3,7 +3,8 @@ name: Benchmark
 # Wall time, frames per second, CPU time and peak memory (whole process tree) of scenedetect and shotdetect, in its
 # default mode (in-process, with our bundled FFmpeg libraries) and with the ffmpeg executable, on the real-world
 # films (tools/bench.py, best of 3), in the run summary, plus both with --stats (the content detector then computes
-# edges for every frame, so EdgeDetector's speed is tracked); README "Performance" comes from it. Then
+# edges for every frame, so EdgeDetector's speed is tracked); README "Performance" comes from it. The content table also
+# has --decoder process with FastYuv's converter (the CLI's LGPL dev build) on the films shotdetect resizes. Then
 # benchmarks/micro, the resize and edge detector alone, and on x64 the frame-source path on browser-wasm under Node
 # (benchmarks/wasm). On demand and weekly: a hosted runner is quieter than a
 # desktop, but numbers still vary by a few percent between runs. Each runner's numbers also go into one JSON file
@@ -64,8 +65,12 @@ jobs:
           name: native-${{ matrix.rid }}
           path: native/${{ matrix.rid }}
 
+      # Also the CLI with FastYuv (-p:WithFastYuv=true, as compare.py --fast-yuv builds it), for the content table's
+      # "--decoder process --fast-yuv" row.
       - name: Build
-        run: dotnet build src/ShotDetector.Cli -c Release
+        run: |
+          dotnet build src/ShotDetector.Cli -c Release
+          dotnet build src/ShotDetector.Cli -c Release -v q -nologo -p:WithFastYuv=true -o artifacts/cli-fastyuv
 
       - name: Cache the videos
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -78,8 +83,12 @@ jobs:
           films="sintel_trailer_1920x1080_h264.mp4 tears_of_steel_1280x534_h264.mov bbb_640x360_h264.mp4 elephants_dream_426x240_h264.mp4"
           python tools/realworld.py $films --download
           echo "### ${{ matrix.rid }}: $(nproc) CPUs ($(lscpu | sed -n 's/^Model name: *//p' | head -1)), $(free -g | awk '/Mem:/ {print $2}') GB" >> "$GITHUB_STEP_SUMMARY"
+          # --decoder process with FastYuv's converter: content only, at all CPUs, on the films shotdetect resizes (at
+          # 426x240 it doesn't, so the converter isn't used and the row would repeat --decoder process's).
+          fastyuv="--process-fast-yuv sintel_trailer_1920x1080_h264.mp4 --process-fast-yuv tears_of_steel_1280x534_h264.mov --process-fast-yuv bbb_640x360_h264.mp4"
           for d in content adaptive; do
-            python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector $d --runs 3 --report bench.md --json bench-$d.json
+            python tools/bench.py $(for f in $films; do echo samples/realworld/$f; done) --detector $d --runs 3 --report bench.md --json bench-$d.json \
+              $([ $d = content ] && echo "$fastyuv")
             # Above content's table, a chart of shotdetect's time against scenedetect's per film (tools/bench_chart.py).
             { echo "### detect-$d, all $(nproc) CPUs"
               if [ $d = content ]; then python tools/bench_chart.py run --rid ${{ matrix.rid }} bench-$d.json || true; fi

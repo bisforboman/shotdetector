@@ -18,7 +18,9 @@ import statistics
 import sys
 from pathlib import Path
 
-TOOL = "shotdetect"  # the default: in-process, chunked from 4 CPUs on
+TOOL = "shotdetect"  # the default: in-process, chunked from 4 CPUs on. Only its rows enter a chart (matched exactly):
+# the other tools (--parallel, --decoder process, --decoder process --fast-yuv on some films...) never move a ratio
+# or a median, so a tool added to the benchmark keeps the trend comparable with earlier runs.
 Y = "ratio to scenedetect"
 CHARTS = [("content", "content"), ("content-stats", "content --stats")]
 

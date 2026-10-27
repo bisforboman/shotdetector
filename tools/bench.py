@@ -7,12 +7,16 @@ CPUs available (taskset) the --parallel and --sequential rows are left out, as n
 user + system time of the finished child processes (Unix: getrusage(RUSAGE_CHILDREN), which counts ffmpeg too once
 shotdetect has waited for it); memory is the peak RSS of the process tree, polled with psutil (`pip install psutil`). With --stats both tools also
 write per-frame metrics (scenedetect -s, shotdetect --stats; content computes edges for every frame then), and
---decoder process doesn't run.
+--decoder process doesn't run. --process-fast-yuv FILE (repeatable, a file name) adds a row on that video:
+--decoder process with FastYuv's converter (`--fast-yuv` of the LGPL build, compare.py's -p:WithFastYuv=true), which
+only changes something where shotdetect resizes (not at 426x240 and below).
 
 Usage: python tools/bench.py <video>... [--detector adaptive|content|threshold|hist|hash] [--runs 1]
-                             [--threads N] [--fast-yuv] [--stats] [--report bench.md] [--json bench.json]
+                             [--threads N] [--fast-yuv] [--process-fast-yuv FILE]... [--stats] [--report bench.md]
+                             [--json bench.json]
 --json writes the table's numbers as JSON (benchmark.yml keeps them on the bench-data branch).
-Builds first: dotnet build src/ShotDetector.Cli -c Release (and compare.py's --fast-yuv build for --fast-yuv)."""
+Builds first: dotnet build src/ShotDetector.Cli -c Release (and compare.py's --fast-yuv build for --fast-yuv and
+--process-fast-yuv: dotnet build src/ShotDetector.Cli -c Release -p:WithFastYuv=true -o artifacts/cli-fastyuv)."""
 import argparse
 import json
 import os
@@ -84,12 +88,16 @@ def main():
     ap.add_argument("--detector", default="content", choices=["adaptive", "content", "threshold", "hist", "hash"])
     ap.add_argument("--runs", type=int, default=1, help="best of N (by wall time)")
     ap.add_argument("--threads", type=int, help="shotdetect --threads (default: its own)")
-    ap.add_argument("--fast-yuv", action="store_true")
+    ap.add_argument("--fast-yuv", action="store_true", help="every shotdetect row with FastYuv's converter (its build)")
+    ap.add_argument("--process-fast-yuv", action="append", default=[], metavar="FILE",
+                    help="on this video (file name) also a --decoder process row with FastYuv's converter")
     ap.add_argument("--stats", action="store_true", help="both tools write a stats CSV")
     ap.add_argument("--report")
     ap.add_argument("--json", help="also write the table's numbers to this file as JSON")
     a = ap.parse_args()
     exe = str(FAST_DIR / EXE_NAME if a.fast_yuv else EXE)
+    # The FastYuv build uses its converter only when asked (`--fast-yuv`); without the option it runs the plain path.
+    fast = ["--fast-yuv"] if a.fast_yuv else []
     sd_cmd = {"hist": "detect-hist", "hash": "detect-hash"}.get(a.detector, f"detect-{a.detector}")
     threads = ["--threads", str(a.threads)] if a.threads else []
     stats = Path(tempfile.mkdtemp()) / "stats.csv"
@@ -98,9 +106,9 @@ def main():
     tools = [
         (f"scenedetect 0.7.2{suffix}",
          [sys.executable, "-m", "scenedetect", "-q", "-i", "{v}", *sd_stats, sd_cmd, "list-scenes", "-n"]),
-        (f"shotdetect{suffix}", [exe, "-i", "{v}", "-d", a.detector, *sh_stats, *threads]),
-        (f"shotdetect --parallel{suffix}", [exe, "-i", "{v}", "-d", a.detector, "--parallel", *sh_stats, *threads]),
-        (f"shotdetect --sequential{suffix}", [exe, "-i", "{v}", "-d", a.detector, "--sequential", *sh_stats, *threads]),
+        (f"shotdetect{suffix}", [exe, "-i", "{v}", "-d", a.detector, *sh_stats, *threads, *fast]),
+        (f"shotdetect --parallel{suffix}", [exe, "-i", "{v}", "-d", a.detector, "--parallel", *sh_stats, *threads, *fast]),
+        (f"shotdetect --sequential{suffix}", [exe, "-i", "{v}", "-d", a.detector, "--sequential", *sh_stats, *threads, *fast]),
     ]
     # The CPUs this process may use (taskset's mask, as .NET's ProcessorCount): below 4 nothing chunks.
     cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count() or 1
@@ -108,13 +116,23 @@ def main():
         tools = [t for t in tools if not t[0].startswith(("shotdetect --parallel", "shotdetect --sequential"))]
         print(f"{cpus} CPUs: no --parallel or --sequential rows (chunks need 4 CPUs)", flush=True)
     if not a.stats:
-        tools.append(("shotdetect --decoder process", [exe, "-i", "{v}", "-d", a.detector, "--decoder", "process", *threads]))
+        tools.append(("shotdetect --decoder process", [exe, "-i", "{v}", "-d", a.detector, "--decoder", "process", *threads, *fast]))
+    # Its own tool name, so it never counts as one of the rows above (bench_chart.py charts "shotdetect" alone).
+    process_fast = ("shotdetect --decoder process --fast-yuv",
+                    [str(FAST_DIR / EXE_NAME), "-i", "{v}", "-d", a.detector, "--decoder", "process", *threads, "--fast-yuv"])
+    if a.process_fast_yuv and a.stats:
+        sys.exit("--process-fast-yuv: --decoder process doesn't run with --stats")
+    if a.process_fast_yuv and a.fast_yuv:
+        sys.exit("--process-fast-yuv: the --decoder process row already uses FastYuv with --fast-yuv")
+    unknown = set(a.process_fast_yuv) - {Path(v).name for v in a.videos}
+    if unknown:
+        sys.exit(f"--process-fast-yuv: not among the videos: {', '.join(sorted(unknown))}")
     table = ["| Video | Frames | Tool | Wall | fps | CPU | Peak MB | vs scenedetect |", "|---|---|---|---|---|---|---|---|"]
     rows = []
     for video in a.videos:
         n = frames(video)
         base = None
-        for tool, cmd in tools:
+        for tool, cmd in tools + ([process_fast] if Path(video).name in a.process_fast_yuv else []):
             name = tool
             results = []
             for _ in range(a.runs):
@@ -146,6 +164,7 @@ def main():
             sd_version = None
         Path(a.json).write_text(json.dumps({
             "detector": a.detector, "stats": a.stats, "runs": a.runs, "threads": a.threads, "fast_yuv": a.fast_yuv,
+            "process_fast_yuv": a.process_fast_yuv,
             "cpus": cpus, "scenedetect": sd_version, "rows": rows}, indent=1) + "\n", encoding="utf-8")
 
 
