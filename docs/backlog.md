@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- mkv/ts: the packet scan alongside decoding on the sequential path
-  - Why: A frame's label is final once the scan's latest dts is past its time, so the scan can run beside decoding: max(read, decode) instead of the sum where reading is slow and the file fits the page cache; nearly nothing on local disks. Where dts ever goes backwards (joined or corrupt files), wait for the whole scan; chunked runs keep it first. An additive incremental FrameReader API (`ProbeOptions.OnPacket`). Choice 3 of docs/decisions/2026-10-27-pre-scan.md
-  - Status: Open
-
 ## Waiting
 
 - Parallel detection above 8 CPUs: more than 4 chunks and 16 decoder threads in total
@@ -42,6 +38,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Waiting (on .NET 11's release)
 
 ## Maybe
+
+- mkv/ts: the packet scan alongside decoding on the sequential path
+  - Why: A frame's label is final once the scan's latest dts is past its time, so the scan can run beside decoding: max(read, decode) instead of the sum where reading is slow and the file fits the page cache; nearly nothing on local disks. Where dts ever goes backwards (joined or corrupt files), wait for the whole scan; chunked runs keep it first. An additive incremental FrameReader API (`ProbeOptions.OnPacket`). Choice 3 of docs/decisions/2026-10-27-pre-scan.md
+  - Status: Maybe (the owner, 2026-10-27: parked). The rule isn't exact on joined files: once the second half's timestamps reach the sorted list, frames already labelled get other packets' labels (and, on a 25+30 fps join, other times); the dts-goes-backwards guard only covers frames decided after that. Simulated on joined TS files: 96 of 225 and 97 of 250 frames labelled differently, 0 on a clean file. An exact version would hold labels as provisional and restart on a mismatch (shots and warnings held until the scan ends, so streaming on mkv/ts emits nothing until then); docs/decisions/2026-10-27-pre-scan.md. A FrameReader start (`ProbeOptions.OnPacket`, `PacketTiming`) was built but not pushed; Matroska's first packets have no dts
 
 - Option B: a FrameReader deferred take so FastYuv's row yadif converts off the decode thread
   - Why: The conversion thread (C, on by default for sequential HD since 2026-10-22) can't serve row-wise yadif: taking a frame deinterlaces every row, so those runs still decode, deinterlace and convert on one thread. A deferred take that keeps yadif's previous, current and next frames referenced would let the conversion thread compute only the rows it reads, deinterlacing included (then K workers): expected 1080i MXF sequential with row yadif from ~16.6 s to about 12-13 s. Only for the library configuration with FastYuv's `Yadif` (the CLI deinterlaces with FFmpeg's yadif, which C already covers); parallel runs gain little (the chunks keep the cores busy). A FrameReader change (docs/decisions/2026-10-22-decode-split.md, docs/frame-references.md)
