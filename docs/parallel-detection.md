@@ -5,7 +5,8 @@ since 2026-10-18 from 4 CPUs on and for frames up to 3840 x 2160: `DetectionOpti
 `DetectedVideo.Chunks`. The user's choices: docs/decisions/ ("Parallel detection: opt-in, in-process files, automatic
 chunks, a prototype first", "Parallel detection: build it, `Parallel` and `--parallel`, half the CPUs up to 4",
 "Parallel detection as the default", "Parallel by default only from 8 CPUs, with a frame-size cap" and "Parallel by
-default from 4 CPUs", which replaced the 8-CPU gate the same day after runner measurements).
+default from 4 CPUs", which replaced the 8-CPU gate the same day after runner measurements). Files the
+ffmpeg executable decodes too since 2026-10-27, a process per chunk (docs/decisions/2026-10-27-executable-path-fixes.md).
 
 ## Turning it on and off
 
@@ -57,8 +58,8 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
 - **Overlap check:** each chunk also scores a few frames past its end, and the next chunk must give identical scores for
   them. A mismatch (an open GOP's leading frames, a decoder depending on history) means the run falls back to
   sequential, and says so in `DetectedVideo`.
-- **Sequential, always,** where exactness isn't provable cheaply: streams and URLs, the executable path, MPEG-PS
-  without packet pts (no cheap seek), resolution changes, dropped or damaged frames (a frame count or pts that doesn't
+- **Sequential, always,** where exactness isn't provable cheaply: streams and URLs, the executable path (chunked since
+  2026-10-27), MPEG-PS without packet pts (no cheap seek), resolution changes, dropped or damaged frames (a frame count or pts that doesn't
   match the probe), frame skip whose phase a chunk can't keep, and threshold with stats (its stats dedupe by position
   across the whole run). The list can shrink as the prototype proves cases.
 - **Stats** are merged in frame order, as `Stats.Csv` already does by position.
@@ -119,7 +120,17 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
   1-23 MB more memory, identical results. A parallel run's chunks convert on their decoding threads (`ChunkOptions`): the
   chunks keep the cores busy already (1.00-1.07x there). Not with FastYuv's row-wise yadif (taking a frame would
   deinterlace every row) nor on the executable path.
-- Sequential, always: streams and URLs, the executable path, MPEG-PS without packet pts, a time range, frame skip.
+- The ffmpeg executable (2026-10-27): each chunk is its own ffmpeg process with the exact seek a time range uses (`-ss`
+  two frames early, `-copyts`, `select=gte(pts,P)`, `-frames:v`), its own temp folder of remap's maps and, on Windows,
+  its own named pipe; a cancelled or failed run kills every chunk's process. Its frames are placed by showinfo's pts
+  as a sequential run's, and its first frame's size (showinfo's) is checked like in-process. The same rules and
+  checks as in-process; the decoder threads shared out the same way, with a frame-threaded decoder told by codec name
+  (`VideoReader.FrameThreadedCodecs`), since FFmpeg's libraries may not load beside the executable. ffmpeg alone leaves
+  cores idle (a serial filter thread behind the decoder, per the decision's profile), the room a second process uses;
+  it is the only gain for video that ffmpeg sends as whole frames (no remap), such as 640 x 360. On a 4-vCPU container it gained
+  most where decoding leaves room (Tears of Steel 1280 x 534 in 2 chunks), little where sequential decoding kept the
+  cores busy already (640 x 360, noisy synthetic clips); results and stats identical, a few MB more per chunk.
+- Sequential, always: streams and URLs, MPEG-PS without packet pts, a time range, frame skip.
   Progress counts all chunks' frames; a fallback starts it over. When `Parallel` was asked for (`--parallel`,
   `--chunks`) and the file is read sequentially all the same, a warning says why: one of those, fewer than 4 CPUs,
   frames over the cap, one decoder thread or shorter than two minutes. `Auto` reading sequentially says nothing.
@@ -179,7 +190,9 @@ takes half the CPUs (the user's choice: 4 chunks cost about 65 MB more at 1080p 
 - The weekly benchmark (tools/bench.py) reports both, the parallel default beside `shotdetect --sequential`.
 - CI's comparisons with scenedetect (compare.py) run the default, so long in-process files there run in chunks;
   compare-parallel.py's reference asks for `--sequential`.
-- CI also compares it on ARM (ci.yml's arch job) and on Windows and macOS (parity-os.yml, nightly), in-process.
+- CI also compares it on ARM (ci.yml's arch job) and on Windows and macOS (parity-os.yml, nightly), in-process; the
+  parity job on both decoders (in-process and the ffmpeg executable, core and FastYuv paths), and Real world parallel
+  the films through the executable too.
 
 ## Risks
 

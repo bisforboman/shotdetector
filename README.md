@@ -337,8 +337,9 @@ several cores at once (half the CPUs, at most 4 chunks, for files of two minutes
 once over all the scores, so the result is exactly the sequential one; CI compares the two byte for byte on every
 sample and on three films. It pays where one decoder can't keep the cores busy: more cores work at once for about the
 same CPU time (the
-[weekly benchmark](https://github.com/bisforboman/shotdetector/actions/workflows/benchmark.yml) has both). It needs
-in-process decoding of a file: streams, URLs, a time range, frame skip and MPEG-PS read sequentially, and so does any
+[weekly benchmark](https://github.com/bisforboman/shotdetector/actions/workflows/benchmark.yml) has both). It needs a
+file, decoded in-process or by the ffmpeg executable (a process per chunk): streams, URLs, a time range, frame skip and
+MPEG-PS read sequentially, and so does any
 file a chunk can't reproduce (a seek that lands late, dropped frames, a size change). `DetectedVideo.Chunks` says which
 ran. Each chunk has its own decoder (they share the frame buffers), so memory grows with the chunks; frames over 3840x2160
 read sequentially by default. `DetectionOptions.Mode` chooses: `Auto` (the default) chunks for `Detect` from 4 CPUs on

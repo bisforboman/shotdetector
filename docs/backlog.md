@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-24: on x86 one known, stats only: a video whose colour tags change midway, through the executable with FastYuv or, on a 10-bit siting change, with the default path (the per-frame-tags row in Maybe; the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv are informational there, exact in-process since FastYuv follows each frame's tags there, docs/decisions/2026-10-24-per-frame-tags-fastyuv.md); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- Chunk the ffmpeg-executable path: several ffmpeg processes, each with the exact `-copyts` + `select` seek and `-frames:v`, through `ScoreChunked` and its overlap check
-  - Why: The profile (docs/decisions/2026-10-27-executable-path-fixes.md) found ffmpeg setting the pace on about 2.4 of 4 cores; two concurrent halves took ffmpeg alone about a fifth off on long films at the same CPU, and it is the only lever found for the 640x360 / whole-frame class, which doesn't use remap. Today `NotChunkable` refuses "decoded by the ffmpeg executable". Needs a CI job comparing chunked with sequential runs on the process path, in its gate's `needs`; the overlap check falls back to sequential on any mismatch
-  - Status: In progress (2026-10-27)
-
 ## Waiting
 
 - Parallel detection above 8 CPUs: more than 4 chunks and 16 decoder threads in total
