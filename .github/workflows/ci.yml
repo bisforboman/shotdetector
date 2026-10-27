@@ -267,6 +267,15 @@ jobs:
           name: videowriter-differing
           path: ${{ runner.temp }}/differing/
 
+      # ImageEncoder's files byte for byte against ffmpeg's: only with an executable of the libraries' own build (the
+      # main test run has BtbN's static ffmpeg beside our libraries, so it skips them), here BtbN's shared one.
+      - name: Test ImageEncoder against its own build's ffmpeg
+        if: needs.changes.outputs.docs_only != 'true'
+        env:
+          SHOTDETECTOR_FFMPEG_LIBS: ${{ steps.gpl.outputs.bin }}
+          SHOTDETECTOR_REQUIRE_SAME_BUILD: '1'
+        run: dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~ImageEncoder" --logger GitHubActions
+
       - name: Pack
         if: needs.changes.outputs.docs_only != 'true'
         run: |
