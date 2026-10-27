@@ -1066,6 +1066,84 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             VideoReader.FrameTagsArgs("in.ts", ["-f", "mpegts"]));
     }
 
+    // ffmpeg's scale filter converts with one chroma siting, where OpenCV takes each frame's: on a 10-bit video whose
+    // siting changes twice (left, top left, left: three h264 streams joined, the later ones' first times shared with the
+    // earlier ones' last, keyframes every 10 frames and Matroska's index so a seek decodes those last ones again), the executable reads a file
+    // again from each change with its siting (the exact seek), so each
+    // part gives the frames it gives alone, from the start, from a start frame and for a count, as in-process. A stream
+    // can't be read again: it keeps the first frame's siting, and the result says so. libx264; skipped without it.
+    [Fact]
+    public void TheExecutableFollowsEachFramesChromaSiting()
+    {
+        if (!VideoReader.Run("ffmpeg", ["-hide_banner", "-encoders"], default).Contains(" libx264 ", StringComparison.Ordinal))
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetector-siting-").FullName;
+        try
+        {
+            string[] parts = [Path.Combine(dir, "a.ts"), Path.Combine(dir, "b.ts"), Path.Combine(dir, "c.ts")];
+            string joined = Path.Combine(dir, "joined.mkv"), plain = Path.Combine(dir, "plain.mkv"), plainB = Path.Combine(dir, "b-left.ts");
+            for (int i = 0; i < parts.Length; i++)
+            {
+                foreach (string loc in i == 1 ? ["2", "0"] : new[] { "0" })
+                {
+                    VideoReader.Run("ffmpeg",
+                        ["-v", "error", "-y", "-ss", $"{2 * i}", "-i", clips.ThreeShots, "-t", "2", "-pix_fmt", "yuv420p10le", "-c:v", "libx264", "-g", "10",
+                            "-bsf:v", "h264_mp4toannexb", "-x264-params", "chromaloc=" + loc, "-output_ts_offset", $"{2 * i}", loc == "2" || i != 1 ? parts[i] : plainB],
+                        default);
+                }
+            }
+
+            // Joined as the samples are (Matroska: its index has a seek land in the earlier encode).
+            void Join(string to, params string[] from)
+            {
+                File.WriteAllBytes(to + ".ts", [.. from.SelectMany(File.ReadAllBytes)]);
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", to + ".ts", "-c", "copy", to], default);
+            }
+
+            Join(joined, parts);
+            Join(plain, parts[0], plainB, parts[2]);
+            var options = new DetectionOptions { Decoder = VideoDecoder.FfmpegProcess };
+            var alone = parts.SelectMany(p => Hashes(new VideoReader(p, options).Frames())).ToList();
+            var reader = new VideoReader(joined, options);
+            Assert.Equal(alone, Hashes(reader.Frames()));
+            Assert.Equal(alone[30..80], Hashes(reader.Frames(30, 50)));
+            Assert.Equal(alone[60..120], Hashes(reader.Frames(60, 60)));
+            Assert.False(reader.SitingChangeNotFollowed);
+
+            // 0.7.1 labels frames by their time (the later encodes' first times go back): the same labels as without a change.
+            List<FrameTime> Labels(string path)
+            {
+                var r = new VideoReader(path, options with { Compatibility = PySceneDetectVersion.V0_7_1 });
+                int n = r.Frames().Count();
+                return [.. Enumerable.Range(0, n).Select(r.Position)];
+            }
+
+            var labels = Labels(plain);
+            Assert.NotEqual(Enumerable.Range(0, labels.Count).Select(i => (long)i), labels.Select(t => t.FrameNum));
+            Assert.Equal(labels, Labels(joined));
+            string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+            if (libs is not null)
+                Assert.Equal(alone, Hashes(new VideoReader(joined, options with { Decoder = VideoDecoder.InProcess, FfmpegDirectory = libs }).Frames()));
+
+            using (var file = File.OpenRead(joined))
+            {
+                var streamed = new VideoReader(file, options);
+                Assert.NotEqual(alone, Hashes(streamed.Frames()));
+                Assert.True(streamed.SitingChangeNotFollowed);
+            }
+
+            using (var file = File.OpenRead(joined))
+                Assert.Contains(ShotDetection.Detect(file, options).Warnings, w => w.Contains("chroma siting changes midway", StringComparison.Ordinal));
+            Assert.DoesNotContain(ShotDetection.Detect(joined, options).Warnings, w => w.Contains("chroma siting", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+
+        static List<string> Hashes(IEnumerable<byte[]> frames) => [.. frames.Select(f => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(f)))];
+    }
+
     // compare.py on Windows: the Windows OpenCV wheel converts with BT.601 whatever the tags say. AlwaysBt601 on a
     // BT.709-tagged copy gives the untagged copy's results (BT.601, the default), on the core and FastYuv paths.
     [Fact]

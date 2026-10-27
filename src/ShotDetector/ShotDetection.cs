@@ -1351,6 +1351,7 @@ public static partial class ShotDetection
         }
 
         WarnHls();
+        Warn(video.SitingChangeWarning);
         o.Progress?.Report(Progress(frameCount, frameCount));
         if (frameCount > 0)
         {

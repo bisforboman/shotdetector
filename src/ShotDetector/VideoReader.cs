@@ -1272,7 +1272,59 @@ internal sealed partial class VideoReader
     /// index: libavformat's seek finds a packet by time, and decoding starts at the next keyframe after it), frames would
     /// be lost, so the read starts over from <see cref="SeekBackAgain"/> frames early, up to from the start.
     /// </remarks>
-    internal IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken = default, int seekBack = 2)
+    internal IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken = default, int seekBack = 2) =>
+        Frames(startFrame, count, cancellationToken, seekBack, null);
+
+    /// <summary>
+    /// Where a read through the executable goes on after a frame whose chroma siting isn't the one its scale filter was
+    /// told: from that frame (its absolute time, <paramref name="Seconds"/>) with <paramref name="Location"/>.
+    /// </summary>
+    internal sealed record SitingRestart(double Seconds, string? Location);
+
+    /// <summary>A frame's chroma siting as the executable's scale filter would be told it: its own, else the stream's.</summary>
+    internal static string? SitingOf(string? frameLocation, string? streamLocation) =>
+        frameLocation is not (null or "unspecified" or "unknown" or "") ? frameLocation
+        : streamLocation is not (null or "unspecified" or "unknown" or "") ? streamLocation
+        : null;
+
+    /// <summary>The first frame (index into the packet list) within half a frame of <paramref name="seconds"/> or after it.</summary>
+    int FirstAtOrAfter(double seconds)
+    {
+        int lo = 0, hi = _pts.Length;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) >>> 1;
+            if (_pts[mid] * _timeBase < seconds - 0.5 / Fps.Value)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+
+        return Math.Min(lo, Math.Max(_pts.Length - 1, 0));
+    }
+
+    /// <summary>
+    /// Whether a stream's chroma siting changed midway where its frames were converted by ffmpeg's scale filter, which
+    /// takes one siting (a file is read again from the change instead: <see cref="SitingRestart"/>).
+    /// </summary>
+    internal bool SitingChangeNotFollowed { get; private set; }
+
+    /// <summary><see cref="DetectionResult.Warnings"/>' line for <see cref="SitingChangeNotFollowed"/>, else null.</summary>
+    internal string? SitingChangeWarning => SitingChangeNotFollowed
+        ? "the video's chroma siting changes midway; ffmpeg converted every frame of the stream with the first frame's "
+        + "(a file is read again from each change), so per-frame stats after the change can differ from scenedetect's."
+        : null;
+
+    /// <param name="startFrame">The first frame.</param>
+    /// <param name="count">How many frames; null: to the end.</param>
+    /// <param name="cancellationToken">Kills ffmpeg.</param>
+    /// <param name="seekBack">How many frames early a seek goes.</param>
+    /// <param name="restart">
+    /// Going on after a chroma siting change (files, executable, BGR pipelines): the scale filter is told its location,
+    /// and the frames before the first one with it (already given: in two joined encodes the earlier one's last frames
+    /// can share the later one's first times) are dropped.
+    /// </param>
+    IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken, int seekBack, SitingRestart? restart)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (count is <= 0)
@@ -1349,7 +1401,7 @@ internal sealed partial class VideoReader
                 : $"select=gte(pts\\,{_pts[startFrame]})"];
         }
 
-        string[] limit = count is { } n ? ["-frames:v", (keepBefore ? n + 1 : n).ToString(CultureInfo.InvariantCulture)] : [];
+        string[] limit = count is { } n && restart is null ? ["-frames:v", (keepBefore ? n + 1 : n).ToString(CultureInfo.InvariantCulture)] : [];
 
         // The crop (an exact pixel copy) comes after the colour conversion, as OpenCV converts the
         // whole frame and scenedetect slices the result; in the yuv420p pipeline it happens here instead.
@@ -1389,7 +1441,8 @@ internal sealed partial class VideoReader
 
         // The stream's size, explicitly: a frame of another size (a resolution change) is scaled to it in the same
         // conversion, as OpenCV's sws_scale_frame does into its buffer (ffmpeg would convert, then scale at the encoder).
-        string toBgr = $"scale={_codedSize.W}:{_codedSize.H}:flags=bicubic" + (ChromaLocation is { } cl ? ":in_chroma_loc=" + cl : "")
+        string? siting = restart is null ? ChromaLocation : restart.Location;
+        string toBgr = $"scale={_codedSize.W}:{_codedSize.H}:flags=bicubic" + (siting is { } cl ? ":in_chroma_loc=" + cl : "")
             + (_alwaysBt601 ? ":in_color_matrix=bt601" : "") + ",format=bgr24" + TurnFilters;
         args = pipeline switch
         {
@@ -1413,11 +1466,13 @@ internal sealed partial class VideoReader
         using var livePts = new BlockingCollection<(long Pts, bool NewLayout, string Size, FrameColourTags Tags)>();
         string streamSize = $"{_codedSize.W}x{_codedSize.H}"; // OpenCV's buffer, as scale= in the BGR pipelines
         double liveTimeBase = _timeBase;
-        if (!Streaming)
+        if (!Streaming && restart is null)
         {
             _livePackets.Clear();
             _liveStart = startFrame;
         }
+
+        int packetMark = _livePackets.Count; // what a restart after a siting change found already (kept)
 
         var log = new System.Text.StringBuilder();
 
@@ -1556,6 +1611,15 @@ internal sealed partial class VideoReader
         bool again = false;
         int againBack = seekBack;
         var conversions = yuv ? new FrameConversions(this, null, null) : null;
+
+        // ffmpeg's scale filter converts with one chroma siting, where OpenCV's sws_scale_frame takes each frame's: a frame
+        // with another (two encodes joined) has a file read again from it with that one (SitingRestart). Not on the YUV
+        // pipelines (FastYuv converts each frame with its own) nor 8-bit 4:2:0 (its unscaled conversion doesn't
+        // interpolate chroma).
+        bool followSiting = !yuv && _pixelFormat is not ("yuv420p" or "yuvj420p");
+        string? streamSiting = followSiting ? _colours.Value.Stream.GetValueOrDefault("chroma_location") : null;
+        SitingRestart? next = null;
+        bool waitingForSiting = restart is not null, stopped = false;
         try
         {
             var small = new byte[Width * Height * 3];
@@ -1614,6 +1678,29 @@ internal sealed partial class VideoReader
                     break;
                 }
 
+                if (followSiting && SitingOf(info.Tags.ChromaLocation, streamSiting) is var frameSiting && frameSiting != siting)
+                {
+                    // Going on after a change: the frames before the one it went on from were given already.
+                    if (waitingForSiting)
+                    {
+                        free.Add(buffer);
+                        continue;
+                    }
+
+                    // A stream can't be read again. Nor does a read go back to where it went on from (it would never end).
+                    if (_stream is not null || Streaming)
+                    {
+                        SitingChangeNotFollowed = true;
+                    }
+                    else if (restart is null || pts * liveTimeBase > restart.Seconds + (0.5 / Fps.Value))
+                    {
+                        next = new(pts * liveTimeBase, frameSiting);
+                        break;
+                    }
+                }
+
+                waitingForSiting = false;
+
                 // A chunk's first frame must have the first chunk's size (ShotDetection.ScoreChunked), as in-process.
                 if (FirstFrameSize is null && info.Size.Split('x') is [var w, var h])
                     FirstFrameSize = (int.Parse(w, CultureInfo.InvariantCulture), int.Parse(h, CultureInfo.InvariantCulture));
@@ -1626,6 +1713,12 @@ internal sealed partial class VideoReader
                     previous = buffer;
                     emitted++;
                     yield return buffer;
+                    if (restart is not null && emitted == count)
+                    {
+                        stopped = true;
+                        break;
+                    }
+
                     continue;
                 }
 
@@ -1638,16 +1731,21 @@ internal sealed partial class VideoReader
                 free.Add(buffer);
                 emitted++;
                 yield return small;
+                if (restart is not null && emitted == count)
+                {
+                    stopped = true;
+                    break;
+                }
             }
 
             // No frame at all: the seek landed after the last keyframe.
-            if (emitted == 0 && !again && seek.Length > 1)
+            if (emitted == 0 && !again && next is null && seek.Length > 1)
             {
                 again = true;
                 againBack = SeekBackAgain(seekBack);
             }
 
-            if (!again)
+            if (!again && next is null && !stopped)
             {
                 reader.Wait(); // rethrows read errors
                 proc.WaitForExit();
@@ -1692,7 +1790,17 @@ internal sealed partial class VideoReader
         // without the frames already given.
         if (again)
         {
-            foreach (var frame in Frames(startFrame, count, cancellationToken, againBack).Skip(emitted))
+            if (restart is not null)
+                _livePackets.RemoveRange(packetMark, _livePackets.Count - packetMark);
+            foreach (var frame in Frames(startFrame, count, cancellationToken, againBack, restart).Skip(emitted))
+                yield return frame;
+        }
+
+        // A new chroma siting: again from that frame (the first at its time; the frames before it there are dropped),
+        // with the exact seek.
+        else if (next is not null)
+        {
+            foreach (var frame in Frames(FirstAtOrAfter(next.Seconds), count - emitted, cancellationToken, 2, next))
                 yield return frame;
         }
     }
