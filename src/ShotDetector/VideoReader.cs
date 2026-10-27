@@ -1410,7 +1410,7 @@ internal sealed partial class VideoReader
         psi.ArgumentList.Add(server is null ? "-" : $@"\\.\pipe\{pipeName}");
 
         using var proc = Start(psi);
-        using var livePts = new BlockingCollection<(long Pts, bool NewLayout)>();
+        using var livePts = new BlockingCollection<(long Pts, bool NewLayout, string Size)>();
         string streamSize = $"{_codedSize.W}x{_codedSize.H}"; // OpenCV's buffer, as scale= in the BGR pipelines
         double liveTimeBase = _timeBase;
         if (!Streaming)
@@ -1433,7 +1433,8 @@ internal sealed partial class VideoReader
                         // showinfo sees the decoded frame, before the output's -pix_fmt conversion.
                         var format = FormatField().Match(line);
                         livePts.Add((long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture),
-                            frame.Groups[2].Value != streamSize || (format.Success && format.Groups[1].Value != _pixelFormat)));
+                            frame.Groups[2].Value != streamSize || (format.Success && format.Groups[1].Value != _pixelFormat),
+                            frame.Groups[2].Value));
                         continue;
                     }
 
@@ -1577,6 +1578,9 @@ internal sealed partial class VideoReader
                     break;
                 }
 
+                // A chunk's first frame must have the first chunk's size (ShotDetection.ScoreChunked), as in-process.
+                if (FirstFrameSize is null && info.Size.Split('x') is [var w, var h])
+                    FirstFrameSize = (int.Parse(w, CultureInfo.InvariantCulture), int.Parse(h, CultureInfo.InvariantCulture));
                 if (Streaming)
                     _livePts.Add(pts); // from the start already: ffmpeg shifts input timestamps to start at 0
                 else

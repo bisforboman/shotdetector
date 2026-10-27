@@ -1276,7 +1276,7 @@ public static partial class ShotDetection
         long pixels = (long)video.SourceWidth * video.SourceHeight;
         string? notChunked = !parallel ? null
             : video.FromFrames ? "frames from the caller"
-            : NotChunkable(videoPath is null || spilled is not null || video.Streaming, video.DecodesInProcess, video.PtsFromFrames, startFrame != 0 || endFrame is not null, stride != 1);
+            : NotChunkable(videoPath is null || spilled is not null || video.Streaming, video.PtsFromFrames, startFrame != 0 || endFrame is not null, stride != 1);
         int chunks = parallel && notChunked is null
             ? o.Chunks ?? AutoChunks(Environment.ProcessorCount, video.ExpectedFrames, video.Fps, pixels, o.Mode == DetectionMode.Parallel, o.DecodeThreads)
             : 1;
@@ -1462,9 +1462,8 @@ public static partial class ShotDetection
         : "shorter than two minutes";
 
     /// <summary>Why a file can't be scored in chunks at all, whatever the CPUs; null when it can.</summary>
-    internal static string? NotChunkable(bool streamed, bool inProcess, bool ptsFromFrames, bool timeRange, bool frameSkip) =>
+    internal static string? NotChunkable(bool streamed, bool ptsFromFrames, bool timeRange, bool frameSkip) =>
         streamed ? "a stream, a URL or streaming mode"
-        : !inProcess ? "decoded by the ffmpeg executable"
         : ptsFromFrames ? "packets without timestamps (MPEG-PS)"
         : timeRange ? "a time range"
         : frameSkip ? "frame skip"
@@ -1534,7 +1533,7 @@ public static partial class ShotDetection
         // is shared out instead): a sequential run's, or twice that for a frame-threaded decoder (ChunkedDecodeThreads).
         int threads = o.DecodeThreads is > 0 and var set
             ? set
-            : ChunkedDecodeThreads(Environment.ProcessorCount, FrameReader.FrameDecoder.HasFrameThreads(video.Codec), (long)video.SourceWidth * video.SourceHeight);
+            : ChunkedDecodeThreads(Environment.ProcessorCount, video.HasFrameThreads, (long)video.SourceWidth * video.SourceHeight);
         var metrics = new List<double?>[chunks, settings.Count];
         var overlap = new double?[chunks, settings.Count];
         var sizes = new (int, int)?[chunks];

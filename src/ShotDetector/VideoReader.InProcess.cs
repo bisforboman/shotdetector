@@ -27,13 +27,26 @@ internal sealed partial class VideoReader
         // Deinterlacing needs libavfilter's yadif too (ShotDetector.Native has it since 0.9).
         && (!_deinterlace || InProcess.CanDeinterlace(_ffmpegDirectory));
 
+    /// <summary>
+    /// Whether this video's decoder decodes several frames at once (FFmpeg's frame threading), for the decoder threads a
+    /// chunked run shares out: the libraries' answer in-process (<see cref="FrameReader.FrameDecoder.HasFrameThreads"/>),
+    /// and for the ffmpeg executable, whose libraries may not load here, <see cref="FrameThreadedCodecs"/>.
+    /// </summary>
+    internal bool HasFrameThreads => DecodesInProcess ? FrameReader.FrameDecoder.HasFrameThreads(Codec) : FrameThreadedCodecs.Contains(Codec);
+
+    /// <summary>
+    /// The common codecs whose FFmpeg decoders frame-thread (AV_CODEC_CAP_FRAME_THREADS), for the executable path; any
+    /// other codec counts as not frame-threaded there, which only gives its chunks fewer threads.
+    /// </summary>
+    internal static readonly IReadOnlySet<string> FrameThreadedCodecs = new HashSet<string>(StringComparer.Ordinal) { "h264", "hevc", "vp8", "vp9", "mpeg4", "prores" };
+
     bool _inProcessGaveNothing; // Auto, and the libraries decoded no frame of this video: the executable instead
     bool _ptsFromFrames;        // MPEG-PS and the like: packets without pts, timestamps from a decoding pass
 
     /// <summary>MPEG-PS and the like: the packets carry no pts, so a seek decodes from the start.</summary>
     internal bool PtsFromFrames => _ptsFromFrames;
 
-    /// <summary>The decoded size of the first frame Frames gave in-process (before rotation); null before then.</summary>
+    /// <summary>The decoded size of the first frame Frames gave (before rotation), in-process or by the executable (showinfo's); null before then.</summary>
     internal (int Width, int Height)? FirstFrameSize { get; private set; }
 
     /// <summary>On a YUV pipeline in-process: the frames that took the BGR conversion instead (another size or pixel format).</summary>
