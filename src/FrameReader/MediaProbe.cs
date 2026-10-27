@@ -69,8 +69,26 @@ public static unsafe class MediaProbe
         var cancellationToken = options?.CancellationToken ?? default;
 
         // An MP4/MOV file's packet timestamps come from its sample tables: the scan needn't read the media data (FileInput).
-        using var file = io == null && timestamps && options?.ReadsMediaData != true ? FileInput.For(path, cancellationToken) : null;
-        var fmt = Demuxer.Open(path, options?.InputOptions, io, cancellationToken, file);
+        // Where it would (another container or codec), the file is opened again as before, through FFmpeg's file protocol.
+        var file = io == null && timestamps && options?.ReadsMediaData != true ? FileInput.For(path, cancellationToken) : null;
+        AVFormatContext* fmt = null;
+        try
+        {
+            fmt = Demuxer.Open(path, options?.InputOptions, io, cancellationToken, file);
+            if (file != null && !SkipsMediaData(fmt, Demuxer.FirstVideoStream(fmt)))
+            {
+                Demuxer.Close(&fmt);
+                file.Dispose();
+                file = null;
+                fmt = Demuxer.Open(path, options?.InputOptions, io, cancellationToken);
+            }
+        }
+        catch
+        {
+            file?.Dispose();
+            throw;
+        }
+
         try
         {
             bool audio = false;
@@ -80,8 +98,7 @@ public static unsafe class MediaProbe
             var streams = new List<StreamInfo>();
             for (int i = 0; i < fmt->nb_streams; i++)
                 streams.Add(Stream(fmt->streams[i], i));
-            var skipping = file != null && SkipsMediaData(fmt, index) ? file : null;
-            var (pts, pos, packet) = index >= 0 && (timestamps || first) ? Packets(fmt, index, timestamps, skipping) : (null, null, null);
+            var (pts, pos, packet) = index >= 0 && (timestamps || first) ? Packets(fmt, index, timestamps, file) : (null, null, null);
             return new MediaInfo
             {
                 Container = Marshal.PtrToStringAnsi((IntPtr)fmt->iformat->name) ?? "",
@@ -98,7 +115,10 @@ public static unsafe class MediaProbe
         {
             Demuxer.Close(&fmt);
             if (file != null)
+            {
                 options?.OnFileBytesRead?.Invoke(file.BytesRead);
+                file.Dispose();
+            }
         }
     }
 

@@ -30,7 +30,7 @@ public class PacketScanTests
     static bool HasEncoder(string name) => Encoders.Value.Split('\n').Any(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries) is [_, var n, ..] && n == name);
 
     // name, video encoding, what the scan reads (headers: FileInput skipping the media data, for TimestampsWithoutData's
-    // codecs; all: FileInput reading it; file: not FileInput, a fragmented file), and what's done to the file after.
+    // codecs; file: the whole file through FFmpeg's file protocol, as before), and what's done to the file after.
     [Theory]
     [InlineData("h264-b.mp4", "libx264 -bf 3 -c:a aac", "headers", "")]
     [InlineData("h264-faststart.mp4", "libx264 -bf 2 -movflags +faststart -c:a aac", "headers", "")]
@@ -42,9 +42,9 @@ public class PacketScanTests
     [InlineData("mpeg2.mov", "mpeg2video -bf 2 -an", "headers", "")]
     [InlineData("mjpeg.mov", "mjpeg -an", "headers", "")]
     [InlineData("prores.mov", "prores -an", "headers", "")]
-    [InlineData("vp9.mp4", "libvpx-vp9 -an", "all", "")]
-    [InlineData("av1.mp4", "libsvtav1 -an", "all", "")]
-    [InlineData("mpeg1.mov", "mpeg1video -an", "all", "")]
+    [InlineData("vp9.mp4", "libvpx-vp9 -an", "file", "")]
+    [InlineData("av1.mp4", "libsvtav1 -an", "file", "")]
+    [InlineData("mpeg1.mov", "mpeg1video -an", "file", "")]
     [InlineData("h264-fragmented.mp4", "libx264 -movflags +frag_keyframe+empty_moov -c:a aac", "file", "")]
     public void TimestampsWithoutMediaDataAreTheSame(string name, string encode, string reads, string after)
     {
@@ -78,8 +78,6 @@ public class PacketScanTests
             Assert.Equal(full.Streams, scan.Streams);
             if (reads == "headers")
                 Assert.InRange(read, 1, size / 4);
-            else if (reads == "all")
-                Assert.InRange(read, size * 9 / 10, long.MaxValue);
             else
                 Assert.Equal(-1, read);
         }
