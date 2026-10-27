@@ -15,9 +15,9 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-24: on x86 one known, stats only: a video whose colour tags change midway, through the executable with FastYuv or, on a 10-bit siting change, with the default path (the per-frame-tags row in Maybe; the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv are informational there, exact in-process since FastYuv follows each frame's tags there, docs/decisions/2026-10-24-per-frame-tags-fastyuv.md); on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- Measure where the ffmpeg-executable path's time goes, then decide what to fix
-  - Why: The first recorded benchmark run (bench-data, 2026-10-25, run 40233248479) has `shotdetect --decoder process` at 1.04-1.30x scenedetect 0.7.2's time on every film, on x64 and ARM and on 2 CPUs, while the in-process default is 0.41-0.92x. It is the path library users get without FrameReader.Native, and both tools read ffmpeg's decoded frames, so the gap is ours: the rawvideo pipe, ffmpeg's BGR conversion and remap, the reader thread, or no chunking (sequential by design). Profile it on one film (CPU in ffmpeg vs in .NET, the pipe's throughput, what `remap` costs), then propose fixes with their expected gain
-  - Status: Open
+- Chunk the ffmpeg-executable path: several ffmpeg processes, each with the exact `-copyts` + `select` seek and `-frames:v`, through `ScoreChunked` and its overlap check
+  - Why: The profile (docs/decisions/2026-10-27-executable-path-fixes.md) found ffmpeg setting the pace on about 2.4 of 4 cores; two concurrent halves took ffmpeg alone about a fifth off on long films at the same CPU, and it is the only lever found for the 640x360 / whole-frame class, which doesn't use remap. Today `NotChunkable` refuses "decoded by the ffmpeg executable". Needs a CI job comparing chunked with sequential runs on the process path, in its gate's `needs`; the overlap check falls back to sequential on any mismatch
+  - Status: Open (after the loop-filter PR)
 
 ## Waiting
 
@@ -78,6 +78,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - Shots told before timestamps start over are not told again
   - Why: `DetectionOptions.OnShot` and `DetectStreamAsync` tell shots in order as cuts are confirmed; when timestamps start over (two streams joined) the cuts come out of order, the result's shots are sorted, and the shots told before that point aren't told again, so a listener's list can differ from `DetectionResult.Shots`. Documented in OnShot's XML doc (#497) but not fixed: e.g. tell a correction, or hold shots back once an out-of-order cut is seen
+  - Status: Maybe
+
+- Re-tune `SampledPays`' crossover after the loop filter
+  - Why: Before the maps went through the loop filter, whole frames were 9% faster than remap on Tears of Steel (1280x534, 16% of the pixels read) and 7% slower on Sintel 1080p; the loop filter took about a seventh of ffmpeg's CPU off remap's side, so the two now look about equal at 1280x534 (docs/decisions/2026-10-27-executable-path-fixes.md). 0-9%, on 720p-class video only; measure on CI's x64 and ARM runners before moving the 0.25. Same results either way (both pipelines are CI-compared)
   - Status: Maybe
 
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and
