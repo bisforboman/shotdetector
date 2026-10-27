@@ -12,6 +12,9 @@ its pushes start no workflows. This README is copied from `benchmarks/bench-data
   day the runner recorded it. A re-run of the same workflow run replaces its files (`run_attempt` says which).
 - `runs/index.json`: every run file's name, sorted (raw.githubusercontent.com has no directory listing).
 
+Each run's summary also draws these numbers as Mermaid charts (`tools/bench_chart.py`): every runner's ratio to
+scenedetect per film above its tables, and, in the publish job, the trend over the last runs on this branch.
+
 ## Schema (version 1)
 
 ```text
