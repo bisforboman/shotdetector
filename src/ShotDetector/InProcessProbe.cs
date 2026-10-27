@@ -119,11 +119,15 @@ internal static unsafe class InProcessProbe
 
     /// <summary>
     /// Every stream: FrameReader's, as <see cref="VideoReader"/> fills them from ffprobe's <c>-show_entries</c>
-    /// (VideoReader.StreamEntries) without the libraries.
+    /// (VideoReader.StreamEntries) without the libraries. <paramref name="cancellationToken"/> stops it where FFmpeg waits on a read.
     /// </summary>
-    public static IReadOnlyList<StreamInfo> Streams(string path, string? libraryDirectory, string[]? inputOptions = null)
+    public static IReadOnlyList<StreamInfo> Streams(string path,
+        string? libraryDirectory,
+        string[]? inputOptions = null,
+        CancellationToken cancellationToken = default)
     {
-        var info = Probe(() => MediaProbe.Probe(path, new ProbeOptions { InputOptions = Options(inputOptions) }), libraryDirectory);
+        var options = new ProbeOptions { InputOptions = Options(inputOptions), CancellationToken = cancellationToken };
+        var info = Probe(() => MediaProbe.Probe(path, options), libraryDirectory);
         return info.Streams;
     }
 

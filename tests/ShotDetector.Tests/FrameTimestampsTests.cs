@@ -75,6 +75,34 @@ public class FrameTimestampsTests(MpegPsClip clip) : IClassFixture<MpegPsClip>
         }
     }
 
+    // ShotDetection.Probe's token also stops the stream list, read on first use after the headers (another request for a
+    // URL): the server answers the headers' probe in full, then stalls.
+    [Theory]
+    [InlineData(VideoDecoder.InProcess)]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    public async Task StreamsStopAtAStalledRead(VideoDecoder decoder)
+    {
+        if (decoder == VideoDecoder.InProcess && (Libs is null || !InProcess.HasProtocol("http", Libs)))
+            return;
+        using var server = new StalledServer(clip.Path, stall: false);
+        using var cts = new CancellationTokenSource();
+        var options = new DetectionOptions { Decoder = decoder, FfmpegDirectory = Libs };
+        var reader = VideoReader.Headers(server.Url, options, cts.Token);
+        server.StallFromNow();
+        var streams = Task.Run(() => reader.Streams);
+        try
+        {
+            await server.Stalled.WaitAsync(TimeSpan.FromSeconds(30));
+            cts.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => streams.WaitAsync(TimeSpan.FromSeconds(15)));
+        }
+        finally
+        {
+            server.Release();
+            await Task.WhenAny(streams, Task.Delay(TimeSpan.FromSeconds(30)));
+        }
+    }
+
     // A detection cancelled as its reader starts the pass stops at once, not after decoding the file: VideoReader hands
     // the pass its token.
     [Theory]
@@ -122,16 +150,19 @@ public class FrameTimestampsTests(MpegPsClip clip) : IClassFixture<MpegPsClip>
     /// <summary>
     /// An http server on localhost that answers every request with the whole file's length but sends only its first
     /// 2 KB (not a whole frame: the reader waits on the read, where checking the token between frames can't help), then
-    /// waits until released. No byte ranges, so FFmpeg doesn't seek.
+    /// waits until released. No byte ranges, so FFmpeg doesn't seek. Made with <c>stall: false</c>, it sends the whole
+    /// file until <see cref="StallFromNow"/>.
     /// </summary>
     sealed class StalledServer : IDisposable
     {
         readonly TcpListener _listener = new(IPAddress.Loopback, 0);
         readonly TaskCompletionSource _stalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        volatile bool _stall;
 
-        public StalledServer(string path)
+        public StalledServer(string path, bool stall = true)
         {
+            _stall = stall;
             byte[] file = File.ReadAllBytes(path);
             _listener.Start();
             Url = $"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/long.mpg";
@@ -161,6 +192,9 @@ public class FrameTimestampsTests(MpegPsClip clip) : IClassFixture<MpegPsClip>
 
         public void Release() => _released.TrySetResult();
 
+        /// <summary>Stalls every response from now on.</summary>
+        public void StallFromNow() => _stall = true;
+
         public void Dispose()
         {
             Release();
@@ -185,6 +219,12 @@ public class FrameTimestampsTests(MpegPsClip clip) : IClassFixture<MpegPsClip>
 
                     string headers = $"HTTP/1.1 200 OK\r\nContent-Type: video/mpeg\r\nContent-Length: {file.Length}\r\nConnection: close\r\n\r\n";
                     await stream.WriteAsync(Encoding.ASCII.GetBytes(headers));
+                    if (!_stall)
+                    {
+                        await stream.WriteAsync(file);
+                        return;
+                    }
+
                     await stream.WriteAsync(file.AsMemory(0, Math.Min(file.Length, 2048)));
                     await stream.FlushAsync();
                     _stalled.TrySetResult();

@@ -273,6 +273,10 @@
         # FrameReader's interrupt callback ends a read that waits, and VideoReader hands the pass its token
         @{ File = 'src/ShotDetector/InProcessProbe.cs'; Find = 'InputOptions = Options(inputOptions), CancellationToken = cancellationToken });'; Replace = 'InputOptions = Options(inputOptions) });'; Tests = 'FrameTimestampsTests.InProcessStopsAtAStalledRead' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions, cancellationToken)'; Replace = 'InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions)'; Tests = 'FrameTimestampsTests.CancellingDetectionStopsThePass' }
+        # ShotDetection.Probe's token also stops the stream list, read on first use (a stalled URL)
+        @{ File = 'src/ShotDetector/InProcessProbe.cs'; Find = 'new ProbeOptions { InputOptions = Options(inputOptions), CancellationToken = cancellationToken };'; Replace = 'new ProbeOptions { InputOptions = Options(inputOptions) };'; Tests = 'FrameTimestampsTests.StreamsStopAtAStalledRead' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions, _cancellationToken)'; Replace = 'InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions, CancellationToken.None)'; Tests = 'FrameTimestampsTests.StreamsStopAtAStalledRead' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '"-i", _path], _cancellationToken);'; Replace = '"-i", _path], CancellationToken.None);'; Tests = 'FrameTimestampsTests.StreamsStopAtAStalledRead' }
         # Frame-source detection in ranges (ScoreRange, RangeScores' bytes, Merge): what a range can't honour, ranges that
         # don't make up the video, overlap frames that differ, frames off the constant-rate grid, bytes it can't read
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (firstFrame is < 0 or >= int.MaxValue)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }
