@@ -65,7 +65,30 @@ public static unsafe class MediaProbe
     static MediaInfo Probe(string path, StreamInput? io, ProbeOptions? options)
     {
         FFmpegLibraries.Load();
-        var fmt = Demuxer.Open(path, options?.InputOptions, io, options?.CancellationToken ?? default);
+        bool timestamps = options?.PacketTimestamps == true, first = options?.FirstVideoPacket == true;
+        var cancellationToken = options?.CancellationToken ?? default;
+
+        // An MP4/MOV file's packet timestamps come from its sample tables: the scan needn't read the media data (FileInput).
+        // Where it would (another container or codec), the file is opened again as before, through FFmpeg's file protocol.
+        var file = io == null && timestamps && options?.ReadsMediaData != true ? FileInput.For(path, cancellationToken) : null;
+        AVFormatContext* fmt = null;
+        try
+        {
+            fmt = Demuxer.Open(path, options?.InputOptions, io, cancellationToken, file);
+            if (file != null && !SkipsMediaData(fmt, Demuxer.FirstVideoStream(fmt)))
+            {
+                Demuxer.Close(&fmt);
+                file.Dispose();
+                file = null;
+                fmt = Demuxer.Open(path, options?.InputOptions, io, cancellationToken);
+            }
+        }
+        catch
+        {
+            file?.Dispose();
+            throw;
+        }
+
         try
         {
             bool audio = false;
@@ -75,8 +98,7 @@ public static unsafe class MediaProbe
             var streams = new List<StreamInfo>();
             for (int i = 0; i < fmt->nb_streams; i++)
                 streams.Add(Stream(fmt->streams[i], i));
-            bool timestamps = options?.PacketTimestamps == true, first = options?.FirstVideoPacket == true;
-            var (pts, pos, packet) = index >= 0 && (timestamps || first) ? Packets(fmt, index, timestamps) : (null, null, null);
+            var (pts, pos, packet) = index >= 0 && (timestamps || first) ? Packets(fmt, index, timestamps, file) : (null, null, null);
             return new MediaInfo
             {
                 Container = Marshal.PtrToStringAnsi((IntPtr)fmt->iformat->name) ?? "",
@@ -92,6 +114,11 @@ public static unsafe class MediaProbe
         finally
         {
             Demuxer.Close(&fmt);
+            if (file != null)
+            {
+                options?.OnFileBytesRead?.Invoke(file.BytesRead);
+                file.Dispose();
+            }
         }
     }
 
@@ -189,12 +216,44 @@ public static unsafe class MediaProbe
         };
     }
 
-    /// <summary>The video packets' pts and positions (with <paramref name="all"/>; else only the first packet is read), and the first one's bytes.</summary>
-    static (List<long?>? Pts, List<long?>? Pos, byte[]? First) Packets(AVFormatContext* fmt, int index, bool all)
+    /// <summary>
+    /// The video codecs whose packets libavformat's mov demuxer gives the same timestamps, positions and order without
+    /// their data (checked on clips of each: MediaProbeTests.TimestampsWithoutMediaDataAreTheSame). Codecs it parses in
+    /// full (MPEG-1, VC-1, VP8/9, AV1: a parser splits or joins packets by their data) aren't among them.
+    /// </summary>
+    internal static readonly IReadOnlySet<AVCodecID> TimestampsWithoutData = new HashSet<AVCodecID>
+    {
+        AVCodecID.AV_CODEC_ID_H264, AVCodecID.AV_CODEC_ID_HEVC, AVCodecID.AV_CODEC_ID_MPEG4, AVCodecID.AV_CODEC_ID_MPEG2VIDEO,
+        AVCodecID.AV_CODEC_ID_MJPEG, AVCodecID.AV_CODEC_ID_PRORES,
+    };
+
+    /// <summary>Whether the packet scan can skip the media data: an MP4/MOV file (FileInput) whose video codec is among <see cref="TimestampsWithoutData"/>.</summary>
+    static bool SkipsMediaData(AVFormatContext* fmt, int index) =>
+        index >= 0 && Marshal.PtrToStringAnsi((IntPtr)fmt->iformat->name) == "mov,mp4,m4a,3gp,3g2,mj2"
+        && TimestampsWithoutData.Contains(fmt->streams[index]->codecpar->codec_id);
+
+    /// <summary>
+    /// The video packets' pts and positions (with <paramref name="all"/>; else only the first packet is read), and the first
+    /// one's bytes. With <paramref name="skipping"/>, the media data reads as zeros from here on (the other streams' packets
+    /// aren't read at all): the first packets come whole all the same, as avformat_find_stream_info read them and keeps
+    /// them for av_read_frame.
+    /// </summary>
+    static (List<long?>? Pts, List<long?>? Pos, byte[]? First) Packets(AVFormatContext* fmt, int index, bool all, FileInput? skipping)
     {
         List<long?> result = [], positions = [];
         byte[]? first = null;
         var pkt = ffmpeg.av_packet_alloc();
+        if (skipping != null)
+        {
+            for (int i = 0; i < fmt->nb_streams; i++)
+            {
+                if (i != index)
+                    fmt->streams[i]->discard = AVDiscard.AVDISCARD_ALL;
+            }
+
+            skipping.SkipMediaData = true;
+        }
+
         try
         {
             int read;
@@ -212,7 +271,7 @@ public static unsafe class MediaProbe
                     return (null, null, first);
             }
 
-            Demuxer.ThrowIfReadFailed(fmt, read, null);
+            Demuxer.ThrowIfReadFailed(fmt, read, skipping?.Error);
         }
         finally
         {

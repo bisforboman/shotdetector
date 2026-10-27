@@ -364,7 +364,9 @@ and a concat, not byte for byte.
 `MediaProbe.Probe(path or Stream)` reads a file's properties without decoding (codec, size, pixel format, colour
 tags, field order, frame rates, time base, duration, frame count, rotation, container, audio, and `Streams`: every
 stream with its type, codec, codec tag, language, title, flags, bit rate, duration and audio details; the video's
-codec extradata; optionally every packet's timestamp, and the first video packet's bytes). `MediaProbe.ProbeJson(path)` gives ffprobe's `-print_format json -show_format
+codec extradata; optionally every packet's timestamp, and the first video packet's bytes). A local MP4/MOV file's packet
+timestamps come from its sample tables without reading its media data (h264, HEVC, MPEG-2/4, MJPEG and ProRes video;
+not fragmented), so that scan reads kilobytes instead of the file. `MediaProbe.ProbeJson(path)` gives ffprobe's `-print_format json -show_format
 -show_streams` instead: every field ffprobe prints (profile, level, aspect ratios, colour, disposition, tags, side
 data, ...), with ffprobe's keys and value types, unknown values left out as there; it opens each stream's decoder, as
 ffprobe does. **The advanced layer:** `FrameDecoder` is the lower level, decoded frames as FFmpeg holds them (`GetPlane`; or
