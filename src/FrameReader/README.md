@@ -10,8 +10,8 @@ frame, and the same bytes as ffmpeg's command line, so you can check them agains
   with exact seeking, thumbnails, frame rates and deinterlacing.
 - **Audio**: samples in any format and rate, FFmpeg's audio filters, spectral statistics, waveform peaks, reference
   tones.
-- **Writing**: MP3, AAC and WAV, H.264 with an FFmpeg built with x264, stream copy (`Remux`), synthetic test media
-  (`TestMedia`).
+- **Writing**: MP3, AAC and WAV, JPEG and PNG images (`ImageEncoder`), H.264 with an FFmpeg built with x264, stream
+  copy (`Remux`), synthetic test media (`TestMedia`).
 - **Probing**: streams, packets and ffprobe's JSON (`MediaProbe`).
 
 ```
@@ -91,6 +91,33 @@ using var sheet = new VideoFrameReader("film.mp4", new() { Width = 320, Height =
 while (sheet.TryRead(out var frame))
     Save(frame.Data.ToArray(), frame.Width, frame.Height); // frame.Time: 0, 1, 2, ... s
 ```
+
+Image files: `ImageEncoder` writes a frame as a JPEG (FFmpeg's `mjpeg`) or a PNG (`png`), to a `Stream` or as a
+`byte[]`, one encoder for any number of frames. The file is the one ffmpeg writes from the same raw frame with
+`-frames:v 1 out.jpg`, byte for byte with the same libraries (a JPEG's comment names libavcodec's version): the frame is
+converted to the pixel format ffmpeg picks for the encoder as its command line converts it (the scale filter it
+inserts), and the frame's aspect ratio and colour tags (`VideoFrame.SampleAspectRatio`, `ColorRange`, `ColorSpace`,
+`ColorPrimaries`, `ColorTransfer`, as ffmpeg's frame has them after the same filters) go where ffmpeg puts them (JFIF
+density, PNG's pHYs, cHRM and gAMA). Options are ffmpeg's: `JpegQscale` is `-q:v` (2 to 31, lower is better; not
+ShotDetector's 0-100 save-images quality), `PngCompressionLevel` is `-compression_level` (0 to 9: speed against size,
+lossless at every level). WebP isn't available yet.
+
+```csharp
+using var frames = new VideoFrameReader("video.mp4", new() { FrameRate = new(1, 1), MaxWidth = 1280, FrameFormat = FrameFormat.Yuv420p });
+using var jpeg = new ImageEncoder(new() { Format = ImageFormat.Jpg, JpegQscale = 2 });
+while (frames.TryRead(out var frame))
+    File.WriteAllBytes($"frame_{frame.Index + 1:D6}.jpg", jpeg.Encode(frame));
+```
+
+Without `JpegQscale`, JPEG uses ffmpeg's default, its rate control, which carries its state from frame to frame in one
+ffmpeg run: `ImageEncoder` starts it afresh for every image, so each file is what a one-frame run
+(`-frames:v 1 out.jpg`) writes for that frame; one ffmpeg run writing N frames (`frame_%06d.jpg`) differs from its second
+frame on. With a `JpegQscale` both are the same. A JPEG of a `Yuv420p` frame the reader scaled is close to but not
+byte-identical with ffmpeg's one command (`-vf scale=...,format=yuv420p out.jpg`): there ffmpeg converts to the
+encoder's full range in the same scaling pass, here the reader scales and the encoder converts. And a JPEG of an RGB
+frame of a source tagged BT.709 is converted to YUV with BT.601's matrix, as ffmpeg does from a raw RGB frame (its one
+command keeps the source's matrix). A `Yuv420p` frame of a 4:2:0 source at its own size is exactly
+`ffmpeg -i X -frames:v 1 out.jpg`.
 
 On Windows, `Decoder = new() { HardwareDecoding = true }` decodes on the GPU (D3D11VA) and copies each frame back,
 for 8-bit 4:2:0 video. On the desktop tested the pictures were identical to software decoding and it took about half
@@ -425,6 +452,7 @@ https):
 | `AudioWriter`, `Audio.Convert` | the codec's (`libmp3lame`, `aac`, `pcm_s16le`, ...) | `abuffer`, `abuffersink`, `aformat`, `aresample` | the container's (`mp3`, `ipod` for .m4a, `wav`, ...) |
 | `VideoWriter` | `libx264` (and `aac` for an audio track) | `buffer`, `buffersink`, `format`, `null`, `scale` (and the audio ones) | `mp4`, `matroska` or `mov` |
 | `Remux.Copy` | | | the output's (`dash` for an .mpd) |
+| `ImageEncoder` | `mjpeg` (JPEG), `png` (PNG) | `buffer`, `buffersink`, `format`, `scale` | |
 
 ```csharp
 var missing = FFmpegLibraries.Missing(Capability.Deinterlace | Capability.AudioFilter | Capability.Mp3 | Capability.Dash)
