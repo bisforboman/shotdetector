@@ -129,11 +129,14 @@ public class FrameTimestampsTests(MpegPsClip clip) : IClassFixture<MpegPsClip>
 
         using var cts = new CancellationTokenSource();
         var sinceCancel = new Stopwatch();
+
+        // In-process, the timestamps come with the frames unless something needs them first: a start time.
         var options = new DetectionOptions
         {
             Detector = DetectorKind.Content,
             Decoder = decoder,
             FfmpegDirectory = Libs,
+            StartTime = decoder == VideoDecoder.InProcess ? "10" : null,
             OnFrameTimestamps = () =>
             {
                 cts.Cancel();

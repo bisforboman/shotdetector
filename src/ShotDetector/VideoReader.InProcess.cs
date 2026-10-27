@@ -155,6 +155,13 @@ internal sealed partial class VideoReader
         var resizer = pipeline != FramePipeline.FfmpegScale ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
         _livePackets.Clear();
         _liveStart = startFrame;
+
+        // MPEG-PS (TimestampsArrive), read from the start: each frame's timestamp as the decoding pass would give it,
+        // taken from the frame here (PacketOfArrived); the list is the pass's once the read reaches the end.
+        bool collecting = _ptsPending && startFrame == 0;
+        if (collecting)
+            _collectedPts.Clear();
+        bool reachedEnd = false;
         int size = pipeline switch
         {
             // Frames of a new size come resized already (below), so room for those too.
@@ -184,7 +191,7 @@ internal sealed partial class VideoReader
         // waits. Cancelled by the caller's token, or by us when the caller stops iterating.
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var free = new BlockingCollection<byte[]>();
-        using var full = new BlockingCollection<(byte[] Buffer, long Pts, bool Bgr, YuvConversion? Yuv)>();
+        using var full = new BlockingCollection<(byte[] Buffer, long Pts, bool Bgr, YuvConversion? Yuv, long Timestamp)>();
         for (int i = 0; i < _frameBuffers; i++)
             free.Add(new byte[size]);
         double timeBase = 0;
@@ -198,7 +205,7 @@ internal sealed partial class VideoReader
         bool convertApart = convertThreads > 0 && !(_deinterlace && _yadif is not null);
         ConvertedOnThread = convertApart;
         long frameBytes = (long)_codedSize.W * _codedSize.H * 3 * (_pixelFormat.EndsWith("le", StringComparison.Ordinal) || _pixelFormat.EndsWith("be", StringComparison.Ordinal) ? 2 : 1);
-        using var handoff = new BlockingCollection<(FrameReader.DecodedFrame Frame, FrameColourTags Tags)>((int)Math.Clamp(HandoffBytes / Math.Max(1, frameBytes), 1, 3));
+        using var handoff = new BlockingCollection<(FrameReader.DecodedFrame Frame, FrameColourTags Tags, long Timestamp)>((int)Math.Clamp(HandoffBytes / Math.Max(1, frameBytes), 1, 3));
 
         // Stops both threads: the caller's token, ours, or the conversion thread failing (the caller then gets its error,
         // not a cancellation).
@@ -206,7 +213,7 @@ internal sealed partial class VideoReader
 
         // A frame written into a free buffer, by the decoding thread or the conversion thread (whichever owns writer). On
         // the YUV pipelines, converted later with its own colour tags' conversion (FrameConversions).
-        (byte[] Buffer, long Pts, bool Bgr, YuvConversion? Yuv) Write(FrameWriter writer, long pts, FrameColourTags tags)
+        (byte[] Buffer, long Pts, bool Bgr, YuvConversion? Yuv, long Timestamp) Write(FrameWriter writer, long pts, FrameColourTags tags, long timestamp)
         {
             var buffer = free.Take(stop.Token);
             FirstFrameSize ??= (writer.Width, writer.Height);
@@ -245,7 +252,7 @@ internal sealed partial class VideoReader
                     break;
             }
 
-            return (buffer, pts, bgr, conversion?.Yuv);
+            return (buffer, pts, bgr, conversion?.Yuv, timestamp);
         }
 
         // The conversion thread: the taken frames in order, each let go once written.
@@ -255,12 +262,12 @@ internal sealed partial class VideoReader
             try
             {
                 using var writer = new FrameWriter(null, _codedSize, Turn);
-                foreach (var (frame, tags) in handoff.GetConsumingEnumerable(stop.Token))
+                foreach (var (frame, tags, timestamp) in handoff.GetConsumingEnumerable(stop.Token))
                 {
                     using (frame)
                     {
                         writer.Frame = frame;
-                        full.Add(Write(writer, frame.Pts + offset, tags), stop.Token);
+                        full.Add(Write(writer, frame.Pts + offset, tags, timestamp), stop.Token);
                     }
                 }
 
@@ -314,10 +321,10 @@ internal sealed partial class VideoReader
                 // pts; landed after it (MPEG-TS), again from further back (below). Not when the packets carry no pts
                 // (MPEG-PS): there libavformat's seek lands after the wanted frame (no index to go by), so decode from
                 // the start and drop.
-                long? from = startFrame > 0 && startFrame < _pts.Length ? _pts[startFrame] : null;
+                long? from = startFrame > 0 && startFrame < Pts.Length ? Pts[startFrame] : null;
                 bool seeked = from is not null && startFrame - seekBack > 0 && !_ptsFromFrames;
                 if (seeked)
-                    decoder.Seek(_pts[startFrame - seekBack]);
+                    decoder.Seek(Pts[startFrame - seekBack]);
                 int emitted = 0;
                 bool before = false; // a frame decoded before the wanted one
                 while ((count is null || emitted < count) && decoder.Next())
@@ -337,14 +344,15 @@ internal sealed partial class VideoReader
                         break;
                     }
 
-                    // The frame's colour tags, read here: a taken frame doesn't say them.
+                    // The frame's colour tags (and MPEG-PS's timestamp), read here: a taken frame doesn't say them.
                     var tags = conversions is null ? default : FrameColourTags.Of(decoder);
+                    long timestamp = collecting ? InProcessProbe.FrameTimestamp(decoder) : 0;
                     if (writer is null)
                     {
                         var frame = decoder.TakeFrame();
                         try
                         {
-                            handoff.Add((frame, tags), stop.Token);
+                            handoff.Add((frame, tags, timestamp), stop.Token);
                         }
                         catch
                         {
@@ -354,11 +362,14 @@ internal sealed partial class VideoReader
                     }
                     else
                     {
-                        full.Add(Write(writer, pts + offset, tags), stop.Token);
+                        full.Add(Write(writer, pts + offset, tags, timestamp), stop.Token);
                     }
 
                     emitted++;
                 }
+
+                // Every frame decoded (not stopped by count): MPEG-PS's timestamps as they arrived are all of them.
+                reachedEnd = count is null || emitted < count;
 
                 // No frame at all: the seek landed after the last keyframe.
                 late |= seeked && emitted == 0;
@@ -395,7 +406,7 @@ internal sealed partial class VideoReader
         try
         {
             byte[]? previous = null;
-            foreach (var (buffer, pts, bgr, yuv) in full.GetConsumingEnumerable(cancel.Token))
+            foreach (var (buffer, pts, bgr, yuv, timestamp) in full.GetConsumingEnumerable(cancel.Token))
             {
                 if (previous is not null)
                     free.Add(previous);
@@ -407,7 +418,7 @@ internal sealed partial class VideoReader
                 }
                 else
                 {
-                    _livePackets.Add(PacketOf(pts * timeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
+                    _livePackets.Add(PacketOfArrived(pts * timeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1, timestamp, collecting, cancellationToken));
                 }
 
                 // Resized already, in a buffer sized for the YUV planes: the frame's own bytes (scores count its pixels).
@@ -441,6 +452,11 @@ internal sealed partial class VideoReader
             }
 
             producer.GetAwaiter().GetResult(); // decoding errors
+            if (collecting && reachedEnd && _ptsPending)
+            {
+                _knownPts = [.. _collectedPts];
+                _ptsPending = false;
+            }
         }
         finally
         {

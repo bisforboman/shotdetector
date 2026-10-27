@@ -470,7 +470,7 @@ public static partial class ShotDetection
         nameof(DetectionOptions.FfmpegResize), nameof(DetectionOptions.TrimReferenceTone), nameof(DetectionOptions.ReferenceTone),
         nameof(DetectionOptions.Progress), nameof(DetectionOptions.Warnings), nameof(DetectionOptions.OnShot),
         nameof(DetectionOptions.ProgressStep), nameof(DetectionOptions.OnProbe), nameof(DetectionOptions.OnFrameTimestamps),
-        nameof(DetectionOptions.Streaming),
+        nameof(DetectionOptions.FrameTimestampsFirst), nameof(DetectionOptions.Streaming),
         nameof(DetectionOptions.ProbeBytes), nameof(DetectionOptions.DecodeThreads), nameof(DetectionOptions.Mode),
         "Parallel", nameof(DetectionOptions.Chunks), nameof(DetectionOptions.FrameBuffers),
         nameof(DetectionOptions.ConvertThreads), nameof(DetectionOptions.FfmpegDirectory), nameof(DetectionOptions.Decoder),

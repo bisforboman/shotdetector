@@ -266,7 +266,12 @@ internal sealed partial class VideoReader
     public (int X, int Y, int Width, int Height) CropRegion { get; }
 
     /// <summary>Frames the stream is expected to have (from its packets), for progress; 0 if unknown (always when streaming).</summary>
-    public int ExpectedFrames => _pts.Length > 0 ? _pts.Length : (int)FrameCountHint;
+    /// <remarks>
+    /// MPEG-PS read in-process from the start, before its timestamps have all arrived (<see cref="TimestampsArrive"/>): the
+    /// stream's frame count, else its duration × the frame rate (<see cref="OpenCvFrameCount"/>), as the frames aren't
+    /// counted first.
+    /// </remarks>
+    public int ExpectedFrames => _ptsPending ? (int)OpenCvFrameCount : _knownPts.Length > 0 ? _knownPts.Length : (int)FrameCountHint;
 
     /// <summary>
     /// True when the input is read once, start to end, without probing all of it first: a
@@ -300,10 +305,42 @@ internal sealed partial class VideoReader
     internal const string ProbeEntries = "stream=codec_name,field_order,width,height,pix_fmt,color_space,color_range,chroma_location,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration,format_name";
     readonly IYuv420Converter? _yuv420;
     readonly FrameReader.IRowDeinterlacer? _yadif;
-    readonly long[] _pts;              // presentation timestamps of the frames, in display order (not when streaming)
+    long[] _knownPts;                  // presentation timestamps of the frames, in display order (not when streaming); see Pts
+
+    // MPEG-PS (packets without pts) decoded in-process: each frame's timestamp comes with the frame (_collectedPts, from
+    // a read from the start) instead of a decoding pass first; the pass runs only when something needs them all before
+    // then (TakeTimestampPass). Cleared once a read from the start reaches the end or the pass has run.
+    bool _ptsPending;
+    readonly List<long> _collectedPts = [];
+    readonly Action? _onFrameTimestamps;
+    readonly Lazy<ProbeResult?> _probed;
+
+    /// <summary>
+    /// Every frame's pts in display order (see _knownPts): MPEG-PS's from the decoding pass first if they haven't all
+    /// arrived with the frames yet (<see cref="TimestampsArrive"/>).
+    /// </summary>
+    long[] Pts
+    {
+        get
+        {
+            TakeTimestampPass(_cancellationToken);
+            return _knownPts;
+        }
+    }
+
+    /// <summary>
+    /// Whether frame timestamps arrive with the frames rather than from a probe first: MPEG-PS (packets without pts)
+    /// decoded in-process, until a read from the start has reached the end. A frame's position is known once it has
+    /// arrived; asking for a later one, or for all of them (seeking, the executable), takes the decoding pass.
+    /// </summary>
+    internal bool TimestampsArrive => _ptsPending;
+
+    /// <summary>Tests: the frames' timestamps as known now (none of MPEG-PS's while <see cref="TimestampsArrive"/>), without taking the pass.</summary>
+    internal IReadOnlyList<long> KnownTimestamps => _ptsPending ? [] : _knownPts;
+
     readonly List<long> _livePts = []; // the same, as frames arrive, when streaming (from the stream's start)
 
-    // For a file in 0.7.1 mode: the packet (index into _pts) of each decoded frame since _liveStart. Normally
+    // For a file in 0.7.1 mode: the packet (index into Pts) of each decoded frame since _liveStart. Normally
     // frame i is packet i, but a decoder drops frames it can't decode (corrupt data), and OpenCV then labels
     // every later frame by its own time, so frame numbers skip. Read from showinfo, as frames arrive.
     readonly List<int> _livePackets = [];
@@ -342,7 +379,7 @@ internal sealed partial class VideoReader
     internal sealed record ProbeResult(IReadOnlyDictionary<string, string> Stream, long[] Pts, bool PtsFromFrames, bool? XvidIdct, Lazy<string?>? FrameTags);
 
     /// <summary>This reader's probe, for another reader of the same file with the same options (a chunk's) to reuse.</summary>
-    internal ProbeResult? Probed { get; }
+    internal ProbeResult? Probed => _probed.Value;
 
     /// <param name="path">Video file, or a URL (http(s), rtsp, ... ; read as a stream).</param>
     /// <param name="options">Uses FfmpegResize, DecodeThreads, Yuv420Converter, Compatibility, Crop, FfmpegDirectory, Streaming and ProbeBytes.</param>
@@ -594,15 +631,30 @@ internal sealed partial class VideoReader
         // Some containers (MPEG-PS) carry no pts on every packet. OpenCV then takes the frame's
         // dts (its pts when set and non-zero, else pkt_dts), in output order: get exactly that
         // from a decoding pass, which only such files pay for.
+        // Decoded in-process from the start (a file, not deinterlaced: yadif's frames don't carry the decoded frame's
+        // timestamps), they come with the frames instead (TimestampsArrive); anything else takes the pass now.
         _ptsFromFrames = probed?.PtsFromFrames ?? missingPts;
-        if (missingPts)
-        {
-            o.OnFrameTimestamps?.Invoke();
-            pts = _probesInProcess ? InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions, cancellationToken) : FrameTimestamps(ffprobe, path, _inputOptions, cancellationToken);
-        }
+        _onFrameTimestamps = o.OnFrameTimestamps;
+        _knownPts = probed?.Pts ?? [.. pts];
+        _ptsPending = missingPts && probed is null;
+        if (_ptsPending && (o.FrameTimestampsFirst || Streaming || _stream is not null || _deinterlace || !DecodesInProcess))
+            TakeTimestampPass(cancellationToken);
+        _probed = new(() => probed ?? (Streaming || headersOnly ? null : new(stream, Pts, _ptsFromFrames, _xvidIdct, _frameTags)));
+    }
 
-        _pts = probed?.Pts ?? [.. pts];
-        Probed = probed ?? (Streaming || headersOnly ? null : new(stream, _pts, _ptsFromFrames, _xvidIdct, _frameTags));
+    /// <summary>
+    /// The decoding pass for every frame's timestamp (MPEG-PS: packets without pts), when they haven't all arrived with
+    /// the frames (<see cref="TimestampsArrive"/>) and something needs them; nothing otherwise.
+    /// </summary>
+    void TakeTimestampPass(CancellationToken cancellationToken)
+    {
+        if (!_ptsPending)
+            return;
+        _onFrameTimestamps?.Invoke();
+        _knownPts = [.. _probesInProcess
+            ? InProcessProbe.FrameTimestamps(_path, _ffmpegDirectory, _inputOptions, cancellationToken)
+            : FrameTimestamps(_ffprobe, _path, _inputOptions, cancellationToken)];
+        _ptsPending = false;
     }
 
     /// <summary>Whether the first frame's chroma location and colour tags were read (by this reader or a chunk's sharing its probe).</summary>
@@ -713,11 +765,11 @@ internal sealed partial class VideoReader
     /// the next copy's keyframe can come 0.016 s after the last frame at 25 fps, and the seek land there.
     /// </summary>
     internal bool SeekLandedLate(double seconds, int startFrame) =>
-        seconds > _pts[startFrame] * _timeBase + 0.5 / Fps.Value
-        || (startFrame + 1 < _pts.Length && seconds > (_pts[startFrame] + _pts[startFrame + 1]) / 2.0 * _timeBase);
+        seconds > Pts[startFrame] * _timeBase + 0.5 / Fps.Value
+        || (startFrame + 1 < Pts.Length && seconds > (Pts[startFrame] + Pts[startFrame + 1]) / 2.0 * _timeBase);
 
     /// <summary>The time halfway between frame <paramref name="frame"/> and the one before it, in seconds.</summary>
-    double BetweenFrames(int frame) => (_pts[frame - 1] + _pts[frame]) / 2.0 * _timeBase;
+    double BetweenFrames(int frame) => (Pts[frame - 1] + Pts[frame]) / 2.0 * _timeBase;
 
     /// <summary>How many frames early a seek goes after one that landed late <paramref name="seekBack"/> frames early.</summary>
     internal static int SeekBackAgain(int seekBack) => seekBack * 16;
@@ -729,21 +781,46 @@ internal sealed partial class VideoReader
     /// streams joined) is looked up from the start: scenedetect labels frames by their time, so its numbers go
     /// back there too.
     /// </summary>
-    int PacketOf(double seconds, int previous)
+    int PacketOf(double seconds, int previous) => PacketOf(Pts, _timeBase, Fps.Value, seconds, previous, complete: true)!.Value;
+
+    /// <summary>
+    /// <see cref="PacketOf(double, int)"/> over <paramref name="pts"/> (seconds per unit <paramref name="timeBase"/>). When
+    /// the list isn't <paramref name="complete"/> (MPEG-PS's timestamps as they arrive, up to this frame's), null where the
+    /// answer depends on the timestamps still to come: the search ran past the last one without deciding.
+    /// </summary>
+    internal static int? PacketOf(ReadOnlySpan<long> pts, double timeBase, double fps, double seconds, int previous, bool complete)
     {
-        double tolerance = 0.5 / Fps.Value;
-        if (previous >= 0 && previous < _pts.Length && seconds < _pts[previous] * _timeBase - tolerance)
+        double tolerance = 0.5 / fps;
+        if (previous >= 0 && previous < pts.Length && seconds < pts[previous] * timeBase - tolerance)
             previous = -1;
-        for (int i = previous + 1; i < _pts.Length; i++)
+        for (int i = previous + 1; i < pts.Length; i++)
         {
-            double t = _pts[i] * _timeBase;
+            double t = pts[i] * timeBase;
             if (Math.Abs(t - seconds) <= tolerance)
                 return i;
             if (t > seconds + tolerance)
-                break;
+                return Math.Min(previous + 1, Math.Max(pts.Length - 1, 0));
         }
 
-        return Math.Min(previous + 1, Math.Max(_pts.Length - 1, 0));
+        return complete ? Math.Min(previous + 1, Math.Max(pts.Length - 1, 0)) : null;
+    }
+
+    /// <summary>
+    /// The packet of a frame decoded in-process (from its decoder time, <paramref name="seconds"/>): while MPEG-PS's
+    /// timestamps arrive with the frames, over those so far (<paramref name="value"/>, this frame's, added), and from the
+    /// decoding pass's list (taken then) once the answer would depend on frames still to come; else as the executable's.
+    /// </summary>
+    int PacketOfArrived(double seconds, int previous, long value, bool collecting, CancellationToken cancellationToken)
+    {
+        if (collecting && _ptsPending)
+        {
+            _collectedPts.Add(value);
+            if (PacketOf(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_collectedPts), _timeBase, Fps.Value, seconds, previous, complete: false) is { } packet)
+                return packet;
+            TakeTimestampPass(cancellationToken);
+        }
+
+        return PacketOf(seconds, previous);
     }
 
     /// <summary>An ffmpeg/ffprobe failure, explained when it is the common streaming one.</summary>
@@ -1093,7 +1170,9 @@ internal sealed partial class VideoReader
         if (_frames is not null)
             return FramePosition(frame);
         int packet = frame - _liveStart is int k && k >= 0 && k < _livePackets.Count ? _livePackets[k] : frame;
-        long? pts = Streaming ? (frame < _livePts.Count ? _livePts[frame] : null) : (packet < _pts.Length ? _pts[packet] : null);
+        long? pts = Streaming ? (frame < _livePts.Count ? _livePts[frame] : null)
+            : _ptsPending && packet < _collectedPts.Count ? _collectedPts[packet]
+            : packet < Pts.Length ? Pts[packet] : null;
         if (pts is { } p)
         {
             double ms = (Streaming ? p : p - _startPts) * _timeBase * 1000;
@@ -1127,13 +1206,13 @@ internal sealed partial class VideoReader
             return FramesSeekFrame(seconds);
         if (Streaming)
             throw new NotSupportedException("A streamed input can't be seeked; StartTime isn't available.");
-        if (seconds <= 0 || _pts.Length == 0)
+        if (seconds <= 0 || Pts.Length == 0)
             return 0;
-        int estimate = Math.Clamp(FrameAt(seconds), 0, _pts.Length - 1);
+        int estimate = Math.Clamp(FrameAt(seconds), 0, Pts.Length - 1);
         if (Math.Abs(Position(estimate).Seconds - seconds) <= 1.0 / Fps.Value)
             return estimate;
         double target = seconds - 0.5 / Fps.Value;
-        int lo = 0, hi = _pts.Length - 1;
+        int lo = 0, hi = Pts.Length - 1;
         while (lo < hi)
         {
             int mid = (lo + hi) / 2;
@@ -1290,17 +1369,17 @@ internal sealed partial class VideoReader
     /// <summary>The first frame (index into the packet list) within half a frame of <paramref name="seconds"/> or after it.</summary>
     int FirstAtOrAfter(double seconds)
     {
-        int lo = 0, hi = _pts.Length;
+        int lo = 0, hi = Pts.Length;
         while (lo < hi)
         {
             int mid = (lo + hi) >>> 1;
-            if (_pts[mid] * _timeBase < seconds - 0.5 / Fps.Value)
+            if (Pts[mid] * _timeBase < seconds - 0.5 / Fps.Value)
                 lo = mid + 1;
             else
                 hi = mid;
         }
 
-        return Math.Min(lo, Math.Max(_pts.Length - 1, 0));
+        return Math.Min(lo, Math.Max(Pts.Length - 1, 0));
     }
 
     /// <summary>
@@ -1353,10 +1432,13 @@ internal sealed partial class VideoReader
             // Auto: libraries that can't decode this codec (AV1 needs dav1d, which FrameReader.Native leaves out)
             // give no frames at all; the ffmpeg executable decodes it instead, from here on.
             // A Stream can't be read twice: what it gave is what there is.
-            if (any || _decoder != VideoDecoder.Auto || ExpectedFrames <= startFrame || _stream is not null)
+            if (any || _decoder != VideoDecoder.Auto || (Pts.Length > 0 ? Pts.Length : FrameCountHint) <= startFrame || _stream is not null)
                 yield break;
             _inProcessGaveNothing = true;
         }
+
+        // The executable: every frame's timestamp first (MPEG-PS's from the decoding pass).
+        TakeTimestampPass(cancellationToken);
 
         var pipeline = Pipeline;
         bool resizeHere = pipeline != FramePipeline.FfmpegScale, yuv = IsYuv(pipeline);
@@ -1391,17 +1473,17 @@ internal sealed partial class VideoReader
         // needs it for the wanted frame, and only its arrival shows that the seek decoded it (MPEG-TS can land on the
         // wanted frame itself, a keyframe; then the read starts again from further back).
         bool keepBefore = false;
-        if (startFrame > 0 && startFrame < _pts.Length)
+        if (startFrame > 0 && startFrame < Pts.Length)
         {
             int early = Math.Max(startFrame - seekBack, 0);
             if (early > 0)
-                seek = ["-ss", ((_pts[early] - _startPts) * _timeBase).ToString("R", CultureInfo.InvariantCulture), "-copyts"];
+                seek = ["-ss", ((Pts[early] - _startPts) * _timeBase).ToString("R", CultureInfo.InvariantCulture), "-copyts"];
             keepBefore = _deinterlace && early > 0;
 
             // yadif halves the time base, so after it compare times: halfway between the frame before and the wanted one.
             select = ["-vf", _deinterlace
                 ? $"select=gte(t\\,{BetweenFrames(keepBefore ? startFrame - 1 : startFrame).ToString("R", CultureInfo.InvariantCulture)})"
-                : $"select=gte(pts\\,{_pts[startFrame]})"];
+                : $"select=gte(pts\\,{Pts[startFrame]})"];
         }
 
         string[] limit = count is { } n && restart is null ? ["-frames:v", (keepBefore ? n + 1 : n).ToString(CultureInfo.InvariantCulture)] : [];

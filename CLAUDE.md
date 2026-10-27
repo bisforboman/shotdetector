@@ -147,7 +147,9 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   still carry FFmpeg 7.1 and always use BT.601; compare.py passes the hidden `--always-bt601` there; Linux is the
   reference).
 - MPEG-PS packets mostly lack a pts: OpenCV uses the frame's dts, so the reader takes per-frame timestamps
-  from an ffprobe decoding pass when any packet has none (`FrameTimestamps`).
+  from a decoding pass when any packet has none (`FrameTimestamps`); in-process they come with the frames instead
+  (`TimestampsArrive`, `PacketOfArrived`: `PacketOf` over those so far, the pass where they don't settle a frame or
+  something needs them all first; docs/decisions/2026-10-27-pre-scan.md).
 - Interlaced video: opencv-python 5.0.0.93 can't convert interlaced frames (FFmpeg 8 swscale: "Cannot convert
   interlaced to progressive") and gives scenedetect one nearly black frame throughout; we read the real frames. CI:
   informational with deinterlacing off, exact with `--deinterlace auto` vs scenedetect on a lossless yadif copy.

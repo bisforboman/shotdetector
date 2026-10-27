@@ -370,6 +370,12 @@ public sealed record DetectionOptions
     internal Action? OnFrameTimestamps { get; init; }
 
     /// <summary>
+    /// Tests: take the decoding pass for per-frame timestamps (packets without a pts) as the reader is made, as before
+    /// they came with the frames in-process (same results).
+    /// </summary>
+    internal bool FrameTimestampsFirst { get; init; }
+
+    /// <summary>
     /// compare.py on Windows (the CLI's hidden <c>--always-bt601</c>): convert with BT.601 coefficients whatever the
     /// colour tags say, as the Windows OpenCV wheel does (docs/decisions/); decodes with the ffmpeg executable.
     /// </summary>
@@ -1202,7 +1208,9 @@ public static partial class ShotDetection
             video.TakeBeforeStart();
         }
 
-        var start = video.Position(0);
+        // MPEG-PS decoded in-process (TimestampsArrive): the first frame's time comes with it, so the first shot's start
+        // is taken then (below); asked for now, it would take the decoding pass this reading spares.
+        var start = video.TimestampsArrive ? default : video.Position(0);
         FrameTime? lastCut = null;
         void Cut(FrameTime cut)
         {
@@ -1238,7 +1246,8 @@ public static partial class ShotDetection
         long? endFrame = o.EndTime is not null ? Frames(o.EndTime, video.Fps)
             : o.RangeDuration is not null ? Frames(o.RangeDuration, video.Fps) + startFrame
             : null;
-        start = video.Position(startFrame);
+        bool startArrives = video.TimestampsArrive;
+        start = startArrives ? default : video.Position(startFrame);
         var first = start;
         int frameCount = 0, stride = o.FrameSkip + 1;
         bool readToEnd = true;
@@ -1326,6 +1335,8 @@ public static partial class ShotDetection
         foreach (var frame in chunked is null ? video.Frames(startFrame, null, cancellationToken) : [])
         {
             int index = startFrame + frameCount;
+            if (frameCount == 0 && startArrives)
+                start = first = video.Position(index);
             if (frameCount % stride == 0)
             {
                 foreach (var detector in detectors)
