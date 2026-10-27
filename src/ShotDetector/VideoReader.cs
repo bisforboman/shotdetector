@@ -1368,7 +1368,10 @@ internal sealed partial class VideoReader
         bool sampled = pipeline == FramePipeline.SampledBgr;
         var resizer = resizeHere ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
         string? maps = sampled ? WriteMaps(resizer!) : null;
-        string[] mapInputs = maps is null ? [] : ["-loop", "1", "-i", Path.Combine(maps, "x.pgm"), "-loop", "1", "-i", Path.Combine(maps, "y.pgm")];
+
+        // Each map is read and decoded once and repeated by the loop filter (in the graph below): as looping image
+        // inputs (-loop 1) ffmpeg demuxed and decoded both files again for every frame.
+        string[] mapInputs = maps is null ? [] : ["-i", Path.Combine(maps, "x.pgm"), "-i", Path.Combine(maps, "y.pgm")];
 
         // Rotated as OpenCV does (Turn), not by ffmpeg's autorotate.
         string[] args = ["-v", "info", "-nostats", .. noStdin, "-y",
@@ -1395,7 +1398,7 @@ internal sealed partial class VideoReader
             FramePipeline.FullFrameResize => [.. args, "-vf", prefix + toBgr + crop,
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
             FramePipeline.SampledBgr => [.. args, "-filter_complex",
-                $"[0:v]{prefix}{toBgr}[c];[c][1:v][2:v]remap=format=color[out]", "-map", "[out]",
+                $"[0:v]{prefix}{toBgr}[c];[1:v]loop=loop=-1:size=1[x];[2:v]loop=loop=-1:size=1[y];[c][x][y]remap=format=color[out]", "-map", "[out]",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
             _ => [.. args, "-vf", prefix + toBgr + crop + $",scale={Width}:{Height}:flags=bilinear",
                 "-f", "rawvideo", "-pix_fmt", "bgr24"],
