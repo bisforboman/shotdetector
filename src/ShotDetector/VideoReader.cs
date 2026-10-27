@@ -626,7 +626,7 @@ internal sealed partial class VideoReader
     {
         var stream = new Dictionary<string, string>(streamEntries);
         if (_frameTags is { } frameTags)
-            PreferFrameTags(stream, frameTags.Value);
+            _ = frameTags;
         string? chromaLocation = stream.GetValueOrDefault("chroma_location") is { } loc and not ("unspecified" or "unknown" or "") ? loc : null;
         var colour = ColourOf(stream, chromaLocation);
 
@@ -1096,7 +1096,7 @@ internal sealed partial class VideoReader
         long? pts = Streaming ? (frame < _livePts.Count ? _livePts[frame] : null) : (packet < _pts.Length ? _pts[packet] : null);
         if (pts is { } p)
         {
-            double ms = (Streaming ? p : p - _startPts) * _timeBase * 1000;
+            double ms = (p - _startPts) * _timeBase * 1000;
             long micros = (long)Math.Round(ms * 1000);
             if (micros > 0)
                 return FrameTime.Pts(micros, 1_000_000, Fps);
@@ -1308,6 +1308,9 @@ internal sealed partial class VideoReader
     /// takes one siting (a file is read again from the change instead: <see cref="SitingRestart"/>).
     /// </summary>
     internal bool SitingChangeNotFollowed { get; private set; }
+
+    /// <summary>How many times a read went on from a chroma siting change (<see cref="SitingRestart"/>).</summary>
+    internal int SitingRestarts { get; private set; }
 
     /// <summary><see cref="DetectionResult.Warnings"/>' line for <see cref="SitingChangeNotFollowed"/>, else null.</summary>
     internal string? SitingChangeWarning => SitingChangeNotFollowed
@@ -1695,6 +1698,7 @@ internal sealed partial class VideoReader
                     else if (restart is null || pts * liveTimeBase > restart.Seconds + (0.5 / Fps.Value))
                     {
                         next = new(pts * liveTimeBase, frameSiting);
+                        SitingRestarts++;
                         break;
                     }
                 }

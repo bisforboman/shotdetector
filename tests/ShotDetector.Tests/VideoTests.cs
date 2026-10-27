@@ -1106,6 +1106,7 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             var alone = parts.SelectMany(p => Hashes(new VideoReader(p, options).Frames())).ToList();
             var reader = new VideoReader(joined, options);
             Assert.Equal(alone, Hashes(reader.Frames()));
+            Assert.Equal(2, reader.SitingRestarts); // once a change
             Assert.Equal(alone[30..80], Hashes(reader.Frames(30, 50)));
             Assert.Equal(alone[60..120], Hashes(reader.Frames(60, 60)));
             Assert.False(reader.SitingChangeNotFollowed);
