@@ -6,6 +6,20 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.18.0 – 2026-10-27
+
+The ffmpeg-executable path runs in chunks and follows colour tags that change midway.
+
+### Faster
+
+- Long files decoded by the ffmpeg executable (`--decoder process`, or wherever FFmpeg's libraries can't load) are now detected in chunks too, one ffmpeg process per chunk, under the same rules as in-process decoding: by default from 4 CPUs on, `--sequential` for one pass, `--parallel` says why it couldn't. Results stay byte for byte the sequential run's; a chunk that can't reproduce them makes the run read sequentially, as in-process.
+
+### Fixed
+
+- ShotDetector.FastYuv through the ffmpeg executable (`--decoder process --fast-yuv`, or a converter passed with the executable decoding): a video whose colour matrix, range or (10-bit) chroma siting changes midway is now converted with each frame's own tags, as OpenCV does and as in-process decoding already did, not the first frame's for the whole video, so its per-frame stats match scenedetect's after the change too.
+- Decoding with the ffmpeg executable (`--decoder process`, or wherever FFmpeg's libraries can't load): a file whose chroma siting changes midway (10-bit and other formats whose conversion interpolates chroma, such as two encodes joined) is now converted with each frame's own siting, as OpenCV does, not the first frame's for the whole video: the file is read again from each change with the new siting. A stream can't be read again; it keeps the first frame's siting and the result now says so in its warnings.
+- `ShotDetection.Probe` and `ProbeAsync`'s cancellation token now also stops reading the list of streams (`VideoInfo.Streams`, `HasAudio`) from a URL that stalls: that second read used to ignore it, in-process and through ffprobe.
+
 ## 3.17.0 – 2026-10-27
 
 Faster executable path, stats CSV to a writer row by row, and cancellation that stops at once.
