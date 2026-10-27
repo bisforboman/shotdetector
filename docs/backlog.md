@@ -15,6 +15,18 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
+- MPEG-PS: frame timestamps from the frames as detection decodes them, no decoding pass first
+  - Why: Packets without a pts (MPEG-PS) cost a whole decoding pass for the frames' timestamps before detection decodes the file again: 25-35% of such a run. In-process each frame says the pass's timestamp itself; `PacketOf` keeps its rule over the timestamps so far, the pass only where the answer depends on frames to come or something needs them all first (start time, executable, deinterlacing). Choice 1 of docs/decisions/2026-10-27-pre-scan.md
+  - Status: In progress (2026-10-27)
+
+- mp4/mov: a timing-only packet scan that skips `mdat`'s payload
+  - Why: libavformat computes an mp4's packet pts from the sample tables, so the scan needs kilobytes, not the file (a prototype gave identical pts on faststart h264 with and without B-frames, reading 0.0-0.1 MB). Needs the zero-filling hook between the header probe and the packet loop (before it, pix_fmt is lost), a seekable custom AVIO for files (moov at the end), fragmented mp4 left out, and a FrameReader test that the pts equal the full scan's on every sample mp4/mov. A FrameReader release. Choice 2 of docs/decisions/2026-10-27-pre-scan.md
+  - Status: Open
+
+- mkv/ts: the packet scan alongside decoding on the sequential path
+  - Why: A frame's label is final once the scan's latest dts is past its time, so the scan can run beside decoding: max(read, decode) instead of the sum where reading is slow and the file fits the page cache; nearly nothing on local disks. Where dts ever goes backwards (joined or corrupt files), wait for the whole scan; chunked runs keep it first. An additive incremental FrameReader API (`ProbeOptions.OnPacket`). Choice 3 of docs/decisions/2026-10-27-pre-scan.md
+  - Status: Open
+
 ## Waiting
 
 - Parallel detection above 8 CPUs: more than 4 chunks and 16 decoder threads in total
@@ -45,10 +57,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - An opt-in fast mode that doesn't promise scenedetect's results: measure first
   - Why: The 2026-10-21 profile put 45-87% of CPU in decoding and up to 40% in deinterlacing (1080i), with scenedetect's own maths at a few percent, so exactness costs most where every full frame must be decoded and deinterlaced. Candidates, each changing some output: FFmpeg's `lowres` decoding at 1/2 or 1/4 size (MPEG-1/2, MPEG-4 Part 2, MJPEG: broadcast MPEG-2 above all), skipping h264's deblocking (`skip_loop_filter`), one field instead of deinterlacing on 1080i, scoring on YUV or luma without BGR/HSV. Measure on real broadcast files (MXF/TS MPEG-2, h264): the speed-up and how many cuts move against the exact run, before deciding whether a mode is worth having. The default stays exact (the owner, 2026-10-22: "Maybe row, measure first"); any mode would be opt-in with its deviations documented
-  - Status: Maybe
-
-- Collect frame timestamps during decoding instead of a packet-pts pre-scan
-  - Why: Detection on a file reads it twice: `MediaProbe.Packets` over every packet (VideoReader's probe, `packets: !headersOnly && !Streaming`), then decoding. The pre-scan feeds the frame labels (`PacketOf`), the frame count (progress, chunk boundaries) and MPEG-PS timestamps; doing without it means getting those during the pass or later. Worth it for files larger than RAM on slow shares (a read costs size / throughput: 20 GB at 100 MB/s is 200 s); it would also make #452's shared audio-and-detection pass worth revisiting (closed 2026-10-21: starting both at the same time already shares the read today)
   - Status: Maybe
 
 - FastYuv's row yadif on 9-16-bit video with Vector128
