@@ -296,7 +296,16 @@
         # The decoding pass for per-frame timestamps (MPEG-PS packets without a pts) stops when cancelled (issue #523):
         # FrameReader's interrupt callback ends a read that waits, and VideoReader hands the pass its token
         @{ File = 'src/ShotDetector/InProcessProbe.cs'; Find = 'InputOptions = Options(inputOptions), CancellationToken = cancellationToken });'; Replace = 'InputOptions = Options(inputOptions) });'; Tests = 'FrameTimestampsTests.InProcessStopsAtAStalledRead' }
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions, cancellationToken)'; Replace = 'InProcessProbe.FrameTimestamps(path, _ffmpegDirectory, _inputOptions)'; Tests = 'FrameTimestampsTests.CancellingDetectionStopsThePass' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'InProcessProbe.FrameTimestamps(_path, _ffmpegDirectory, _inputOptions, cancellationToken)'; Replace = 'InProcessProbe.FrameTimestamps(_path, _ffmpegDirectory, _inputOptions)'; Tests = 'FrameTimestampsTests.CancellingDetectionStopsThePass' }
+        # In-process, MPEG-PS's timestamps come with the frames (no pass first): looked up over those so far, the pass's
+        # once the answer depends on frames to come; the first shot's start taken with the first frame; not deinterlaced
+        # (yadif's frames carry other times); only a read that reached the end makes them the whole list
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'return complete ? Math.Min(previous + 1, Math.Max(pts.Length - 1, 0)) : null;'; Replace = 'return Math.Min(previous + 1, Math.Max(pts.Length - 1, 0));'; Tests = 'ArrivingTimestampsTests.APacketTheTimestampsSoFarDontSettleIsUndecided' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'start = first = video.Position(index);'; Replace = '{ }'; Tests = 'ArrivingTimestampsTests.ResultsAreThePass' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '|| _stream is not null || _deinterlace ||'; Replace = '|| _stream is not null ||'; Tests = 'ArrivingTimestampsTests.DeinterlacingTakesThePass' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'reachedEnd = count is null || emitted < count;'; Replace = 'reachedEnd = true;'; Tests = 'ArrivingTimestampsTests.APartialReadLeavesTheRestToThePass' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ': _ptsPending && packet < _collectedPts.Count ? _collectedPts[packet]'; Replace = ': false ? 0'; Tests = 'ArrivingTimestampsTests.ResultsAreThePass' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'full.Add(Write(writer, frame.Pts + offset, tags, timestamp), stop.Token);'; Replace = 'full.Add(Write(writer, frame.Pts + offset, tags, 0), stop.Token);'; Tests = 'ArrivingTimestampsTests.ResultsAreThePass' }
         # ShotDetection.Probe's token also stops the stream list, read on first use (a stalled URL)
         @{ File = 'src/ShotDetector/InProcessProbe.cs'; Find = 'new ProbeOptions { InputOptions = Options(inputOptions), CancellationToken = cancellationToken };'; Replace = 'new ProbeOptions { InputOptions = Options(inputOptions) };'; Tests = 'FrameTimestampsTests.StreamsStopAtAStalledRead' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions, _cancellationToken)'; Replace = 'InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions, CancellationToken.None)'; Tests = 'FrameTimestampsTests.StreamsStopAtAStalledRead' }
