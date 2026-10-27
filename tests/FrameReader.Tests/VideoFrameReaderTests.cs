@@ -78,6 +78,69 @@ public class VideoFrameReaderTests
         }
     }
 
+    // MaxWidth: ffmpeg's scale='min(N,iw)':-2, on the frame after autorotate (a 320x240 stream shown at 90 degrees is
+    // 240 wide), an odd size, and a height whose -2 rounding is a tie (320x241: 120.5 rounds up); never upscaled, and
+    // a height that rounds to 0 (a width of 1) is the input's, as libavfilter fills it in.
+    [Theory]
+    [InlineData("rotated.mov", 320, 240, "-display_rotation 90", new[] { 101, 160, 240, 1280 })]
+    [InlineData("odd.mkv", 321, 241, "", new[] { 1, 200, 321, 1280 })]
+    [InlineData("tie.mkv", 320, 241, "", new[] { 99, 320, 1280 })]
+    public void MaxWidthIsFfmpegsMinWidthAndEvenHeight(string name, int w, int h, string mux, int[] maxWidths)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-max-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name), plain = Path.Combine(dir, "plain.mkv");
+            Run("-v", "error", "-y", "-f", "lavfi", "-i", $"testsrc2=s=320x240:r=25:d=0.4,scale={w}:{h}", "-c:v", "ffv1", "-pix_fmt", "yuv420p", plain);
+            Run(["-v", "error", "-y", .. mux.Split(' ', StringSplitOptions.RemoveEmptyEntries), "-i", plain, "-c", "copy", path]);
+            foreach (int max in maxWidths)
+            {
+                foreach (var (format, ffmpegName) in new[] { (FrameFormat.Bgr24, "bgr24"), (FrameFormat.Yuv420p, "yuv420p") })
+                {
+                    string vf = $"scale='min({max},iw)':-2:flags=bicubic,format={ffmpegName}";
+                    byte[] expected = Run("-v", "error", "-i", path, "-vf", vf, "-f", "rawvideo", "-");
+                    string size = OutputSize(path, vf);
+                    var actual = new MemoryStream();
+                    int frames = 0;
+                    using (var reader = new VideoFrameReader(path, new VideoFrameReaderOptions { MaxWidth = max, FrameFormat = format, Decoder = new FrameDecoderOptions() }))
+                    {
+                        while (reader.TryRead(out var frame))
+                        {
+                            frames++;
+                            Assert.Equal(size, $"{frame.Width}x{frame.Height}");
+                            actual.Write(frame.Data);
+                        }
+                    }
+
+                    Assert.Equal(10, frames);
+                    Assert.True(expected.AsSpan().SequenceEqual(actual.ToArray()),
+                        $"{name} {format} {vf}: {expected.Length} bytes from ffmpeg, {actual.Length} read; first difference at {FirstDifference(expected, actual.ToArray())}");
+                }
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    /// <summary>The size ffmpeg's filters give the first frame (WxH), from ffprobe's view of their output.</summary>
+    static string OutputSize(string path, string vf)
+    {
+        string out1 = Path.Combine(Path.GetDirectoryName(path)!, "size.nut");
+        Run("-v", "error", "-y", "-i", path, "-vf", vf, "-frames:v", "1", "-c:v", "rawvideo", out1);
+        var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe"))
+        { RedirectStandardOutput = true };
+        foreach (var a in new[] { "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", out1 })
+            psi.ArgumentList.Add(a);
+        using var p = Process.Start(psi)!;
+        string text = p.StandardOutput.ReadToEnd().Trim();
+        p.WaitForExit();
+        return text;
+    }
+
     [Theory]
     [MemberData(nameof(Sources))]
     public void BgrConverterIsFfmpegsBgr24WholeOrRows(string name, string encode)
@@ -248,6 +311,8 @@ public class VideoFrameReaderTests
     public void FrameTimesStartAtZeroAndSizesMustComeInPairs()
     {
         Assert.Throws<ArgumentException>(() => new VideoFrameReader("x.mp4", new VideoFrameReaderOptions { Width = 100 }));
+        Assert.Throws<ArgumentException>(() => new VideoFrameReader("x.mp4", new VideoFrameReaderOptions { MaxWidth = 100, Width = 100, Height = 50 }));
+        Assert.Throws<ArgumentException>(() => new VideoFrameReader("x.mp4", new VideoFrameReaderOptions { MaxWidth = 0 }));
         if (Libs is null)
             return;
         string dir = Directory.CreateTempSubdirectory("framereader-px-").FullName;

@@ -33,6 +33,15 @@ public sealed record VideoFrameReaderOptions
     /// <summary>Output height in pixels; null (with <see cref="Width"/> null): the frame's own.</summary>
     public int? Height { get; init; }
 
+    /// <summary>
+    /// The widest output in pixels, as ffmpeg's <c>scale='min(MaxWidth,iw)':-2</c>: a wider frame is scaled down to this
+    /// width; a frame as wide or narrower keeps its width (never upscaled). The height follows the aspect ratio, rounded
+    /// to the nearest even number (so an odd height becomes even even when the width stays, as with ffmpeg). Measured
+    /// on the frame after any rotation (and on each frame, if the size changes mid-stream). Null: no cap. Not with
+    /// <see cref="Width"/> and <see cref="Height"/>.
+    /// </summary>
+    public int? MaxWidth { get; init; }
+
     /// <summary>The output's pixel format.</summary>
     public FrameFormat FrameFormat { get; init; } = FrameFormat.Bgr24;
 
@@ -131,6 +140,8 @@ public sealed unsafe class VideoFrameReader : IDisposable
         _options = options ?? new VideoFrameReaderOptions();
         if (_options.Width is null != _options.Height is null || _options.Width <= 0 || _options.Height <= 0)
             throw new ArgumentException("Width and Height are both set (positive) or both left out.", nameof(options));
+        if (_options.MaxWidth is { } max && (max <= 0 || _options.Width is not null))
+            throw new ArgumentException("MaxWidth is positive and not set with Width and Height.", nameof(options));
         _format = _options.FrameFormat switch
         {
             FrameFormat.Bgr24 => AVPixelFormat.AV_PIX_FMT_BGR24,
@@ -409,7 +420,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
 
     void Convert(AVFrame* src, long pts, TimeSpan time, out VideoFrame frame)
     {
-        int width = _options.Width ?? src->width, height = _options.Height ?? src->height;
+        var (width, height) = OutputSize(src->width, src->height);
         if (_out == null)
         {
             _out = ffmpeg.av_frame_alloc();
@@ -463,6 +474,23 @@ public sealed unsafe class VideoFrameReader : IDisposable
         }
 
         frame = new VideoFrame(_index, pts, time, width, height, _options.FrameFormat, data);
+    }
+
+    /// <summary>The size frames come out at: Width and Height, or MaxWidth's cap, or the frame's own.</summary>
+    (int Width, int Height) OutputSize(int width, int height)
+    {
+        if (_options.Width is { } w && _options.Height is { } h)
+            return (w, h);
+        if (_options.MaxWidth is not { } max)
+            return (width, height);
+
+        // scale's -2: av_rescale(w, ih, iw * 2) * 2, the division rounded to nearest (halves away from zero), so an
+        // odd height becomes even even when the width stays. A height that comes out 0 (a frame over twice as wide as
+        // tall per pixel of the cap) is the input's, as libavfilter fills in a link's missing size.
+        int outWidth = Math.Min(max, width);
+        long twice = 2L * width;
+        int outHeight = (int)((outWidth * (long)height + twice / 2) / twice * 2);
+        return (outWidth, outHeight == 0 ? height : outHeight);
     }
 
     /// <summary>Frees the decoder, the scaler and the output buffer.</summary>
