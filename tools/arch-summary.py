@@ -3,16 +3,16 @@ per clip, detector and decoder, how many stats rows differ and by how much at mo
 frame checksums (decoded, single-threaded, b's -idct simple against a's default, bgr24, bgr24 from swscale's C code, bgr24 +bitexact), as frames differing;
 and whether b's FastYuv files equal a's default ones. Exits 1 unless they do on every 8-bit 4:2:0 and 4:2:2 clip of even
 size (yuv420p, yuvj420p, yuv422p, yuvj422p, turned or not; MPEG-1/2, MJPEG and MPEG-4 Part 2 too, which decode with the
-C IDCT or, Xvid's, the Xvid one; odd widths reported for now; on clips whose colour tags change midway, b's FastYuv
-through the executable against a's FastYuv, which differs from the default path there by design): the rest is FFmpeg's rounding on ARM, reported
+C IDCT or, Xvid's, the Xvid one; odd widths reported for now; on a clip whose chroma siting changes midway, b's
+FastYuv through the executable against a's FastYuv, as the executable's default path takes one siting there): the rest is FFmpeg's rounding on ARM, reported
 (docs/decisions/2026-10-17-arm-results.md, 2026-10-18-fastyuv-422.md, 2026-10-18-mpeg4-xvid-idct.md).
 Usage: python3 tools/arch-summary.py <a-dir> <b-dir>"""
 import csv
 import sys
 from pathlib import Path
 
-# tools/make-samples.ps1's clips whose colour matrix or chroma siting changes midway (samples/informational/).
-TAGS_CHANGE = {"sintel_matrix_change.mkv", "sintel_10bit_siting_change.mkv"}
+# tools/make-samples.ps1's clip whose chroma siting changes midway (samples/informational/).
+TAGS_CHANGE = {"sintel_10bit_siting_change.mkv"}
 
 
 def rows(path: Path) -> list[list[str]]:
@@ -86,9 +86,10 @@ def main() -> int:
                  else ("same" if same(a / f"{clip}.file.md5", b / f"{clip}.file.md5") else "differ") for k in kinds]
         fast = [n for n in outputs if n.startswith(clip + ".")]
 
-        # Colour tags that change midway: in-process, FastYuv converts each frame with its own, as the default path
-        # does (docs/decisions/2026-10-24-per-frame-tags-fastyuv.md); through the executable it takes the first frame's
-        # (docs/decisions/2026-10-19-per-frame-tags.md), so there b's FastYuv is held to a's.
+        # Colour tags that change midway: FastYuv converts each frame with its own, as the default path does, in-process
+        # and through the executable (docs/decisions/2026-10-24-per-frame-tags-fastyuv.md,
+        # 2026-10-27-per-frame-tags-executable.md); the executable's default path takes the first frame's chroma siting
+        # (ffmpeg's scale filter has one), so on a siting change b's FastYuv through the executable is held to a's.
         own = clip in TAGS_CHANGE
 
         def fastyuv(n: str) -> str:
