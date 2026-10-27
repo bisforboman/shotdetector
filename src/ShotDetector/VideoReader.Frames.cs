@@ -58,7 +58,8 @@ internal sealed partial class VideoReader
         _ffprobe = "";
         FfmpegExe = "";
         _inputOptions = [];
-        _pts = [];
+        _knownPts = [];
+        _probed = new((ProbeResult?)null);
         _decoder = VideoDecoder.Auto;
         _frameBuffers = o.FrameBuffers;
         _frameSkip = o.FrameSkip;

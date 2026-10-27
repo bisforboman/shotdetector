@@ -149,7 +149,7 @@ internal static unsafe class InProcessProbe
             while (decoder.Next())
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                result.Add(decoder.FramePts is long p && p != 0 ? p : decoder.FramePacketDts ?? 0);
+                result.Add(FrameTimestamp(decoder));
             }
         }
         catch (FrameReaderException e)
@@ -159,6 +159,12 @@ internal static unsafe class InProcessProbe
 
         return result;
     }
+
+    /// <summary>
+    /// The decoder's current frame's timestamp as <see cref="FrameTimestamps"/> lists it (OpenCV's for MPEG-PS): its pts
+    /// when set and non-zero, else its packet's dts, else 0. Not for deinterlaced frames (yadif's carry other times).
+    /// </summary>
+    internal static long FrameTimestamp(FrameDecoder decoder) => decoder.FramePts is long p && p != 0 ? p : decoder.FramePacketDts ?? 0;
 
     /// <summary>A probe through FrameReader, with ShotDetector's reasons and messages for its failures.</summary>
     static MediaInfo Probe(Func<MediaInfo> probe, string? libraryDirectory)
