@@ -92,15 +92,20 @@ while (sheet.TryRead(out var frame))
     Save(frame.Data.ToArray(), frame.Width, frame.Height); // frame.Time: 0, 1, 2, ... s
 ```
 
-Image files: `ImageEncoder` writes a frame as a JPEG (FFmpeg's `mjpeg`) or a PNG (`png`), to a `Stream` or as a
+Image files: `ImageEncoder` writes a frame as a JPEG (FFmpeg's `mjpeg`), a PNG (`png`) or a WebP (`libwebp`), to a `Stream` or as a
 `byte[]`, one encoder for any number of frames. The file is the one ffmpeg writes from the same raw frame with
-`-frames:v 1 out.jpg`, byte for byte with the same libraries (a JPEG's comment names libavcodec's version): the frame is
+`-frames:v 1 out.jpg` (WebP: `-c:v libwebp out.webp`, as a build that has `libwebp_anim` picks that one for .webp),
+byte for byte with the same libraries (a JPEG's comment names libavcodec's version): the frame is
 converted to the pixel format ffmpeg picks for the encoder as its command line converts it (the scale filter it
 inserts), and the frame's aspect ratio and colour tags (`VideoFrame.SampleAspectRatio`, `ColorRange`, `ColorSpace`,
 `ColorPrimaries`, `ColorTransfer`, as ffmpeg's frame has them after the same filters) go where ffmpeg puts them (JFIF
 density, PNG's pHYs, cHRM and gAMA). Options are ffmpeg's: `JpegQscale` is `-q:v` (2 to 31, lower is better; not
 ShotDetector's 0-100 save-images quality), `PngCompressionLevel` is `-compression_level` (0 to 9: speed against size,
-lossless at every level). WebP isn't available yet.
+lossless at every level); WebP's are libwebp's: `WebPQuality` is `-quality` (0 to 100, default 75; the scale of
+ShotDetector's save-images WebP quality, whose default is 100), `WebPLossless` is `-lossless 1`, and
+`WebPCompressionLevel` is `-compression_level` (libwebp's method, 0 to 6, default 4: speed against size). As ffmpeg
+picks, a YUV frame is encoded from yuv420p and an RGB or gray one from bgra, lossy or lossless: libwebp converts bgra to
+YUV for lossy and yuv420p to RGB for lossless itself (ffmpeg warns of both), so read frames as RGB for lossless WebP.
 
 ```csharp
 using var frames = new VideoFrameReader("video.mp4", new() { FrameRate = new(1, 1), MaxWidth = 1280, FrameFormat = FrameFormat.Yuv420p });
@@ -454,7 +459,7 @@ https):
 | `AudioWriter`, `Audio.Convert` | the codec's (`libmp3lame`, `aac`, `pcm_s16le`, ...) | `abuffer`, `abuffersink`, `aformat`, `aresample` | the container's (`mp3`, `ipod` for .m4a, `wav`, ...) |
 | `VideoWriter` | `libx264` (and `aac` for an audio track) | `buffer`, `buffersink`, `format`, `null`, `scale` (and the audio ones) | `mp4`, `matroska` or `mov` |
 | `Remux.Copy` | | | the output's (`dash` for an .mpd) |
-| `ImageEncoder` | `mjpeg` (JPEG), `png` (PNG) | `buffer`, `buffersink`, `format`, `scale` | |
+| `ImageEncoder` | `mjpeg` (JPEG), `png` (PNG), `libwebp` (WebP) | `buffer`, `buffersink`, `format`, `scale` | |
 
 ```csharp
 var missing = FFmpegLibraries.Missing(Capability.Deinterlace | Capability.AudioFilter | Capability.Mp3 | Capability.Dash)
