@@ -110,6 +110,9 @@ def main() -> int:
         checked += required
         if required and (not fast or hits != len(fast)):
             failed.append(clip)
+            # As an annotation too (on stderr, outside the step summary): readable where the job's log isn't.
+            print(f"::error title=arch-summary::{clip}: b's FastYuv differs in "
+                  + ", ".join(n for n in fast if not matches(n)), file=sys.stderr)
         split = " ".join(f"{d} {sum(matches(n) for n in fast if f'.{d}.' in n)}/{sum(f'.{d}.' in n for n in fast)}"
                          for d in ("inprocess", "process"))
         mark = (" (required" + (", a's FastYuv through the executable" if own else "") + ")") if required else ""
