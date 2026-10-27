@@ -48,7 +48,7 @@ jobs:
           BBB: samples/realworld/bbb_640x360_h264.mp4
         run: |
           echo "### $RUNNER_ARCH, $(nproc) CPUs" >> "$GITHUB_STEP_SUMMARY"
-          python3 debug/crossover.py src/ShotDetector.Cli/bin/Release/net10.0/shotdetect 5 \
+          python3 tools/debug_crossover.py src/ShotDetector.Cli/bin/Release/net10.0/shotdetect 5 \
             clips/sintel_640x360.mp4 clips/sintel_854x480.mp4 clips/sintel_1024x576.mp4 clips/tos_1152x480.mp4 \
             clips/sintel_1152x648.mp4 clips/tos_1280x534.mp4 clips/sintel_1280x720.mp4 clips/sintel_1600x900.mp4 \
             clips/tos_1920x800.mp4 clips/sintel_1920x1080.mp4 clips/tos_3840x1600.mp4
