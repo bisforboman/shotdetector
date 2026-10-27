@@ -10,15 +10,18 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
     static readonly string? Libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
 
     // Sequential, the reference; each test asks for the chunks it checks.
-    static DetectionOptions Options(DetectorKind kind, PySceneDetectVersion version = PySceneDetectVersion.V0_7_2) => new()
+    static DetectionOptions Options(DetectorKind kind, PySceneDetectVersion version = PySceneDetectVersion.V0_7_2, VideoDecoder decoder = VideoDecoder.InProcess) => new()
     {
         Detector = kind,
         Compatibility = version,
         CollectStats = true,
         FfmpegDirectory = Libs,
-        Decoder = VideoDecoder.InProcess,
+        Decoder = decoder,
         Mode = DetectionMode.Sequential,
     };
+
+    // In-process needs the libraries; the ffmpeg executable (on PATH) is always there.
+    static bool Skip(VideoDecoder decoder) => decoder == VideoDecoder.InProcess && Libs is null;
 
     static void AssertSame(DetectionResult sequential, DetectionResult parallel)
     {
@@ -28,30 +31,74 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(sequential.FrameCount, parallel.FrameCount);
     }
 
-    public static TheoryData<DetectorKind, PySceneDetectVersion, int> Cases => new()
+    public static TheoryData<DetectorKind, PySceneDetectVersion, int, VideoDecoder> Cases
     {
-        { DetectorKind.Content, PySceneDetectVersion.V0_7_2, 3 },
-        { DetectorKind.Adaptive, PySceneDetectVersion.V0_7_2, 3 },
-        { DetectorKind.Adaptive, PySceneDetectVersion.V0_7_1, 4 },
-        { DetectorKind.Histogram, PySceneDetectVersion.V0_7_2, 3 },
-        { DetectorKind.Histogram, PySceneDetectVersion.V0_7_1, 7 },
-        { DetectorKind.Hash, PySceneDetectVersion.V0_7_2, 3 },
-        { DetectorKind.Threshold, PySceneDetectVersion.V0_7_2, 2 },
-    };
+        get
+        {
+            var cases = new TheoryData<DetectorKind, PySceneDetectVersion, int, VideoDecoder>();
+            foreach (var decoder in new[] { VideoDecoder.InProcess, VideoDecoder.FfmpegProcess })
+            {
+                cases.Add(DetectorKind.Content, PySceneDetectVersion.V0_7_2, 3, decoder);
+                cases.Add(DetectorKind.Adaptive, PySceneDetectVersion.V0_7_2, 3, decoder);
+                cases.Add(DetectorKind.Adaptive, PySceneDetectVersion.V0_7_1, 4, decoder);
+                cases.Add(DetectorKind.Histogram, PySceneDetectVersion.V0_7_2, 3, decoder);
+                cases.Add(DetectorKind.Histogram, PySceneDetectVersion.V0_7_1, 7, decoder);
+                cases.Add(DetectorKind.Hash, PySceneDetectVersion.V0_7_2, 3, decoder);
+                cases.Add(DetectorKind.Threshold, PySceneDetectVersion.V0_7_2, 2, decoder);
+            }
+
+            return cases;
+        }
+    }
 
     // Chunk boundaries at 37, 75 and 112 (and others) fall around the cuts at 50 and 100 and inside adaptive's window.
+    // In-process and through the ffmpeg executable (a process per chunk, each with the exact seek).
     [Theory]
     [MemberData(nameof(Cases))]
-    public void ChunksGiveTheSequentialResult(DetectorKind kind, PySceneDetectVersion version, int chunks)
+    public void ChunksGiveTheSequentialResult(DetectorKind kind, PySceneDetectVersion version, int chunks, VideoDecoder decoder)
     {
-        if (Libs is null)
+        if (Skip(decoder))
             return;
-        var options = Options(kind, version);
+        var options = Options(kind, version, decoder);
         var sequential = ShotDetection.Detect(clips.ThreeShots, options);
         var parallel = ShotDetection.Detect(clips.ThreeShots, options with { Mode = DetectionMode.Parallel, Chunks = chunks });
         Assert.Equal(1, sequential.Video.Chunks);
         Assert.Equal(chunks, parallel.Video.Chunks);
         AssertSame(sequential, parallel);
+    }
+
+    // Interlaced MPEG-2 deinterlaced (each chunk's yadif gets the frame before its first, as in a sequential run) and an
+    // image sequence (the executable's -framerate input).
+    [Theory]
+    [InlineData("interlaced", VideoDecoder.InProcess)]
+    [InlineData("interlaced", VideoDecoder.FfmpegProcess)]
+    [InlineData("images", VideoDecoder.FfmpegProcess)]
+    public void ChunksGiveTheSequentialResultOnOtherInputs(string name, VideoDecoder decoder)
+    {
+        if (Skip(decoder))
+            return;
+        var options = Options(DetectorKind.Content, decoder: decoder);
+        string path = clips.ThreeShotsImages;
+        if (name == "interlaced")
+        {
+            // Interlaced MPEG-2 as the Interlaced clip, in MPEG-TS: a program stream's packets lack timestamps to seek by.
+            path = Path.Combine(Path.GetTempPath(), $"shotdetector-interlaced-{Guid.NewGuid():N}.ts");
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-vf", "setfield=tff", "-c:v", "mpeg2video", "-q:v", "3", "-flags", "+ildct+ilme", path], default);
+            options = options with { Deinterlace = DeinterlaceMode.On };
+        }
+
+        try
+        {
+            var parallel = ShotDetection.Detect(path, options with { Mode = DetectionMode.Parallel, Chunks = 3 });
+            Assert.Null(parallel.Video.ChunkFallback);
+            Assert.True(parallel.Video.Chunks == 3, string.Join("; ", parallel.Warnings));
+            AssertSame(ShotDetection.Detect(path, options), parallel);
+        }
+        finally
+        {
+            if (name == "interlaced")
+                File.Delete(path);
+        }
     }
 
     [Fact]
@@ -70,17 +117,62 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
     }
 
     // The chunks' readers take the outer reader's probe (stream entries, packet pts, the Xvid IDCT): the file is probed once.
-    [Fact]
-    public void ChunksTakeTheOuterReadersProbe()
+    [Theory]
+    [InlineData(VideoDecoder.InProcess)]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    public void ChunksTakeTheOuterReadersProbe(VideoDecoder decoder)
     {
-        if (Libs is null)
+        if (Skip(decoder))
             return;
         int probes = 0;
-        var options = Options(DetectorKind.Content) with { OnProbe = () => Interlocked.Increment(ref probes) };
+        var options = Options(DetectorKind.Content, decoder: decoder) with { OnProbe = () => Interlocked.Increment(ref probes) };
         var parallel = ShotDetection.Detect(clips.ThreeShots, options with { Mode = DetectionMode.Parallel, Chunks = 3 });
         Assert.Equal(3, parallel.Video.Chunks);
         Assert.Equal(1, probes);
-        AssertSame(ShotDetection.Detect(clips.ThreeShots, Options(DetectorKind.Content)), parallel);
+        AssertSame(ShotDetection.Detect(clips.ThreeShots, Options(DetectorKind.Content, decoder: decoder)), parallel);
+    }
+
+    // Whether the decoder frame-threads (a chunked run then shares out twice the CPUs' threads): FFmpeg's answer
+    // in-process, the codec's name through the executable, whose libraries may not load. MPEG-4 Part 2 does, MPEG-2
+    // (slices) doesn't, either way.
+    [Theory]
+    [InlineData(VideoDecoder.InProcess)]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    public void TellsFrameThreadedDecoders(VideoDecoder decoder)
+    {
+        if (Skip(decoder))
+            return;
+        var options = Options(DetectorKind.Content, decoder: decoder);
+        Assert.True(new VideoReader(clips.ThreeShots, options).HasFrameThreads);
+        Assert.False(new VideoReader(clips.ThreeShotsMpegPs, options).HasFrameThreads);
+    }
+
+    // A reader's first frame's decoded size, in-process and through the executable (showinfo's), wherever its read
+    // starts: the chunks' check against the first chunk's size (a resolution change) rests on it.
+    [Theory]
+    [InlineData(VideoDecoder.InProcess)]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    public void FirstFrameSizeIsTheFirstGivenFramesOwn(VideoDecoder decoder)
+    {
+        if (Skip(decoder))
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetector-parallel-first-size-").FullName;
+        try
+        {
+            string joined = SizeChangeClip(dir);
+            var options = Options(DetectorKind.Content, decoder: decoder);
+            var start = new VideoReader(joined, options);
+            Assert.Null(start.FirstFrameSize);
+            Assert.Equal(5, start.Frames(0, 5).Count());
+            Assert.Equal((320, 240), start.FirstFrameSize);
+            var later = new VideoReader(joined, options);
+            Assert.Equal(5, later.Frames(110, 5).Count());
+            Assert.Equal((480, 360), later.FirstFrameSize);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 
     // A reader from another's probe is the reader that probes for itself: sizes, rate, tags, every frame's position and
@@ -111,22 +203,24 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
     // sequentially, with the same result. Two chunks: the dropped frames (60, 61) then shift the second chunk's frames by
     // two, while the boundary (75) is in a still shot, where the overlap scores agree; only the positions tell. Dropped
     // frames fall back after chunking (ChunkFallback says why); the others never chunk; either way a warning says why.
+    // Through the ffmpeg executable too: its frames are placed by their packets (showinfo's pts) as in-process.
     [Theory]
-    [InlineData("dropped")]
-    [InlineData("mpegps")]
-    [InlineData("start")]
-    [InlineData("skip")]
-    [InlineData("executable")]
-    public void FallsBackToSequential(string name)
+    [InlineData("dropped", VideoDecoder.InProcess)]
+    [InlineData("mpegps", VideoDecoder.InProcess)]
+    [InlineData("start", VideoDecoder.InProcess)]
+    [InlineData("skip", VideoDecoder.InProcess)]
+    [InlineData("dropped", VideoDecoder.FfmpegProcess)]
+    [InlineData("mpegps", VideoDecoder.FfmpegProcess)]
+    [InlineData("start", VideoDecoder.FfmpegProcess)]
+    public void FallsBackToSequential(string name, VideoDecoder decoder)
     {
-        if (Libs is null)
+        if (Skip(decoder))
             return;
-        var options = Options(DetectorKind.Content) with { CollectStats = name != "skip" };
+        var options = Options(DetectorKind.Content, decoder: decoder) with { CollectStats = name != "skip" };
         options = name switch
         {
             "start" => options with { StartTime = "1.5" },
             "skip" => options with { FrameSkip = 2 },
-            "executable" => options with { Decoder = VideoDecoder.FfmpegProcess },
             _ => options,
         };
         string path = name switch { "dropped" => clips.ThreeShotsDropped, "mpegps" => clips.ThreeShotsMpegPs, _ => clips.ThreeShots };
@@ -145,8 +239,7 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
             {
                 "mpegps" => "packets without timestamps (MPEG-PS)",
                 "start" => "a time range",
-                "skip" => "frame skip",
-                _ => "decoded by the ffmpeg executable",
+                _ => "frame skip",
             };
             Assert.Equal("read sequentially, not in chunks: " + why, Assert.Single(parallel.Warnings));
         }
@@ -154,15 +247,17 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
 
     // Two chunks meeting where two copies of a transport stream join, the second's first frame under half a frame after
     // the first's last (RangeTests.JoinedTransportStream): the second chunk's seek must not take frame 50 for 49.
-    [Fact]
-    public void ChunksMeetingAtATransportStreamJoinDontFallBack()
+    [Theory]
+    [InlineData(VideoDecoder.InProcess)]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    public void ChunksMeetingAtATransportStreamJoinDontFallBack(VideoDecoder decoder)
     {
-        if (Libs is null)
+        if (Skip(decoder))
             return;
         string ts = RangeTests.JoinedTransportStream(clips.ThreeShots);
         try
         {
-            var options = Options(DetectorKind.Content);
+            var options = Options(DetectorKind.Content, decoder: decoder);
             var parallel = ShotDetection.Detect(ts, options with { Mode = DetectionMode.Parallel, Chunks = 2 });
             Assert.Null(parallel.Video.ChunkFallback);
             Assert.Equal(2, parallel.Video.Chunks);
@@ -244,20 +339,18 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
     // A larger second half (from frame 100) with timestamps that carry on: scenedetect scales its frames to the first
     // size, which the last of four chunks (from 111) would take from them instead. The overlap scores and the first
     // sizes both tell.
-    [Fact]
-    public void SizeChangeFallsBack()
+    [Theory]
+    [InlineData(VideoDecoder.InProcess)]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    public void SizeChangeFallsBack(VideoDecoder decoder)
     {
-        if (Libs is null)
+        if (Skip(decoder))
             return;
         string dir = Directory.CreateTempSubdirectory("shotdetector-parallel-size-").FullName;
         try
         {
-            string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts");
-            string[] h264 = ["-c:v", "libx264", "-bf", "0", "-bsf:v", "h264_mp4toannexb", "-muxdelay", "0", "-muxpreload", "0"];
-            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-frames:v", "100", .. h264, a], default);
-            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "4", "-i", clips.ThreeShots, "-vf", "scale=480:360", .. h264, "-output_ts_offset", "4", b], default);
-            File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
-            var options = Options(DetectorKind.Content);
+            string joined = SizeChangeClip(dir);
+            var options = Options(DetectorKind.Content, decoder: decoder);
             var parallel = ShotDetection.Detect(joined, options with { Mode = DetectionMode.Parallel, Chunks = 4 });
             Assert.Equal(1, parallel.Video.Chunks);
             AssertSame(ShotDetection.Detect(joined, options), parallel);
@@ -268,12 +361,25 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // The clip's first 100 frames at 320 x 240, then 50 at 480 x 360, timestamps carrying on: joined.ts in dir.
+    string SizeChangeClip(string dir)
+    {
+        string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts");
+        string[] h264 = ["-c:v", "libx264", "-bf", "0", "-bsf:v", "h264_mp4toannexb", "-muxdelay", "0", "-muxpreload", "0"];
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-frames:v", "100", .. h264, a], default);
+        VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "4", "-i", clips.ThreeShots, "-vf", "scale=480:360", .. h264, "-output_ts_offset", "4", b], default);
+        File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
+        return joined;
+    }
+
     // Two encodes joined, the second at another size with its timestamps starting over (InProcessTests'
     // JoinedEncodesWithTimestampsStartingOver): a chunk starting in the second half would see another first size.
-    [Fact]
-    public void JoinedEncodesFallBack()
+    [Theory]
+    [InlineData(VideoDecoder.InProcess)]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    public void JoinedEncodesFallBack(VideoDecoder decoder)
     {
-        if (Libs is null)
+        if (Skip(decoder))
             return;
         string dir = Directory.CreateTempSubdirectory("shotdetector-parallel-joined-").FullName;
         try
@@ -282,7 +388,7 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
             VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-t", "4", "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb", a], default);
             VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "1", "-i", clips.ThreeShots, "-vf", "scale=240:180", "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb", b], default);
             File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
-            var options = Options(DetectorKind.Content);
+            var options = Options(DetectorKind.Content, decoder: decoder);
             var parallel = ShotDetection.Detect(joined, options with { Mode = DetectionMode.Parallel, Chunks = 3 });
             Assert.Equal(1, parallel.Video.Chunks);
             AssertSame(ShotDetection.Detect(joined, options), parallel);
@@ -294,10 +400,12 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
     }
 
     // Progress counts the frames of all chunks together and ends at the total.
-    [Fact]
-    public void ReportsProgressOverAllChunks()
+    [Theory]
+    [InlineData(VideoDecoder.InProcess)]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    public void ReportsProgressOverAllChunks(VideoDecoder decoder)
     {
-        if (Libs is null)
+        if (Skip(decoder))
             return;
         var reports = new List<DetectionProgress>();
         var progress = new SynchronousProgress<DetectionProgress>(p =>
@@ -305,19 +413,21 @@ public class ParallelTests(Clips clips) : IClassFixture<Clips>
             lock (reports)
                 reports.Add(p);
         });
-        var result = ShotDetection.Detect(clips.ThreeShots, Options(DetectorKind.Content) with { Mode = DetectionMode.Parallel, Chunks = 3, Progress = progress, ProgressStep = 0.25 });
+        var result = ShotDetection.Detect(clips.ThreeShots, Options(DetectorKind.Content, decoder: decoder) with { Mode = DetectionMode.Parallel, Chunks = 3, Progress = progress, ProgressStep = 0.25 });
         Assert.Equal(3, result.Video.Chunks);
         Assert.Equal([0, 38, 75, 113, 150], reports.Select(r => r.FramesProcessed));
     }
 
-    [Fact]
-    public void Cancels()
+    [Theory]
+    [InlineData(VideoDecoder.InProcess)]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    public void Cancels(VideoDecoder decoder)
     {
-        if (Libs is null)
+        if (Skip(decoder))
             return;
         using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
         Assert.ThrowsAny<OperationCanceledException>(() =>
-            ShotDetection.Detect(clips.Long, Options(DetectorKind.Content) with { CollectStats = false, Mode = DetectionMode.Parallel, Chunks = 4 }, cancel.Token));
+            ShotDetection.Detect(clips.Long, Options(DetectorKind.Content, decoder: decoder) with { CollectStats = false, Mode = DetectionMode.Parallel, Chunks = 4 }, cancel.Token));
     }
 
     // Auto (the default) chunks for Detect, not when the shots are streamed (DetectStreamAsync delivers them as they come).

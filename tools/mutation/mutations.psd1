@@ -112,6 +112,8 @@
         # Chunked runs: twice the CPUs' decoder threads (at most 16) for frame-threaded decoders up to 1080p, shared out among the chunks
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'frameThreads && pixels <= MoreThreadsMaxPixels ? Math.Clamp(2 * cpus, 1, 16)'; Replace = 'frameThreads && pixels <= MoreThreadsMaxPixels ? Math.Clamp(cpus, 1, 16)'; Tests = 'ParallelTests.ChunkedRunsGiveFrameThreadedDecodersTwiceTheCpus' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'frameThreads && pixels <= MoreThreadsMaxPixels ?'; Replace = 'frameThreads ?'; Tests = 'ParallelTests.ChunkedRunsGiveFrameThreadedDecodersTwiceTheCpus' }
+        # ... told by codec name on the executable path, whose FFmpeg libraries may not load
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'DecodesInProcess ? FrameReader.FrameDecoder.HasFrameThreads(Codec) : FrameThreadedCodecs.Contains(Codec)'; Replace = 'DecodesInProcess && FrameReader.FrameDecoder.HasFrameThreads(Codec)'; Tests = 'ParallelTests.TellsFrameThreadedDecoders' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '_codedSize.W, _codedSize.H, Turn, CropRegion.X'; Replace = '_codedSize.W, _codedSize.H, 0, CropRegion.X'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
         # ... a frame at a time (each chroma row filtered once): taken when the converter has it, packed rows x columns,
         # the crop's rows, runs of rows in parallel for chunked outputs
@@ -160,6 +162,8 @@
         # index; a chunk's overlap score or first frame size isn't the next one's)
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (k >= a && reader.Position(k).Key != video.Position(k).Key)'; Replace = 'if (false)'; Tests = 'ParallelTests.FallsBackToSequential' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'for (int i = 0; i + 1 < chunks && problem is null; i++)'; Replace = 'for (int i = 0; false; i++)'; Tests = 'ParallelTests.SizeChangeFallsBack' }
+        # ... the executable path's first frame size, from showinfo, for that check
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'FirstFrameSize = (int.Parse(w,'; Replace = '_ = (int.Parse(w,'; Tests = 'ParallelTests.FirstFrameSizeIsTheFirstGivenFramesOwn' }
 
         # Parallel detection says why it read sequentially, and shares the decoder threads out without losing one
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = '        fallback = problem;'; Replace = '        fallback = null;'; Tests = 'ParallelTests.FallsBackToSequential' }
