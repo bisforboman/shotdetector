@@ -352,6 +352,11 @@
         @{ File = 'src/FrameReader/Video.cs'; Find = 'new AudioReaderOptions { CancellationToken = cancellationToken }'; Replace = 'null'; Tests = 'CancellationTests.VideoTranscodeStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/MediaProbe.cs'; Find = 'options = (options ?? new ProbeOptions()) with { CancellationToken = cancellationToken };'; Replace = '{ }'; Tests = 'CancellationTests.ProbeJsonStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/Demuxer.cs'; Find = 'if (cancellationToken.IsCancellationRequested)'; Replace = 'if (false)'; Tests = 'CancellationTests.ProbeJsonStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
+        # An MP4/MOV packet scan reads the sample tables, not the media data (FileInput): only for codecs whose packets come out
+        # the same without their data, not fragmented files, nothing past the file's end
+        @{ File = 'src/FrameReader/MediaProbe.cs'; Find = '&& TimestampsWithoutData.Contains(fmt->streams[index]->codecpar->codec_id);'; Replace = '&& true;'; Tests = 'PacketScanTests.TimestampsWithoutMediaDataAreTheSame'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FileInput.cs'; Find = 'if (type is "moof" or "mfra" or "sidx")'; Replace = 'if (false)'; Tests = 'PacketScanTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FileInput.cs'; Find = 'result.Add((at + headerSize, Math.Min(at + size, length)));'; Replace = 'result.Add((at + headerSize, at + size));'; Tests = 'PacketScanTests'; Project = 'tests/FrameReader.Tests' }
         # FrameReader: MaxWidth is ffmpeg's scale='min(N,iw)':-2 (issue #542): never upscaled, the height rounded to the
         # nearest even number (ties up), 0 filled in with the input's; not with Width and Height
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'int outWidth = Math.Min(max, width);'; Replace = 'int outWidth = max;'; Tests = 'VideoFrameReaderTests.MaxWidthIsFfmpegsMinWidthAndEvenHeight'; Project = 'tests/FrameReader.Tests' }
