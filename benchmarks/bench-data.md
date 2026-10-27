@@ -32,13 +32,19 @@ tools           { ffmpeg (`ffmpeg -version`'s first line; the CLI decodes with i
 variants[]      one per tools/bench.py run:
                 { variant: content | adaptive | content-stats | content-2cpu,
                   detector, stats (both tools wrote per-frame stats), runs (best of N by wall time),
-                  threads (null: shotdetect's default), fast_yuv, cpus (CPUs the run could use: 2 under taskset),
+                  threads (null: shotdetect's default), fast_yuv, process_fast_yuv (the films with a
+                  "shotdetect --decoder process --fast-yuv" row; missing in older files), cpus (CPUs the run could
+                  use: 2 under taskset),
                   scenedetect }
 rows[]          one per film x tool x variant, bench.py's table:
                 { variant, detector, stats, cpus,
                   video (file name), frames,
                   tool ("scenedetect 0.7.2", "shotdetect", "shotdetect --parallel", "shotdetect --sequential",
-                        "shotdetect --decoder process"; without the table's " --stats" suffix: see stats),
+                        "shotdetect --decoder process", "shotdetect --decoder process --fast-yuv"; without the
+                        table's " --stats" suffix: see stats; "--decoder process --fast-yuv" is the ffmpeg executable with
+                        FastYuv's converter (the CLI's LGPL dev build), from 2026-10-27 on, in variant content only, on
+                        the films shotdetect resizes (not elephants_dream_426x240_h264.mp4); the charts' ratios and
+                        trend take the "shotdetect" rows alone),
                   in_process (shotdetect said it decoded in-process), chunks (how many, null: one pass),
                   wall_s (best run), fps (frames / wall_s), cpu_s (user + system of the process tree, that run),
                   peak_mb (peak RSS of the process tree, highest over the runs),
