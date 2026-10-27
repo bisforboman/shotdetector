@@ -190,8 +190,9 @@ takes half the CPUs (the user's choice: 4 chunks cost about 65 MB more at 1080p 
 - The weekly benchmark (tools/bench.py) reports both, the parallel default beside `shotdetect --sequential`.
 - CI's comparisons with scenedetect (compare.py) run the default, so long in-process files there run in chunks;
   compare-parallel.py's reference asks for `--sequential`.
-- CI also compares it on ARM (ci.yml's arch job) and on Windows and macOS (parity-os.yml, nightly), in-process; the
-  parity job on both decoders (in-process and the ffmpeg executable, core and FastYuv paths), and Real world parallel
+- CI also compares it on ARM (ci.yml's arch job, in-process) and on Windows and macOS (parity-os.yml, nightly, in-process
+  and through the ffmpeg executable: a process and, on Windows, a named pipe per chunk); the parity job on both
+  decoders (in-process and the ffmpeg executable, core and FastYuv paths), and Real world parallel
   the films through the executable too.
 
 ## Risks
