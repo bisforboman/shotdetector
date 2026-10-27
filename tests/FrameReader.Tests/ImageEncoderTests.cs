@@ -4,10 +4,10 @@ using FrameReader;
 /// <summary>
 /// ImageEncoder's promise: a frame from VideoFrameReader encodes to the file ffmpeg's command line writes from the same raw
 /// frame with its tags (<c>-f rawvideo -pixel_format F -video_size WxH -i frame.raw -vf setparams=...,setsar=...
-/// -frames:v 1 out.jpg</c>, and its options), byte for byte with the same libraries; the tags are ffmpeg's frame's after
-/// the reader's filters (showinfo). Needs
-/// SHOTDETECTOR_FFMPEG_LIBS (an FFmpeg 8.1 shared build's folder with ffmpeg, which has mjpeg and png); without it these
-/// do nothing.
+/// -frames:v 1 out.jpg</c>, and its options; WebP with <c>-c:v libwebp</c>, as a build with libwebp_anim picks that one),
+/// byte for byte with the same libraries; the tags are ffmpeg's frame's after the reader's filters (showinfo). Needs
+/// SHOTDETECTOR_FFMPEG_LIBS (an FFmpeg 8.1 shared build's folder with ffmpeg, which has mjpeg, png and libwebp); without
+/// it these do nothing.
 /// </summary>
 public class ImageEncoderTests
 {
@@ -30,7 +30,15 @@ public class ImageEncoderTests
     }
 
     static bool Usable(ImageFormat format) =>
-        Libs is not null && FFmpegLibraries.Missing(format == ImageFormat.Jpg ? Capability.Jpeg : Capability.Png).Count == 0;
+        Libs is not null && FFmpegLibraries.Missing(format switch
+        {
+            ImageFormat.Jpg => Capability.Jpeg,
+            ImageFormat.Png => Capability.Png,
+            _ => Capability.WebP,
+        }).Count == 0;
+
+    // ffmpeg's encoder for each format: WebP's named, as libwebp_anim (where it's built) comes first for .webp.
+    static string[] Codec(ImageFormat format) => format == ImageFormat.WebP ? ["-c:v", "libwebp"] : [];
 
     /// <summary>
     /// Whether the byte comparisons can run: the libraries have the encoders and the ffmpeg executable beside them is
@@ -40,9 +48,9 @@ public class ImageEncoderTests
     /// </summary>
     static bool CanCompare()
     {
-        bool can = Usable(ImageFormat.Jpg) && Usable(ImageFormat.Png) && SameBuild();
+        bool can = Usable(ImageFormat.Jpg) && Usable(ImageFormat.Png) && Usable(ImageFormat.WebP) && SameBuild();
         if (!can && Environment.GetEnvironmentVariable("SHOTDETECTOR_REQUIRE_SAME_BUILD") == "1")
-            Assert.Fail($"SHOTDETECTOR_REQUIRE_SAME_BUILD is set, but {Libs} lacks mjpeg or png, or its ffmpeg isn't the libraries' own build.");
+            Assert.Fail($"SHOTDETECTOR_REQUIRE_SAME_BUILD is set, but {Libs} lacks mjpeg, png or libwebp, or its ffmpeg isn't the libraries' own build.");
         return can;
     }
 
@@ -111,6 +119,9 @@ public class ImageEncoderTests
                 (new() { Format = ImageFormat.Jpg, JpegQscale = 2 }, "jpg", ["-q:v", "2"]),
                 (new() { Format = ImageFormat.Png }, "png", []),
                 (new() { Format = ImageFormat.Png, PngCompressionLevel = 1 }, "png", ["-compression_level", "1"]),
+                (new() { Format = ImageFormat.WebP }, "webp", ["-c:v", "libwebp"]),
+                (new() { Format = ImageFormat.WebP, WebPQuality = 90.5f, WebPCompressionLevel = 2 }, "webp", ["-c:v", "libwebp", "-quality", "90.5", "-compression_level", "2"]),
+                (new() { Format = ImageFormat.WebP, WebPLossless = true }, "webp", ["-c:v", "libwebp", "-lossless", "1"]),
             };
             var failures = new List<string>();
             foreach (var (format, ffmpegName) in Formats)
@@ -206,9 +217,10 @@ public class ImageEncoderTests
     [Theory]
     [InlineData("jpg")]
     [InlineData("png")]
+    [InlineData("webp")]
     public void ASourcesOwnFrameIsPlainFfmpeg(string ext)
     {
-        var imageFormat = ext == "jpg" ? ImageFormat.Jpg : ImageFormat.Png;
+        var imageFormat = Format(ext);
         if (!CanCompare())
             return;
         string dir = Directory.CreateTempSubdirectory("framereader-img-").FullName;
@@ -218,7 +230,7 @@ public class ImageEncoderTests
             {
                 string path = Make(dir, name, encode);
                 string file = Path.Combine(dir, "out." + ext);
-                Run("-v", "error", "-y", "-i", path, "-frames:v", "1", file);
+                Run(["-v", "error", "-y", "-i", path, "-frames:v", "1", .. Codec(imageFormat), file]);
                 using var frames = new VideoFrameReader(path, new() { FrameFormat = FrameFormat.Yuv420p, Decoder = new FrameDecoderOptions() });
                 Assert.True(frames.TryRead(out var frame));
                 using var encoder = new ImageEncoder(new() { Format = imageFormat });
@@ -241,9 +253,10 @@ public class ImageEncoderTests
     [InlineData("jpg", null)]
     [InlineData("jpg", 5)]
     [InlineData("png", null)]
+    [InlineData("webp", null)]
     public void EachFrameOfASequenceIsAOneFrameRun(string ext, int? qscale)
     {
-        var imageFormat = ext == "jpg" ? ImageFormat.Jpg : ImageFormat.Png;
+        var imageFormat = Format(ext);
         if (!CanCompare())
             return;
         string dir = Directory.CreateTempSubdirectory("framereader-img-").FullName;
@@ -260,7 +273,7 @@ public class ImageEncoderTests
                     Assert.True(frames.TryRead(out var frame));
                     string file = Path.Combine(dir, "out." + ext);
                     string scale = maxWidth is { } m ? $"scale='min({m},iw)':-2:flags=bicubic" : "scale=iw:ih:flags=bicubic";
-                    Run(["-v", "error", "-y", "-i", path, "-vf", $"select=eq(n\\,{n}),{scale},format={ffmpegName}", "-frames:v", "1", .. q, file]);
+                    Run(["-v", "error", "-y", "-i", path, "-vf", $"select=eq(n\\,{n}),{scale},format={ffmpegName}", "-frames:v", "1", .. q, .. Codec(imageFormat), file]);
                     byte[] ours = encoder.Encode(frame);
                     Assert.True(File.ReadAllBytes(file).AsSpan().SequenceEqual(ours), $"{format} frame {n}");
                     if (format == FrameFormat.Yuv420p && n > 0 && ext == "jpg" && qscale is null)
@@ -278,12 +291,15 @@ public class ImageEncoderTests
         }
     }
 
-    // With whatever libraries these are (no executable of their own build needed): a PNG decodes back to the frame's
-    // pixels exactly, a JPEG to its size; one encoder through frames of several sizes and formats.
+    // With whatever libraries these are (no executable of their own build needed): a PNG or lossless WebP decodes back
+    // to the frame's pixels exactly, a JPEG or lossy WebP to its size; one encoder through frames of several sizes and
+    // formats.
     [Theory]
-    [InlineData(ImageFormat.Png)]
-    [InlineData(ImageFormat.Jpg)]
-    public void WritesWithTheseLibraries(ImageFormat imageFormat)
+    [InlineData(ImageFormat.Png, false)]
+    [InlineData(ImageFormat.Jpg, false)]
+    [InlineData(ImageFormat.WebP, false)]
+    [InlineData(ImageFormat.WebP, true)]
+    public void WritesWithTheseLibraries(ImageFormat imageFormat, bool lossless)
     {
         if (!Usable(imageFormat))
             return;
@@ -292,7 +308,7 @@ public class ImageEncoderTests
         {
             string path = Path.Combine(dir, "clip.mkv");
             TestMedia.Write(path, new() { Video = ["testsrc2=d=0.2"] });
-            using var encoder = new ImageEncoder(new() { Format = imageFormat });
+            using var encoder = new ImageEncoder(new() { Format = imageFormat, WebPLossless = lossless });
             foreach (var (format, maxWidth) in new[] { (FrameFormat.Rgb24, (int?)null), (FrameFormat.Yuv420p, 100), (FrameFormat.Gray8, 161) })
             {
                 using var frames = new VideoFrameReader(path, new() { FrameFormat = format, MaxWidth = maxWidth });
@@ -302,8 +318,8 @@ public class ImageEncoderTests
                 using var back = new VideoFrameReader(new MemoryStream(file), new() { FrameFormat = format });
                 Assert.True(back.TryRead(out var decoded));
                 Assert.Equal((frame.Width, frame.Height), (decoded.Width, decoded.Height));
-                if (imageFormat == ImageFormat.Png && format == FrameFormat.Rgb24)
-                    Assert.True(decoded.Data.SequenceEqual(pixels), "PNG is lossless");
+                if ((imageFormat == ImageFormat.Png || lossless) && format == FrameFormat.Rgb24)
+                    Assert.True(decoded.Data.SequenceEqual(pixels), $"{imageFormat} is lossless");
             }
         }
         finally
@@ -322,8 +338,40 @@ public class ImageEncoderTests
         Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { Format = ImageFormat.Png, PngCompressionLevel = -1 }));
         Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { Format = ImageFormat.Png, PngCompressionLevel = 10 }));
         Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { PngCompressionLevel = 5 }));
-        Assert.Contains("WebP isn't available yet", Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { Format = ImageFormat.WebP })).Message);
+        Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { Format = ImageFormat.WebP, JpegQscale = 2 }));
+        Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { Format = ImageFormat.WebP, PngCompressionLevel = 5 }));
+        Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { Format = ImageFormat.WebP, WebPQuality = -0.5f }));
+        Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { Format = ImageFormat.WebP, WebPQuality = 100.5f }));
+        Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { Format = ImageFormat.WebP, WebPQuality = float.NaN }));
+        Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { Format = ImageFormat.WebP, WebPCompressionLevel = -1 }));
+        Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { Format = ImageFormat.WebP, WebPCompressionLevel = 7 }));
+        Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { WebPQuality = 50 }));
+        Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { Format = ImageFormat.Png, WebPLossless = true }));
+        Assert.Throws<ArgumentException>(() => new ImageEncoder(new() { WebPCompressionLevel = 4 }));
     }
+
+    // WebP's edges are accepted (when the libraries have libwebp: the constructor finds the encoder).
+    [Fact]
+    public void TakesWebPsWholeRanges()
+    {
+        if (!Usable(ImageFormat.WebP))
+            return;
+        foreach (var options in new ImageEncoderOptions[]
+        {
+            new() { Format = ImageFormat.WebP, WebPQuality = 0, WebPCompressionLevel = 0 },
+            new() { Format = ImageFormat.WebP, WebPQuality = 100, WebPCompressionLevel = 6, WebPLossless = true },
+        })
+        {
+            using var encoder = new ImageEncoder(options);
+        }
+    }
+
+    static ImageFormat Format(string ext) => ext switch
+    {
+        "jpg" => ImageFormat.Jpg,
+        "png" => ImageFormat.Png,
+        _ => ImageFormat.WebP,
+    };
 
     static int FirstDifference(byte[] a, byte[] b)
     {

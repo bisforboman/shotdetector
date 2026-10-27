@@ -257,6 +257,7 @@ public static unsafe class FFmpegLibraries
         (Capability.Dash, ["muxer dash"]),
         (Capability.Jpeg, ["encoder mjpeg", "filter buffer", "filter buffersink", "filter format", "filter scale"]),
         (Capability.Png, ["encoder png", "filter buffer", "filter buffersink", "filter format", "filter scale"]),
+        (Capability.WebP, ["encoder libwebp", "filter buffer", "filter buffersink", "filter format", "filter scale"]),
     ];
 
     static bool Has(string? directory, Func<bool> lookup)

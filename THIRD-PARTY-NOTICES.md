@@ -95,8 +95,9 @@ https://ffmpeg.org, license: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.
 
 libavcodec, libavformat, libavutil, libswscale, libswresample and libavfilter (yadif, fps, aspectralstats and the audio filters listed in the Native README only) from FFmpeg 8.1.3
 (https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz), built with `tools/native/build-ffmpeg.sh` for decoding plus
-the AAC, MP3 and PCM encoders and common muxers: no video encoders, devices or GPL parts, and only the http(s)
-network protocols; zlib, dav1d, LAME and, on Linux, OpenSSL (below) linked in. Each package and
+the AAC, MP3 and PCM encoders, the image encoders (PNG, JPEG, WebP), FrameReader's test encoders and common
+muxers: no other video encoders, devices or GPL parts, and only the http(s)
+network protocols; zlib, dav1d, LAME, libwebp and, on Linux, OpenSSL (below) linked in. Each package and
 release archive has the exact configure line (`configure.txt`) and the licence (`COPYING.LGPL`). The libraries
 are loaded dynamically, so they can be replaced with another build of the same FFmpeg version.
 https://ffmpeg.org/legal.html
@@ -137,6 +138,45 @@ LAME 3.100 (https://lame.sourceforge.io), linked into libavcodec as FFmpeg's MP3
 https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz (SHA-256 in `configure.txt`); the
 libraries can be replaced with another build, as for FFmpeg's. The MP3 patents have expired.
 License: https://www.gnu.org/licenses/old-licenses/lgpl-2.0.html
+
+## libwebp (BSD 3-Clause), FrameReader.Native.<rid> and the shotdetect CLI
+
+libwebp 1.6.0 (https://chromium.googlesource.com/webm/libwebp), linked into libavcodec as FFmpeg's WebP encoder
+(libwebp), with Google's patent grant for WebM's codecs; both are `COPYING.libwebp` in those packages and archives.
+Built from https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz (SHA-256 in
+`configure.txt`).
+
+```
+Copyright (c) 2010, Google Inc. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+  * Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in
+    the documentation and/or other materials provided with the
+    distribution.
+
+  * Neither the name of Google nor the names of its contributors may
+    be used to endorse or promote products derived from this software
+    without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
 
 ## zlib (zlib licence), FrameReader.Native.<rid> and the shotdetect CLI
 

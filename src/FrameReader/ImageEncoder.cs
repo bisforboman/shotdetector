@@ -13,7 +13,7 @@ public enum ImageFormat
     /// <summary>PNG ("png"), FFmpeg's <c>png</c> encoder.</summary>
     Png,
 
-    /// <summary>WebP ("webp"): not yet available (FrameReader's libraries have no WebP encoder); refused.</summary>
+    /// <summary>WebP ("webp"), FFmpeg's <c>libwebp</c> encoder (lossy by default, or <see cref="ImageEncoderOptions.WebPLossless"/>).</summary>
     WebP,
 }
 
@@ -35,13 +35,30 @@ public sealed record ImageEncoderOptions
     /// lossless at every level, so speed against size, not quality. Null: zlib's default. PNG only.
     /// </summary>
     public int? PngCompressionLevel { get; init; }
+
+    /// <summary>
+    /// WebP's quality, libwebp's <c>-quality</c>: 0 to 100, higher is better quality and a larger file; lossless, how hard
+    /// it tries to make the file smaller. Null: libwebp's default, 75. The scale of ShotDetector's save-images WebP quality
+    /// (libwebp's, as OpenCV's), whose default is 100. WebP only.
+    /// </summary>
+    public float? WebPQuality { get; init; }
+
+    /// <summary>WebP without loss, libwebp's <c>-lossless 1</c>; false: lossy (libwebp's default). WebP only.</summary>
+    public bool WebPLossless { get; init; }
+
+    /// <summary>
+    /// WebP's compression level, ffmpeg's <c>-compression_level</c> (libwebp's method): 0 (fastest, larger) to 6 (slowest,
+    /// smallest). Null: ffmpeg's default for libwebp, 4. WebP only.
+    /// </summary>
+    public int? WebPCompressionLevel { get; init; }
 }
 
 /// <summary>
-/// Encodes frames to image files in this process, through FFmpeg's <c>mjpeg</c> or <c>png</c> encoder: the file ffmpeg's
-/// command line writes from the same raw frame, with its aspect ratio and colour tags, and the same options
-/// (<c>-f rawvideo ... -i frame -frames:v 1 out.jpg</c>), byte for byte with the same FFmpeg build (its version is in a
-/// JPEG's comment). Frames are converted to the pixel format ffmpeg picks for the encoder, as its command line converts
+/// Encodes frames to image files in this process, through FFmpeg's <c>mjpeg</c>, <c>png</c> or <c>libwebp</c> encoder: the
+/// file ffmpeg's command line writes from the same raw frame, with its aspect ratio and colour tags, and the same options
+/// (<c>-f rawvideo ... -i frame -frames:v 1 out.jpg</c>; WebP: <c>-c:v libwebp out.webp</c>, as a build with
+/// <c>libwebp_anim</c> picks that one by default), byte for byte with the same FFmpeg build (its version is in a JPEG's
+/// comment; for WebP, libwebp's too). Frames are converted to the pixel format ffmpeg picks for the encoder, as its command line converts
 /// them (the scale filter it inserts). One encoder serves any number of frames, of any size and format; not thread-safe.
 /// </summary>
 /// <remarks>
@@ -64,21 +81,30 @@ public sealed unsafe class ImageEncoder : IDisposable
 
     /// <summary>Sets up the encoder (nothing is allocated in FFmpeg until the first frame).</summary>
     /// <param name="options">The format and its options; null: JPEG at ffmpeg's default quality.</param>
-    /// <exception cref="ArgumentException">WebP, an option out of its range, or another format's option.</exception>
-    /// <exception cref="FrameReaderException">The libraries didn't load or lack the encoder (<see cref="Capability.Jpeg"/>, <see cref="Capability.Png"/>).</exception>
+    /// <exception cref="ArgumentException">An unknown format, an option out of its range, or another format's option.</exception>
+    /// <exception cref="FrameReaderException">The libraries didn't load or lack the encoder (<see cref="Capability.Jpeg"/>, <see cref="Capability.Png"/>, <see cref="Capability.WebP"/>).</exception>
     public ImageEncoder(ImageEncoderOptions? options = null)
     {
         _o = options ?? new ImageEncoderOptions();
-        if (_o.Format == ImageFormat.WebP)
-            throw new ArgumentException("WebP isn't available yet: FrameReader's FFmpeg libraries have no WebP encoder. Use Jpg or Png.", nameof(options));
-        if (_o.Format is not (ImageFormat.Jpg or ImageFormat.Png))
+        if (_o.Format is not (ImageFormat.Jpg or ImageFormat.Png or ImageFormat.WebP))
             throw new ArgumentException($"Unknown format {_o.Format}.", nameof(options));
         if (_o.JpegQscale is { } q && (_o.Format != ImageFormat.Jpg || q is < 2 or > 31))
             throw new ArgumentException("JpegQscale is JPEG's -q:v, 2 to 31.", nameof(options));
         if (_o.PngCompressionLevel is { } c && (_o.Format != ImageFormat.Png || c is < 0 or > 9))
             throw new ArgumentException("PngCompressionLevel is PNG's -compression_level, 0 to 9.", nameof(options));
+        if (_o.WebPQuality is { } wq && (_o.Format != ImageFormat.WebP || !(wq >= 0 && wq <= 100)))
+            throw new ArgumentException("WebPQuality is libwebp's -quality, 0 to 100.", nameof(options));
+        if (_o.WebPLossless && _o.Format != ImageFormat.WebP)
+            throw new ArgumentException("WebPLossless is libwebp's -lossless, for WebP.", nameof(options));
+        if (_o.WebPCompressionLevel is { } wc && (_o.Format != ImageFormat.WebP || wc is < 0 or > 6))
+            throw new ArgumentException("WebPCompressionLevel is libwebp's -compression_level, 0 to 6.", nameof(options));
         FFmpegLibraries.Load();
-        string name = _o.Format == ImageFormat.Jpg ? "mjpeg" : "png";
+        string name = _o.Format switch
+        {
+            ImageFormat.Jpg => "mjpeg",
+            ImageFormat.Png => "png",
+            _ => "libwebp",
+        };
         _codec = ffmpeg.avcodec_find_encoder_by_name(name);
         if (_codec == null)
             throw new FrameReaderException(FrameReaderError.InvalidInput, $"These FFmpeg libraries have no {name} encoder.");
@@ -261,6 +287,12 @@ public sealed unsafe class ImageEncoder : IDisposable
 
         if (_o.PngCompressionLevel is { } c)
             _enc->compression_level = c;
+        if (_o.WebPCompressionLevel is { } wc)
+            _enc->compression_level = wc;
+        if (_o.WebPQuality is { } wq)
+            Check(ffmpeg.av_opt_set_double(_enc->priv_data, "quality", wq, 0), "quality");
+        if (_o.WebPLossless)
+            Check(ffmpeg.av_opt_set_int(_enc->priv_data, "lossless", 1, 0), "lossless");
 
         // One thread: ffmpeg's "auto" gives the same bytes (checked from 1 to 16 threads), and frame threads would hold
         // the packet back until the next frame or the end.
