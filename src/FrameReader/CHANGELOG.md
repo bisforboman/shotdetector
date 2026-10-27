@@ -7,6 +7,25 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.12.0 – 2026-10-27
+
+Encode frames as JPEG or PNG, and cap the width the way ffmpeg's scale does.
+
+### New
+
+- `ImageEncoder`: a frame as a JPEG (FFmpeg's `mjpeg`) or PNG file, to a `Stream` or a `byte[]`, one encoder for any
+  number of frames, without the ffmpeg executable or another image library (issue #542). The bytes are those ffmpeg
+  writes from the same raw frame with `-frames:v 1 out.jpg` (or `.png`), converted to the pixel format ffmpeg picks for
+  the encoder. Options are ffmpeg's: `JpegQscale` (`-q:v`, 2-31) and `PngCompressionLevel` (`-compression_level`, 0-9);
+  without a qscale every JPEG is what a one-frame ffmpeg run writes. WebP isn't available yet. `Capability.Jpeg` and
+  `Capability.Png` for `FFmpegLibraries.Missing`.
+- `VideoFrame.SampleAspectRatio`, `ColorRange`, `ColorSpace`, `ColorPrimaries` and `ColorTransfer`: the frame's aspect
+  ratio and colour tags, as ffmpeg's frame has them after the same filters (the encoder writes them into the file).
+- FrameReader.Native now carries FFmpeg's `mjpeg` encoder.
+- `VideoFrameReaderOptions.MaxWidth`: cap the width and keep the aspect ratio, as ffmpeg's `scale='min(N,iw)':-2`
+  (never upscaled, the height rounded to an even number, measured after autorotate), so a capped size no longer needs
+  a probe first; the bytes are ffmpeg's for that filter (issue #542).
+
 ## 2.11.1 – 2026-10-27
 
 Cancelling a whole-file job now also stops it while FFmpeg waits on a URL.
