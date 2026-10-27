@@ -35,20 +35,21 @@ internal static unsafe class Demuxer
     }
 
     /// <summary>
-    /// Opens <paramref name="path"/> (or <paramref name="io"/>'s stream) as ffprobe and ffmpeg do (scan_all_pmts for
+    /// Opens <paramref name="path"/> (or <paramref name="io"/>'s stream, or <paramref name="file"/>) as ffprobe and ffmpeg do (scan_all_pmts for
     /// MPEG-TS), with input options, and reads its stream info. Close with <see cref="Close"/> (then dispose io).
     /// <paramref name="cancellationToken"/> also stops FFmpeg where it waits (a network read): its interrupt callback.
     /// </summary>
     internal static AVFormatContext* Open(string path,
         IReadOnlyDictionary<string, string>? inputOptions = null,
         StreamInput? io = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        FileInput? file = null)
     {
         AVFormatContext* fmt = ffmpeg.avformat_alloc_context();
-        if (io != null)
+        if (io != null || file != null)
         {
-            // Read from a Stream: avformat_close_input leaves the context to its owner.
-            fmt->pb = io.Context;
+            // Read from a Stream (or a file through FileInput): avformat_close_input leaves the context to its owner.
+            fmt->pb = io != null ? io.Context : file!.Context;
             fmt->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO;
         }
 

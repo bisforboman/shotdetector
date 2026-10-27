@@ -257,4 +257,13 @@ public sealed record ProbeOptions
     /// or the read ends with an error); none by default.
     /// </summary>
     public CancellationToken CancellationToken { get; init; }
+
+    /// <summary>
+    /// Tests: read an MP4/MOV file's media data in the packet scan (<see cref="PacketTimestamps"/>) rather than only its
+    /// sample tables (same timestamps and positions).
+    /// </summary>
+    internal bool ReadsMediaData { get; init; }
+
+    /// <summary>Tests: told how many bytes the probe read of a file it read through FileInput (else not called).</summary>
+    internal Action<long>? OnFileBytesRead { get; init; }
 }
