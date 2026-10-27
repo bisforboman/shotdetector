@@ -32,9 +32,9 @@ handed over with both: matrix and range from that line, siting from the frame's 
 frame's tags at once, one converter per set of colours). The raw-YUV pipe's labels stay the first frame's
 (`setparams`, #432): they keep ffmpeg from converting the samples, and showinfo sits before them, so it reports the
 decoder's tags. A frame whose colours FastYuv declines (a matrix it lacks, such as GBR) sends the video to the BGR
-pipelines from the start, as a frame of another size does: the executable default path's frames for that video. A
-stream can't be read again, so there it keeps the first frame's conversion. `FastYuvTests.ExecutableFollowsEachFramesTags`
-(each half of a joined clip gives the frames that half gives alone, and on x64 the default path's) and
+pipelines from that frame on, as a frame of another size does (the read starts again and skips the frames already
+given): the executable default path's frames from there. A stream can't be read again, so there it keeps the first
+frame's conversion. `FastYuvTests.ExecutableFollowsEachFramesTags` (each half of a joined clip gives the frames that half gives alone, and on x64 the default path's) and
 `ExecutableTakesTheDefaultPathForColoursFastYuvDeclines` check it.
 
 Measured on the two built clips, every detector with `--stats` against scenedetect 0.7.2, `--decoder process

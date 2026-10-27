@@ -555,8 +555,9 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
         static List<string> Hashes(VideoReader reader) => [.. reader.Frames().Select(f => Convert.ToHexString(SHA256.HashData(f)))];
     }
 
-    // Through the executable, a frame whose colours FastYuv declines (the GBR matrix) sends the video to the BGR pipelines from
-    // the start, as a new size does: the default path's frames, on any platform. libx264; skipped without it.
+    // Through the executable, a frame whose colours FastYuv declines (the GBR matrix) sends the video to the BGR pipelines
+    // from there, as a new size does: the default path's frames from that frame on, on any platform (before it,
+    // FastYuv's, which are the default path's on x64). libx264; skipped without it.
     [Fact]
     public void ExecutableTakesTheDefaultPathForColoursFastYuvDeclines()
     {
@@ -576,7 +577,11 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
             Assert.True(VideoReader.IsYuv(reader.Pipeline));
             var frames = Hashes(reader);
             Assert.False(VideoReader.IsYuv(reader.Pipeline));
-            Assert.Equal(Hashes(new VideoReader(joined, options)), frames);
+            var expected = Hashes(new VideoReader(joined, options));
+            int before = Hashes(new VideoReader(a, options)).Count;
+            Assert.Equal(expected[before..], frames[before..]);
+            if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
+                Assert.Equal(expected, frames);
         }
         finally
         {
