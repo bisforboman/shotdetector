@@ -5,14 +5,14 @@
 # with only yadif (deinterlacing), fps (FrameReader's FrameRate), aspectralstats (its SpectralStats), the audio
 # filters its AudioFilter offers (EQ and level, dynamics, loudness, detection; aformat/aresample to convert) and a
 # graph's buffer/buffersink and abuffer/abuffersink ends. LGPL; linked in statically: zlib (PNG, compressed
-# MOV/MKV headers), dav1d (AV1, BSD-2-Clause), LAME (MP3, LGPL) and, on Linux, OpenSSL (https, Apache-2.0). Run on the platform itself, except win-x64, which cross-compiles from
+# MOV/MKV headers), dav1d (AV1, BSD-2-Clause), LAME (MP3, LGPL), libwebp (WebP, BSD-3-Clause) and, on Linux, OpenSSL (https, Apache-2.0). Run on the platform itself, except win-x64, which cross-compiles from
 # Linux with mingw-w64. Needs nasm (x86), meson, ninja and pkg-config.
 #
 #   tools/native/build-ffmpeg.sh <rid> <output dir>
 #
 # The output dir gets the four libraries under the names FFmpeg.AutoGen loads (avcodec-62.dll, libavcodec.so.62,
 # libavcodec.62.dylib, ...), plus the configure line used (configure.txt) for the LGPL notice and an SPDX SBOM of
-# what's inside (sbom.spdx.json: FFmpeg, zlib, dav1d and LAME with their versions, sources, SHA-256 and CPEs).
+# what's inside (sbom.spdx.json: FFmpeg, zlib, dav1d, LAME and libwebp with their versions, sources, SHA-256 and CPEs).
 set -eu
 
 VERSION=8.1.3
@@ -23,6 +23,8 @@ DAV1D=1.5.4
 DAV1D_SHA256=686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5
 LAME=3.100
 LAME_SHA256=ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
+WEBP=1.6.0
+WEBP_SHA256=e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564
 OPENSSL=3.5.9
 OPENSSL_SHA256=603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
 rid=$1
@@ -54,7 +56,8 @@ fetch dav1d.tar.xz "$DAV1D_SHA256" "https://downloads.videolan.org/pub/videolan/
   "https://download.videolan.org/pub/videolan/dav1d/$DAV1D/dav1d-$DAV1D.tar.xz"
 fetch lame.tar.gz "$LAME_SHA256" "https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz" \
   "https://deb.debian.org/debian/pool/main/l/lame/lame_$LAME.orig.tar.gz"
-tar -xJf ffmpeg.tar.xz && tar -xzf zlib.tar.gz && tar -xJf dav1d.tar.xz && tar -xzf lame.tar.gz
+fetch libwebp.tar.gz "$WEBP_SHA256" "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-$WEBP.tar.gz"
+tar -xJf ffmpeg.tar.xz && tar -xzf zlib.tar.gz && tar -xJf dav1d.tar.xz && tar -xzf lame.tar.gz && tar -xzf libwebp.tar.gz
 case "$rid" in
   linux-*) fetch openssl.tar.gz "$OPENSSL_SHA256" "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL/openssl-$OPENSSL.tar.gz" \
              "https://www.openssl.org/source/openssl-$OPENSSL.tar.gz"
@@ -90,6 +93,18 @@ esac
   make -j"$jobs" install > make.log 2>&1 || { tail -40 make.log; exit 1; }
 )
 
+# libwebp, static: FrameReader's ImageEncoder writes WebP with FFmpeg's libwebp encoder (BSD-3-Clause, with Google's
+# patent grant). The library and libsharpyuv only: no mux/demux (libwebp_anim isn't built), no image libraries for
+# its example tools.
+(
+  cd "libwebp-$WEBP"
+  set -- --prefix="$deps" --enable-static --disable-shared --disable-libwebpmux --disable-libwebpdemux \
+    --disable-gl --disable-sdl --disable-png --disable-jpeg --disable-tiff --disable-gif --disable-wic
+  [ "$rid" = win-x64 ] && set -- "$@" --host=x86_64-w64-mingw32
+  CFLAGS="-O2 -fPIC" ./configure "$@" > configure.log || { tail -40 configure.log; exit 1; }
+  make -j"$jobs" install > make.log 2>&1 || { tail -40 make.log; exit 1; }
+)
+
 # OpenSSL, static, Linux only: https (Windows has Schannel, macOS Secure Transport). The 3.5 LTS series; an LGPL build
 # needs no --enable-version3 for OpenSSL 3. --openssldir=/etc/ssl, where Debian, Ubuntu and Alpine keep the trusted
 # certificates (FrameReader passes ca_file for the distributions that keep them elsewhere).
@@ -112,15 +127,16 @@ case "$rid" in
   linux-*) [ "$(grep -c '^#elif CONFIG_OPENSSL$' libavutil/random_seed.c)" = 2 ] || { echo "random_seed.c changed" >&2; exit 1; }
            sed -i 's/^#elif CONFIG_OPENSSL$/#elif 0 \/* FrameReader.Native: OpenSSL only in libavformat *\//' libavutil/random_seed.c ;;
 esac
-# Only our static zlib and dav1d, never the system's.
+# Only our static zlib, dav1d, LAME and libwebp, never the system's.
 export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig"
 
 # Decoding only: what OpenCV's FFmpeg does for scenedetect, minus everything that writes, plus yadif for
 # DeinterlaceMode (LGPL, like the rest); format, null and scale for VideoWriter's graph to the encoder's pixel format
 # (scale is the converter FFmpeg inserts; without them every VideoWriter failed, issue #127); FrameReader's TestMedia: the
 # sources, concat, setfield/setsar/setparams and trim, FFmpeg's own mpeg2video and mpeg4 encoders, more PCM (issue #237); PNG frames (the png encoder, the image2
-# muxer) and MPEG program streams (the mpeg1system muxer, "mpeg" by name), so ShotDetector's tests make every clip without the executable. The mjpeg encoder for FrameReader's ImageEncoder (issue #542; PNG uses the png encoder above). No --enable-gpl/--enable-nonfree, and --disable-autodetect keeps system
-# libraries (and their licences) out: zlib and dav1d are the ones built above, linked in. Protocols: the local ones, and
+# muxer) and MPEG program streams (the mpeg1system muxer, "mpeg" by name), so ShotDetector's tests make every clip without the executable. The mjpeg encoder for FrameReader's ImageEncoder (issue #542; PNG uses the png encoder above), and libwebp for its WebP (the still-image encoder, whose packet is the whole
+# file; not libwebp_anim, which `ffmpeg out.webp` picks first where it's built). No --enable-gpl/--enable-nonfree, and --disable-autodetect keeps system
+# libraries (and their licences) out: zlib, dav1d, LAME and libwebp are the ones built above, linked in. Protocols: the local ones, and
 # http (with tcp) for URLs in-process, and https: Windows' Schannel, macOS's Secure Transport, OpenSSL on Linux.
 set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
   --disable-programs --disable-doc --disable-avdevice --disable-filters --enable-filter=buffer,buffersink,abuffer,abuffersink,yadif,fps,aspectralstats,format,null,scale \
@@ -128,7 +144,7 @@ set -- --prefix="$work/install" --enable-shared --disable-static --enable-pic \
   --enable-filter=testsrc2,smptebars,mandelbrot,color,sine,anullsrc,concat,setfield,setsar,setparams,trim,atrim \
   --disable-protocols --enable-protocol=file,pipe,fd,data,crypto,cache,async,concat,concatf,subfile,md5,tee,hls,http,httpproxy,tcp,https,tls \
   --disable-encoders --disable-muxers --disable-autodetect \
-  --enable-libmp3lame --enable-encoder=aac,libmp3lame,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,mpeg2video,mpeg4,png,mjpeg \
+  --enable-libmp3lame --enable-libwebp --enable-encoder=aac,libmp3lame,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,mpeg2video,mpeg4,png,mjpeg,libwebp \
   --enable-muxer=mp4,mov,ipod,avi,matroska,matroska_audio,webm,adts,mp3,wav,flac,ogg,opus,mpegts,mpeg1system,image2,srt,webvtt,ass,dash \
   --enable-zlib --enable-libdav1d --pkg-config=pkg-config --pkg-config-flags=--static \
   --extra-cflags=-I"$deps/include" --extra-ldflags=-L"$deps/lib" \
@@ -199,6 +215,7 @@ esac
   echo "zlib $ZLIB (https://zlib.net/fossils/zlib-$ZLIB.tar.gz, sha256 $ZLIB_SHA256), static"
   echo "dav1d $DAV1D (https://downloads.videolan.org/pub/videolan/dav1d/$DAV1D/dav1d-$DAV1D.tar.xz, sha256 $DAV1D_SHA256), static"
   echo "LAME $LAME (https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz, sha256 $LAME_SHA256), static"
+  echo "libwebp $WEBP (https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-$WEBP.tar.gz, sha256 $WEBP_SHA256), static"
   case "$rid" in linux-*) echo "OpenSSL $OPENSSL (https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL/openssl-$OPENSSL.tar.gz, sha256 $OPENSSL_SHA256), static" ;; esac
   echo "./configure $*"
 } > "$out/configure.txt"
@@ -219,8 +236,9 @@ pkg() {
   pkg ffmpeg FFmpeg "$VERSION" LGPL-2.1-or-later "https://ffmpeg.org/releases/ffmpeg-$VERSION.tar.xz" "$SHA256" ffmpeg:ffmpeg; printf ',\n'
   pkg zlib zlib "$ZLIB" Zlib "https://zlib.net/fossils/zlib-$ZLIB.tar.gz" "$ZLIB_SHA256" zlib:zlib; printf ',\n'
   pkg dav1d dav1d "$DAV1D" BSD-2-Clause "https://downloads.videolan.org/pub/videolan/dav1d/$DAV1D/dav1d-$DAV1D.tar.xz" "$DAV1D_SHA256" videolan:dav1d; printf ',\n'
-  pkg lame LAME "$LAME" LGPL-2.0-or-later "https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz" "$LAME_SHA256" lame_project:lame
-  linked="zlib dav1d lame"
+  pkg lame LAME "$LAME" LGPL-2.0-or-later "https://downloads.sourceforge.net/project/lame/lame/$LAME/lame-$LAME.tar.gz" "$LAME_SHA256" lame_project:lame; printf ',\n'
+  pkg libwebp libwebp "$WEBP" BSD-3-Clause "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-$WEBP.tar.gz" "$WEBP_SHA256" webmproject:libwebp
+  linked="zlib dav1d lame libwebp"
   case "$rid" in
     linux-*) printf ',\n'; linked="$linked openssl"
              pkg openssl OpenSSL "$OPENSSL" Apache-2.0 "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL/openssl-$OPENSSL.tar.gz" "$OPENSSL_SHA256" openssl:openssl ;;

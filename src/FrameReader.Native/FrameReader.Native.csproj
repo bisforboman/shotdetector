@@ -17,7 +17,7 @@
 
     <Version>$(FrameReaderVersion)</Version>
     <PackageId>FrameReader.Native.$(Rid)</PackageId>
-    <Description>FFmpeg 8.1.3's shared libraries for $(Rid), built for decoding plus AAC, MP3, PCM, MPEG-2, MPEG-4 and PNG encoding and common muxers (yadif, fps, aspectralstats, FrameReader's audio filters and TestMedia's sources the only filters; zlib and dav1d for PNG and AV1 linked in), so FrameReader and ShotDetector decode and probe in-process. https through the system's TLS (Windows, macOS) or OpenSSL 3.5 linked in (Linux). LGPL-2.1-or-later, as FFmpeg (dav1d: BSD-2-Clause; OpenSSL: Apache-2.0); the build recipe is configure.txt in the package, and sbom.spdx.json an SPDX SBOM of what's inside.</Description>
+    <Description>FFmpeg 8.1.3's shared libraries for $(Rid), built for decoding plus AAC, MP3, PCM, MPEG-2, MPEG-4, PNG, JPEG and WebP encoding and common muxers (yadif, fps, aspectralstats, FrameReader's audio filters and TestMedia's sources the only filters; zlib, dav1d and libwebp for PNG, AV1 and WebP linked in), so FrameReader and ShotDetector decode and probe in-process. https through the system's TLS (Windows, macOS) or OpenSSL 3.5 linked in (Linux). LGPL-2.1-or-later, as FFmpeg (dav1d: BSD-2-Clause; libwebp: BSD-3-Clause; OpenSSL: Apache-2.0); the build recipe is configure.txt in the package, and sbom.spdx.json an SPDX SBOM of what's inside.</Description>
     <PackageTags>video;audio;ffmpeg;native;scene-detection</PackageTags>
     <PackageLicenseExpression>LGPL-2.1-or-later</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -31,6 +31,7 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="COPYING.LGPL" Pack="true" PackagePath="\" />
     <None Include="COPYING.dav1d" Pack="true" PackagePath="\" />
+    <None Include="COPYING.libwebp" Pack="true" PackagePath="\" />
     <None Include="COPYING.openssl" Pack="true" PackagePath="\" Condition="$(Rid.StartsWith('linux'))" />
   </ItemGroup>
 
