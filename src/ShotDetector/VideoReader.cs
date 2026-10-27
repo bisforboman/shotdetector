@@ -1260,7 +1260,7 @@ internal sealed partial class VideoReader
     // The executable's YUV pipeline met a frame of another size or pixel format than the stream's: ffmpeg scales or
     // converts such frames in YUV (to the stream's size and -pix_fmt) before the converter sees them, where OpenCV does
     // it inside its one conversion to BGR. From then on this video takes the BGR pipelines, which convert them as OpenCV
-    // does.
+    // does. The same for a frame whose colour tags FastYuv declines.
     bool _sizeChanges;
 
     /// <summary>
@@ -1410,7 +1410,7 @@ internal sealed partial class VideoReader
         psi.ArgumentList.Add(server is null ? "-" : $@"\\.\pipe\{pipeName}");
 
         using var proc = Start(psi);
-        using var livePts = new BlockingCollection<(long Pts, bool NewLayout, string Size)>();
+        using var livePts = new BlockingCollection<(long Pts, bool NewLayout, string Size, FrameColourTags Tags)>();
         string streamSize = $"{_codedSize.W}x{_codedSize.H}"; // OpenCV's buffer, as scale= in the BGR pipelines
         double liveTimeBase = _timeBase;
         if (!Streaming)
@@ -1424,17 +1424,39 @@ internal sealed partial class VideoReader
         // stderr: the frames' timestamps come out of it, and anything else is kept for errors.
         var stderr = Task.Run(() =>
             {
+                // The YUV pipelines convert each frame with its own colour tags, as OpenCV does: its chroma siting is on
+                // showinfo's frame line, its matrix and range on a line of their own after it (and any side data), which
+                // showinfo prints for every frame before the frame goes on, so a frame is handed over once that line is
+                // read (or, without one, at the next frame's line or the end).
+                (long Pts, bool NewLayout, string Size, FrameColourTags Tags)? pending = null;
                 string? line;
                 while ((line = proc.StandardError.ReadLine()) is not null)
                 {
                     var frame = ShowInfoLine().Match(line);
                     if (frame.Success)
                     {
+                        if (pending is { } before)
+                            livePts.Add(before);
+
                         // showinfo sees the decoded frame, before the output's -pix_fmt conversion.
                         var format = FormatField().Match(line);
-                        livePts.Add((long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture),
+                        var siting = ChromaLocationField().Match(line);
+                        (long, bool, string, FrameColourTags) info = (long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture),
                             frame.Groups[2].Value != streamSize || (format.Success && format.Groups[1].Value != _pixelFormat),
-                            frame.Groups[2].Value));
+                            frame.Groups[2].Value,
+                            new(null, null, siting.Success ? siting.Groups[1].Value : null));
+                        if (yuv)
+                            pending = info;
+                        else
+                            livePts.Add(info);
+                        continue;
+                    }
+
+                    var colours = ColourLine().Match(line);
+                    if (colours.Success && pending is { } waiting)
+                    {
+                        livePts.Add(waiting with { Tags = waiting.Tags with { ColorRange = colours.Groups[1].Value, ColorSpace = colours.Groups[2].Value } });
+                        pending = null;
                         continue;
                     }
 
@@ -1452,6 +1474,8 @@ internal sealed partial class VideoReader
                         log.AppendLine(line);
                 }
 
+                if (pending is { } last)
+                    livePts.Add(last);
                 livePts.CompleteAdding();
                 return log.ToString();
             });
@@ -1530,6 +1554,7 @@ internal sealed partial class VideoReader
         int emitted = 0;
         bool again = false;
         int againBack = seekBack;
+        var conversions = yuv ? new FrameConversions(this, null, null) : null;
         try
         {
             var small = new byte[Width * Height * 3];
@@ -1555,6 +1580,16 @@ internal sealed partial class VideoReader
                 // A new size or pixel format on a YUV pipeline: read again on a BGR pipeline (after the finally
                 // below). Files only: a stream can't be read twice.
                 if (yuv && info.NewLayout && _stream is null && !Streaming)
+                {
+                    _sizeChanges = again = true;
+                    break;
+                }
+
+                // The frame's own colours' conversion; where FastYuv declines them (a matrix it lacks), the BGR pipelines
+                // for this video from here on, as for a new size (the default path's frames). A stream can't be read
+                // again: the first frame's conversion there.
+                var conversion = yuv ? conversions!.For(info.Tags) : null;
+                if (yuv && conversion is null && _stream is null && !Streaming)
                 {
                     _sizeChanges = again = true;
                     break;
@@ -1594,7 +1629,7 @@ internal sealed partial class VideoReader
                 }
 
                 if (yuv)
-                    resizer.ResizeYuv(buffer, small, YuvForVideo!, _codedSize.W, _codedSize.H, Turn, CropRegion.X, CropRegion.Y);
+                    resizer.ResizeYuv(buffer, small, conversion?.Yuv ?? YuvForVideo!, _codedSize.W, _codedSize.H, Turn, CropRegion.X, CropRegion.Y);
                 else if (sampled)
                     resizer.ResizeSampled(buffer, small);
                 else
@@ -1697,6 +1732,13 @@ internal sealed partial class VideoReader
 
     [System.Text.RegularExpressions.GeneratedRegex(@" fmt:(\S+) ")]
     private static partial System.Text.RegularExpressions.Regex FormatField();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@" cl:(\S+) ")]
+    private static partial System.Text.RegularExpressions.Regex ChromaLocationField();
+
+    // showinfo's line after a frame's (FFmpeg's names; "unknown" where unspecified).
+    [System.Text.RegularExpressions.GeneratedRegex(@"\] color_range:(\S+) color_space:(\S+)")]
+    private static partial System.Text.RegularExpressions.Regex ColourLine();
 
     [System.Text.RegularExpressions.GeneratedRegex(@"config in time_base: (\d+)/(\d+)")]
     private static partial System.Text.RegularExpressions.Regex TimeBaseLine();

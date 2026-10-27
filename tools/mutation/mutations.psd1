@@ -24,6 +24,13 @@
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'if (tags == _lastTags)'; Replace = 'if (_lastTags is not null)'; Tests = 'FastYuvTests.InProcessFollowsEachFramesTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'PreferFrameTag(stream, "color_space", colorSpace);'; Replace = ''; Tests = 'FastYuvTests.InProcessFollowsEachFramesTags' }
 
+        # ... and through the executable, from showinfo: the siting on the frame's line, the matrix and range on the line
+        # after it; colours FastYuv declines send the video to the BGR pipelines
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'livePts.Add(waiting with { Tags = waiting.Tags with { ColorRange = colours.Groups[1].Value, ColorSpace = colours.Groups[2].Value } });'; Replace = 'livePts.Add(waiting);'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'new(null, null, siting.Success ? siting.Groups[1].Value : null));'; Replace = 'new(null, null, null));'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'conversion?.Yuv ?? YuvForVideo!'; Replace = 'YuvForVideo!'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (yuv && conversion is null && _stream is null && !Streaming)'; Replace = 'if (false)'; Tests = 'FastYuvTests.ExecutableTakesTheDefaultPathForColoursFastYuvDeclines' }
+
         # ... read only where FastYuv or the executable's scale filter uses them (not the in-process default path), once
         # for a detection's chunks
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'YuvForVideo => _yuv420 is null ? null : _colours.Value.YuvForVideo;'; Replace = 'YuvForVideo => _colours.Value.YuvForVideo;'; Tests = 'InProcessTests.ReadsTheFirstFramesTagsOnlyWhereTheyreUsed' }
@@ -31,7 +38,7 @@
 
         # The executable's raw-YUV pipe labels every frame with the first frame's colour tags, so a matrix or range that
         # changes midway doesn't make ffmpeg convert the later frames' samples (FastYuv reads the decoder's)
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'select[1] + "," + _colours.Value.YuvLabels'; Replace = 'select[1]'; Tests = 'FastYuvTests.TagChangeMidwayKeepsTheSamples' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'select[1] + "," + _colours.Value.YuvLabels'; Replace = 'select[1]'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'colorSpace is { } cs && SetParamsColorSpaces.Contains(cs) ? cs : "unknown"'; Replace = 'colorSpace ?? "unknown"'; Tests = 'UrlOptionTests.TheYuvPipesLabelsAreTheFirstFramesTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'pixelFormat.StartsWith("yuvj", StringComparison.Ordinal) ? "pc"'; Replace = 'false ? "pc"'; Tests = 'UrlOptionTests.TheYuvPipesLabelsAreTheFirstFramesTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'colorRange is "tv" or "pc" ? colorRange : "unknown"'; Replace = 'colorRange ?? "unknown"'; Tests = 'UrlOptionTests.TheYuvPipesLabelsAreTheFirstFramesTags' }

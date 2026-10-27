@@ -90,12 +90,13 @@ internal sealed partial class VideoReader
     }
 
     /// <summary>
-    /// FastYuv's conversion for each frame in-process, from the frame's own colour matrix, range and (10-bit) chroma siting,
-    /// as OpenCV's sws_scale_frame converts each frame with its own: one converter per set of colours, with the decoded rows
-    /// it reads (a 10-bit vertical chroma filter reads other rows for another siting). A frame with the previous frame's
+    /// FastYuv's conversion for each frame, from the frame's own colour matrix, range and (10-bit) chroma siting, as
+    /// OpenCV's sws_scale_frame converts each frame with its own: one converter per set of colours, with the decoded rows
+    /// it reads in-process (a 10-bit vertical chroma filter reads other rows for another siting; no
+    /// <paramref name="resizer"/>, no rows: the executable's pipe carries whole frames). A frame with the previous frame's
     /// tags takes its conversion at once (the common case: tags that never change). Used by one thread at a time.
     /// </summary>
-    sealed class FrameConversions(VideoReader reader, CvResize resizer, (int[] Luma, int[] Chroma)? videoRows)
+    sealed class FrameConversions(VideoReader reader, CvResize? resizer, (int[] Luma, int[] Chroma)? videoRows)
     {
         readonly Dictionary<FrameColour, Conversion?> _byColour = [];
         FrameColourTags? _lastTags;
@@ -115,7 +116,9 @@ internal sealed partial class VideoReader
                 // The video's own colours (the first frame's): its conversion and rows as the pipeline was set up with.
                 var video = reader._colours.Value;
                 var yuv = colour == video.Colour ? video.YuvForVideo : reader.YuvConversionFor(colour);
-                conversion = yuv is null ? null : new(yuv, colour == video.Colour ? videoRows : reader.YuvRowsRead(resizer, yuv));
+                conversion = yuv is null
+                    ? null
+                    : new(yuv, colour == video.Colour ? videoRows : resizer is null ? null : reader.YuvRowsRead(resizer, yuv));
                 _byColour[colour] = conversion;
             }
 
