@@ -5,7 +5,8 @@ name: Parity on Windows and macOS
 # compare.py passes --always-bt601 there, as README says users must. macOS's ARM wheel uses KleidiCV and Carotene,
 # which round resize and HSV differently (README, docs/decisions/). Nightly rather than on every pull request: it
 # fails nothing, and runners are CI's limit (concurrent jobs count per account; this takes one of the 5 macOS slots).
-# Parallel detection against sequential runs here too, in-process with our FFmpeg build, and that step does fail.
+# Parallel detection against sequential runs here too, in-process with our FFmpeg build and through the ffmpeg
+# executable (a process and, on Windows, a named pipe per chunk), and those steps do fail.
 on:
   workflow_dispatch:
   schedule:
@@ -101,4 +102,24 @@ jobs:
           python tools/compare-parallel.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
             --chunks 3 --report parallel.md || status=$?
           { echo "### Parallel against sequential on ${{ matrix.os }}"; cat parallel.md 2>/dev/null || echo "No report."; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      # The same through the ffmpeg executable (--decoder process: a process per chunk, on Windows a named pipe each),
+      # as ci.yml's parity job does on Linux. The executable on PATH: BtbN's 9.0 on Windows, Homebrew's on macOS
+      # (--decoder process never loads FFmpeg's libraries, and ffmpeg-libs/ above isn't on PATH). No --require-chunks:
+      # MPEG-PS reads sequentially by design, so the step instead needs at least one chunked run.
+      - name: Parallel against sequential, ffmpeg executable
+        shell: bash
+        env:
+          SHOTDETECTOR_OURS_ARGS: --decoder process
+        run: |
+          status=0
+          python tools/compare-parallel.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
+            --chunks 3 --report parallel-process.md > parallel-process.log 2>&1 || status=$?
+          cat parallel-process.log
+          grep -E '^DIFFERS|failed:' parallel-process.log | while IFS= read -r line; do echo "::error::${{ matrix.os }}, ffmpeg executable: $line"; done || true
+          if ! grep -qE ': ([2-9]|[1-9][0-9]+) chunk' parallel-process.log; then
+            echo "::error::${{ matrix.os }}, ffmpeg executable: no sample ran in chunks"; status=1
+          fi
+          { echo "### Parallel against sequential through the ffmpeg executable on ${{ matrix.os }}"; cat parallel-process.md 2>/dev/null || echo "No report."; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
