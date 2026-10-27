@@ -350,5 +350,22 @@
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'return (outWidth, outHeight == 0 ? height : outHeight);'; Replace = 'return (outWidth, outHeight);'; Tests = 'VideoFrameReaderTests.MaxWidthIsFfmpegsMinWidthAndEvenHeight'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '(max <= 0 || _options.Width is not null)'; Replace = '(max <= 0)'; Tests = 'VideoFrameReaderTests.FrameTimesStartAtZeroAndSizesMustComeInPairs'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '(max <= 0 || _options.Width is not null)'; Replace = '(_options.Width is not null)'; Tests = 'VideoFrameReaderTests.FrameTimesStartAtZeroAndSizesMustComeInPairs'; Project = 'tests/FrameReader.Tests' }
+
+        # FrameReader's ImageEncoder (issue #542): the file ffmpeg writes from the same raw frame and tags; JPEG's rate control
+        # afresh for each image; options only for their format; the frame's aspect ratio and tags as ffmpeg's frame has them
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (_o.Format == ImageFormat.Jpg && _o.JpegQscale is null)'; Replace = 'if (false)'; Tests = 'ImageEncoderTests.EachFrameOfASequenceIsAOneFrameRun'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (_graph == null || !input.SameGraph(_graphFor))'; Replace = 'if (_graph == null)'; Tests = 'ImageEncoderTests.EachFrameOfASequenceIsAOneFrameRun'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '_filtered->quality = q * ffmpeg.FF_QP2LAMBDA;'; Replace = '{ }'; Tests = 'ImageEncoderTests.EachFrameOfASequenceIsAOneFrameRun'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '_enc->compression_level = c;'; Replace = ''; Tests = 'ImageEncoderTests.BytesAreFfmpegsFromTheRawFrame'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '_enc->thread_count = 1;'; Replace = '_enc->thread_count = 4;'; Tests = 'ImageEncoderTests.EachFrameOfASequenceIsAOneFrameRun'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '_frame->color_primaries = input.Primaries;'; Replace = ''; Tests = 'ImageEncoderTests.BytesAreFfmpegsFromTheRawFrame'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (_o.Format == ImageFormat.WebP)'; Replace = 'if (false)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.Jpg || q is < 2 or > 31)'; Replace = '(q is < 2 or > 31)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.Jpg || q is < 2 or > 31)'; Replace = '(_o.Format != ImageFormat.Jpg)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.Png || c is < 0 or > 9)'; Replace = '(c is < 0 or > 9)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.Png || c is < 0 or > 9)'; Replace = '(_o.Format != ImageFormat.Png)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '? ffmpeg.av_mul_q(new AVRational { num = height * src->width, den = width * src->height }, sar)'; Replace = '? sar'; Tests = 'ImageEncoderTests.TagsAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'var tags = _options.FrameFormat == FrameFormat.Gray8'; Replace = 'var tags = false'; Tests = 'ImageEncoderTests.TagsAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'into->sample_aspect_ratio = _sar;'; Replace = '{ }'; Tests = 'ImageEncoderTests.TagsAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
     )
 }

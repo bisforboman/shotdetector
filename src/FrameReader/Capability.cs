@@ -36,4 +36,10 @@ public enum Capability
 
     /// <summary><see cref="Remux.Copy"/> to DASH (an .mpd): the <c>dash</c> muxer.</summary>
     Dash = 1 << 9,
+
+    /// <summary><see cref="ImageEncoder"/> to JPEG: the <c>mjpeg</c> encoder and the filters converting to its pixel format.</summary>
+    Jpeg = 1 << 10,
+
+    /// <summary><see cref="ImageEncoder"/> to PNG: the <c>png</c> encoder and the filters converting to its pixel format.</summary>
+    Png = 1 << 11,
 }

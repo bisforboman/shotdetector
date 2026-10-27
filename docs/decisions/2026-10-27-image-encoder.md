@@ -25,7 +25,9 @@ even even when the width stays; 0 becomes the input's, as libavfilter fills in a
 autorotate; refused together with `Width` and `Height`.
 
 How the JPEG encoder's default quality (ffmpeg's rate control, whose state carries over in a reused codec context)
-keeps each frame identical to a one-frame ffmpeg run is settled in the encoder's PR and added here.
+keeps each frame identical to a one-frame ffmpeg run: a fresh codec context per frame without a qscale
+([2026-10-27-image-encoder-input.md](2026-10-27-image-encoder-input.md), with the frame tags and what the encoder
+promises).
 
 ## Which formats (2026-10-27)
 
