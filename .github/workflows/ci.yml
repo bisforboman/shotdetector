@@ -718,21 +718,18 @@ jobs:
             echo "#### Informational"; cat broken-info.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
-      # Colour tags that change midway (two h264 halves joined): in-process, the default path and FastYuv convert each
-      # frame with its own colour matrix, range and chroma siting, as OpenCV does, and through the executable so does
-      # FastYuv (each frame's tags from showinfo), so they're compared exactly. The executable's default path takes the
-      # first frame's siting for the whole video (ffmpeg's scale filter has one), so on 10-bit its stats differ after
-      # the change: informational (docs/decisions/2026-10-19-per-frame-tags.md, 2026-10-24-per-frame-tags-fastyuv.md,
-      # 2026-10-27-per-frame-tags-executable.md).
+      # Colour tags that change midway (two h264 halves joined): every path converts each frame with its own colour
+      # matrix, range and chroma siting, as OpenCV does (through the executable, FastYuv from showinfo's per-frame tags,
+      # the default path by reading the file again from a siting change: ffmpeg's scale filter takes one), so they're
+      # compared exactly (docs/decisions/2026-10-24-per-frame-tags-fastyuv.md, 2026-10-27-per-frame-tags-executable.md).
       - name: Compare video whose colour tags change midway with scenedetect
         if: needs.changes.outputs.docs_only != 'true' && (matrix.scenedetect == '0.7.2' && matrix.part == 'more')
         run: |
           status=0
-          info=${{ matrix.decoder == 'process' && matrix.path == 'core' && '--informational' || '' }}
           python tools/compare.py samples/informational/sintel_matrix_change.mkv samples/informational/sintel_10bit_siting_change.mkv \
-            --detector all --stats --report tags.md $info ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || status=$?
-          { echo "### Colour tags changing midway$([ -n "$info" ] && echo ' (informational)'), ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat tags.md; } >> "$GITHUB_STEP_SUMMARY"
-          [ -n "$info" ] || exit $status
+            --detector all --stats --report tags.md ${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }} || status=$?
+          { echo "### Colour tags changing midway, ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat tags.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
 
       # Interlaced 10-bit (AVC-Intra 100, ProRes 422) with deinterlacing off: informational, as above (OpenCV can't
       # convert interlaced frames). Progressive 10-bit is in the exact set.
