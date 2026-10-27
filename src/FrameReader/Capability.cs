@@ -42,4 +42,7 @@ public enum Capability
 
     /// <summary><see cref="ImageEncoder"/> to PNG: the <c>png</c> encoder and the filters converting to its pixel format.</summary>
     Png = 1 << 11,
+
+    /// <summary><see cref="ImageEncoder"/> to WebP: the <c>libwebp</c> encoder and the filters converting to its pixel format.</summary>
+    WebP = 1 << 12,
 }
