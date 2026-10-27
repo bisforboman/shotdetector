@@ -113,6 +113,14 @@ internal static unsafe class Demuxer
             throw new FrameReaderException(FrameReaderError.InvalidInput, $"FFmpeg (read stream info): {FFmpegLibraries.ErrorMessage(ret)}");
         }
 
+        // The interrupt callback can end find_stream_info early with success (what it found so far): a cancelled open
+        // is cancelled, not a probe of the first bytes.
+        if (cancellationToken.IsCancellationRequested)
+        {
+            Close(&fmt);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
         return fmt;
     }
 

@@ -60,12 +60,13 @@ public static class Video
     /// <param name="input">The input file.</param>
     /// <param name="output">The output file; its extension picks the container.</param>
     /// <param name="options">The encoders and their settings.</param>
-    /// <param name="cancellationToken">Stops the transcode.</param>
+    /// <param name="cancellationToken">Stops the transcode: between frames, and where FFmpeg waits opening or reading the input
+    /// (a network read) (<see cref="OperationCanceledException"/>; the output is left unfinished).</param>
     /// <exception cref="FrameReaderException">InvalidInput: no video stream, or an encoder or muxer the libraries lack.</exception>
     public static void Transcode(string input, string output, VideoTranscodeOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new VideoTranscodeOptions();
-        var info = MediaProbe.Probe(input);
+        var info = MediaProbe.Probe(input, new ProbeOptions { CancellationToken = cancellationToken });
         var stream = info.Video ?? throw new FrameReaderException(FrameReaderError.InvalidInput, $"\"{input}\" has no video stream.");
         bool deinterlace = o.Deinterlace ?? stream.FieldOrder is not (FieldOrder.Progressive or FieldOrder.Unknown);
         var rate = stream.AverageFrameRate.Num > 0 ? stream.AverageFrameRate : stream.FrameRate;
@@ -77,9 +78,9 @@ public static class Video
         {
             FrameFormat = FrameFormat.Yuv420p,
             FrameRate = variable ? rate : null,
-            Decoder = new FrameDecoderOptions { Deinterlace = deinterlace },
+            Decoder = new FrameDecoderOptions { Deinterlace = deinterlace, CancellationToken = cancellationToken },
         });
-        using var audio = o.Audio && info.HasAudio ? new AudioReader(input) : null;
+        using var audio = o.Audio && info.HasAudio ? new AudioReader(input, new AudioReaderOptions { CancellationToken = cancellationToken }) : null;
         VideoWriter? writer = null;
         try
         {
