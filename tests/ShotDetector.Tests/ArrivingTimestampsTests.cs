@@ -62,6 +62,10 @@ public class ArrivingTimestampsTests(MpegPsVariants clips) : IClassFixture<MpegP
     {
         Decoder = VideoDecoder.InProcess,
         FfmpegDirectory = Libs,
+
+        // One decoding thread: FFmpeg's error concealment of a damaged MPEG-2 stream (the holed clip) differs between runs
+        // with slice threads, whatever the timestamps.
+        DecodeThreads = 1,
         CollectStats = true,
         Detectors = [new(DetectorKind.Adaptive), new(DetectorKind.Content), new(DetectorKind.Threshold), new(DetectorKind.Histogram), new(DetectorKind.Hash)],
         Compatibility = pass % 2 == 0 ? PySceneDetectVersion.V0_7_2 : PySceneDetectVersion.V0_7_1,
