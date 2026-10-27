@@ -6,6 +6,22 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.17.0 – 2026-10-27
+
+Faster executable path, stats CSV to a writer row by row, and cancellation that stops at once.
+
+### New
+
+- `Stats.WriteCsv(TextWriter, position)` writes the stats CSV to a writer row by row, the same text as `Stats.Csv`, without holding the whole file (issue #519).
+
+### Faster
+
+- The ffmpeg-executable path (`--decoder process`, and the library without FFmpeg's shared libraries): on HD video whose frames are sampled for the resize, ffmpeg now decodes the two pixel maps once and repeats them, instead of re-reading and re-decoding them for every frame. Results are unchanged.
+
+### Fixed
+
+- Cancelling a detection of a file whose packets lack timestamps (MPEG-PS) now stops it at once: in-process, it used to decode the whole file first to read each frame's time (issue #523).
+
 ## 3.16.1 – 2026-10-25
 
 Stats take much less memory per frame.
