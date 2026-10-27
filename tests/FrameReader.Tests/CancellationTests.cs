@@ -84,7 +84,7 @@ public class CancellationTests
             string ts = Path.Combine(dir, "clip.ts");
             TestMedia.Write(ts, new TestMediaOptions { Video = ["testsrc2=d=10"], Audio = "sine=duration=10", AudioEncoder = "aac", VideoEncoder = "mpeg4", VideoQuality = 3 });
 
-            var options = new VideoTranscodeOptions { Encoder = "mpeg4" };
+            var options = new VideoTranscodeOptions { Encoder = "mpeg4", AudioEncoder = "aac" };
 
             // The probe finds the streams in half the file: it waits only when it gets less.
             await StopsWhenCancelled(ts,
