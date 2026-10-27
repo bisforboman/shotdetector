@@ -189,7 +189,7 @@ internal sealed partial class VideoReader
     /// </summary>
     public IReadOnlyList<StreamInfo>? Streams => _stream is not null || _frames is not null
         ? null
-        : _streams ??= _probesInProcess ? InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions) : FfprobeStreams();
+        : _streams ??= _probesInProcess ? InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions, _cancellationToken) : FfprobeStreams();
 
     IReadOnlyList<StreamInfo>? _streams;
 
@@ -199,7 +199,7 @@ internal sealed partial class VideoReader
 
     IReadOnlyList<StreamInfo> FfprobeStreams()
     {
-        string json = Run(_ffprobe, ["-v", "error", "-show_entries", StreamEntries, "-of", "json", .. _inputOptions, "-i", _path], CancellationToken.None);
+        string json = Run(_ffprobe, ["-v", "error", "-show_entries", StreamEntries, "-of", "json", .. _inputOptions, "-i", _path], _cancellationToken);
         using var doc = System.Text.Json.JsonDocument.Parse(json);
         var result = new List<StreamInfo>();
         if (!doc.RootElement.TryGetProperty("streams", out var streams))
@@ -293,6 +293,7 @@ internal sealed partial class VideoReader
     readonly string? _ffmpegDirectory;
     readonly int _rotation;            // the display rotation ffmpeg applies (degrees); 0 if none
     readonly bool _probesInProcess;    // read with FFmpeg's libraries rather than ffprobe
+    readonly CancellationToken _cancellationToken; // the constructor's, for what is read later on first use (Streams)
     readonly bool _urlInProcess;       // a URL whose protocol the libraries have: probed and decoded in-process
 
     /// <summary>The stream entries read from ffprobe (or the same in-process, <see cref="InProcessProbe"/>); files add :packet=pts.</summary>
@@ -403,6 +404,7 @@ internal sealed partial class VideoReader
         _alwaysBt601 = o.AlwaysBt601;
         _decoder = o.Decoder;
         _ffmpegDirectory = o.FfmpegDirectory;
+        _cancellationToken = cancellationToken;
         FfmpegExe = Executable(o.FfmpegDirectory, "ffmpeg");
         Streaming = video is not null || o.Streaming || IsUrl(path);
 
