@@ -512,35 +512,95 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
         static List<string> Hashes(VideoReader reader) => [.. reader.Frames().Select(f => Convert.ToHexString(SHA256.HashData(f)))];
     }
 
-    // A colour matrix or range that changes midway (two h264 streams joined): the executable's raw-YUV pipe passes the
-    // second half's samples through untouched (ffmpeg would convert them to the first half's tags), so FastYuv reads
-    // the frames it reads from the same stream with the first half's tags written into every SPS. (FastYuv converts
-    // every frame with the first frame's tags: docs/backlog.md's per-frame tags row.) libx264; skipped without it.
+    // A colour matrix, range or (10-bit) chroma siting that changes midway (two h264 streams joined), through the
+    // executable: its raw-YUV pipe passes the second half's samples through untouched (ffmpeg would convert them to the
+    // first half's tags), and FastYuv converts each frame with its own tags, read from showinfo (the siting from the
+    // frame's line, the matrix and range from the line after it), as OpenCV does: the halves give the frames each half
+    // gives alone (and, on x64, the default path's; a siting change not yet there, ffmpeg's scale filter takes one
+    // siting). libx264; skipped without it.
     [Theory]
-    [InlineData("yuv420p", "colormatrix=bt709", "", "Yuv420Sampled")]
-    [InlineData("yuv420p", "fullrange=on", "scale=out_range=full", "Yuv420Sampled")]
-    [InlineData("yuv420p10le", "colormatrix=bt709", "", "Yuv420P10Sampled")]
-    [InlineData("yuv422p", "colormatrix=bt709", "", "Yuv422Sampled")]
-    public void TagChangeMidwayKeepsTheSamples(string format, string secondTags, string secondFilter, string pipeline)
+    [InlineData("yuv420p", "colormatrix=bt470bg", "colormatrix=bt709", "", "Yuv420Sampled")]
+    [InlineData("yuv420p", "colormatrix=bt470bg", "colormatrix=bt470bg:fullrange=on", "scale=out_range=full", "Yuv420Sampled")]
+    [InlineData("yuv420p10le", "colormatrix=bt470bg:chromaloc=0", "colormatrix=bt470bg:chromaloc=2", "", "Yuv420P10Sampled")]
+    [InlineData("yuv420p10le", "colormatrix=bt470bg", "colormatrix=bt709", "", "Yuv420P10Sampled")]
+    [InlineData("yuv422p", "colormatrix=bt470bg", "colormatrix=bt709", "", "Yuv422Sampled")]
+    public void ExecutableFollowsEachFramesTags(string format, string firstTags, string secondTags, string secondFilter, string pipeline)
     {
         if (!VideoReader.Run("ffmpeg", ["-hide_banner", "-encoders"], default).Contains(" libx264 ", StringComparison.Ordinal))
             return;
         string dir = Directory.CreateTempSubdirectory("shotdetector-fastyuv-tags-").FullName;
         try
         {
-            string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts"), relabelled = Path.Combine(dir, "relabelled.ts");
+            string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts");
             string[] encode = ["-pix_fmt", format, "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb"];
-            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-t", "2", .. encode, "-x264-params", "colormatrix=bt470bg", a], default);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-t", "2", .. encode, "-x264-params", firstTags, a], default);
             string[] filter = secondFilter.Length > 0 ? ["-vf", secondFilter] : [];
-            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "2", "-i", clips.ThreeShots, "-t", "2", .. filter, .. encode, "-x264-params", "colormatrix=bt470bg:" + secondTags, "-output_ts_offset", "2", b], default);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "2", "-i", clips.ThreeShots, "-t", "2", .. filter, .. encode, "-x264-params", secondTags, "-output_ts_offset", "2", b], default);
             File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
-            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", joined, "-c", "copy", "-bsf:v", "h264_metadata=matrix_coefficients=5:video_full_range_flag=0", relabelled], default);
 
             var options = new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess, Yuv420Converter = new SwscaleYuv420() };
-            var expected = new VideoReader(relabelled, options);
+            var halves = Hashes(new VideoReader(a, options)).Concat(Hashes(new VideoReader(b, options))).ToList();
             var reader = new VideoReader(joined, options);
-            Assert.Equal(Hashes(expected), Hashes(reader));
+            var frames = Hashes(reader);
+            Assert.Equal(halves, frames);
             Assert.Equal(Enum.Parse<FramePipeline>(pipeline), reader.Pipeline); // not read again on a BGR pipeline
+            if (RuntimeInformation.ProcessArchitecture == Architecture.X64 && !secondTags.Contains("chromaloc", StringComparison.Ordinal))
+                Assert.Equal(Hashes(new VideoReader(joined, options with { Yuv420Converter = null })), frames);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+
+        static List<string> Hashes(VideoReader reader) => [.. reader.Frames().Select(f => Convert.ToHexString(SHA256.HashData(f)))];
+    }
+
+    // showinfo's per-frame tags, read whole: ffmpeg's other threads can write into the middle of a line (the muxer's dts
+    // warning on variable frame rate), and a tag cut short there is the previous frame's, not a name FastYuv declines.
+    [Fact]
+    public void ShowinfoTagsCutShortAreThePreviousFramesTags()
+    {
+        const string prefix = "[Parsed_showinfo_0 @ 0x7f2e74001ac0] ";
+        const string warning = "Application provided invalid, non monotonically increasing dts to muxer in stream 0: 695 >= 695";
+        var frame = new VideoReader.FrameColourTags("bt709", "tv", "left");
+        Assert.Equal(frame with { ColorSpace = "bt470bg", ColorRange = "pc" },
+            VideoReader.ColourTags(prefix + "color_range:pc color_space:bt470bg color_primaries:unknown color_trc:unknown", frame));
+        Assert.Equal(frame with { ColorRange = "pc" }, VideoReader.ColourTags(prefix + "color_range:pc color_space:unknown" + warning, frame));
+        Assert.Equal(frame with { ColorRange = "pc" }, VideoReader.ColourTags(prefix + "color_range:pc color_space:bt470" + warning, frame));
+        Assert.Null(VideoReader.ColourTags(prefix + "color_range:unknown" + warning, frame));
+        Assert.Null(VideoReader.ColourTags(prefix + "n:   1 pts:     42 pts_time:0.042   duration:     41 duration_time:0.041   fmt:yuv420p cl:left sar:0/1 s:854x480 i:P iskey:0 type:B ", frame));
+
+        Assert.Equal("topleft", VideoReader.SitingField(prefix + "n:   2 pts:   9917 fmt:yuv420p10le cl:topleft sar:0/1 s:854x480 i:P "));
+        Assert.Null(VideoReader.SitingField(prefix + "n:   2 pts:   9917 fmt:yuv420p10le cl:top" + warning));
+    }
+
+    // Through the executable, a frame whose colours FastYuv declines (the GBR matrix) sends the video to the BGR pipelines
+    // from there, as a new size does: the default path's frames from that frame on, on any platform (before it,
+    // FastYuv's, which are the default path's on x64). libx264; skipped without it.
+    [Fact]
+    public void ExecutableTakesTheDefaultPathForColoursFastYuvDeclines()
+    {
+        if (!VideoReader.Run("ffmpeg", ["-hide_banner", "-encoders"], default).Contains(" libx264 ", StringComparison.Ordinal))
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetector-fastyuv-declined-").FullName;
+        try
+        {
+            string a = Path.Combine(dir, "a.ts"), b = Path.Combine(dir, "b.ts"), joined = Path.Combine(dir, "joined.ts");
+            string[] encode = ["-pix_fmt", "yuv420p", "-c:v", "libx264", "-bsf:v", "h264_mp4toannexb"];
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-t", "2", .. encode, "-x264-params", "colormatrix=bt470bg", a], default);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-ss", "2", "-i", clips.ThreeShots, "-t", "2", .. encode, "-x264-params", "colormatrix=GBR", "-output_ts_offset", "2", b], default);
+            File.WriteAllBytes(joined, [.. File.ReadAllBytes(a), .. File.ReadAllBytes(b)]);
+
+            var options = new DetectionOptions { FfmpegDirectory = Libs, Decoder = VideoDecoder.FfmpegProcess };
+            var reader = new VideoReader(joined, options with { Yuv420Converter = new SwscaleYuv420() });
+            Assert.True(VideoReader.IsYuv(reader.Pipeline));
+            var frames = Hashes(reader);
+            Assert.False(VideoReader.IsYuv(reader.Pipeline));
+            var expected = Hashes(new VideoReader(joined, options));
+            int before = Hashes(new VideoReader(a, options)).Count;
+            Assert.Equal(expected[before..], frames[before..]);
+            if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
+                Assert.Equal(expected, frames);
         }
         finally
         {
