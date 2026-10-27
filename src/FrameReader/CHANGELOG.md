@@ -7,6 +7,14 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.11.1 – 2026-10-27
+
+Cancelling a whole-file job now also stops it while FFmpeg waits on a URL.
+
+### Fixed
+
+- `Audio.Convert`, `Video.Transcode` and `MediaProbe.ProbeJsonAsync`: cancelling now also stops them while FFmpeg waits to open or read the input (a URL that stops sending), instead of only between frames, and a cancelled open throws `OperationCanceledException` rather than returning what it read so far (issue #522).
+
 ## 2.11.0 – 2026-10-24
 
 Reference tone and waveforms from samples you decode yourself, without FFmpeg.

@@ -42,7 +42,8 @@ and none touching FrameReader alone, so 1 of 28 since 2.8.0. Recommended not spl
 scenedetect comparison of FrameReader changes to after their release, and nothing outside drives FrameReader now);
 the user's choice: ask again with the formal count at the next FrameReader release. 2.11.0: 1 of 25 (the same
 test-logger commit), 1 of 35 since 2.8.0, met with enough commits; the user's choice: don't split, keep counting
-(docs/decisions/2026-10-24-framereader-stays.md).
+(docs/decisions/2026-10-24-framereader-stays.md). 2.11.1: 0 of 25 (the cancellation fixes each touch one product), the
+second release in a row under 1 in 20 over 20 or more commits: met again, put to the user at this release.
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
