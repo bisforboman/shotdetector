@@ -413,5 +413,14 @@
         @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (Width is null != Height is null || Width <= 0 || Height <= 0)'; Replace = 'if (Width <= 0 || Height <= 0)'; Tests = 'ImageEncoderTests.RefusesFiltersThatDontGoTogether'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(string.IsNullOrWhiteSpace(Filter) || Width is not null || MaxWidth is not null)'; Replace = '(string.IsNullOrWhiteSpace(Filter))'; Tests = 'ImageEncoderTests.RefusesFiltersThatDontGoTogether'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (parsed < 0 && input.Filter is not null)'; Replace = 'if (false)'; Tests = 'ImageEncoderTests.RefusesFiltersThatDontGoTogether'; Project = 'tests/FrameReader.Tests' }
+
+        # FrameReader: VideoFrameReader's ReadAhead gives the frames reading in the read gives (issue #566): what was read
+        # ahead goes at a seek or a jump, every frame taken is let go, and a picture a second never stops the thread
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_ahead?.Clear(); // the frames read ahead are the old position''s'; Replace = ''; Tests = 'ReadAheadTests.FramesAreThoseWithout'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_ahead?.Clear(); // what was read ahead is before the jump'; Replace = ''; Tests = 'ReadAheadTests.FramesAreThoseWithout'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (target > from && Pause()'; Replace = 'if (Pause()'; Tests = 'ReadAheadTests.ReadingEverySecondDoesntStopTheThread'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (_options.ReadAhead < 0)'; Replace = 'if (false)'; Tests = 'ReadAheadTests.ReadAheadIsZeroOrMore'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ReadAhead.cs'; Find = 'DropFrames(); // those from before the seek'; Replace = ''; Tests = 'ReadAheadTests.FramesAreThoseWithout'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ReadAhead.cs'; Find = 'DropFrames(); // all, the thread gone'; Replace = ''; Tests = 'ReadAheadTests.DisposeStopsTheThreadMidFrame'; Project = 'tests/FrameReader.Tests' }
     )
 }

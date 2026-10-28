@@ -54,6 +54,20 @@ public sealed record VideoFrameReaderOptions
 
     /// <summary>How to decode (library folder, threads, deinterlacing, input options); null: the defaults.</summary>
     public FrameDecoderOptions? Decoder { get; init; }
+
+    /// <summary>
+    /// Frames to decode ahead on a background thread while the caller works on the frame it has (encodes it, analyses
+    /// it, uploads it): decoding (with deinterlacing and rotation) goes on between reads, with up to this many decoded
+    /// frames waiting, each a decoded frame's memory (about 3 MB at 1080p 8-bit 4:2:0). The frames, their tags and the
+    /// errors are those 0 gives, in the same order. The conversion to <see cref="FrameFormat"/> stays in the read (the
+    /// frame <see cref="VideoFrameReader.TryReadForwardTo"/> gives isn't known before it is asked for), so a frame is
+    /// valid until the next read as without. A Stream input is read on that thread; with row-wise deinterlacing every
+    /// frame is deinterlaced, also those <see cref="VideoFrameReader.TryReadForwardTo"/> passes over. It pays with spare
+    /// cores (decoding doesn't keep them all busy): 4 hides the work between reads as far as decoding allows; 1 or 2 hand
+    /// over nearly every frame on its own, which can cost more than it saves where every core decodes. Dispose waits for
+    /// the frame being decoded. 0: decode in the read.
+    /// </summary>
+    public int ReadAhead { get; init; }
 }
 
 /// <summary>A decoded, converted frame: valid until the next read from its <see cref="VideoFrameReader"/>.</summary>
@@ -133,12 +147,14 @@ public delegate void FrameHandler(int index, VideoFrame frame);
 /// Reads a video's frames at a chosen size and pixel format, in this process through FFmpeg's libraries. The pixels
 /// are the bytes ffmpeg's command line gives for <c>-vf scale=W:H:flags=bicubic,format=F -f rawvideo</c> (swscale with
 /// the frame's colour tags), so results can be checked against it. No allocations per frame: one output buffer, reused.
+/// With <see cref="VideoFrameReaderOptions.ReadAhead"/>, decoding runs ahead on a thread of its own.
 /// </summary>
 public sealed unsafe class VideoFrameReader : IDisposable
 {
     readonly FrameDecoder _decoder;
     readonly VideoFrameReaderOptions _options;
     readonly AVPixelFormat _format;
+    readonly ReadAhead? _ahead; // ReadAhead: the decoding thread and its frames; null: decoding in the read
     SwsContext* _sws;
     AVFrame* _in, _out;
     byte[] _packed = [];
@@ -178,7 +194,11 @@ public sealed unsafe class VideoFrameReader : IDisposable
             : throw new ArgumentException($"Unknown format {_options.FrameFormat}.", nameof(options));
         if (_options.FrameRate is { } r && (r.Num <= 0 || r.Den <= 0))
             throw new ArgumentException("FrameRate is positive.", nameof(options));
+        if (_options.ReadAhead < 0)
+            throw new ArgumentException("ReadAhead is 0 or more.", nameof(options));
         _decoder = open(_options.Decoder);
+        if (_options.ReadAhead > 0)
+            _ahead = new ReadAhead(_decoder, _options.ReadAhead);
     }
 
     /// <summary>FFmpeg's pixel format for a <see cref="FrameFormat"/>; NONE for an unknown one.</summary>
@@ -208,6 +228,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     {
         if (_options.FrameRate is not null)
             throw new InvalidOperationException("Seek isn't available with FrameRate.");
+        _ahead?.Clear(); // the frames read ahead are the old position's
         _keepFrom = _decoder.SeekLikeFfmpeg(time);
         _index = -1;
         _current = false;
@@ -282,7 +303,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
         if (_options.FrameRate is { } rate)
             return TryReadFps(rate, out frame);
         bool got;
-        while ((got = _decoder.Next()) && _keepFrom is { } keep && _decoder.Pts + keep < 0)
+        while ((got = Next()) && _keepFrom is { } keep && Pts + keep < 0)
         {
         }
 
@@ -314,7 +335,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
         if (_options.FrameRate is not null)
             throw new InvalidOperationException("TryReadForwardTo isn't available with FrameRate.");
         long keep = _decoder.TrimOffset(time);
-        if (!(_current && _decoder.Pts + keep >= 0))
+        if (!(_current && Pts + keep >= 0))
         {
             // Far ahead (the target's keyframe, per the index, at least a second past where decoding is): jump there. Frames that come out
             // before the first keyframe after the jump may be open-GOP B-frames decoded without their reference: if
@@ -322,13 +343,17 @@ public sealed unsafe class VideoFrameReader : IDisposable
             long target = -keep;
             bool jumped = false;
             long key = 0;
-            if (_decoder.CanSeek && _decoder.KeyframeAtOrBefore(target) is { } found
-                && found > (_current ? _decoder.Pts : 0) + (long)(1 / _decoder.TimeBase.Value))
+
+            // The index's keyframe is at or before the target: a target within the second needs no look (nor, reading
+            // ahead, the decoding thread stopped while the index is read).
+            long from = (_current ? Pts : 0) + (long)(1 / _decoder.TimeBase.Value);
+            if (target > from && Pause() && _decoder.CanSeek && _decoder.KeyframeAtOrBefore(target) is { } found && found > from)
             {
                 key = found;
 
                 // To the target, not the index entry: some containers index by dts and seek by pts, where the entry's dts
                 // would land a keyframe early. The container finds the keyframe at or before the target.
+                _ahead?.Clear(); // what was read ahead is before the jump
                 _decoder.Seek(target);
                 (_keepFrom, jumped) = (null, true);
             }
@@ -336,15 +361,16 @@ public sealed unsafe class VideoFrameReader : IDisposable
             bool got, beforeKeyframe = jumped;
             while (true)
             {
-                got = _decoder.Next();
+                got = Next();
                 if (!got)
                     break;
-                beforeKeyframe &= !_decoder.IsKeyframe;
-                if (_decoder.Pts + keep < 0 || (_keepFrom is { } k && _decoder.Pts + k < 0))
+                beforeKeyframe &= !IsKeyframe;
+                if (Pts + keep < 0 || (_keepFrom is { } k && Pts + k < 0))
                     continue;
                 if (beforeKeyframe)
                 {
                     // Possibly damaged: from the keyframe before instead (no further jumps).
+                    _ahead?.Clear(); // and from the keyframe before
                     _decoder.Seek(Math.Max(0, key - 1));
                     beforeKeyframe = false;
                     continue;
@@ -368,6 +394,35 @@ public sealed unsafe class VideoFrameReader : IDisposable
     }
 
     bool _current; // the decoder holds a frame read (not past the end)
+
+    /// <summary>The next decoded frame, the decoder's or the decoding thread's; false at the end.</summary>
+    bool Next() => _ahead?.Next() ?? _decoder.Next();
+
+    /// <summary>The frame read last: its timestamp, as <see cref="FrameDecoder.Pts"/>.</summary>
+    long Pts => _ahead?.Current.Pts ?? _decoder.Pts;
+
+    bool IsKeyframe => _ahead?.Current.IsKeyframe ?? _decoder.IsKeyframe;
+
+    long Duration => _ahead?.Current.Duration ?? _decoder.Duration;
+
+    /// <summary>The frame read last, all its rows computed.</summary>
+    AVFrame* Frame()
+    {
+        if (_ahead is not null)
+            return _ahead.Current.Frame.Frame;
+        _decoder.EnsureRows(0, _decoder.Frame->height);
+        return _decoder.Frame;
+    }
+
+    /// <summary>How many times reading ahead paused to look at the index (tests).</summary>
+    internal int ReadAheadPauses => _ahead?.Pauses ?? 0;
+
+    /// <summary>Stops the decoding thread, if any, until the next read, so the decoder can be asked (its index); true.</summary>
+    bool Pause()
+    {
+        _ahead?.Pause();
+        return true;
+    }
 
     /// <summary>The fps filter's next frame: decoded frames go in (shifted as ffmpeg shifts them) until one comes out.</summary>
     bool TryReadFps(Rational rate, out VideoFrame frame)
@@ -394,7 +449,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
 
             if (_fpsFlushed)
                 break;
-            if (!_decoder.Next())
+            if (!Next())
             {
                 if (_fpsIn == null)
                     break;
@@ -403,16 +458,15 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 continue;
             }
 
-            var src = _decoder.Frame;
-            _decoder.EnsureRows(0, src->height);
+            var src = Frame();
             if (_fpsIn == null)
                 BuildFps(src, rate);
             var feed = ffmpeg.av_frame_alloc();
             try
             {
                 Check(ffmpeg.av_frame_ref(feed, src), "fps");
-                feed->pts = _decoder.Pts + _decoder.StartOffset; // ffmpeg's command line shifts by the start time (no -copyts)
-                feed->duration = _decoder.Duration; // in the stream's time base, as the pts: fps ends the stream by the last one
+                feed->pts = Pts + _decoder.StartOffset; // ffmpeg's command line shifts by the start time (no -copyts)
+                feed->duration = Duration; // in the stream's time base, as the pts: fps ends the stream by the last one
                 Check(ffmpeg.av_buffersrc_add_frame_flags(_fpsIn, feed, 0), "fps");
             }
             finally
@@ -449,9 +503,8 @@ public sealed unsafe class VideoFrameReader : IDisposable
 
     void Convert(out VideoFrame frame)
     {
-        _decoder.EnsureRows(0, _decoder.Frame->height);
-        long pts = _decoder.Pts;
-        Convert(_decoder.Frame, pts, TimeSpan.FromSeconds((pts + _decoder.StartOffset) * _decoder.TimeBase.Value), out frame);
+        long pts = Pts;
+        Convert(Frame(), pts, TimeSpan.FromSeconds((pts + _decoder.StartOffset) * _decoder.TimeBase.Value), out frame);
     }
 
     void Convert(AVFrame* src, long pts, TimeSpan time, out VideoFrame frame)
@@ -539,9 +592,10 @@ public sealed unsafe class VideoFrameReader : IDisposable
         return (outWidth, outHeight == 0 ? height : outHeight);
     }
 
-    /// <summary>Frees the decoder, the scaler and the output buffer.</summary>
+    /// <summary>Stops the decoding thread (when reading ahead), then frees the decoder, the scaler and the output buffer.</summary>
     public void Dispose()
     {
+        _ahead?.Dispose();
         if (_sws != null)
         {
             var s = _sws;

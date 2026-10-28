@@ -764,7 +764,7 @@ public class FrameDecoderTests
     }
 
     /// <summary>A row deinterlacer of its own (the average of the rows above and below), counting the rows it writes.</summary>
-    sealed unsafe class Averaging : IRowDeinterlacer
+    internal sealed unsafe class Averaging : IRowDeinterlacer
     {
         public int Rows;
 
