@@ -12,10 +12,11 @@ public sealed unsafe class DecodedFrame : IDisposable
 {
     AVFrame* _frame;
 
-    internal DecodedFrame(AVFrame* frame, long pts)
+    internal DecodedFrame(AVFrame* frame, long pts, int bitsPerRawSample = 0)
     {
         _frame = frame;
         Pts = pts;
+        BitsPerRawSample = bitsPerRawSample;
     }
 
     /// <summary>The frame's presentation timestamp, as <see cref="FrameDecoder.Pts"/> gave it.</summary>
@@ -29,6 +30,9 @@ public sealed unsafe class DecodedFrame : IDisposable
 
     /// <summary>The frame's FFmpeg pixel format name (yuv420p, ...).</summary>
     public string PixelFormat => ffmpeg.av_get_pix_fmt_name((AVPixelFormat)Frame->format) ?? "unknown";
+
+    /// <summary>The decoder's bits per raw sample, which ffmpeg's command line hands its encoder (capped at the encoder's format's depth).</summary>
+    internal int BitsPerRawSample { get; }
 
     /// <summary>The frame, as FFmpeg holds it.</summary>
     internal AVFrame* Frame => _frame != null ? _frame : throw new ObjectDisposedException(nameof(DecodedFrame));
