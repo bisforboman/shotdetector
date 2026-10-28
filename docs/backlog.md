@@ -67,9 +67,5 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: On browser-wasm these run scalar (wasm profile, 2026-10-25). The ceiling is small: a few hundred ms of a 4.5 s Sintel run in the browser (decoding is ~80 %), nothing natively, where the existing x86/ARM paths stay. Worth doing only alongside other wasm work, with byte-identical results and no native slowdown
   - Status: Maybe
 
-- An image encoder that scales from a decoded frame, exactly as ffmpeg's one command
-  - Why: `ImageEncoder` gives the file ffmpeg writes from the same raw frame. ffmpeg's one command `-vf scale=...,format=F out.jpg` differs once it scales: its format negotiation folds the conversion to the encoder's full range into the user's scale (one swscale pass, where the reader scales and the encoder converts), and from an RGB frame of a BT.709-tagged source it keeps BT.709 for the YUV (a raw RGB frame gets BT.601). Encoding a decoded frame (`FrameDecoder.TakeFrame`, or a `VideoFrameReader` that hands out its frames before converting, through its fps graph) with the encoder's own graph `buffer -> scale=...:flags=bicubic -> format -> buffersink` would be ffmpeg's graph itself, byte for byte with `ffmpeg [-ss T] -i X -vf [fps=R,]scale=... -frames:v 1 out.jpg` (docs/decisions/2026-10-27-image-encoder-input.md)
-  - Status: Maybe (the owner, 2026-10-27)
-
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and
 why: [decisions/](decisions/).

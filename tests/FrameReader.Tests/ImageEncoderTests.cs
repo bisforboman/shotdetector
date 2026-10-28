@@ -172,6 +172,136 @@ public class ImageEncoderTests
         }
     }
 
+    // Decoded frames go through ffmpeg's own graph: the file is `ffmpeg -i X [-vf select=eq(n\,K),F] -frames:v 1 out.jpg`'s,
+    // F being the filter options' -vf (none, a size, a cap, ShotDetector's save-images chain with two scales), for each
+    // format and its options, on sources whose tags, siting, depth, field order and rotation reach the bytes; one encoder
+    // through the frames and filters, so its graph and encoder follow each change.
+    public static TheoryData<string, string> DecodedSources
+    {
+        get
+        {
+            var sources = new TheoryData<string, string>();
+            foreach (var row in Sources)
+                sources.Add((string)row[0], (string)row[1]);
+            sources.Add("420-10bit.mp4", "-c:v libx264 -pix_fmt yuv420p10le");
+            sources.Add("left-sited.mp4", "-c:v libx264 -pix_fmt yuv420p -vf scale=out_color_matrix=bt709:out_range=tv,setparams=colorspace=bt709");
+            sources.Add("interlaced.mpg", "-c:v mpeg2video -flags +ilme+ildct -top 1 -pix_fmt yuv420p");
+            sources.Add("rotated180.mov", "-c:v ffv1 -pix_fmt yuv420p|-display_rotation 180|");
+            sources.Add("rotated270.mov", "-c:v ffv1 -pix_fmt yuv420p -aspect 16:9|-display_rotation 270|");
+            sources.Add("gray.mkv", "-c:v ffv1 -pix_fmt gray");
+            sources.Add("gray10.mkv", "-c:v ffv1 -pix_fmt gray10le");
+            sources.Add("rgb48.mkv", "-c:v ffv1 -pix_fmt gbrp12le");
+            sources.Add("rgba.mov", "-c:v png -pix_fmt rgba");
+            return sources;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(DecodedSources))]
+    public void DecodedFramesAreFfmpegsOneCommand(string name, string encode)
+    {
+        if (!CanCompare())
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-img-").FullName;
+        try
+        {
+            string path = Make(dir, name, encode);
+            var cases = new (ImageEncoderOptions Options, string Ext, string[] Args)[]
+            {
+                (new() { Format = ImageFormat.Jpg }, "jpg", []),
+                (new() { Format = ImageFormat.Jpg, JpegQscale = 2 }, "jpg", ["-q:v", "2"]),
+                (new() { Format = ImageFormat.Png }, "png", []),
+                (new() { Format = ImageFormat.Png, PngCompressionLevel = 3 }, "png", ["-compression_level", "3"]),
+                (new() { Format = ImageFormat.WebP, WebPQuality = 100 }, "webp", ["-c:v", "libwebp", "-quality", "100"]),
+                (new() { Format = ImageFormat.WebP, WebPLossless = true }, "webp", ["-c:v", "libwebp", "-lossless", "1"]),
+            };
+            var filters = new (ImageFilterOptions? Options, string? Vf)[]
+            {
+                (null, null),
+                (new() { Width = 161, Height = 91 }, "scale=161:91"),
+                (new() { MaxWidth = 200 }, "scale='min(200,iw)':-2"),
+                (new() { Filter = SaveImagesChain }, SaveImagesChain),
+            };
+            var failures = new List<string>();
+            foreach (var (options, ext, args) in cases)
+            {
+                using var encoder = new ImageEncoder(options);
+                foreach (var (filter, vf) in filters)
+                {
+                    using var decoder = new FrameDecoder(path);
+                    for (int n = 0; n <= 3; n++)
+                    {
+                        Assert.True(decoder.Next());
+                        if (n is not (0 or 3))
+                            continue;
+
+                        // The first frame without select, which isn't metadata-only: a graph that leaves the pixels alone
+                        // passes the decoder's bits per raw sample to the encoder (PNG's sBIT).
+                        string file = Path.Combine(dir, "out." + ext);
+                        string? chain = n == 0 ? vf : $"select=eq(n\\,{n})" + (vf is null ? "" : "," + vf);
+                        Run(["-v", "error", "-y", "-i", path, .. chain is null ? Array.Empty<string>() : ["-vf", chain], "-frames:v", "1", .. args, file]);
+                        byte[] expected = File.ReadAllBytes(file);
+                        using var frame = decoder.TakeFrame();
+                        byte[] actual = encoder.Encode(frame, filter);
+                        if (!expected.AsSpan().SequenceEqual(actual))
+                            failures.Add($"{name} frame {n} {vf ?? "(no -vf)"} {ext} {string.Join(' ', args)}: {expected.Length} bytes from ffmpeg, {actual.Length} encoded; first difference at {FirstDifference(expected, actual)}");
+                    }
+                }
+            }
+
+            Assert.True(failures.Count == 0, string.Join("\n", failures));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // ShotDetector's save-images chain: square pixels at ffmpeg's default flags, then a bilinear scale to a width.
+    const string SaveImagesChain = "scale='round(iw*sar)':ih,setsar=1,scale=160:'trunc(ih*160/iw)':flags=bilinear";
+
+    [Fact]
+    public void RefusesFiltersThatDontGoTogether()
+    {
+        if (!Usable(ImageFormat.Png))
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-img-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "clip.mkv");
+            TestMedia.Write(path, new() { Video = ["testsrc2=d=0.2"] });
+            using var decoder = new FrameDecoder(path);
+            Assert.True(decoder.Next());
+            using var frame = decoder.TakeFrame();
+            using var encoder = new ImageEncoder(new() { Format = ImageFormat.Png });
+            foreach (var bad in new ImageFilterOptions[]
+            {
+                new() { Width = 100 },
+                new() { Height = 100 },
+                new() { Width = 0, Height = 10 },
+                new() { MaxWidth = 0 },
+                new() { MaxWidth = 100, Width = 10, Height = 10 },
+                new() { Filter = "" },
+                new() { Filter = "scale=10:10", MaxWidth = 100 },
+                new() { Filter = "scale=10:10", Width = 10, Height = 10 },
+                new() { Filter = "nosuchfilter" },
+            })
+            {
+                Assert.Throws<ArgumentException>(() => encoder.Encode(frame, bad));
+            }
+
+            // A filter that holds its frame (yadif waits for the next one) gives none for it; the encoder still works afterwards.
+            Assert.Throws<FrameReaderException>(() => encoder.Encode(frame, new ImageFilterOptions { Filter = "yadif" }));
+            using var back = new VideoFrameReader(new MemoryStream(encoder.Encode(frame, new ImageFilterOptions { MaxWidth = 100 })));
+            Assert.True(back.TryRead(out var image));
+            Assert.Equal(100, image.Width);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // The tags a frame carries are those ffmpeg's frame has after the same filters (showinfo): the aspect ratio (the
     // container's over the codec's, swapped by a rotation, changed by scaling to another shape) and the colour tags.
     [Theory]

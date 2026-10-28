@@ -54,12 +54,58 @@ public sealed record ImageEncoderOptions
 }
 
 /// <summary>
+/// How <see cref="ImageEncoder"/> filters a <see cref="DecodedFrame"/> before encoding it: ffmpeg's <c>-vf</c>, as one of a
+/// size (<see cref="Width"/> and <see cref="Height"/>, or <see cref="MaxWidth"/>) or a filter of the caller's
+/// (<see cref="Filter"/>); none of them: the frame at its own size, as <c>ffmpeg -i X out.jpg</c>.
+/// </summary>
+public sealed record ImageFilterOptions
+{
+    /// <summary>Output width in pixels, ffmpeg's <c>-vf scale=Width:Height</c> (its default flags, bicubic); with <see cref="Height"/>.</summary>
+    public int? Width { get; init; }
+
+    /// <summary>Output height in pixels; with <see cref="Width"/>.</summary>
+    public int? Height { get; init; }
+
+    /// <summary>
+    /// The widest output in pixels, ffmpeg's <c>-vf scale='min(MaxWidth,iw)':-2</c>, as <see cref="VideoFrameReaderOptions.MaxWidth"/>:
+    /// never upscaled, the height following the aspect ratio rounded to an even number. Not with Width and Height.
+    /// </summary>
+    public int? MaxWidth { get; init; }
+
+    /// <summary>
+    /// A filter chain in ffmpeg's <c>-vf</c> syntax (<c>scale=640:-2:flags=lanczos,setsar=1</c>), instead of the sizes:
+    /// one frame out for each frame in (scale, crop, pad, setsar, transpose and the like; not fps or select, which hold
+    /// or drop frames). Not with Width, Height or MaxWidth.
+    /// </summary>
+    public string? Filter { get; init; }
+
+    /// <summary>The <c>-vf</c> these options give; null: none.</summary>
+    internal string? Graph()
+    {
+        if (Width is null != Height is null || Width <= 0 || Height <= 0)
+            throw new ArgumentException("Width and Height are both set (positive) or both left out.");
+        if (MaxWidth is { } max && (max <= 0 || Width is not null))
+            throw new ArgumentException("MaxWidth is positive and not set with Width and Height.");
+        if (Filter is not null && (string.IsNullOrWhiteSpace(Filter) || Width is not null || MaxWidth is not null))
+            throw new ArgumentException("Filter is a filter chain, not set with Width, Height or MaxWidth.");
+        return Filter
+            ?? (Width is { } w ? string.Create(CultureInfo.InvariantCulture, $"scale={w}:{Height}")
+                : MaxWidth is { } m ? string.Create(CultureInfo.InvariantCulture, $"scale='min({m},iw)':-2")
+                : null);
+    }
+}
+
+/// <summary>
 /// Encodes frames to image files in this process, through FFmpeg's <c>mjpeg</c>, <c>png</c> or <c>libwebp</c> encoder: the
 /// file ffmpeg's command line writes from the same raw frame, with its aspect ratio and colour tags, and the same options
 /// (<c>-f rawvideo ... -i frame -frames:v 1 out.jpg</c>; WebP: <c>-c:v libwebp out.webp</c>, as a build with
 /// <c>libwebp_anim</c> picks that one by default), byte for byte with the same FFmpeg build (its version is in a JPEG's
 /// comment; for WebP, libwebp's too). Frames are converted to the pixel format ffmpeg picks for the encoder, as its command line converts
 /// them (the scale filter it inserts). One encoder serves any number of frames, of any size and format; not thread-safe.
+/// A <see cref="DecodedFrame"/> (<see cref="FrameDecoder.TakeFrame"/>) encodes through ffmpeg's own graph for
+/// <c>ffmpeg -i X [-vf ...] -frames:v 1 out.jpg</c>: the decoded frame, the <c>-vf</c> of <see cref="ImageFilterOptions"/>,
+/// then the conversion to the encoder's format, so its file is that command's byte for byte with the same FFmpeg build
+/// (the decoder's options as ffmpeg's: autorotated by default, as ffmpeg is; deinterlaced only as with <c>-vf yadif,...</c>).
 /// </summary>
 /// <remarks>
 /// A JPEG of a frame the reader scaled is close to, not identical with, ffmpeg's one command <c>-vf scale=... out.jpg</c>,
@@ -74,6 +120,7 @@ public sealed unsafe class ImageEncoder : IDisposable
     AVFilterGraph* _graph;
     AVFilterContext* _in, _out;
     Input _graphFor;
+    bool _metaOnly;
     AVCodecContext* _enc;
     AVFrame* _frame, _filtered;
     AVPacket* _pkt;
@@ -132,7 +179,46 @@ public sealed unsafe class ImageEncoder : IDisposable
         return output.ToArray();
     }
 
-    /// <summary>A frame's pixels and what the filter graph is told about them (its buffer source's parameters).</summary>
+    /// <summary>
+    /// The decoded frame as an image file, written to <paramref name="output"/>: the file <c>ffmpeg [-ss T] -i X [-vf F]
+    /// -frames:v 1 out.jpg</c> writes for that frame, F being the filter's <c>-vf</c>.
+    /// </summary>
+    /// <param name="frame">A frame from <see cref="FrameDecoder.TakeFrame"/>; not disposed.</param>
+    /// <param name="output">Where the file's bytes go; not disposed.</param>
+    /// <param name="filter">The size or filter; null: the frame's own size.</param>
+    /// <exception cref="ArgumentException">Options that don't go together, or a filter chain FFmpeg can't parse.</exception>
+    /// <exception cref="FrameReaderException">Filtering or encoding failed, or the filter gave no frame for this one.</exception>
+    public void Encode(DecodedFrame frame, Stream output, ImageFilterOptions? filter = null)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentNullException.ThrowIfNull(output);
+        string? graph;
+        try
+        {
+            graph = filter?.Graph();
+        }
+        catch (ArgumentException e)
+        {
+            throw new ArgumentException(e.Message, nameof(filter));
+        }
+
+        Encode(Input.Of(frame.Frame, graph), output, frame);
+    }
+
+    /// <summary>The decoded frame as an image file's bytes (see <see cref="Encode(DecodedFrame, Stream, ImageFilterOptions?)"/>).</summary>
+    /// <param name="frame">A frame from <see cref="FrameDecoder.TakeFrame"/>; not disposed.</param>
+    /// <param name="filter">The size or filter; null: the frame's own size.</param>
+    /// <returns>The file.</returns>
+    /// <exception cref="ArgumentException">Options that don't go together, or a filter chain FFmpeg can't parse.</exception>
+    /// <exception cref="FrameReaderException">Filtering or encoding failed, or the filter gave no frame for this one.</exception>
+    public byte[] Encode(DecodedFrame frame, ImageFilterOptions? filter = null)
+    {
+        var output = new MemoryStream();
+        Encode(frame, output, filter);
+        return output.ToArray();
+    }
+
+    /// <summary>A frame's pixels and what the filter graph is told about them (its buffer source's parameters), and the <c>-vf</c> before the conversion.</summary>
     internal readonly record struct Input(nint Data,
         int Width,
         int Height,
@@ -141,7 +227,8 @@ public sealed unsafe class ImageEncoder : IDisposable
         AVColorRange Range,
         AVColorSpace Space,
         AVColorPrimaries Primaries,
-        AVColorTransferCharacteristic Transfer)
+        AVColorTransferCharacteristic Transfer,
+        string? Filter = null)
     {
         internal static Input Of(VideoFrame frame, byte* data) => new(
             (nint)data,
@@ -154,12 +241,25 @@ public sealed unsafe class ImageEncoder : IDisposable
             frame.Tags.Primaries,
             frame.Tags.Transfer);
 
+        // A decoded frame: what ffmpeg's command line sets its buffer source from (ifilter_parameters_from_frame).
+        internal static Input Of(AVFrame* frame, string? filter) => new(
+            0,
+            frame->width,
+            frame->height,
+            (AVPixelFormat)frame->format,
+            frame->sample_aspect_ratio.den > 0 ? frame->sample_aspect_ratio : new AVRational { num = 0, den = 1 },
+            frame->color_range,
+            frame->colorspace,
+            frame->color_primaries,
+            frame->color_trc,
+            filter);
+
         // The graph depends on these; primaries and transfer travel on the frames.
-        internal bool SameGraph(Input other) => (Width, Height, Format, Sar.num, Sar.den, Range, Space)
-            == (other.Width, other.Height, other.Format, other.Sar.num, other.Sar.den, other.Range, other.Space);
+        internal bool SameGraph(Input other) => (Width, Height, Format, Sar.num, Sar.den, Range, Space, Filter)
+            == (other.Width, other.Height, other.Format, other.Sar.num, other.Sar.den, other.Range, other.Space, other.Filter);
     }
 
-    void Encode(Input input, Stream output)
+    void Encode(Input input, Stream output, DecodedFrame? decoded = null)
     {
         if (_graph == null || !input.SameGraph(_graphFor))
         {
@@ -174,8 +274,50 @@ public sealed unsafe class ImageEncoder : IDisposable
             _pkt = ffmpeg.av_packet_alloc();
         }
 
-        // The pixels into a frame of FFmpeg's own (a copy: the graph may keep it while converting).
         ffmpeg.av_frame_unref(_frame);
+        if (decoded is not null)
+            PutDecoded(decoded);
+        else
+            PutRaw(input);
+        _frame->pts = _count;
+        Check(ffmpeg.av_buffersrc_add_frame_flags(_in, _frame, 0), "filter");
+        ffmpeg.av_frame_unref(_filtered);
+        int got = ffmpeg.av_buffersink_get_frame(_out, _filtered);
+        if (got == ffmpeg.AVERROR(ffmpeg.EAGAIN))
+        {
+            FreeGraph(); // the filter holds the frame: start afresh next time
+            throw new FrameReaderException(FrameReaderError.WriteFailed, "The filter gave no frame for this one (one frame out for each frame in).");
+        }
+
+        Check(got, "filter");
+
+        // ffmpeg's rate control (no qscale) carries its state from frame to frame: a fresh encoder for each image
+        // writes what a one-frame ffmpeg run writes. With a qscale every frame is encoded alone anyway.
+        if (_o.Format == ImageFormat.Jpg && _o.JpegQscale is null)
+            CloseEncoder();
+        if (_enc == null)
+            OpenEncoder(_filtered, _metaOnly ? decoded?.BitsPerRawSample ?? 0 : 0);
+        if (_o.JpegQscale is { } q)
+            _filtered->quality = q * ffmpeg.FF_QP2LAMBDA; // as ffmpeg passes -q:v: on every frame, which mjpeg reads
+        _filtered->pict_type = AVPictureType.AV_PICTURE_TYPE_NONE;
+        _filtered->pts = _count++; // increasing, as encoders expect of one stream
+        Check(ffmpeg.avcodec_send_frame(_enc, _filtered), "encode");
+        ffmpeg.av_packet_unref(_pkt);
+        Check(ffmpeg.avcodec_receive_packet(_enc, _pkt), "encode"); // one thread: the packet comes at once, and is the whole file
+        output.Write(new ReadOnlySpan<byte>(_pkt->data, _pkt->size));
+        ffmpeg.av_packet_unref(_pkt);
+    }
+
+    /// <summary>A reference to the decoded frame, as ffmpeg's command line sends it into its graph.</summary>
+    void PutDecoded(DecodedFrame decoded)
+    {
+        Check(ffmpeg.av_frame_ref(_frame, decoded.Frame), "frame");
+        _frame->time_base = new AVRational { num = 1, den = 25 };
+    }
+
+    /// <summary>The pixels into a frame of FFmpeg's own (a copy: the graph may keep it while converting).</summary>
+    void PutRaw(Input input)
+    {
         (_frame->format, _frame->width, _frame->height) = ((int)input.Format, input.Width, input.Height);
         Check(ffmpeg.av_frame_get_buffer(_frame, 0), "frame buffer");
         var planes = default(byte_ptrArray4);
@@ -195,31 +337,12 @@ public sealed unsafe class ImageEncoder : IDisposable
         _frame->colorspace = input.Space;
         _frame->color_primaries = input.Primaries;
         _frame->color_trc = input.Transfer;
-        _frame->pts = _count;
-        Check(ffmpeg.av_buffersrc_add_frame_flags(_in, _frame, 0), "filter");
-        ffmpeg.av_frame_unref(_filtered);
-        Check(ffmpeg.av_buffersink_get_frame(_out, _filtered), "filter");
-
-        // ffmpeg's rate control (no qscale) carries its state from frame to frame: a fresh encoder for each image
-        // writes what a one-frame ffmpeg run writes. With a qscale every frame is encoded alone anyway.
-        if (_o.Format == ImageFormat.Jpg && _o.JpegQscale is null)
-            CloseEncoder();
-        if (_enc == null)
-            OpenEncoder(_filtered);
-        if (_o.JpegQscale is { } q)
-            _filtered->quality = q * ffmpeg.FF_QP2LAMBDA; // as ffmpeg passes -q:v: on every frame, which mjpeg reads
-        _filtered->pict_type = AVPictureType.AV_PICTURE_TYPE_NONE;
-        _filtered->pts = _count++; // increasing, as encoders expect of one stream
-        Check(ffmpeg.avcodec_send_frame(_enc, _filtered), "encode");
-        ffmpeg.av_packet_unref(_pkt);
-        Check(ffmpeg.avcodec_receive_packet(_enc, _pkt), "encode"); // one thread: the packet comes at once, and is the whole file
-        output.Write(new ReadOnlySpan<byte>(_pkt->data, _pkt->size));
-        ffmpeg.av_packet_unref(_pkt);
     }
 
     /// <summary>
-    /// buffer (the frame's size, format, aspect and colour) -> format (the encoder's pixel formats, colour spaces and ranges,
-    /// as ffmpeg's command line constrains its output) -> buffersink; lavfi inserts the scale filter that converts.
+    /// buffer (the frame's size, format, aspect and colour) -> the -vf, if any -> format (the encoder's pixel formats, colour
+    /// spaces and ranges, as ffmpeg's command line constrains its output) -> buffersink; lavfi inserts the scale filter that
+    /// converts.
     /// </summary>
     void BuildGraph(Input input)
     {
@@ -233,6 +356,8 @@ public sealed unsafe class ImageEncoder : IDisposable
             spaces.Count > 0 ? "color_spaces=" + string.Join("|", spaces) : null,
             ranges.Count > 0 ? "color_ranges=" + string.Join("|", ranges) : null,
         }.Where(x => x is not null));
+        if (input.Filter is not null)
+            filter = input.Filter + "," + filter;
         string args = string.Create(CultureInfo.InvariantCulture,
             $"video_size={input.Width}x{input.Height}:pix_fmt={(int)input.Format}:time_base=1/25:pixel_aspect={input.Sar.num}/{input.Sar.den}:colorspace={(int)input.Space}:range={(int)input.Range}");
 
@@ -249,7 +374,14 @@ public sealed unsafe class ImageEncoder : IDisposable
             outputs->filter_ctx = src;
             inputs->name = ffmpeg.av_strdup("out");
             inputs->filter_ctx = snk;
-            Check(ffmpeg.avfilter_graph_parse_ptr(_graph, filter, &inputs, &outputs, null), "filter graph");
+            int parsed = ffmpeg.avfilter_graph_parse_ptr(_graph, filter, &inputs, &outputs, null);
+            if (parsed < 0 && input.Filter is not null)
+            {
+                FreeGraph();
+                throw new ArgumentException($"FFmpeg can't parse the filter \"{input.Filter}\": {FFmpegLibraries.ErrorMessage(parsed)}", "filter");
+            }
+
+            Check(parsed, "filter graph");
             Check(ffmpeg.avfilter_graph_config(_graph, null), "filter graph");
         }
         finally
@@ -261,10 +393,20 @@ public sealed unsafe class ImageEncoder : IDisposable
         _in = src;
         _out = snk;
         _graphFor = input;
+
+        // ffmpeg hands its encoder the decoder's bits per raw sample only when the graph leaves the pixels alone
+        // (graph_is_meta: metadata-only filters, the sink and the buffer source; a scale inserted to convert is neither).
+        _metaOnly = true;
+        for (uint i = 0; i < _graph->nb_filters; i++)
+        {
+            var f = _graph->filters[i];
+            if ((f->filter->flags & ffmpeg.AVFILTER_FLAG_METADATA_ONLY) == 0 && f->nb_outputs != 0 && f != src)
+                _metaOnly = false;
+        }
     }
 
     /// <summary>The encoder opened from the filtered frame, as ffmpeg's enc_open sets it up.</summary>
-    void OpenEncoder(AVFrame* frame)
+    void OpenEncoder(AVFrame* frame, int bitsPerRawSample)
     {
         _enc = ffmpeg.avcodec_alloc_context3(_codec);
         _enc->width = frame->width;
@@ -276,6 +418,7 @@ public sealed unsafe class ImageEncoder : IDisposable
         _enc->color_trc = frame->color_trc;
         _enc->colorspace = frame->colorspace;
         _enc->chroma_sample_location = frame->chroma_location;
+        _enc->bits_per_raw_sample = Math.Min(bitsPerRawSample, ffmpeg.av_pix_fmt_desc_get(_enc->pix_fmt)->comp[0].depth);
         _enc->field_order = AVFieldOrder.AV_FIELD_PROGRESSIVE;
         _enc->time_base = new AVRational { num = 1, den = 25 };
         _enc->framerate = new AVRational { num = 25, den = 1 };
