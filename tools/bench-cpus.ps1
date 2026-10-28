@@ -121,7 +121,7 @@ function Run([string]$exe, [string[]]$arguments) {
 }
 
 $cpus = [Environment]::ProcessorCount
-if ($Threads.Count -eq 0) { $Threads = @(0, [int][Math]::Round($cpus * 1.5), 2 * $cpus) | Select-Object -Unique }
+if ($Threads.Count -eq 0) { $Threads = @(0, [int][Math]::Round($cpus * 1.5), (2 * $cpus)) # parenthesised: "a, b, 2 * $cpus" multiplies the whole array | Select-Object -Unique }
 
 $tempRoot = [IO.Path]::GetTempPath()
 $work = Join-Path $tempRoot ("shotdetector-bench-cpus-" + [Guid]::NewGuid().ToString("N").Substring(0, 8))
