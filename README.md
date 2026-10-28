@@ -402,8 +402,12 @@ less CPU); there its point is ARM, where it gives x86's results.
   ShotDetector uses OpenCV's (the CPUs, at most 16). With several threads, FFmpeg's decoders also conceal damage
   differently from run to run, in scenedetect as in ShotDetector, so on corrupt files the stats and sometimes a cut
   can vary between runs of either tool, and a truncated stream can vary in its last frame or two.
-  `--threads 1` (`DetectionOptions.DecodeThreads = 1`) gives reproducible results, identical in-process and through
-  the ffmpeg executable, though not necessarily scenedetect's (OpenCV numbers frames differently with one thread).
+  `--threads 1` (`DetectionOptions.DecodeThreads = 1`) narrows this but doesn't remove it: damaged MPEG-1/2 (and
+  h264 with several slices) can still vary through the ffmpeg executable, and in-process when frames are converted on
+  their own thread (the default from 1280x720 up), because areas the decoder never conceals keep whatever an earlier
+  frame left in that buffer. In-process with the conversion on the decoding thread, one thread repeats and on MPEG-2
+  equals scenedetect at one thread. The thread count itself changes such results, so two machines with different
+  CPU counts can disagree.
   docs/decisions/2026-10-22-damaged-files-best-effort.md has the measurement. On a **resolution change**
   mid-stream (two encodes joined), OpenCV scales the new frames to the stream's first size in its one conversion, and scenedetect
   numbers frames by their time, so where the timestamps start over its frame numbers do too: later frames overwrite

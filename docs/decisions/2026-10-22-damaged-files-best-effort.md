@@ -47,3 +47,19 @@ Add a Maybe row for the duplicate-timestamp frame on corrupt.ts? (**Yes, Maybe r
 **Yes**. On the stand-in's corrupt.ts the decoder outputs two frames with the same pts (291); OpenCV numbers both, we
 keep one, so our cuts come one frame later and ~236 stats rows differ, at any thread count and on both decoder paths.
 The row says to check first whether it happens on CI's real samples.
+
+### Note (2026-10-27): damaged MPEG-1/2 and one thread
+
+Measured for the backlog row "Damaged MPEG-2 decodes differently from run to run with slice threads": two causes.
+Slices raced between threads (a damaged picture's slices write rows in another thread's band; the thread count alone
+changes the result: 8 threads differ from 4 on the same file), and leftover frame buffers (macroblocks never written or
+concealed keep an earlier frame's pixels, and which buffer comes back depends on when frames are released on another
+thread: always through the ffmpeg executable, and in-process when converting on a separate thread). So `--threads 1`
+repeats only in-process with the conversion on the decoding thread; there it equalled scenedetect at one thread on all
+four damaged MPEG-1/2 test files. scenedetect at its default threads gave 2 to 6 distinct stats CSVs in 8 runs on the
+same files, and our default runs usually equalled one of them. Making MPEG-1/2 always repeat in-process (one thread,
+converting on the decoding thread) would cost undamaged MPEG-2 about +28% chunked on 1080i and 2.1x single-pass; one
+thread only after a corrupt frame needs FrameDecoder to report corrupt frames and a second pass. Asked (choices: A,
+document and stay best effort; B, one thread for MPEG-1/2; C, one thread only once damaged), the owner chose **A**
+(2026-10-27): the README's claim that one thread gives repeatable results, identical through the executable, is
+corrected; nothing else changes.
