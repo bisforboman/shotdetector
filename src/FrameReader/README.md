@@ -61,7 +61,7 @@ A picture every second of a film: read forward instead of seeking. `TryReadForwa
 the first frame at or after the time and converts only that one, so the whole film is one pass (seeking to each
 second re-decodes from a keyframe every time: on a 1080p trailer, 4x the CPU). When the next picture is further away
 than a keyframe (at least a second ahead, per the container's index), it jumps instead of decoding the frames in
-between, still exact. Frames before the wanted one that no other frame references (most B-frames of H.264, HEVC,
+between, still exact (not in MPEG-PS or AVI with B-frames, whose seeks don't land where a full decode has the frame). Frames before the wanted one that no other frame references (most B-frames of H.264, HEVC,
 MPEG-1/2 and MPEG-4 Part 2) aren't decoded at all, also by `ReadAt` and `TryReadAt`'s seek: the frames given are the
 full decode's all the same, byte for byte (not when deinterlacing, nor on the GPU). CPU for Tears of Steel (12 min,
 1280x534), with keyframes every 0.75 s / every 4.4 s (x264), measured before that:
