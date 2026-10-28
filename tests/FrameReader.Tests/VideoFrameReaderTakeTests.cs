@@ -48,7 +48,7 @@ public class VideoFrameReaderTakeTests
                 hash.AppendData(plane.Slice(row, bytes));
         }
 
-        return $"{f.Pts} {f.Time.Ticks} {f.Width}x{f.Height} {f.PixelFormat} {Convert.ToHexString(hash.GetHashAndReset())}";
+        return $"{f.Pts} {f.Time?.Ticks} {f.Width}x{f.Height} {f.PixelFormat} {Convert.ToHexString(hash.GetHashAndReset())}";
     }
 
     public static TheoryData<string, string, string, int> Sources => new()

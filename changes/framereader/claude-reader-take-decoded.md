@@ -7,4 +7,4 @@
   reader (issue #574). One scaling pass instead of two. The conversion's options (`Width`, `Height`, `MaxWidth`,
   `FrameFormat`) don't apply to takes, so one reader can both read and take; not with `FrameRate`. A taken frame is a
   reference to the decoded buffers (no copy), valid after the next read and after the reader is disposed.
-- `DecodedFrame.Time`: the frame's time from the input's start, as `VideoFrame.Time`.
+- `DecodedFrame.Time`: the frame's time from the input's start, as `VideoFrame.Time` (null when it has no timestamp).

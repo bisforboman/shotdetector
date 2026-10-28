@@ -12,7 +12,7 @@ public sealed unsafe class DecodedFrame : IDisposable
 {
     AVFrame* _frame;
 
-    internal DecodedFrame(AVFrame* frame, long pts, TimeSpan time, int bitsPerRawSample = 0)
+    internal DecodedFrame(AVFrame* frame, long pts, TimeSpan? time, int bitsPerRawSample = 0)
     {
         _frame = frame;
         Pts = pts;
@@ -23,8 +23,11 @@ public sealed unsafe class DecodedFrame : IDisposable
     /// <summary>The frame's presentation timestamp, as <see cref="FrameDecoder.Pts"/> gave it.</summary>
     public long Pts { get; }
 
-    /// <summary>Its time from the input's start, as ffmpeg's command line gives it (as <see cref="VideoFrame.Time"/>).</summary>
-    public TimeSpan Time { get; }
+    /// <summary>
+    /// Its time from the input's start, as ffmpeg's command line gives it (as <see cref="VideoFrame.Time"/>); null when the
+    /// frame has no timestamp.
+    /// </summary>
+    public TimeSpan? Time { get; }
 
     /// <summary>The frame's width in pixels (after rotation).</summary>
     public int Width => Frame->width;

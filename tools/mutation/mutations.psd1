@@ -426,7 +426,7 @@
         # FrameReader: VideoFrameReader's takes (issue #574): a taken frame is the caller's own reference (read ahead, not
         # the queue's, which the next read lets go), its time is the reads' (shifted by the start), and FrameRate refuses them
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = ': _ahead.Current.Frame.Reference();'; Replace = ': _ahead.Current.Frame;'; Tests = 'VideoFrameReaderTakeTests.TakenFramesOutliveReadsAndTheReader'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'TimeSpan.FromSeconds((Pts + StartOffset) * TimeBase.Value), _dec->bits_per_raw_sample'; Replace = 'TimeSpan.FromSeconds(Pts * TimeBase.Value), _dec->bits_per_raw_sample'; Tests = 'VideoFrameReaderTakeTests.TakesAreTheDecodersFramesWhereTheReadsAre'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'TimeSpan.FromSeconds((pts + StartOffset) * TimeBase.Value);'; Replace = 'TimeSpan.FromSeconds(pts * TimeBase.Value);'; Tests = 'VideoFrameReaderTakeTests.TakesAreTheDecodersFramesWhereTheReadsAre'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'NoFrameRate(nameof(TryTake));'; Replace = ''; Tests = 'VideoFrameReaderTakeTests.TakesArentAvailableWithFrameRate'; Project = 'tests/FrameReader.Tests' }
     )
 }

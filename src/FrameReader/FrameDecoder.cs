@@ -897,7 +897,9 @@ public sealed unsafe class FrameDecoder : IDisposable
         var clone = ffmpeg.av_frame_clone(_frame);
         if (clone == null)
             throw new FrameReaderException(FrameReaderError.DecodeFailed, "Can't reference the frame.");
-        return new DecodedFrame(clone, Pts, TimeSpan.FromSeconds((Pts + StartOffset) * TimeBase.Value), _dec->bits_per_raw_sample);
+        long pts = Pts;
+        TimeSpan? time = pts == ffmpeg.AV_NOPTS_VALUE ? null : TimeSpan.FromSeconds((pts + StartOffset) * TimeBase.Value);
+        return new DecodedFrame(clone, pts, time, _dec->bits_per_raw_sample);
     }
 
     // Hardware decoding: the device, the GPU's pixel format for this codec, and the frame each GPU frame is copied to.

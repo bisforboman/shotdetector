@@ -155,7 +155,7 @@ deinterlacing and autorotation as the reader's `Decoder` says) and give the fram
 format: the conversion's options (`Width`, `Height`, `MaxWidth`, `FrameFormat`) don't apply to it, so one reader can
 both read and take, each moving the same position. A taken frame is the caller's to dispose, a reference to the decoded
 buffers (no copy), valid after the next read and after the reader is disposed; `DecodedFrame.Time` is its time as
-`VideoFrame.Time`. Not with `FrameRate` (its frames are the fps filter's). A picture every second, each file
+`VideoFrame.Time` (null without a timestamp). Not with `FrameRate` (its frames are the fps filter's). A picture every second, each file
 `ffmpeg -i video.mp4 -ss <i> -vf scale='min(1280,iw)':-2 -frames:v 1` byte for byte:
 
 ```csharp
