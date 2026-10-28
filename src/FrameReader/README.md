@@ -149,6 +149,28 @@ if (decoder.Next())
 }
 ```
 
+`VideoFrameReader` hands out the same decoded frames where its reads would land: `TryTake`, `TryTakeForwardTo` and
+`TryTakeAt` position as `TryRead`, `TryReadForwardTo` and `TryReadAt` do (keyframe jumps, ffmpeg's seek, `ReadAhead`,
+deinterlacing and autorotation as the reader's `Decoder` says) and give the frame unconverted, at its own size and pixel
+format: the conversion's options (`Width`, `Height`, `MaxWidth`, `FrameFormat`) don't apply to it, so one reader can
+both read and take, each moving the same position. A taken frame is the caller's to dispose, a reference to the decoded
+buffers (no copy), valid after the next read and after the reader is disposed; `DecodedFrame.Time` is its time as
+`VideoFrame.Time` (null without a timestamp). Not with `FrameRate` (its frames are the fps filter's). A picture every second, each file
+`ffmpeg -i video.mp4 -ss <i> -vf scale='min(1280,iw)':-2 -frames:v 1` byte for byte:
+
+```csharp
+var filter = new ImageFilterOptions { MaxWidth = 1280 };
+using var jpeg = new ImageEncoder(new() { Format = ImageFormat.Jpg, JpegQscale = 2 });
+using var reader = new VideoFrameReader("video.mp4", new() { ReadAhead = 2 });
+for (var i = 0; reader.TryTakeForwardTo(TimeSpan.FromSeconds(i), out var frame); i++)
+    using (frame)
+        File.WriteAllBytes($"frame_{i + 1:D6}.jpg", jpeg.Encode(frame, filter));
+```
+
+That is the frame at or after each second (ffmpeg's `-vf fps=1:round=up` where frames fall on the seconds);
+`-vf fps=1`'s default rounding keeps the last frame of each second's slot instead (0.48 s, 1.48 s, ... at 25 fps), as
+`FrameRate = new(1, 1)` reads do.
+
 On Windows, `Decoder = new() { HardwareDecoding = true }` decodes on the GPU (D3D11VA) and copies each frame back,
 for 8-bit 4:2:0 video. On the desktop tested the pictures were identical to software decoding and it took about half
 the CPU (24 s instead of 44 s for the 12-minute film), but 3.6x the wall time (20 s instead of 5.5 s): every frame
@@ -418,7 +440,8 @@ nothing per frame (frames are views of FFmpeg's buffers); the pipe readers alloc
 ## Frame lifetime
 
 `VideoFrame` is a `ref struct` over the reader's own buffer: `Data` is valid until the next `TryRead` (or
-`Dispose`). Copy it (`frame.Data.ToArray()`) to keep a frame.
+`Dispose`). Copy it (`frame.Data.ToArray()`) to keep a frame. A `DecodedFrame` (`TryTake`, `FrameDecoder.TakeFrame`)
+holds its decoded buffers until disposed, after the reader or decoder too.
 
 ## What it handles
 

@@ -102,7 +102,8 @@ public sealed record ImageFilterOptions
 /// <c>libwebp_anim</c> picks that one by default), byte for byte with the same FFmpeg build (its version is in a JPEG's
 /// comment; for WebP, libwebp's too). Frames are converted to the pixel format ffmpeg picks for the encoder, as its command line converts
 /// them (the scale filter it inserts). One encoder serves any number of frames, of any size and format; not thread-safe.
-/// A <see cref="DecodedFrame"/> (<see cref="FrameDecoder.TakeFrame"/>) encodes through ffmpeg's own graph for
+/// A <see cref="DecodedFrame"/> (<see cref="FrameDecoder.TakeFrame"/>, <see cref="VideoFrameReader.TryTake"/>) encodes
+/// through ffmpeg's own graph for
 /// <c>ffmpeg -i X [-vf ...] -frames:v 1 out.jpg</c>: the decoded frame, the <c>-vf</c> of <see cref="ImageFilterOptions"/>,
 /// then the conversion to the encoder's format, so its file is that command's byte for byte with the same FFmpeg build
 /// (the decoder's options as ffmpeg's: autorotated by default, as ffmpeg is; deinterlaced only as with <c>-vf yadif,...</c>).
@@ -183,7 +184,7 @@ public sealed unsafe class ImageEncoder : IDisposable
     /// The decoded frame as an image file, written to <paramref name="output"/>: the file <c>ffmpeg [-ss T] -i X [-vf F]
     /// -frames:v 1 out.jpg</c> writes for that frame, F being the filter's <c>-vf</c>.
     /// </summary>
-    /// <param name="frame">A frame from <see cref="FrameDecoder.TakeFrame"/>; not disposed.</param>
+    /// <param name="frame">A frame from <see cref="FrameDecoder.TakeFrame"/> or a reader's TryTake methods; not disposed.</param>
     /// <param name="output">Where the file's bytes go; not disposed.</param>
     /// <param name="filter">The size or filter; null: the frame's own size.</param>
     /// <exception cref="ArgumentException">Options that don't go together, or a filter chain FFmpeg can't parse.</exception>
@@ -206,7 +207,7 @@ public sealed unsafe class ImageEncoder : IDisposable
     }
 
     /// <summary>The decoded frame as an image file's bytes (see <see cref="Encode(DecodedFrame, Stream, ImageFilterOptions?)"/>).</summary>
-    /// <param name="frame">A frame from <see cref="FrameDecoder.TakeFrame"/>; not disposed.</param>
+    /// <param name="frame">A frame from <see cref="FrameDecoder.TakeFrame"/> or a reader's TryTake methods; not disposed.</param>
     /// <param name="filter">The size or filter; null: the frame's own size.</param>
     /// <returns>The file.</returns>
     /// <exception cref="ArgumentException">Options that don't go together, or a filter chain FFmpeg can't parse.</exception>
