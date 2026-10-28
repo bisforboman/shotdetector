@@ -575,6 +575,41 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // A late frame whose pts goes back, as after damage (corrupt.ts): libavcodec's best-effort timestamp takes the dts from
+    // there on, five frames behind here. OpenCV labels each frame by its own pts (frame 30 at 1.08 s, frame 27's time
+    // again; every later one at its own), and so does the in-process path (VideoReader.LabelPts). The executable can't:
+    // ffmpeg sets each frame's pts to the best effort.
+    [Fact]
+    public void LabelsEachFrameByItsOwnPtsAsOpenCv()
+    {
+        Assert.Equal(7, VideoReader.LabelPts(7, 5, deinterlaced: false));
+        Assert.Equal(5, VideoReader.LabelPts(null, 5, deinterlaced: false));
+        Assert.Equal(5, VideoReader.LabelPts(7, 5, deinterlaced: true));
+        if (Libs is null)
+            return;
+        string dir = Path.Combine(Path.GetTempPath(), $"shotdetector-backpts-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string intra = Path.Combine(dir, "intra.mkv"), back = Path.Combine(dir, "back.ts");
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=3", "-c:v", "libx264", "-g", "1", "-bf", "0", intra], default);
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", intra, "-c", "copy", "-bsf:v", "setts=pts=if(eq(N\\,30)\\,PTS-3*DURATION\\,PTS):dts=PTS-5*DURATION", back], default);
+            var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess };
+            var result = ShotDetection.Detect(back, options);
+            Assert.True(result.Video.DecodedInProcess);
+            Assert.Equal(75, result.FrameCount);
+            for (int i = 0; i < 75; i++)
+                Assert.Equal((i == 30 ? 27 : i) * 0.04, result.Video.Position(i).Seconds, 1e-9);
+
+            // One stats row per frame number, as scenedetect's (a dict): 74 numbers, frame 0 without a score, plus the header.
+            Assert.Equal(74, result.Stats!.Csv(result.Video.Position).Split('\n', StringSplitOptions.RemoveEmptyEntries).Length);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // Display matrices as OpenCV applies them (VideoReader.Turn): the angle alone, turning the converted image, so flips
     // only count as far as they change the angle; deinterlaced first, then turned; every pixel format.
     [Theory]

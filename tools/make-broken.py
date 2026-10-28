@@ -18,21 +18,30 @@ ff("-i", str(SRC), "-an", "-t", "30", "-c:v", "libx264", "-crf", "20", "-g", "48
 ts = OUT / "base.ts"
 ff("-i", str(base), "-c", "copy", str(ts))
 
-# 1. Corrupted bytes: 20 runs of 2 KB garbage spread over the media data (headers left alone).
-data = bytearray(base.read_bytes())
-start = len(data) // 10
-for k in range(20):
-    pos = start + k * (len(data) - start) // 21
-    data[pos:pos + 2048] = bytes((i * 37 + k) % 256 for i in range(2048))
-(OUT / "corrupt.mp4").write_bytes(bytes(data))
+
+def corrupt(src, dst, seed=0):
+    """20 runs of 2 KB garbage spread over the media data (headers left alone); another seed, other offsets and bytes."""
+    data = bytearray(src.read_bytes())
+    start = len(data) // 10 + seed * 7919
+    for k in range(20):
+        pos = start + k * (len(data) - start) // 21
+        data[pos:pos + 2048] = bytes((i * 37 + k + seed * 11) % 256 for i in range(2048))
+    dst.write_bytes(bytes(data))
+
+
+# 1. Corrupted bytes.
+corrupt(base, OUT / "corrupt.mp4")
 
 # The same damage in a TS (a broadcast-style stream).
-data = bytearray(ts.read_bytes())
-start = len(data) // 10
-for k in range(20):
-    pos = start + k * (len(data) - start) // 21
-    data[pos:pos + 2048] = bytes((i * 37 + k) % 256 for i in range(2048))
-(OUT / "corrupt.ts").write_bytes(bytes(data))
+corrupt(ts, OUT / "corrupt.ts")
+
+# The trailer itself as TS (no re-encode, so the same bytes everywhere), damaged at other offsets: a late frame's pts
+# goes back and libavcodec's best-effort timestamp falls back to the dts; OpenCV labels each frame by its own pts, as
+# the in-process path does (docs/decisions/2026-10-28-damaged-frame-pts.md; the executable can't).
+copy = OUT / "copy.ts"
+ff("-i", str(SRC), "-an", "-map", "0:v:0", "-c", "copy", str(copy))
+corrupt(copy, OUT / "corrupt_copy.ts", seed=2)
+copy.unlink()
 
 # 2./3. Truncated at 70%: an interrupted download or recording.
 (OUT / "truncated.mp4").write_bytes(base.read_bytes()[: len(base.read_bytes()) * 7 // 10])

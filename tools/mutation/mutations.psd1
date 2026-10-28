@@ -142,6 +142,9 @@
         @{ File = 'src/ShotDetector/CvResize.cs'; Find = '_frameRows = SourceRows.Select(r => r + cropY).ToArray();'; Replace = '_frameRows = SourceRows.ToArray();'; Tests = 'FastYuvTests.TenBitFrameAtATimeEqualsRowByRow' }
         @{ File = 'src/ShotDetector/CvResize.cs'; Find = 'bgr.AsSpan(first * n, (end - first) * n)'; Replace = 'bgr.AsSpan(0, (end - first) * n)'; Tests = 'FastYuvTests.TenBitFrameAtATimeEqualsRowByRow' }
 
+        # Damaged files: each frame labelled by its own pts as OpenCV's CAP_PROP_POS_MSEC, not the best-effort timestamp
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'long label = LabelPts(decoder.FramePts, pts, _deinterlace);'; Replace = 'long label = pts;'; Tests = 'InProcessTests.LabelsEachFrameByItsOwnPtsAsOpenCv' }
+
         # Timestamps starting over (two encodes joined): labelled by time, cuts sorted, stats one row per number
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'seconds < pts[previous] * timeBase - tolerance)'; Replace = 'false)'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '&& !(writer.HasStreamSize && writer.PixelFormat == _pixelFormat);'; Replace = '&& false;'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
