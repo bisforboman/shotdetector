@@ -7,6 +7,24 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.14.0 – 2026-10-28
+
+Encode decoded frames with ffmpeg's own scaling, and read ahead while you work on a frame.
+
+### New
+
+- `ImageEncoder.Encode(DecodedFrame, ...)` encodes a frame from `FrameDecoder.TakeFrame` through ffmpeg's own graph:
+  the decoded frame, then a size (`ImageFilterOptions.Width` and `Height`, or `MaxWidth`) or a filter chain of your own
+  (`Filter`, ffmpeg's `-vf` syntax), then the conversion to the encoder's format. The file is what
+  `ffmpeg [-ss T] -i X [-vf ...] -frames:v 1 out.jpg` writes for that frame, byte for byte with the same FFmpeg build,
+  scaled or not (where an encoded `VideoFrame` matches ffmpeg only from the same raw frame). JPEG, PNG and WebP;
+  10-bit, interlaced, rotated and anamorphic sources are tested.
+- `VideoFrameReaderOptions.ReadAhead`: decodes up to N frames ahead on a thread of the reader's own while the caller
+  works on the frame it has (encoding, writing, analysis), so a loop like `TryReadForwardTo` + `ImageEncoder.Encode` +
+  `File.WriteAllBytes` overlaps its per-frame work with decoding as ffmpeg's command line does (issue #566). The frames,
+  tags and errors are those without it, and a frame stays valid until the next read; 0 (the default) decodes in the
+  read as before. 4 is a good start where decoding leaves cores free; each frame ahead holds a decoded frame's memory.
+
 ## 2.13.0 – 2026-10-28
 
 WebP in ImageEncoder, and an mp4/mov packet scan that reads only the sample tables.

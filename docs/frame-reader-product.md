@@ -47,7 +47,8 @@ second release in a row under 1 in 20 over 20 or more commits: met again; the us
 don't split, keep counting (docs/decisions/2026-10-27-framereader-stays-again.md). 2.12.0: 0 of 17 (the image encoder
 and `MaxWidth` touch FrameReader alone), fewer than 20: the window joins the next release's. 2.13.0: 0 of 8 (WebP and the mp4/mov
 scan touch one product each), 0 of 25 with 2.12.0's window: met again; not asked, per the 2026-10-27 answer (ask only
-when something in "What would change the answer" happens, none has).
+when something in "What would change the answer" happens, none has). 2.14.0: 0 of 9 (the image encoder,
+read-ahead and ShotDetector's fixes each touch one product), fewer than 20: the window joins the next release's.
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)

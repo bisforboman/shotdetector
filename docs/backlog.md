@@ -39,6 +39,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 ## Maybe
 
+- FrameReader read-ahead: convert ahead too, for TryRead
+  - Why: `VideoFrameReaderOptions.ReadAhead` (#568, issue #566) decodes, deinterlaces and rotates frames ahead on a background thread but converts each frame in the read, because `TryReadForwardTo` only knows which frame it wants when asked (at 1 fps, converting ahead would waste 24 of 25 conversions). Plain `TryRead` wants every frame, so its conversion could run ahead too, hiding the conversion's share of each frame; it would need a ring of output buffers to keep the rule that a frame is valid until the next read. Measure first on a caller whose work per frame is shorter than the decode
+  - Status: Maybe (the owner, 2026-10-28)
+
 - mkv/ts: the packet scan alongside decoding on the sequential path
   - Why: A frame's label is final once the scan's latest dts is past its time, so the scan can run beside decoding: max(read, decode) instead of the sum where reading is slow and the file fits the page cache; nearly nothing on local disks. Where dts ever goes backwards (joined or corrupt files), wait for the whole scan; chunked runs keep it first. An additive incremental FrameReader API (`ProbeOptions.OnPacket`). Choice 3 of docs/decisions/2026-10-27-pre-scan.md
   - Status: Maybe (the owner, 2026-10-27: parked). The rule isn't exact on joined files: once the second half's timestamps reach the sorted list, frames already labelled get other packets' labels (and, on a 25+30 fps join, other times); the dts-goes-backwards guard only covers frames decided after that. Simulated on joined TS files: 96 of 225 and 97 of 250 frames labelled differently, 0 on a clean file. An exact version would hold labels as provisional and restart on a mismatch (shots and warnings held until the scan ends, so streaming on mkv/ts emits nothing until then); docs/decisions/2026-10-27-pre-scan.md. A FrameReader start (`ProbeOptions.OnPacket`, `PacketTiming`) was built but not pushed; Matroska's first packets have no dts

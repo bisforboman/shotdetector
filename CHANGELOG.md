@@ -6,6 +6,31 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.20.0 – 2026-10-28
+
+save-images without the ffmpeg executable, and exact labels on damaged and joined files.
+
+### New
+
+- `--save-images` (`Export.SaveImages`, and `--save-html`'s thumbnails) encodes in-process when the video was decoded
+  there, through FrameReader's `ImageEncoder`: no ffmpeg executable needed, and byte for byte the files the ffmpeg
+  executable of the same FFmpeg build writes (the executable writes them otherwise, as before).
+
+### Fixed
+
+- Damaged files, in-process: a frame whose pts goes back after damage is labelled by its own pts, as OpenCV does,
+  instead of the best-effort timestamp (the packets' dts from there on), which repeated a frame's time and moved every
+  later frame number and cut a frame late until the next gap. Through the ffmpeg executable it can't be (ffmpeg gives
+  each frame the best effort); README's damaged-video section says so.
+- `--save-images --image-format webp` with more than one image failed with a FileNotFoundException: ffmpeg picked
+  `libwebp_anim` for .webp (its default where built), which wrote one animation of every frame to the first file. The
+  executable path now names `libwebp`, so each image is its own still WebP.
+- `DetectionOptions.OnShot` and `DetectStreamAsync` on a file whose timestamps start over (two encodes joined): they told
+  shots as cuts arrived, and the later encode's cuts, sorted into the result, split shots already told, so a listener's
+  list differed from `DetectionResult.Shots`. Such a file shows it before the first frame (its packets), so its shots are
+  now all told at the end, exactly the result's; MPEG-PS decoded in-process too, as its timestamps arrive with the frames.
+  A Stream decoded in-process still can't know it ahead (OnShot's documentation says so).
+
 ## 3.19.0 – 2026-10-28
 
 MPEG-PS files skip a decoding pass, and mp4/mov files are read once.
