@@ -272,12 +272,12 @@ internal sealed partial class VideoReader
             try
             {
                 using var writer = new FrameWriter(null, _codedSize, Turn);
-                foreach (var (frame, label, tags, timestamp) in handoff.GetConsumingEnumerable(stop.Token))
+                foreach (var (frame, pts, tags, timestamp) in handoff.GetConsumingEnumerable(stop.Token))
                 {
                     using (frame)
                     {
                         writer.Frame = frame;
-                        full.Add(Write(writer, label + offset, tags, timestamp), stop.Token);
+                        full.Add(Write(writer, pts + offset, tags, timestamp), stop.Token);
                     }
                 }
 
