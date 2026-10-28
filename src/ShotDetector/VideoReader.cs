@@ -335,6 +335,37 @@ internal sealed partial class VideoReader
     /// </summary>
     internal bool TimestampsArrive => _ptsPending;
 
+    /// <summary>
+    /// Whether the timestamps start over somewhere (two streams joined), as known before the first frame: a file's packets
+    /// in decode order, or MPEG-PS's frames from the decoding pass (<see cref="StartsOver"/>); while MPEG-PS's
+    /// <see cref="TimestampsArrive"/>, they may. False for a stream (nothing is known before its frames). Labelled by time,
+    /// the frames after such a point come before earlier ones, so cuts come out of order and shots are told at the end.
+    /// </summary>
+    internal bool TimestampsStartOver => _ptsPending || _startsOver;
+
+    bool _startsOver;
+
+    /// <summary>
+    /// Whether some timestamp is below one at least 16 places earlier (in decode order: past any decoder's reordering, at
+    /// most 16 frames in H.264 and HEVC), where timestamps that start over go back. A false alarm only tells the shots
+    /// later. A 0 (the decoding pass's frame without a timestamp, labelled by its number) doesn't count; a reset to 0 shows
+    /// in the frames after it.
+    /// </summary>
+    internal static bool StartsOver(IReadOnlyList<long> pts)
+    {
+        const int reorder = 16;
+        var known = pts.Where(p => p != 0).ToList();
+        long max = long.MinValue;
+        for (int i = reorder; i < known.Count; i++)
+        {
+            max = Math.Max(max, known[i - reorder]);
+            if (known[i] < max)
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>Tests: the frames' timestamps as known now (none of MPEG-PS's while <see cref="TimestampsArrive"/>), without taking the pass.</summary>
     internal IReadOnlyList<long> KnownTimestamps => _ptsPending ? [] : _knownPts;
 
@@ -376,7 +407,7 @@ internal sealed partial class VideoReader
     /// decoding pass, the Xvid IDCT, and the first frame's tags (read once, by whichever reader first needs them; null
     /// where none would). Read-only once built; null for a Stream, a URL, streaming and headers only.
     /// </summary>
-    internal sealed record ProbeResult(IReadOnlyDictionary<string, string> Stream, long[] Pts, bool PtsFromFrames, bool? XvidIdct, Lazy<string?>? FrameTags);
+    internal sealed record ProbeResult(IReadOnlyDictionary<string, string> Stream, long[] Pts, bool PtsFromFrames, bool? XvidIdct, Lazy<string?>? FrameTags, bool StartsOver);
 
     /// <summary>This reader's probe, for another reader of the same file with the same options (a chunk's) to reuse.</summary>
     internal ProbeResult? Probed => _probed.Value;
@@ -626,6 +657,7 @@ internal sealed partial class VideoReader
         _timeBase = tb.Num / (double)tb.Den;
         _startPts = long.TryParse(stream.GetValueOrDefault("start_pts"), out var s) ? s : 0;
         _startSeconds = double.TryParse(stream.GetValueOrDefault("start_time"), NumberStyles.Float, CultureInfo.InvariantCulture, out var st) ? st : 0;
+        _startsOver = probed?.StartsOver ?? (!missingPts && StartsOver(pts));
         pts.Sort(); // packets come in decode order
 
         // Some containers (MPEG-PS) carry no pts on every packet. OpenCV then takes the frame's
@@ -639,7 +671,7 @@ internal sealed partial class VideoReader
         _ptsPending = missingPts && probed is null;
         if (_ptsPending && (o.FrameTimestampsFirst || Streaming || _stream is not null || _deinterlace || !DecodesInProcess))
             TakeTimestampPass(cancellationToken);
-        _probed = new(() => probed ?? (Streaming || headersOnly ? null : new(stream, Pts, _ptsFromFrames, _xvidIdct, _frameTags)));
+        _probed = new(() => probed ?? (Streaming || headersOnly ? null : new(stream, Pts, _ptsFromFrames, _xvidIdct, _frameTags, _startsOver)));
     }
 
     /// <summary>
@@ -654,6 +686,7 @@ internal sealed partial class VideoReader
         _knownPts = [.. _probesInProcess
             ? InProcessProbe.FrameTimestamps(_path, _ffmpegDirectory, _inputOptions, cancellationToken)
             : FrameTimestamps(_ffprobe, _path, _inputOptions, cancellationToken)];
+        _startsOver = StartsOver(_knownPts);
         _ptsPending = false;
     }
 

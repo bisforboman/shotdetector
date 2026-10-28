@@ -544,8 +544,10 @@ public sealed record DetectionOptions
     /// then yields it. Reported synchronously on the thread that runs the detection (DetectAsync's and DetectStreamAsync's
     /// background thread), so every shot is told before Detect returns; with <see cref="System.Progress{T}"/>, reports
     /// arrive on the thread that created it, possibly later. A run that fails or is cancelled has told the shots known by
-    /// then. One exception to "the result's shots": timestamps that start over (two streams joined) make the cuts come out
-    /// of order, and the shots told before that aren't told again from the sorted cuts.
+    /// then. Timestamps that start over (two streams joined) make the cuts come out of order: a file whose packets show
+    /// that before the first frame, and MPEG-PS decoded in-process (its timestamps arrive with the frames), tell every
+    /// shot at the end. A Stream or URL can't know it ahead: decoded in-process, its shots told before the timestamps
+    /// start over aren't told again from the sorted cuts (through the executable, ffmpeg makes them continue instead).
     /// </summary>
     public IProgress<Shot>? OnShot { get; init; }
 
@@ -1192,8 +1194,9 @@ public static partial class ShotDetection
         var stats = o.CollectStats ? new Stats() : null;
         var detectors = settings.Select(st => Build(st, o, video, minSceneLen, stats)).ToList();
 
-        // Shots stream out as cuts arrive only when nothing can reorder or change them later.
-        bool incremental = detectors.Count == 1 && !o.DropShortScenes && !o.MergeLastScene;
+        // Shots stream out as cuts arrive only when nothing can reorder or change them later: timestamps that start over
+        // (two streams joined) would bring cuts before those already told.
+        bool incremental = detectors.Count == 1 && !o.DropShortScenes && !o.MergeLastScene && !video.TimestampsStartOver;
 
         // Cuts as scenedetect keeps them (its cutting list, later sorted and de-duplicated).
         var cuts = new List<FrameTime>();
@@ -1225,8 +1228,9 @@ public static partial class ShotDetection
                     return; // the same cut twice
                 if (CompareCuts(cut, previous) < 0)
                 {
-                    // Timestamps that start over (two streams joined): scenedetect labels frames by time, so its cuts
-                    // come out of order too, and it sorts them at the end. Shots from here on come from the sorted cuts.
+                    // Timestamps that start over (two streams joined) where nothing showed it ahead (a Stream):
+                    // scenedetect labels frames by time, so its cuts come out of order too, and it sorts them at the end.
+                    // Shots from here on come from the sorted cuts.
                     incremental = false;
                     return;
                 }
