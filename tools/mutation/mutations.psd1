@@ -427,7 +427,10 @@
         # the queue's, which the next read lets go), its time is the reads' (shifted by the start), and FrameRate refuses them
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = ': _ahead.Current.Frame.Reference();'; Replace = ': _ahead.Current.Frame;'; Tests = 'VideoFrameReaderTakeTests.TakenFramesOutliveReadsAndTheReader'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'TimeSpan.FromSeconds((pts + StartOffset) * TimeBase.Value);'; Replace = 'TimeSpan.FromSeconds(pts * TimeBase.Value);'; Tests = 'VideoFrameReaderTakeTests.TakesAreTheDecodersFramesWhereTheReadsAre'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'NoFrameRate(nameof(TryTake));'; Replace = ''; Tests = 'VideoFrameReaderTakeTests.TakesArentAvailableWithFrameRate'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'NoFrameRate(nameof(TryTakeForwardTo));'; Replace = ''; Tests = 'VideoFrameReaderTakeTests.FrameRateTakesAreTheFpsFiltersFrames'; Project = 'tests/FrameReader.Tests' }
+
+        # ... with FrameRate, TryTake gives the fps filter's frames (issue #574's follow-up)
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'frame = NextFps() ? TakeFps(rate) : null;'; Replace = 'frame = Advance() ? Take() : null;'; Tests = 'VideoFrameReaderTakeTests.FrameRateTakesAreTheFpsFiltersFrames'; Project = 'tests/FrameReader.Tests' }
 
         # FrameReader: a frame without a timestamp (MPEG-PS's and AVI's last) gets ffmpeg's made-up one, the previous frame's
         # plus its duration; a 90-degree turn of 4:2:2 (not 4:2:2 once transposed) is refused, as CanRotate says

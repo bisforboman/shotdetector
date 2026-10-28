@@ -20,7 +20,10 @@ public sealed unsafe class DecodedFrame : IDisposable
         BitsPerRawSample = bitsPerRawSample;
     }
 
-    /// <summary>The frame's presentation timestamp, as <see cref="FrameDecoder.Pts"/> gave it.</summary>
+    /// <summary>
+    /// The frame's presentation timestamp, as <see cref="FrameDecoder.Pts"/> gave it (from a reader with
+    /// <see cref="VideoFrameReaderOptions.FrameRate"/>, the fps filter's, in 1/FrameRate units, as <see cref="VideoFrame.Pts"/>).
+    /// </summary>
     public long Pts { get; }
 
     /// <summary>

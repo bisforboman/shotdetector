@@ -155,7 +155,7 @@ deinterlacing and autorotation as the reader's `Decoder` says) and give the fram
 format: the conversion's options (`Width`, `Height`, `MaxWidth`, `FrameFormat`) don't apply to it, so one reader can
 both read and take, each moving the same position. A taken frame is the caller's to dispose, a reference to the decoded
 buffers (no copy), valid after the next read and after the reader is disposed; `DecodedFrame.Time` is its time as
-`VideoFrame.Time` (null without a timestamp). Not with `FrameRate` (its frames are the fps filter's). A picture every second, each file
+`VideoFrame.Time` (null without a timestamp). A picture every second, each file
 `ffmpeg -i video.mp4 -ss <i> -vf scale='min(1280,iw)':-2 -frames:v 1` byte for byte:
 
 ```csharp
@@ -168,8 +168,18 @@ for (var i = 0; reader.TryTakeForwardTo(TimeSpan.FromSeconds(i), out var frame);
 ```
 
 That is the frame at or after each second (ffmpeg's `-vf fps=1:round=up` where frames fall on the seconds);
-`-vf fps=1`'s default rounding keeps the last frame of each second's slot instead (0.48 s, 1.48 s, ... at 25 fps), as
-`FrameRate = new(1, 1)` reads do.
+`-vf fps=1`'s default rounding keeps the last frame of each second's slot instead (0.48 s, 1.48 s, ... at 25 fps). For
+those, take from a reader with `FrameRate`: `TryTake` then gives the fps filter's frames, and each file is
+`ffmpeg -i video.mp4 -vf fps=1,scale='min(1280,iw)':-2 frame_%06d.jpg`'s byte for byte (with `JpegQscale`: without it,
+ffmpeg's rate control carries over from one frame to the next in one run). `TryTakeAt` and `TryTakeForwardTo` stay
+refused there, as `Seek` and `TryReadForwardTo` are.
+
+```csharp
+using var reader = new VideoFrameReader("video.mp4", new() { FrameRate = new(1, 1), ReadAhead = 2 });
+for (var i = 1; reader.TryTake(out var frame); i++)
+    using (frame)
+        File.WriteAllBytes($"frame_{i:D6}.jpg", jpeg.Encode(frame, filter));
+```
 
 On Windows, `Decoder = new() { HardwareDecoding = true }` decodes on the GPU (D3D11VA) and copies each frame back,
 for 8-bit 4:2:0 video. On the desktop tested the pictures were identical to software decoding and it took about half

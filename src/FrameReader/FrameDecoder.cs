@@ -892,6 +892,9 @@ public sealed unsafe class FrameDecoder : IDisposable
         return new ReadOnlySpan<byte>(frame->data[(uint)plane], stride * rows);
     }
 
+    /// <summary>The decoder's bits per raw sample, which ffmpeg's command line hands its encoder.</summary>
+    internal int BitsPerRawSample => _dec->bits_per_raw_sample;
+
     /// <summary>
     /// The current frame as a <see cref="DecodedFrame"/> that stays valid after <see cref="Next"/> and after this decoder
     /// is disposed, until it is: a reference to the frame's buffers (FFmpeg's refcounting), not a copy. Deinterlaced row
