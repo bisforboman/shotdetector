@@ -148,6 +148,16 @@ internal sealed partial class VideoReader
         return (luma, [.. chroma]);
     }
 
+    /// <summary>
+    /// The time a frame decoded in-process is labelled with, as OpenCV's CAP_PROP_POS_MSEC: its own pts, the best-effort
+    /// timestamp where it has none. They differ after damage: once a late frame's pts goes back, libavcodec's best effort
+    /// takes the packets' dts instead, which can repeat the previous frame's time or run a frame or more behind, and every
+    /// later label would slide. Deinterlaced frames keep yadif's times. The seek still drops by the best effort, as the
+    /// executable's select does (whose frames only carry that: ffmpeg sets each frame's pts to it, so there they slide).
+    /// </summary>
+    internal static long LabelPts(long? framePts, long bestEffort, bool deinterlaced) =>
+        deinterlaced ? bestEffort : framePts ?? bestEffort;
+
     /// <summary>Frames(startFrame, count) decoded in-process: the same bytes per pipeline as the ffmpeg pipe, then the same resize.</summary>
     IEnumerable<byte[]> FramesInProcess(int startFrame, int? count, CancellationToken cancellationToken, int seekBack)
     {
@@ -205,7 +215,7 @@ internal sealed partial class VideoReader
         bool convertApart = convertThreads > 0 && !(_deinterlace && _yadif is not null);
         ConvertedOnThread = convertApart;
         long frameBytes = (long)_codedSize.W * _codedSize.H * 3 * (_pixelFormat.EndsWith("le", StringComparison.Ordinal) || _pixelFormat.EndsWith("be", StringComparison.Ordinal) ? 2 : 1);
-        using var handoff = new BlockingCollection<(FrameReader.DecodedFrame Frame, FrameColourTags Tags, long Timestamp)>((int)Math.Clamp(HandoffBytes / Math.Max(1, frameBytes), 1, 3));
+        using var handoff = new BlockingCollection<(FrameReader.DecodedFrame Frame, long Pts, FrameColourTags Tags, long Timestamp)>((int)Math.Clamp(HandoffBytes / Math.Max(1, frameBytes), 1, 3));
 
         // Stops both threads: the caller's token, ours, or the conversion thread failing (the caller then gets its error,
         // not a cancellation).
@@ -262,12 +272,12 @@ internal sealed partial class VideoReader
             try
             {
                 using var writer = new FrameWriter(null, _codedSize, Turn);
-                foreach (var (frame, tags, timestamp) in handoff.GetConsumingEnumerable(stop.Token))
+                foreach (var (frame, pts, tags, timestamp) in handoff.GetConsumingEnumerable(stop.Token))
                 {
                     using (frame)
                     {
                         writer.Frame = frame;
-                        full.Add(Write(writer, frame.Pts + offset, tags, timestamp), stop.Token);
+                        full.Add(Write(writer, pts + offset, tags, timestamp), stop.Token);
                     }
                 }
 
@@ -347,12 +357,13 @@ internal sealed partial class VideoReader
                     // The frame's colour tags (and MPEG-PS's timestamp), read here: a taken frame doesn't say them.
                     var tags = conversions is null ? default : FrameColourTags.Of(decoder);
                     long timestamp = collecting ? InProcessProbe.FrameTimestamp(decoder) : 0;
+                    long label = LabelPts(decoder.FramePts, pts, _deinterlace);
                     if (writer is null)
                     {
                         var frame = decoder.TakeFrame();
                         try
                         {
-                            handoff.Add((frame, tags, timestamp), stop.Token);
+                            handoff.Add((frame, label, tags, timestamp), stop.Token);
                         }
                         catch
                         {
@@ -362,7 +373,7 @@ internal sealed partial class VideoReader
                     }
                     else
                     {
-                        full.Add(Write(writer, pts + offset, tags, timestamp), stop.Token);
+                        full.Add(Write(writer, label + offset, tags, timestamp), stop.Token);
                     }
 
                     emitted++;

@@ -411,7 +411,11 @@ less CPU); there its point is ARM, where it gives x86's results.
   frame left in that buffer. In-process with the conversion on the decoding thread, one thread repeats and on MPEG-2
   equals scenedetect at one thread. The thread count itself changes such results, so two machines with different
   CPU counts can disagree.
-  docs/decisions/2026-10-22-damaged-files-best-effort.md has the measurement. On a **resolution change**
+  docs/decisions/2026-10-22-damaged-files-best-effort.md has the measurement. After damage a late frame's pts can go
+  back, and libavcodec's best-effort timestamp then takes the packets' dts, which can repeat a frame's time or run
+  behind it; OpenCV labels each frame by its own pts. In-process, ShotDetector does too; through the ffmpeg
+  executable it can't (ffmpeg sets every frame's pts to the best effort), so there such frames' numbers slide by a
+  frame or more until the next gap (docs/decisions/2026-10-28-damaged-frame-pts.md). On a **resolution change**
   mid-stream (two encodes joined), OpenCV scales the new frames to the stream's first size in its one conversion, and scenedetect
   numbers frames by their time, so where the timestamps start over its frame numbers do too: later frames overwrite
   earlier stats rows metric by metric (except the threshold detector's average, which scenedetect keeps and also

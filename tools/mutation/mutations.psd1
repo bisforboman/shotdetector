@@ -148,6 +148,9 @@
         @{ File = 'src/ShotDetector/CvResize.cs'; Find = '_frameRows = SourceRows.Select(r => r + cropY).ToArray();'; Replace = '_frameRows = SourceRows.ToArray();'; Tests = 'FastYuvTests.TenBitFrameAtATimeEqualsRowByRow' }
         @{ File = 'src/ShotDetector/CvResize.cs'; Find = 'bgr.AsSpan(first * n, (end - first) * n)'; Replace = 'bgr.AsSpan(0, (end - first) * n)'; Tests = 'FastYuvTests.TenBitFrameAtATimeEqualsRowByRow' }
 
+        # Damaged files: each frame labelled by its own pts as OpenCV's CAP_PROP_POS_MSEC, not the best-effort timestamp
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'long label = LabelPts(decoder.FramePts, pts, _deinterlace);'; Replace = 'long label = pts;'; Tests = 'InProcessTests.LabelsEachFrameByItsOwnPtsAsOpenCv' }
+
         # Timestamps starting over (two encodes joined): labelled by time, cuts sorted, stats one row per number
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'seconds < pts[previous] * timeBase - tolerance)'; Replace = 'false)'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '&& !(writer.HasStreamSize && writer.PixelFormat == _pixelFormat);'; Replace = '&& false;'; Tests = 'InProcessTests.JoinedEncodesWithTimestampsStartingOver' }
@@ -311,7 +314,7 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '|| _stream is not null || _deinterlace ||'; Replace = '|| _stream is not null ||'; Tests = 'ArrivingTimestampsTests.DeinterlacingTakesThePass' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'reachedEnd = count is null || emitted < count;'; Replace = 'reachedEnd = true;'; Tests = 'ArrivingTimestampsTests.APartialReadLeavesTheRestToThePass' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ': _ptsPending && packet < _collectedPts.Count ? _collectedPts[packet]'; Replace = ': false ? 0'; Tests = 'ArrivingTimestampsTests.ResultsAreThePass' }
-        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'full.Add(Write(writer, frame.Pts + offset, tags, timestamp), stop.Token);'; Replace = 'full.Add(Write(writer, frame.Pts + offset, tags, 0), stop.Token);'; Tests = 'ArrivingTimestampsTests.ResultsAreThePass' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'full.Add(Write(writer, pts + offset, tags, timestamp), stop.Token);'; Replace = 'full.Add(Write(writer, pts + offset, tags, 0), stop.Token);'; Tests = 'ArrivingTimestampsTests.ResultsAreThePass' }
         # ShotDetection.Probe's token also stops the stream list, read on first use (a stalled URL)
         @{ File = 'src/ShotDetector/InProcessProbe.cs'; Find = 'new ProbeOptions { InputOptions = Options(inputOptions), CancellationToken = cancellationToken };'; Replace = 'new ProbeOptions { InputOptions = Options(inputOptions) };'; Tests = 'FrameTimestampsTests.StreamsStopAtAStalledRead' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions, _cancellationToken)'; Replace = 'InProcessProbe.Streams(_path, _ffmpegDirectory, _inputOptions, CancellationToken.None)'; Tests = 'FrameTimestampsTests.StreamsStopAtAStalledRead' }
