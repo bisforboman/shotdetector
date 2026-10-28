@@ -290,8 +290,8 @@ public class ImageEncoderTests
                 Assert.Throws<ArgumentException>(() => encoder.Encode(frame, bad));
             }
 
-            // A filter that holds its frame gives none for it; the encoder still works afterwards.
-            Assert.Throws<FrameReaderException>(() => encoder.Encode(frame, new ImageFilterOptions { Filter = "reverse" }));
+            // A filter that holds its frame (yadif waits for the next one) gives none for it; the encoder still works afterwards.
+            Assert.Throws<FrameReaderException>(() => encoder.Encode(frame, new ImageFilterOptions { Filter = "yadif" }));
             using var back = new VideoFrameReader(new MemoryStream(encoder.Encode(frame, new ImageFilterOptions { MaxWidth = 100 })));
             Assert.True(back.TryRead(out var image));
             Assert.Equal(100, image.Width);
