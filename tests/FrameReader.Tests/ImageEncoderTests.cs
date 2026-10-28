@@ -257,6 +257,89 @@ public class ImageEncoderTests
         }
     }
 
+    // VideoFrameReader's takes (issue #574) through the encoder's graph: each file is ffmpeg's one command for that frame,
+    // byte for byte: TryTakeForwardTo's with the output -ss, TryTakeAt's with the input -ss; read ahead or not. A picture
+    // every second (the issue's loop: the frame at or after each second) is -vf fps=1:round=up's where frames fall on the
+    // seconds, as here; fps=1's default rounding keeps the last frame of each slot instead (0.48 s, 1.48 s, ...: that is
+    // FrameRate's, for reads). A source wider than the cap (scaled) and one narrower (kept).
+    [Theory]
+    [InlineData("wide.mp4", "-c:v mpeg4 -bf 2 -g 12 -q:v 4", "1600x900")]   // indexed: the forward takes jump
+    [InlineData("opengop.mkv", "-c:v mpeg2video -bf 2 -g 12", "320x240")]      // open GOPs
+    public void ReaderTakesAreFfmpegsOneCommand(string name, string encode, string size)
+    {
+        if (!CanCompare())
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-img-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            Run(["-v", "error", "-y", "-f", "lavfi", "-i", $"testsrc2=s={size}:r=25:d=3", .. encode.Split(' '), path]);
+            const string Vf = "scale='min(1280,iw)':-2";
+            var filter = new ImageFilterOptions { MaxWidth = 1280 };
+            using var jpeg = new ImageEncoder(new() { Format = ImageFormat.Jpg, JpegQscale = 2 });
+            string file = Path.Combine(dir, "out.jpg");
+            byte[] Ffmpeg(string[] seek, string[] input) =>
+                (Run(["-v", "error", "-y", .. seek, "-i", path, .. input, "-vf", Vf, "-frames:v", "1", "-q:v", "2", file]), File.ReadAllBytes(file)).Item2;
+
+            // fps=1:round=up's pictures, one file each.
+            Run("-v", "error", "-y", "-i", path, "-vf", "fps=1:round=up," + Vf, "-q:v", "2", Path.Combine(dir, "fps_%03d.jpg"));
+            var seconds = Directory.GetFiles(dir, "fps_*.jpg").Order(StringComparer.Ordinal).Select(File.ReadAllBytes).ToList();
+            Assert.Equal(3, seconds.Count);
+
+            var failures = new List<string>();
+            void Check(string what, byte[] expected, byte[] actual)
+            {
+                if (!expected.AsSpan().SequenceEqual(actual))
+                    failures.Add($"{name} {what}: {expected.Length} bytes from ffmpeg, {actual.Length} encoded; first difference at {FirstDifference(expected, actual)}");
+            }
+
+            foreach (int ahead in new[] { 0, 2 })
+            {
+                using (var reader = new VideoFrameReader(path, new VideoFrameReaderOptions { ReadAhead = ahead }))
+                {
+                    for (int i = 0; i <= seconds.Count; i++)
+                    {
+                        bool got = reader.TryTakeForwardTo(TimeSpan.FromSeconds(i), out var frame);
+                        Assert.Equal(i < seconds.Count, got);
+                        using (frame)
+                        {
+                            if (got)
+                                Check($"ReadAhead {ahead}, fps=1 picture {i}", seconds[i], jpeg.Encode(frame!, filter));
+                        }
+                    }
+                }
+
+                using (var reader = new VideoFrameReader(path, new VideoFrameReaderOptions { ReadAhead = ahead }))
+                {
+                    foreach (double t in new[] { 0.3, 1.04, 1.5, 2.9 })
+                    {
+                        string ss = t.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        Assert.True(reader.TryTakeForwardTo(TimeSpan.FromSeconds(t), out var frame));
+                        using (frame)
+                            Check($"ReadAhead {ahead}, forward to {ss}", Ffmpeg([], ["-ss", ss]), jpeg.Encode(frame, filter));
+                    }
+                }
+
+                using (var reader = new VideoFrameReader(path, new VideoFrameReaderOptions { ReadAhead = ahead }))
+                {
+                    foreach (double t in new[] { 2.0, 0.5, 1.04, 0.0 })
+                    {
+                        string ss = t.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        Assert.True(reader.TryTakeAt(TimeSpan.FromSeconds(t), out var frame));
+                        using (frame)
+                            Check($"ReadAhead {ahead}, at {ss}", Ffmpeg(["-ss", ss], []), jpeg.Encode(frame, filter));
+                    }
+                }
+            }
+
+            Assert.True(failures.Count == 0, string.Join("\n", failures));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // ShotDetector's save-images chain: square pixels at ffmpeg's default flags, then a bilinear scale to a width.
     const string SaveImagesChain = "scale='round(iw*sar)':ih,setsar=1,scale=160:'trunc(ih*160/iw)':flags=bilinear";
 

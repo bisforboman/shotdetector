@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using FFmpeg.AutoGen;
 
 namespace FrameReader;
@@ -147,7 +148,9 @@ public delegate void FrameHandler(int index, VideoFrame frame);
 /// Reads a video's frames at a chosen size and pixel format, in this process through FFmpeg's libraries. The pixels
 /// are the bytes ffmpeg's command line gives for <c>-vf scale=W:H:flags=bicubic,format=F -f rawvideo</c> (swscale with
 /// the frame's colour tags), so results can be checked against it. No allocations per frame: one output buffer, reused.
-/// With <see cref="VideoFrameReaderOptions.ReadAhead"/>, decoding runs ahead on a thread of its own.
+/// With <see cref="VideoFrameReaderOptions.ReadAhead"/>, decoding runs ahead on a thread of its own. The TryTake
+/// methods give the same frames decoded and not converted (<see cref="DecodedFrame"/>), for <see cref="ImageEncoder"/>'s
+/// ffmpeg-exact path.
 /// </summary>
 public sealed unsafe class VideoFrameReader : IDisposable
 {
@@ -226,8 +229,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <param name="time">From the input's start (as <see cref="VideoFrame.Time"/>).</param>
     public void Seek(TimeSpan time)
     {
-        if (_options.FrameRate is not null)
-            throw new InvalidOperationException("Seek isn't available with FrameRate.");
+        NoFrameRate(nameof(Seek));
         _ahead?.Clear(); // the frames read ahead are the old position's
         _keepFrom = _decoder.SeekLikeFfmpeg(time);
         _index = -1;
@@ -302,22 +304,90 @@ public sealed unsafe class VideoFrameReader : IDisposable
     {
         if (_options.FrameRate is { } rate)
             return TryReadFps(rate, out frame);
+        if (!Advance())
+        {
+            frame = default;
+            return false;
+        }
+
+        Convert(out frame);
+        return true;
+    }
+
+    /// <summary>
+    /// The next frame as <see cref="TryRead"/> positions it, decoded and not converted: the frame the decoder gives
+    /// (deinterlaced and autorotated as <see cref="VideoFrameReaderOptions.Decoder"/> says), at its own size and pixel
+    /// format, for <see cref="ImageEncoder.Encode(DecodedFrame, ImageFilterOptions?)"/>'s ffmpeg-exact graph. The
+    /// conversion's options (<see cref="VideoFrameReaderOptions.Width"/>, <see cref="VideoFrameReaderOptions.Height"/>,
+    /// <see cref="VideoFrameReaderOptions.MaxWidth"/>, <see cref="VideoFrameReaderOptions.FrameFormat"/>) don't apply
+    /// to it, so reads and takes mix on one reader: each moves the same position (and counts in
+    /// <see cref="VideoFrame.Index"/>). A reference to the decoded buffers, no copy (with
+    /// <see cref="VideoFrameReaderOptions.ReadAhead"/>, the queued frame's): the caller disposes it, and it stays valid
+    /// after the next read and after the reader is disposed. Not with <see cref="VideoFrameReaderOptions.FrameRate"/>.
+    /// </summary>
+    /// <param name="frame">The frame, the caller's to dispose; null at the end.</param>
+    /// <returns>False at the end.</returns>
+    /// <exception cref="FrameReaderException">Decoding failed.</exception>
+    /// <exception cref="InvalidOperationException">The reader has a <see cref="VideoFrameReaderOptions.FrameRate"/>.</exception>
+    public bool TryTake([NotNullWhen(true)] out DecodedFrame? frame)
+    {
+        NoFrameRate(nameof(TryTake));
+        frame = Advance() ? Take() : null;
+        return frame is not null;
+    }
+
+    /// <summary>
+    /// The frame at <paramref name="time"/> as <see cref="TryReadAt"/> finds it (<see cref="Seek"/>, then
+    /// <see cref="TryTake"/>), decoded and not converted: ffmpeg's <c>ffmpeg -ss T -i X</c> frame, for
+    /// <see cref="ImageEncoder.Encode(DecodedFrame, ImageFilterOptions?)"/>.
+    /// </summary>
+    /// <param name="time">From the input's start.</param>
+    /// <param name="frame">The frame, the caller's to dispose (see <see cref="TryTake"/>); null when there is none.</param>
+    /// <returns>False when there's no frame at or after the time.</returns>
+    public bool TryTakeAt(TimeSpan time, [NotNullWhen(true)] out DecodedFrame? frame)
+    {
+        NoFrameRate(nameof(TryTakeAt));
+        Seek(time);
+        return TryTake(out frame);
+    }
+
+    /// <summary>
+    /// The frame <see cref="TryReadForwardTo"/> gives for <paramref name="time"/> (with its keyframe jumps; the frame
+    /// given last again, as a new reference, when it is already at or after the time), decoded and not converted:
+    /// ffmpeg's <c>ffmpeg -i X -ss T</c> frame, for <see cref="ImageEncoder.Encode(DecodedFrame, ImageFilterOptions?)"/>.
+    /// </summary>
+    /// <param name="time">From the input's start.</param>
+    /// <param name="frame">The frame, the caller's to dispose (see <see cref="TryTake"/>); null when the video ends first.</param>
+    /// <returns>False when the video ends first.</returns>
+    public bool TryTakeForwardTo(TimeSpan time, [NotNullWhen(true)] out DecodedFrame? frame)
+    {
+        NoFrameRate(nameof(TryTakeForwardTo));
+        frame = AdvanceTo(time) ? Take() : null;
+        return frame is not null;
+    }
+
+    void NoFrameRate(string method)
+    {
+        if (_options.FrameRate is not null)
+            throw new InvalidOperationException($"{method} isn't available with FrameRate.");
+    }
+
+    /// <summary>To the next frame (after a seek, the first one ffmpeg's trim keeps); false at the end.</summary>
+    bool Advance()
+    {
         bool got;
         while ((got = Next()) && _keepFrom is { } keep && Pts + keep < 0)
         {
         }
 
         _current = got;
-        if (!got)
-        {
-            frame = default;
-            return false;
-        }
-
-        _index++;
-        Convert(out frame);
-        return true;
+        if (got)
+            _index++;
+        return got;
     }
+
+    /// <summary>The frame read last, as a reference the caller owns: taken from the decoder, or another of the queued one.</summary>
+    DecodedFrame Take() => _ahead is null ? _decoder.TakeFrame() : _ahead.Current.Frame.Reference();
 
     /// <summary>
     /// Reads forward to the first frame at or after <paramref name="time"/> (the frame a full decode has there, as
@@ -332,8 +402,20 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <returns>False when the video ends first.</returns>
     public bool TryReadForwardTo(TimeSpan time, out VideoFrame frame)
     {
-        if (_options.FrameRate is not null)
-            throw new InvalidOperationException("TryReadForwardTo isn't available with FrameRate.");
+        NoFrameRate(nameof(TryReadForwardTo));
+        if (!AdvanceTo(time))
+        {
+            frame = default;
+            return false;
+        }
+
+        Convert(out frame);
+        return true;
+    }
+
+    /// <summary>To the first frame at or after <paramref name="time"/> (<see cref="TryReadForwardTo"/>'s positioning); false at the end.</summary>
+    bool AdvanceTo(TimeSpan time)
+    {
         long keep = _decoder.TrimOffset(time);
         if (!(_current && Pts + keep >= 0))
         {
@@ -381,15 +463,10 @@ public sealed unsafe class VideoFrameReader : IDisposable
 
             _current = got;
             if (!got)
-            {
-                frame = default;
                 return false;
-            }
-
             _index++;
         }
 
-        Convert(out frame);
         return true;
     }
 
