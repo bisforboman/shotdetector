@@ -15,6 +15,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
+- A Stream whose timestamps start over: in-process and the executable give different shots
+  - Why: Both decoders should give the same. Two h264 .ts encodes joined, the second's timestamps starting over (TimestampResetTests' JoinedEncodes), content detector, FFmpeg 8.1: as a file, both give cuts 50, 75, 100 (frames labelled by time, as scenedetect labels them); as a Stream (`Detect(Stream)`, `DetectStreamAsync(Stream)`), in-process gives 50, 75, 100 and the executable 50, 100, 125, 175, because ffmpeg without `-copyts` makes an mpegts discontinuity's timestamps continue. Pick the reference (the file's labels, or ffmpeg's continuing times, which no scenedetect run compares) and make the other decoder match. In-process, a Stream also can't know the reset ahead, so its OnShot listener misses the shots it told before (OnShot's XML doc; docs/decisions/2026-10-28-retell-shots-after-reset.md); continuing times would end that too
+  - Status: Open
+
 ## Waiting
 
 - Parallel detection above 8 CPUs: more than 4 chunks and 16 decoder threads in total
@@ -65,10 +69,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - The last x86-only SIMD paths as Vector128: `Hsv.Convert` (AVX2/NEON only), `CvResize.HResize` (SSE2 only), `HashDetector` (scalar everywhere)
   - Why: On browser-wasm these run scalar (wasm profile, 2026-10-25). The ceiling is small: a few hundred ms of a 4.5 s Sintel run in the browser (decoding is ~80 %), nothing natively, where the existing x86/ARM paths stay. Worth doing only alongside other wasm work, with byte-identical results and no native slowdown
-  - Status: Maybe
-
-- Shots told before timestamps start over are not told again
-  - Why: `DetectionOptions.OnShot` and `DetectStreamAsync` tell shots in order as cuts are confirmed; when timestamps start over (two streams joined) the cuts come out of order, the result's shots are sorted, and the shots told before that point aren't told again, so a listener's list can differ from `DetectionResult.Shots`. Documented in OnShot's XML doc (#497) but not fixed: e.g. tell a correction, or hold shots back once an out-of-order cut is seen
   - Status: Maybe
 
 - An image encoder that scales from a decoded frame, exactly as ffmpeg's one command
