@@ -437,5 +437,19 @@
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'pts = _lastPts == ffmpeg.AV_NOPTS_VALUE ? 0 : _lastPts + _lastDuration;'; Replace = '{ }'; Tests = 'VideoFrameReaderTests.AFrameWithoutATimestampGetsFfmpegsTime'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (duration > 0 && !unreliable && !(duration == 1 && diff > 2))'; Replace = 'if (false)'; Tests = 'VideoFrameReaderTests.AFrameWithoutATimestampGetsFfmpegsTime'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '|| (t && desc->log2_chroma_w != desc->log2_chroma_h)'; Replace = ''; Tests = 'FrameDecoderTests.DeinterlacesRotatesAndReadsStreams'; Project = 'tests/FrameReader.Tests' }
+
+        # FrameReader: packets of frames nothing references, before the wanted frame, are left out of the decoder, and every
+        # frame given is the full decode's: only such packets; after a seek H.264 only from an IDR; an SPS that's
+        # field-coded or without a reorder depth, DivX packed B-frames, interlaced MPEG-2, packets without a pts turn it off;
+        # HEVC's only of the top temporal layer; the seek's and ReadAt's next targets
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '|| !u.Unreferenced(new ReadOnlySpan<byte>(pkt->data, pkt->size))'; Replace = ''; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/UnreferencedPackets.cs'; Find = '&& _h264Ready && _afterIdr;'; Replace = '&& _h264Ready;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/UnreferencedPackets.cs'; Find = '_off |= !(_h264Ready = ready);'; Replace = '_h264Ready = true;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/UnreferencedPackets.cs'; Find = "if (p[j] == 'p')"; Replace = 'if (false)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/UnreferencedPackets.cs'; Find = '&& tid == _hevcTopLayer'; Replace = ''; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/UnreferencedPackets.cs'; Find = 'AVCodecID.AV_CODEC_ID_MPEG2VIDEO when progressive'; Replace = 'AVCodecID.AV_CODEC_ID_MPEG2VIDEO'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (pkt->pts == ffmpeg.AV_NOPTS_VALUE)'; Replace = 'if (false)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_decoder.SkipBefore = -_keepFrom.Value;'; Replace = '_decoder.SkipBefore = long.MaxValue;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'reader.SkipTo(times[i + 1]);'; Replace = 'reader.SkipTo(times[^1]);'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
     )
 }

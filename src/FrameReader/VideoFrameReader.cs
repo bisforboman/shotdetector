@@ -69,6 +69,9 @@ public sealed record VideoFrameReaderOptions
     /// the frame being decoded. 0: decode in the read.
     /// </summary>
     public int ReadAhead { get; init; }
+
+    /// <summary>Decode every packet, also those of frames before the one wanted that nothing references (tests compare).</summary>
+    internal bool DecodeEveryPacket { get; init; }
 }
 
 /// <summary>A decoded, converted frame: valid until the next read from its <see cref="VideoFrameReader"/>.</summary>
@@ -204,6 +207,8 @@ public sealed unsafe class VideoFrameReader : IDisposable
         if (_options.ReadAhead < 0)
             throw new ArgumentException("ReadAhead is 0 or more.", nameof(options));
         _decoder = open(_options.Decoder);
+        if (_options.FrameRate is null && !_options.DecodeEveryPacket)
+            _decoder.SkipUnreferenced();
         if (_options.ReadAhead > 0)
             _ahead = new ReadAhead(_decoder, _options.ReadAhead);
     }
@@ -237,6 +242,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
         _ahead?.Clear(); // the frames read ahead are the old position's
         _keepFrom = _decoder.SeekLikeFfmpeg(time);
         _lastPts = ffmpeg.AV_NOPTS_VALUE; // as ffmpeg's decoder after an input -ss: no frame before
+        _decoder.SkipBefore = -_keepFrom.Value; // the frames the trim drops: those nothing references needn't decode
         _index = -1;
         _current = false;
     }
@@ -295,6 +301,8 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!reader.TryReadForwardTo(times[i], out var frame))
                     break;
+                if (i + 1 < to)
+                    reader.SkipTo(times[i + 1]); // while the handler works, decoding ahead needn't decode what the next time passes over
                 handler(i, frame);
                 Interlocked.Increment(ref found);
             }
@@ -403,7 +411,8 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// jumps there instead of decoding the frames in between (from the keyframe before, so open GOPs decode right): a
     /// picture every second is one pass, a picture every few seconds or more decodes a fraction of the video. When the
     /// frame last read is already at or after the time, that frame again. Times behind it don't go back (use
-    /// <see cref="Seek"/>).
+    /// <see cref="Seek"/>). Frames before it that no other frame references (most B-frames of H.264, HEVC, MPEG-1/2 and
+    /// MPEG-4 Part 2) stay out of the decoder: the frames given are those of decoding everything, byte for byte.
     /// </summary>
     /// <param name="time">From the input's start.</param>
     /// <param name="frame">The frame, valid until the next call.</param>
@@ -421,10 +430,17 @@ public sealed unsafe class VideoFrameReader : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// The next read is forward to <paramref name="time"/> or later: frames before it that nothing references needn't be
+    /// decoded (the decoding thread, reading ahead, leaves them out from now on).
+    /// </summary>
+    void SkipTo(TimeSpan time) => _decoder.SkipBefore = -_decoder.TrimOffset(time);
+
     /// <summary>To the first frame at or after <paramref name="time"/> (<see cref="TryReadForwardTo"/>'s positioning); false at the end.</summary>
     bool AdvanceTo(TimeSpan time)
     {
         long keep = _decoder.TrimOffset(time);
+        _decoder.SkipBefore = -keep; // frames before the one wanted that nothing references needn't decode
         if (!(_current && Pts + keep >= 0))
         {
             // Far ahead (the target's keyframe, per the index, at least a second past where decoding is): jump there. Frames that come out
@@ -541,6 +557,9 @@ public sealed unsafe class VideoFrameReader : IDisposable
         _decoder.EnsureRows(0, _decoder.Frame->height);
         return _decoder.Frame;
     }
+
+    /// <summary>Packets left out of the decoder so far (tests).</summary>
+    internal long SkippedPackets => _decoder.SkippedPackets;
 
     /// <summary>How many times reading ahead paused to look at the index (tests).</summary>
     internal int ReadAheadPauses => _ahead?.Pauses ?? 0;

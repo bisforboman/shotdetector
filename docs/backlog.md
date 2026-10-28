@@ -23,6 +23,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Found 2026-10-28 while fixing the timestamp-less last frame: a 2 s `-c:v mpeg2video -bf 2 -g 12` .mpg (start time 0.54 s), read from the start: `TryReadForwardTo(0.9 s)` gives the frame at 1.44 s and `TryReadForwardTo(1.85 s)` none, where the same clip in mkv gives 0.92 s and 1.88 s (main 6266830 too, so not that fix's). The jump seeks with `avformat_seek_file` to the target (no `SeekPoint` margin, while MPEG-PS seeks by dts), and the first call compares the target with 0 rather than the start time, so it jumps from 0.46 s on. ReadAt and the TryTake methods share it. Find where MPEG-PS's seek lands, then give the frames a full decode gives (as for mkv)
   - Status: Open
 
+- `VideoFrameReader.Seek` (and `TryReadAt`) near the start of an AVI with B-frames throws "FFmpeg (seek): Operation not permitted"
+  - Why: Found 2026-10-28 with the unreferenced-frames tests: `-c:v mpeg4 -bf 2` (or libxvid) in .avi, `TryReadAt(0)` and `TryReadAt(0.1 s)` throw while 0.7 s works (main 6266830 too). `SeekPoint` takes ffmpeg's 3/23 s margin for formats that seek by dts with B-frames, which puts the timestamp before the start, and `avformat_seek_file` refuses it; ffmpeg's command line only warns ("could not seek to position") and reads from where it is. Do as it does
+  - Status: Open
+
 ## Waiting
 
 - At the next FrameReader release, count the FrameReader features that needed ShotDetector too (docs/frame-reader-product.md, "When to reconsider"; features, not commits, since 2026-10-28)

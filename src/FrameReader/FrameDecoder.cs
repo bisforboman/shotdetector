@@ -23,6 +23,11 @@ public sealed unsafe class FrameDecoder : IDisposable
     readonly AVRational _sar; // the container's sample aspect ratio, which ffmpeg's command line puts on every frame (0/1: none)
     bool _draining, _done;
 
+    // Packets of frames nothing references, before SkipBefore, aren't sent to the decoder (VideoFrameReader's reads
+    // forward); null: every packet is.
+    UnreferencedPackets? _unreferenced;
+    long _skipBefore = long.MinValue;
+
     // Deinterlacing: decoded frames go through buffer -> yadif -> buffersink (as ffmpeg's -vf yadif), and _frame is
     // the sink's output. The graph is built from the first decoded frame.
     readonly bool _deinterlace;
@@ -320,6 +325,7 @@ public sealed unsafe class FrameDecoder : IDisposable
             throw new InvalidOperationException("A deinterlacing decoder can seek only before its first frame.");
         Check(ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, us, us, 0), "seek");
         ffmpeg.avcodec_flush_buffers(_dec);
+        _unreferenced?.Restart();
         _draining = _done = false;
     }
 
@@ -742,6 +748,9 @@ public sealed unsafe class FrameDecoder : IDisposable
             int got = ffmpeg.avcodec_receive_frame(_dec, into);
             if (got == 0)
             {
+                if (into->best_effort_timestamp != into->pts)
+                    _unreferenced?.TurnOff(); // its time isn't its packet's: left-out packets could move it
+
                 if (_hwDevice != null && (AVPixelFormat)into->format == _hwFormat)
                     FromHardware(into);
                 if (_sar.num != 0)
@@ -766,12 +775,60 @@ public sealed unsafe class FrameDecoder : IDisposable
                 continue;
             }
 
-            if (_pkt->stream_index == _stream)
+            if (_pkt->stream_index == _stream && !Skips(_pkt))
                 ffmpeg.avcodec_send_packet(_dec, _pkt); // errors (damaged data) only lose that packet
             ffmpeg.av_packet_unref(_pkt);
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Leaves packets out of the decoder whose frames are before <see cref="SkipBefore"/> and that no other frame
+    /// references (<see cref="UnreferencedPackets"/>): every other frame decodes to the same bytes. Not when
+    /// deinterlacing (yadif reads the neighbours) or decoding on the GPU. Before the first read.
+    /// </summary>
+    internal void SkipUnreferenced()
+    {
+        if (!_deinterlace && _hwDevice == null)
+            _unreferenced = UnreferencedPackets.For(_fmt->streams[_stream]->codecpar);
+    }
+
+    /// <summary>
+    /// Packets with a pts below this (the stream's time base) may be left out when nothing references their frames
+    /// (<see cref="SkipUnreferenced"/>); long.MinValue: none. Set by the reader between reads, read by the decoding thread.
+    /// </summary>
+    internal long SkipBefore
+    {
+        get => Volatile.Read(ref _skipBefore);
+        set => Volatile.Write(ref _skipBefore, value);
+    }
+
+    /// <summary>Packets left out so far (tests).</summary>
+    internal long SkippedPackets { get; private set; }
+
+    /// <summary>
+    /// Whether to leave this packet of the video stream out. Only with a pts (a packet without one turns it off for good:
+    /// a frame without a timestamp gets the one before's plus its duration, which a left-out frame would change), only
+    /// while every frame's best-effort timestamp is its pts (FFmpeg's correction found no faulty pts), keyframes
+    /// and frames before the target looked at (their parameter sets and headers).
+    /// </summary>
+    bool Skips(AVPacket* pkt)
+    {
+        if (_unreferenced is not { } u)
+            return false;
+        if (pkt->pts == ffmpeg.AV_NOPTS_VALUE)
+        {
+            u.TurnOff();
+            return false;
+        }
+
+        if ((pkt->flags & ffmpeg.AV_PKT_FLAG_KEY) == 0 && pkt->pts >= SkipBefore)
+            return false;
+        if (pkt->data == null || !u.Unreferenced(new ReadOnlySpan<byte>(pkt->data, pkt->size)) || pkt->pts >= SkipBefore)
+            return false;
+        SkippedPackets++;
+        return true;
     }
 
     /// <summary>The current frame, as FFmpeg holds it (ShotDetector's conversions read it directly).</summary>
