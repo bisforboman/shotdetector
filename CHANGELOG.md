@@ -6,6 +6,20 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.19.0 – 2026-10-28
+
+MPEG-PS files skip a decoding pass, and mp4/mov files are read once.
+
+### Faster
+
+- In-process, an MP4/MOV file's probe no longer reads the whole file for the packets' timestamps before detection
+  (FrameReader's packet scan reads only the sample tables): one read of the file instead of two, which matters on slow
+  network shares. Results are unchanged.
+- MPEG-PS files (`.mpg`, `.vob`: packets without a pts) decoded in-process no longer take a whole decoding pass for the
+  frames' timestamps before detection: each frame's timestamp comes with the frame. Results are unchanged. Meanwhile
+  `DetectionProgress.ExpectedFrames` counts against the stream's frame count, else its duration × frame rate, instead of
+  the decoded frames. A start time, deinterlacing and the ffmpeg executable still take the pass first.
+
 ## 3.18.0 – 2026-10-27
 
 The ffmpeg-executable path runs in chunks and follows colour tags that change midway.

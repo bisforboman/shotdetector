@@ -45,7 +45,9 @@ test-logger commit), 1 of 35 since 2.8.0, met with enough commits; the user's ch
 (docs/decisions/2026-10-24-framereader-stays.md). 2.11.1: 0 of 25 (the cancellation fixes each touch one product), the
 second release in a row under 1 in 20 over 20 or more commits: met again; the user's choice:
 don't split, keep counting (docs/decisions/2026-10-27-framereader-stays-again.md). 2.12.0: 0 of 17 (the image encoder
-and `MaxWidth` touch FrameReader alone), fewer than 20: the window joins the next release's.
+and `MaxWidth` touch FrameReader alone), fewer than 20: the window joins the next release's. 2.13.0: 0 of 8 (WebP and the mp4/mov
+scan touch one product each), 0 of 25 with 2.12.0's window: met again; not asked, per the 2026-10-27 answer (ask only
+when something in "What would change the answer" happens, none has).
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
