@@ -876,7 +876,8 @@ public class TemplateTests
     public void TemplatesSubstituteLikePythonsSafeSubstitute(string template, string expected) =>
         Assert.Equal(expected, Export.Substitute(template, new Dictionary<string, string> { ["VIDEO_NAME"] = "clip", ["SCENE_NUMBER"] = "007" }));
 
-    // save-images --quality/--compression: the defaults are scenedetect's (JPEG 95 as -q:v 2, PNG 3, WebP 100).
+    // save-images --quality/--compression: the defaults are scenedetect's (JPEG 95 as -q:v 2, PNG 3, WebP 100). WebP names
+    // libwebp: ffmpeg's default for .webp where it's built, libwebp_anim, wrote one animation for a run's several images.
     [Theory]
     [InlineData("jpg", null, null, "-q:v 2")]
     [InlineData("jpg", 100, null, "-q:v 2")]
@@ -884,8 +885,8 @@ public class TemplateTests
     [InlineData("jpg", 50, null, "-q:v 16")]
     [InlineData("png", null, null, "-compression_level 3")]
     [InlineData("png", null, 9, "-compression_level 9")]
-    [InlineData("webp", null, null, "-quality 100")]
-    [InlineData("webp", 80, null, "-quality 80")]
+    [InlineData("webp", null, null, "-c:v libwebp -quality 100")]
+    [InlineData("webp", 80, null, "-c:v libwebp -quality 80")]
     public void ImageQualityAsFfmpegsOptions(string format, int? quality, int? compression, string expected) =>
         Assert.Equal(expected, string.Join(' ', new ImageOptions { Format = format, Quality = quality, Compression = compression }.EncoderOptions()));
 
