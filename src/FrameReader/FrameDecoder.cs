@@ -897,7 +897,7 @@ public sealed unsafe class FrameDecoder : IDisposable
         var clone = ffmpeg.av_frame_clone(_frame);
         if (clone == null)
             throw new FrameReaderException(FrameReaderError.DecodeFailed, "Can't reference the frame.");
-        return new DecodedFrame(clone, Pts);
+        return new DecodedFrame(clone, Pts, _dec->bits_per_raw_sample);
     }
 
     // Hardware decoding: the device, the GPU's pixel format for this codec, and the frame each GPU frame is copied to.

@@ -395,5 +395,14 @@
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '? ffmpeg.av_mul_q(new AVRational { num = height * src->width, den = width * src->height }, sar)'; Replace = '? sar'; Tests = 'ImageEncoderTests.TagsAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'var tags = _options.FrameFormat == FrameFormat.Gray8'; Replace = 'var tags = false'; Tests = 'ImageEncoderTests.TagsAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'into->sample_aspect_ratio = _sar;'; Replace = '{ }'; Tests = 'ImageEncoderTests.TagsAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
+
+        # ImageEncoder from a decoded frame: ffmpeg's one command's graph (the -vf before the conversion), the decoder's bits per
+        # raw sample only through a metadata-only graph (else a 10-bit PNG gains an sBIT chunk), and the filter options' rules
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'OpenEncoder(_filtered, _metaOnly ? decoded?.BitsPerRawSample ?? 0 : 0);'; Replace = 'OpenEncoder(_filtered, decoded?.BitsPerRawSample ?? 0);'; Tests = 'ImageEncoderTests.DecodedFramesAreFfmpegsOneCommand'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'filter = input.Filter + "," + filter;'; Replace = 'filter = "null," + filter;'; Tests = 'ImageEncoderTests.DecodedFramesAreFfmpegsOneCommand'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(max <= 0 || Width is not null)'; Replace = '(Width is not null)'; Tests = 'ImageEncoderTests.RefusesFiltersThatDontGoTogether'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (Width is null != Height is null || Width <= 0 || Height <= 0)'; Replace = 'if (Width <= 0 || Height <= 0)'; Tests = 'ImageEncoderTests.RefusesFiltersThatDontGoTogether'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(string.IsNullOrWhiteSpace(Filter) || Width is not null || MaxWidth is not null)'; Replace = '(string.IsNullOrWhiteSpace(Filter))'; Tests = 'ImageEncoderTests.RefusesFiltersThatDontGoTogether'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (parsed < 0 && input.Filter is not null)'; Replace = 'if (false)'; Tests = 'ImageEncoderTests.RefusesFiltersThatDontGoTogether'; Project = 'tests/FrameReader.Tests' }
     )
 }

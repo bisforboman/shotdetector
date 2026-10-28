@@ -124,6 +124,23 @@ frame of a source tagged BT.709 is converted to YUV with BT.601's matrix, as ffm
 command keeps the source's matrix). A `Yuv420p` frame of a 4:2:0 source at its own size is exactly
 `ffmpeg -i X -frames:v 1 out.jpg`.
 
+For ffmpeg's one command itself, scaled or not, encode the decoder's frame (`FrameDecoder.TakeFrame`) instead: the
+`DecodedFrame` overloads run ffmpeg's own graph, the frame, then a size or filter (`ImageFilterOptions`: `Width` and
+`Height` as `-vf scale=W:H`, `MaxWidth` as `-vf scale='min(N,iw)':-2`, or `Filter`, any `-vf` chain that gives one frame
+for each frame in), then the conversion to the encoder's format, so the file is `ffmpeg [-ss T] -i X [-vf ...] -frames:v 1
+out.jpg`'s for that frame, byte for byte with the same FFmpeg build. The decoder's options are ffmpeg's: its frames are
+autorotated as ffmpeg's are, and deinterlaced only as with `-vf yadif,...`.
+
+```csharp
+using var decoder = new FrameDecoder("video.mp4");
+using var png = new ImageEncoder(new() { Format = ImageFormat.Png });
+if (decoder.Next())
+{
+    using var frame = decoder.TakeFrame();
+    File.WriteAllBytes("first.png", png.Encode(frame, new ImageFilterOptions { MaxWidth = 1280 })); // ffmpeg -i video.mp4 -vf scale='min(1280,iw)':-2 -frames:v 1 first.png
+}
+```
+
 On Windows, `Decoder = new() { HardwareDecoding = true }` decodes on the GPU (D3D11VA) and copies each frame back,
 for 8-bit 4:2:0 video. On the desktop tested the pictures were identical to software decoding and it took about half
 the CPU (24 s instead of 44 s for the 12-minute film), but 3.6x the wall time (20 s instead of 5.5 s): every frame
@@ -459,7 +476,7 @@ https):
 | `AudioWriter`, `Audio.Convert` | the codec's (`libmp3lame`, `aac`, `pcm_s16le`, ...) | `abuffer`, `abuffersink`, `aformat`, `aresample` | the container's (`mp3`, `ipod` for .m4a, `wav`, ...) |
 | `VideoWriter` | `libx264` (and `aac` for an audio track) | `buffer`, `buffersink`, `format`, `null`, `scale` (and the audio ones) | `mp4`, `matroska` or `mov` |
 | `Remux.Copy` | | | the output's (`dash` for an .mpd) |
-| `ImageEncoder` | `mjpeg` (JPEG), `png` (PNG), `libwebp` (WebP) | `buffer`, `buffersink`, `format`, `scale` | |
+| `ImageEncoder` | `mjpeg` (JPEG), `png` (PNG), `libwebp` (WebP) | `buffer`, `buffersink`, `format`, `scale` (and an `ImageFilterOptions.Filter`'s own) | |
 
 ```csharp
 var missing = FFmpegLibraries.Missing(Capability.Deinterlace | Capability.AudioFilter | Capability.Mp3 | Capability.Dash)
