@@ -66,7 +66,7 @@ public sealed record ImageOptions
 
     /// <summary>
     /// JPEG or WebP quality, 0-100 (save-images --quality); null: scenedetect's defaults, 95 for JPEG and 100 for WebP.
-    /// WebP's is libwebp's scale, as OpenCV's; JPEG's maps onto ffmpeg's -q:v 31-2, so files are similar, not identical.
+    /// WebP's is libwebp's scale, as OpenCV's; JPEG's maps onto ffmpeg's -q:v 31-2, so files are similar to OpenCV's, not identical.
     /// </summary>
     public int? Quality { get; init; }
 
@@ -79,8 +79,23 @@ public sealed record ImageOptions
     /// </summary>
     public string FileName { get; init; } = "$VIDEO_NAME-Scene-$SCENE_NUMBER-$IMAGE_NUMBER";
 
-    /// <summary>ffmpeg's encoder options for the format, quality and compression.</summary>
+    /// <summary>
+    /// ffmpeg's encoder options for the format, quality and compression. WebP names its encoder: ffmpeg's default for .webp,
+    /// libwebp_anim where it is built, holds every frame for one animation, so a run writing several images wrote one file.
+    /// </summary>
     internal string[] EncoderOptions()
+    {
+        var o = Encoder();
+        return o.Format switch
+        {
+            FrameReader.ImageFormat.Png => ["-compression_level", o.PngCompressionLevel!.Value.ToString(CultureInfo.InvariantCulture)],
+            FrameReader.ImageFormat.WebP => ["-c:v", "libwebp", "-quality", o.WebPQuality!.Value.ToString(CultureInfo.InvariantCulture)],
+            _ => ["-q:v", o.JpegQscale!.Value.ToString(CultureInfo.InvariantCulture)],
+        };
+    }
+
+    /// <summary>The format, quality and compression as FrameReader's encoder takes them: the same as <see cref="EncoderOptions"/>.</summary>
+    internal FrameReader.ImageEncoderOptions Encoder()
     {
         if (Quality is < 0 or > 100)
             throw new ArgumentException("Quality is 0 to 100.", nameof(Quality));
@@ -88,14 +103,17 @@ public sealed record ImageOptions
             throw new ArgumentException("Compression is 0 to 9.", nameof(Compression));
         return Format switch
         {
-            "png" => ["-compression_level", (Compression ?? 3).ToString(CultureInfo.InvariantCulture)],
-            "webp" => ["-quality", (Quality ?? 100).ToString(CultureInfo.InvariantCulture)],
+            "png" => new() { Format = FrameReader.ImageFormat.Png, PngCompressionLevel = Compression ?? 3 },
+            "webp" => new() { Format = FrameReader.ImageFormat.WebP, WebPQuality = Quality ?? 100 },
 
             // OpenCV's JPEG quality has no ffmpeg equivalent: 95 (scenedetect's default) and above is -q:v 2, ffmpeg's
             // best usual setting, and lower qualities spread evenly down to -q:v 31 at 0.
-            _ => ["-q:v", Math.Clamp((int)Math.Round(2 + ((95 - (Quality ?? 95)) * 29 / 95.0)), 2, 31).ToString(CultureInfo.InvariantCulture)],
+            _ => new() { Format = FrameReader.ImageFormat.Jpg, JpegQscale = Math.Clamp((int)Math.Round(2 + ((95 - (Quality ?? 95)) * 29 / 95.0)), 2, 31) },
         };
     }
+
+    /// <summary>Each image's filters after picking its frame: square pixels (at ffmpeg's default flags), then the size.</summary>
+    internal string Filter() => "scale='round(iw*sar)':ih,setsar=1" + ScaleFilter();
 
     /// <summary>The ffmpeg scale filter for these settings (bilinear, as scenedetect's default scale-method).</summary>
     internal string ScaleFilter() => (Width, Height, Scale) switch
@@ -110,7 +128,8 @@ public sealed record ImageOptions
 
 /// <summary>
 /// Uses a shot list like scenedetect's save-images and split-video commands, with the same
-/// defaults and file names. Both run ffmpeg.
+/// defaults and file names. Both run ffmpeg; save-images runs FFmpeg's libraries in this process when the detection decoded
+/// there.
 /// </summary>
 public static partial class Export
 {
@@ -140,6 +159,10 @@ public static partial class Export
     /// Same frames as scenedetect (by its frame positions), but encoded by ffmpeg at
     /// -q:v 2 rather than OpenCV at JPEG quality 95, so files are similar, not byte-identical
     /// (<see cref="ImageOptions.Quality"/>, <see cref="ImageOptions.Compression"/>).
+    /// When the detection decoded in this process (<see cref="DetectedVideo.DecodedInProcess"/>) and the libraries have the
+    /// format's encoder, the images are encoded there too, through FrameReader: the files the ffmpeg executable of the same
+    /// FFmpeg build writes, byte for byte (a JPEG's comment names libavcodec's version, a WebP carries libwebp's encoding);
+    /// otherwise by the ffmpeg executable.
     /// </summary>
     public static IReadOnlyList<string> SaveImages(DetectionResult result,
         string outputDir,
@@ -151,6 +174,7 @@ public static partial class Export
             throw new InvalidOperationException("Saving images needs the video as a file path or URL; the input was a Stream.");
         var io = options ?? new ImageOptions();
         string[] quality = io.EncoderOptions();
+        string filter = io.Filter();
         int numImages = io.NumImages, frameMargin = io.FrameMargin;
         if (numImages < 1 || frameMargin < 0)
             throw new ArgumentException("NumImages must be at least 1 and FrameMargin at least 0.");
@@ -189,15 +213,21 @@ public static partial class Export
             }
         }
 
-        // One ffmpeg pass: select the wanted frames (in order) into numbered temp files, then rename.
         int[] frames = wanted.Select(w => w.Frame).Distinct().Order().ToArray();
+        if (video.DecodesInProcess && !IsUrl(videoPath) && CanEncodeInProcess(io, filter))
+        {
+            SaveImagesInProcess(videoPath, frames, wanted, io.Encoder(), filter, cancellationToken);
+            return wanted.Select(w => w.File).ToList();
+        }
+
+        // One ffmpeg pass: select the wanted frames (in order) into numbered temp files, then rename.
         string temp = Path.Combine(outputDir, $".shotdetector-{Guid.NewGuid():N}");
         Directory.CreateDirectory(temp);
         try
         {
             string filterFile = Path.Combine(temp, "filter.txt");
             File.WriteAllText(filterFile,
-                $"select='{string.Join("+", frames.Select(f => $"eq(n\\,{f})"))}',scale='round(iw*sar)':ih,setsar=1{io.ScaleFilter()}");
+                $"select='{string.Join("+", frames.Select(f => $"eq(n\\,{f})"))}',{filter}");
             VideoReader.Run(video.FfmpegExe,
                 ["-v", "error", "-nostdin", "-y", .. VideoReader.InputOptions(videoPath), .. VideoReader.MaxPixels, "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
                     "-fps_mode", "passthrough", .. quality, Path.Combine(temp, $"%06d.{io.Format}")],
@@ -213,6 +243,64 @@ public static partial class Export
         }
 
         return wanted.Select(w => w.File).ToList();
+    }
+
+    static bool IsUrl(string path) =>
+        Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
+
+    /// <summary>Whether the loaded libraries have the format's encoder and the filters (never inlined: browser WebAssembly has no FFmpeg).</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static bool CanEncodeInProcess(ImageOptions io, string filter) =>
+        FrameReader.FFmpegLibraries.Missing(io.Format switch
+        {
+            "png" => FrameReader.Capability.Png,
+            "webp" => FrameReader.Capability.WebP,
+            _ => FrameReader.Capability.Jpeg,
+        }).Count == 0
+        && FrameReader.FFmpegLibraries.MissingFilters(filter).Count == 0;
+
+    /// <summary>
+    /// save-images in this process: the ffmpeg executable's one pass (<c>-i X -vf select=...,F</c> to numbered files) as
+    /// FrameReader runs it, frames decoded in order (select's n) and each wanted one through the same filters into the same
+    /// encoder, which the executable's pass also keeps for all of its frames.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static void SaveImagesInProcess(string videoPath,
+        int[] frames,
+        List<(int Frame, string File)> wanted,
+        FrameReader.ImageEncoderOptions encoderOptions,
+        string filter,
+        CancellationToken cancellationToken)
+    {
+        var files = wanted.ToLookup(w => w.Frame, w => w.File);
+        var vf = new FrameReader.ImageFilterOptions { Filter = filter };
+        try
+        {
+            using var decoder = new FrameReader.FrameDecoder(videoPath, new() { CancellationToken = cancellationToken });
+            using var encoder = new FrameReader.ImageEncoder(encoderOptions);
+            int n = 0;
+            foreach (int frame in frames)
+            {
+                bool more = true;
+                while (more && n <= frame)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    more = decoder.Next();
+                    n++;
+                }
+
+                if (!more)
+                    throw new ShotDetectionException(ShotDetectionError.ExportFailed, $"The video ended before frame {frame} (save-images).");
+                using var decoded = decoder.TakeFrame();
+                byte[] image = encoder.Encode(decoded, vf);
+                foreach (string file in files[frame])
+                    File.WriteAllBytes(file, image);
+            }
+        }
+        catch (FrameReader.FrameReaderException e)
+        {
+            throw new ShotDetectionException(ShotDetectionError.ExportFailed, e.Message, e);
+        }
     }
 
     /// <summary>Seconds of each shot's images: port of _generate_timecode_list.</summary>

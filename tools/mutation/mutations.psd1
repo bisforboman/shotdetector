@@ -371,6 +371,12 @@
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '(max <= 0 || _options.Width is not null)'; Replace = '(max <= 0)'; Tests = 'VideoFrameReaderTests.FrameTimesStartAtZeroAndSizesMustComeInPairs'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '(max <= 0 || _options.Width is not null)'; Replace = '(_options.Width is not null)'; Tests = 'VideoFrameReaderTests.FrameTimesStartAtZeroAndSizesMustComeInPairs'; Project = 'tests/FrameReader.Tests' }
 
+        # save-images in-process: the executable's one pass (select's n, the same filters, one encoder) through FrameReader;
+        # WebP names libwebp, as libwebp_anim (ffmpeg's default where built) wrote one animation for several images
+        @{ File = 'src/ShotDetector/Export.cs'; Find = 'byte[] image = encoder.Encode(decoded, vf);'; Replace = 'byte[] image = encoder.Encode(decoded);'; Tests = 'SaveImagesInProcessTests.SameFilesAsTheExecutable'; Project = 'tests/ShotDetector.Tests' }
+        @{ File = 'src/ShotDetector/Export.cs'; Find = 'while (more && n <= frame)'; Replace = 'while (more && n < frame)'; Tests = 'SaveImagesInProcessTests.SameFilesAsTheExecutable'; Project = 'tests/ShotDetector.Tests' }
+        @{ File = 'src/ShotDetector/Export.cs'; Find = '["-c:v", "libwebp", "-quality",'; Replace = '["-quality",'; Tests = 'VideoTests.WebPImagesThroughTheExecutableAreStills'; Project = 'tests/ShotDetector.Tests' }
+
         # FrameReader's ImageEncoder (issue #542): the file ffmpeg writes from the same raw frame and tags; JPEG's rate control
         # afresh for each image; options only for their format; the frame's aspect ratio and tags as ffmpeg's frame has them
         @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (_o.Format == ImageFormat.Jpg && _o.JpegQscale is null)'; Replace = 'if (false)'; Tests = 'ImageEncoderTests.EachFrameOfASequenceIsAOneFrameRun'; Project = 'tests/FrameReader.Tests' }

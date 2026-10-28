@@ -758,6 +758,26 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // WebP through the executable, several images: each its own still image. ffmpeg's default encoder for .webp where
+    // it's built, libwebp_anim, wrote one animation of every frame to the first file and none to the others.
+    [Fact]
+    public void WebPImagesThroughTheExecutableAreStills()
+    {
+        var r = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content, Decoder = VideoDecoder.FfmpegProcess });
+        string dir = Directory.CreateTempSubdirectory("shotdetector-images-").FullName;
+        try
+        {
+            var files = Export.SaveImages(r, dir, new() { Format = "webp" });
+            Assert.Equal(3 * r.Shots.Count, files.Count);
+            foreach (string file in files)
+                Assert.Equal("VP8 ", System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(file), 12, 4)); // lossy, not an animation (VP8X)
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void PacketsWithoutPtsTakeTheFrameDtsLikeOpenCv()
     {

@@ -43,7 +43,8 @@ libraries when OpenCV's wheels do, since scenedetect's frames come from OpenCV's
 
 The ffmpeg and ffprobe executables (on `PATH`, or in `DetectionOptions.FfmpegDirectory` / `--ffmpeg-dir`) are still
 needed without those libraries, for URLs whose protocol the libraries lack (FrameReader.Native has http and
-https), and for the image and clip exports. Files of every kind decode
+https), and for the clip export (`--split-video`); the images (`--save-images`, `--save-html`'s thumbnails) are written
+in-process when the video was decoded there. Files of every kind decode
 in-process, including image sequences, rotated phone video, AV1 (dav1d in our build) and deinterlacing; a codec the
 libraries can't decode and a rotation that isn't a quarter turn use the executable.
 
@@ -76,9 +77,9 @@ quarantine; `curl` downloads aren't quarantined.
 
 Put the folder on `PATH` to run `shotdetect` from anywhere; `shotdetect --version` says which release it is. Like
 the .NET tool, the binaries still need the ffmpeg and ffprobe executables (on `PATH`, or `--ffmpeg-dir`) for what
-the libraries don't do: the image and clip exports (`--save-images`, `--save-html`'s thumbnails,
-`--split-video`), URLs whose protocol the libraries lack (they have http and https), and DASH, which the libraries
-can't read (`--decoder process`).
+the libraries don't do: the clip export (`--split-video`), URLs whose protocol the libraries lack (they have http and
+https), and DASH, which the libraries can't read (`--decoder process`). The images (`--save-images`, `--save-html`'s
+thumbnails) are written in-process too.
 
 ## Library
 
@@ -238,7 +239,9 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
 - `--save-images <dir>` writes `{video}-Scene-{NNN}-{II}.jpg`, 3 per shot (`--num-images`): one a
   frame in from the start, one mid-shot, one a frame before the end. They are the same frames
   scenedetect's `save-images` picks (checked on 120 thumbnails), encoded by ffmpeg instead of
-  OpenCV, so similar but not byte-identical files. `--image-quality <0-100>` (JPEG, WebP) and
+  OpenCV, so similar but not byte-identical files. When the video was decoded in-process the images are encoded there
+  too (FrameReader's `ImageEncoder`): byte for byte the files the ffmpeg executable of the same FFmpeg build writes
+  (a JPEG's comment names libavcodec's version), else that executable writes them. `--image-quality <0-100>` (JPEG, WebP) and
   `--image-compression <0-9>` (PNG) are scenedetect's `--quality` and `--compression`: PNG's and WebP's mean the
   same as OpenCV's, JPEG's is mapped onto ffmpeg's scale (`ImageOptions.Quality`, `Compression`).
 - `--save-html <file>` writes scenedetect's `save-html` page (cut list and shot table with the
