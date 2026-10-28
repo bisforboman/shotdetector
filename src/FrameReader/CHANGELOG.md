@@ -7,6 +7,52 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.15.0 – 2026-10-28
+
+Faster sampling than ffmpeg's own command by skipping unreferenced frames, decoded frames from the reader, and seek fixes.
+
+### New
+
+- `VideoFrameReader.TryTake`, `TryTakeForwardTo` and `TryTakeAt` give the decoded frame unconverted (a `DecodedFrame`,
+  the caller's to dispose) at exactly the positions `TryRead`, `TryReadForwardTo` and `TryReadAt` find (keyframe
+  jumps, ffmpeg's seek, `ReadAhead`, deinterlacing and autorotation), so `ImageEncoder.Encode(DecodedFrame, ...)` writes
+  what `ffmpeg [-ss T] -i X -vf scale=... -frames:v 1 out.jpg` writes for each, byte for byte, without leaving the
+  reader (issue #574). One scaling pass instead of two. The conversion's options (`Width`, `Height`, `MaxWidth`,
+  `FrameFormat`) don't apply to takes, so one reader can both read and take. With `FrameRate`, `TryTake` gives the
+  fps filter's frames, so each file is what `ffmpeg -i X -vf fps=R,scale=... out_%03d.jpg` writes, byte for byte. A
+  taken frame is a reference to the decoded buffers (no copy), valid after the next read and after the reader is
+  disposed.
+- `DecodedFrame.Time`: the frame's time from the input's start, as `VideoFrame.Time` (null when it has no timestamp).
+
+### Faster
+
+- `VideoFrameReader`: reading forward (`TryReadForwardTo`, `TryTakeForwardTo`, `ReadAt`) and seeking (`Seek`,
+  `TryReadAt`, `TryTakeAt`) no longer decode the frames before the wanted one that no other frame references: H.264
+  slices with nal_ref_idc 0, HEVC sub-layer non-reference pictures, MPEG-1/2 B-pictures and MPEG-4 Part 2 B-VOPs, left
+  out of the decoder by their packet headers. Every frame given, its time and its tags are still those of decoding every
+  packet, byte for byte. A picture a second of an H.264 film now takes less time than
+  `ffmpeg -vf fps=1,scale=... frame_%06d.jpg` on the same cores (issue #566's comparison). `ReadAt` tells each reader
+  its next time early, so decoding ahead leaves those frames out too. Not when deinterlacing or decoding on the GPU, nor
+  for interlaced MPEG-2, field-coded H.264, H.264 whose SPS gives no reorder depth, DivX packed B-frames, packets
+  without a timestamp, VP9 or AV1 (docs/decisions/2026-10-28-skip-unreferenced-frames.md).
+
+### Fixed
+
+- `VideoFrameReader`: the last frame of an MPEG-PS or AVI file with B-frames, which comes out of the decoder without a
+  timestamp, threw an `OverflowException` (`TryRead`, `TryReadForwardTo`, `ReadAt`). It now gets the
+  time ffmpeg's command line makes up for it (the previous frame's plus its duration), with `FrameRate` too.
+- `FrameDecoder`: a 4:2:2 video turned by 90 or 270 degrees came out with half its chroma never written (memory left
+  over from earlier frames). Such a rotation is refused with a `FrameReaderException` (`CanRotate` already said it
+  isn't supported); 180 degrees and 4:2:0/4:4:4 turns are as before.
+- `VideoFrameReader.TryReadForwardTo` (and `TryTakeForwardTo`, `ReadAt`) gave the wrong frame for times more than a
+  second ahead in MPEG-PS (.mpg, .vob), often a GOP late or none at the end, and in AVI with B-frames, a frame or two
+  late: their keyframe jumps don't land where a full decode has the frame (MPEG-PS's index marks every PES as a
+  keyframe; AVI's I- and P-frames have no timestamps of their own). It now decodes through in those containers, as
+  ffmpeg's output-side `-ss` does.
+- `VideoFrameReader.Seek` (and `TryReadAt`, `TryTakeAt`) near the start of an AVI with B-frames threw "FFmpeg (seek):
+  Operation not permitted". As ffmpeg's command line, a seek the container refuses now reads on from where it is (a
+  reader that has read already, from the start).
+
 ## 2.14.0 – 2026-10-28
 
 Encode decoded frames with ffmpeg's own scaling, and read ahead while you work on a frame.

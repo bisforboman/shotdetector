@@ -54,7 +54,9 @@ scan touch one product each), 0 of 25 with 2.12.0's window: met again; not asked
 when something in "What would change the answer" happens, none has). 2.14.0: 0 of 9 (the image encoder,
 read-ahead and ShotDetector's fixes each touch one product), fewer than 20: the window joins the next release's. Recounted by features (2026-10-28):
 2.13.0, 1 of 2 needing both (the mp4/mov packet scan, which ShotDetector's probe uses to read the file once; WebP alone);
-2.14.0, 1 of 2 (the decoded-frame `ImageEncoder`, then save-images through it; read-ahead, from issue #566, alone).
+2.14.0, 1 of 2 (the decoded-frame `ImageEncoder`, then save-images through it; read-ahead, from issue #566, alone). 2.15.0, 0 of 4 (`TryTake` from issue #574,
+skipping unreferenced frames, the last-frame and 4:2:2 fixes, the MPEG-PS/AVI seek fixes): one release without, after 2.14.0's 1 of 2,
+so the trigger isn't met.
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
