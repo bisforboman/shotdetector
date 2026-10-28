@@ -65,6 +65,12 @@ public sealed unsafe class FrameDecoder : IDisposable
     /// <summary>The stream's time base as FFmpeg keeps it.</summary>
     internal AVRational StreamTimeBase => _timeBase;
 
+    /// <summary>The container has no timestamps (AVFMT_NOTIMESTAMPS: ffmpeg's command line trusts the codec's frame rate over frame durations).</summary>
+    internal bool TimestampsUnreliable => (_fmt->iformat->flags & ffmpeg.AVFMT_NOTIMESTAMPS) != 0;
+
+    /// <summary>The codec's frame rate (the decoder context's; 0/1 when unknown).</summary>
+    internal AVRational CodecFrameRate => _dec->framerate;
+
     /// <summary>The stream's time base in seconds per pts unit.</summary>
     public Rational TimeBase => new(_timeBase.num, _timeBase.den);
 
@@ -360,13 +366,15 @@ public sealed unsafe class FrameDecoder : IDisposable
                 bytes = 0;
         }
 
+        bool t = _transpose >= 0;
         if (bytes == 0 || (desc->flags & (ffmpeg.AV_PIX_FMT_FLAG_PAL | ffmpeg.AV_PIX_FMT_FLAG_BITSTREAM | ffmpeg.AV_PIX_FMT_FLAG_HWACCEL)) != 0
-            || ((desc->flags & ffmpeg.AV_PIX_FMT_FLAG_PLANAR) == 0 && desc->nb_components > 1))
+            || ((desc->flags & ffmpeg.AV_PIX_FMT_FLAG_PLANAR) == 0 && desc->nb_components > 1)
+            || (t && desc->log2_chroma_w != desc->log2_chroma_h)) // transposed 4:2:2 isn't 4:2:2 (ffmpeg converts first; CanRotate says no)
         {
-            throw new FrameReaderException(FrameReaderError.DecodeFailed, $"Rotating {(AVPixelFormat)_frame->format} isn't supported in-process.");
+            throw new FrameReaderException(FrameReaderError.DecodeFailed,
+                $"Rotating {(AVPixelFormat)_frame->format}{(t ? " by 90 degrees" : "")} isn't supported in-process.");
         }
 
-        bool t = _transpose >= 0;
         int w = _frame->width, h = _frame->height, ow = t ? h : w, oh = t ? w : h;
         if (_oriented->width != ow || _oriented->height != oh || _oriented->format != _frame->format
             || ffmpeg.av_frame_is_writable(_oriented) == 0) // a DecodedFrame still holds the last one

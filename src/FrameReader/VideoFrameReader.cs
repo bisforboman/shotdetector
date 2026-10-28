@@ -164,6 +164,10 @@ public sealed unsafe class VideoFrameReader : IDisposable
     int _index = -1;
     long? _keepFrom; // after a seek: frames whose pts plus this is below 0 are dropped (ffmpeg's trim)
 
+    // The frame read last's timestamp, as ffmpeg's command line gives it: one without (the last frame MPEG-PS and AVI
+    // flush out) gets the previous one's plus that one's estimated duration.
+    long _pts, _lastPts = ffmpeg.AV_NOPTS_VALUE, _lastDuration;
+
     // FrameRate: buffer -> fps -> buffersink, fed the decoded frames, its output converted.
     AVFilterGraph* _fpsGraph;
     AVFilterContext* _fpsIn, _fpsOut;
@@ -232,6 +236,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
         NoFrameRate(nameof(Seek));
         _ahead?.Clear(); // the frames read ahead are the old position's
         _keepFrom = _decoder.SeekLikeFfmpeg(time);
+        _lastPts = ffmpeg.AV_NOPTS_VALUE; // as ffmpeg's decoder after an input -ss: no frame before
         _index = -1;
         _current = false;
     }
@@ -473,10 +478,53 @@ public sealed unsafe class VideoFrameReader : IDisposable
     bool _current; // the decoder holds a frame read (not past the end)
 
     /// <summary>The next decoded frame, the decoder's or the decoding thread's; false at the end.</summary>
-    bool Next() => _ahead?.Next() ?? _decoder.Next();
+    bool Next()
+    {
+        if (!(_ahead?.Next() ?? _decoder.Next()))
+            return false;
 
-    /// <summary>The frame read last: its timestamp, as <see cref="FrameDecoder.Pts"/>.</summary>
-    long Pts => _ahead?.Current.Pts ?? _decoder.Pts;
+        // ffmpeg's command line (fftools' decoder): no timestamp, the previous frame's plus its duration estimate.
+        long pts = _ahead?.Current.Pts ?? _decoder.Pts;
+        if (pts == ffmpeg.AV_NOPTS_VALUE)
+            pts = _lastPts == ffmpeg.AV_NOPTS_VALUE ? 0 : _lastPts + _lastDuration;
+        _lastDuration = DurationEstimate(pts);
+        (_lastPts, _pts) = (pts, pts);
+        return true;
+    }
+
+    /// <summary>
+    /// fftools' video_duration_estimate for the frame read last (at <paramref name="pts"/>): its duration, unless the
+    /// container has no timestamps (then the codec's frame rate) or the duration looks made up; else the step from the
+    /// frame before.
+    /// </summary>
+    long DurationEstimate(long pts)
+    {
+        long duration = Duration, diff = _lastPts != ffmpeg.AV_NOPTS_VALUE ? pts - _lastPts : -1;
+        bool unreliable = _decoder.TimestampsUnreliable;
+        if (duration > 0 && !unreliable && !(duration == 1 && diff > 2))
+            return duration;
+        long codec = 0;
+        var rate = _decoder.CodecFrameRate;
+        if (rate.num > 0 && rate.den > 0)
+        {
+            int fields = (_ahead is null ? _decoder.Frame : _ahead.Current.Frame.Frame)->repeat_pict + 2;
+            codec = ffmpeg.av_rescale_q(fields, new AVRational { num = rate.den, den = rate.num * 2 }, _decoder.StreamTimeBase);
+        }
+
+        if (codec > 0 && unreliable)
+            return codec;
+        if (diff > 0)
+            return diff;
+        if (duration > 0)
+            return duration;
+        return codec > 0 ? codec : Math.Max(_lastDuration, 1);
+    }
+
+    /// <summary>
+    /// The frame read last: its timestamp, as <see cref="FrameDecoder.Pts"/>, or for a frame without one as ffmpeg's
+    /// command line makes it up.
+    /// </summary>
+    long Pts => _pts;
 
     bool IsKeyframe => _ahead?.Current.IsKeyframe ?? _decoder.IsKeyframe;
 

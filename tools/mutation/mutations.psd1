@@ -428,5 +428,11 @@
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = ': _ahead.Current.Frame.Reference();'; Replace = ': _ahead.Current.Frame;'; Tests = 'VideoFrameReaderTakeTests.TakenFramesOutliveReadsAndTheReader'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'TimeSpan.FromSeconds((pts + StartOffset) * TimeBase.Value);'; Replace = 'TimeSpan.FromSeconds(pts * TimeBase.Value);'; Tests = 'VideoFrameReaderTakeTests.TakesAreTheDecodersFramesWhereTheReadsAre'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'NoFrameRate(nameof(TryTake));'; Replace = ''; Tests = 'VideoFrameReaderTakeTests.TakesArentAvailableWithFrameRate'; Project = 'tests/FrameReader.Tests' }
+
+        # FrameReader: a frame without a timestamp (MPEG-PS's and AVI's last) gets ffmpeg's made-up one, the previous frame's
+        # plus its duration; a 90-degree turn of 4:2:2 (not 4:2:2 once transposed) is refused, as CanRotate says
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'pts = _lastPts == ffmpeg.AV_NOPTS_VALUE ? 0 : _lastPts + _lastDuration;'; Replace = '{ }'; Tests = 'VideoFrameReaderTests.AFrameWithoutATimestampGetsFfmpegsTime'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (duration > 0 && !unreliable && !(duration == 1 && diff > 2))'; Replace = 'if (false)'; Tests = 'VideoFrameReaderTests.AFrameWithoutATimestampGetsFfmpegsTime'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '|| (t && desc->log2_chroma_w != desc->log2_chroma_h)'; Replace = ''; Tests = 'FrameDecoderTests.DeinterlacesRotatesAndReadsStreams'; Project = 'tests/FrameReader.Tests' }
     )
 }
