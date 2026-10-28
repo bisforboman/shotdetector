@@ -7,6 +7,26 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.13.0 – 2026-10-28
+
+WebP in ImageEncoder, and an mp4/mov packet scan that reads only the sample tables.
+
+### New
+
+- `ImageEncoder` writes WebP (`ImageFormat.WebP`, was refused), through FFmpeg's `libwebp` encoder: the file
+  `ffmpeg -c:v libwebp -frames:v 1 out.webp` writes from the same raw frame, byte for byte with the same libraries.
+  Its options are libwebp's, refused for the other formats: `WebPQuality` (`-quality`, 0 to 100, default 75),
+  `WebPLossless` (`-lossless 1`) and `WebPCompressionLevel` (`-compression_level`, libwebp's method, 0 to 6).
+  `Capability.WebP` for `FFmpegLibraries.Missing`.
+- FrameReader.Native now carries libwebp 1.6.0 (BSD-3-Clause, `COPYING.libwebp`), linked into libavcodec with FFmpeg's
+  `libwebp` encoder.
+
+### Faster
+
+- `MediaProbe.Probe` with `PacketTimestamps` on a local MP4/MOV file reads the packets' timestamps from the sample tables
+  without reading the media data (h264, HEVC, MPEG-2, MPEG-4 Part 2, MJPEG and ProRes video; not fragmented files): a
+  290 MB file's scan reads 0.5 MB instead of all of it. The timestamps, positions and every other value are the same.
+
 ## 2.12.0 – 2026-10-27
 
 Encode frames as JPEG or PNG, and cap the width the way ffmpeg's scale does.
