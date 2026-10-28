@@ -182,6 +182,21 @@ chunks beat 2 on every film (Elephants Dream 1.38x against 1.28x on x64, 1.75x a
 1.17x against 1.07x, 1.24x against 1.11x), and 1080p at 17-22 Mbps gained 1.07x to 1.15x in 2 chunks. `Auto` still
 takes half the CPUs (the user's choice: 4 chunks cost about 65 MB more at 1080p for little more there).
 
+## Measuring above 8 CPUs
+
+`AutoChunks` stops at 4 chunks and the decoder threads at 16 in total. `tools/bench-cpus.ps1` measures that on a larger
+Windows machine (Windows PowerShell 5.1 or pwsh 7, no admin rights): it downloads the released win-x64 shotdetect and
+Tears of Steel (both checked by SHA-256) into a temp folder, times 1 (`--sequential`), 2, 4, 6 and 8 chunks (`--chunks`)
+at the default decoder threads and at 1.5 and 2 times the CPUs (`--threads`, the total the chunks share), content
+detector, 3 interleaved rounds, wall and CPU time and peak memory, checks every scene CSV against the sequential one and
+prints a Markdown table: `powershell -ExecutionPolicy Bypass -File tools\bench-cpus.ps1` (`-KeepFilm` keeps the film
+for the next run; `-Film`, `-Chunks`, `-Threads`, `-Rounds` change the cases; `-Rid linux-x64` tests it elsewhere).
+
+Measured on the owner's 16-thread Ryzen 7 5800X (2026-10-28, two runs, Tears of Steel): 4 chunks at the default 16
+threads gave 1.57x and 1.41x over sequential; 6 and 8 chunks were slower at 16, 24 and 32 threads (1.20-1.52x, and
+5-12 s more CPU time), 32 threads in total gave nothing over 16 and 24 gained 2-3% for about 19 MB. Both caps stay
+(docs/decisions/2026-10-28-parallel-caps-16-threads.md, with the tables); machines above 16 CPUs are unmeasured.
+
 ## Proof
 
 - Unit tests: chunked scores equal sequential scores, chunk boundaries on and off keyframes, the overlap check

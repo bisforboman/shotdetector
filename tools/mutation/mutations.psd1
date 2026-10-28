@@ -25,6 +25,12 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (!Streaming && restart is null)'; Replace = 'if (!Streaming)'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'SitingChangeNotFollowed = true;'; Replace = ';'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
 
+        # Timestamps that start over (two encodes joined): known before the first frame (a file's packets, MPEG-PS's
+        # pass; MPEG-PS's arriving ones may), the shots are told at the end, as the sorted cuts make them
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ' && !video.TimestampsStartOver;'; Replace = ';'; Tests = 'TimestampResetTests' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '_startsOver = probed?.StartsOver ?? (!missingPts && StartsOver(pts));'; Replace = '_startsOver = false;'; Tests = 'TimestampResetTests.AFileTellsTheResultsShots' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'internal bool TimestampsStartOver => _ptsPending || _startsOver;'; Replace = 'internal bool TimestampsStartOver => _startsOver;'; Tests = 'TimestampResetTests.MpegPsWithArrivingTimestampsTellsTheShotsAtTheEnd' }
+
         # The first frame's chroma location and colour tags over the stream's (the container's header can contradict the
         # codec's, which OpenCV converts with): executable path's in_chroma_loc, FastYuv's colours and siting
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (key is "chroma_location" or "color_space" or "color_range" && value is not (null or "unspecified" or "unknown" or ""))'; Replace = 'if (false)'; Tests = 'VideoTests.TheFramesChromaLocationAndColourTagsWinOverTheStreams' }

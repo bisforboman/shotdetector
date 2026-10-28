@@ -466,6 +466,7 @@ internal sealed partial class VideoReader
             if (collecting && reachedEnd && _ptsPending)
             {
                 _knownPts = [.. _collectedPts];
+                _startsOver = StartsOver(_knownPts);
                 _ptsPending = false;
             }
         }
