@@ -108,11 +108,19 @@ picks, a YUV frame is encoded from yuv420p and an RGB or gray one from bgra, los
 YUV for lossy and yuv420p to RGB for lossless itself (ffmpeg warns of both), so read frames as RGB for lossless WebP.
 
 ```csharp
-using var frames = new VideoFrameReader("video.mp4", new() { FrameRate = new(1, 1), MaxWidth = 1280, FrameFormat = FrameFormat.Yuv420p });
+using var frames = new VideoFrameReader("video.mp4", new() { FrameRate = new(1, 1), MaxWidth = 1280, FrameFormat = FrameFormat.Yuv420p, ReadAhead = 4 });
 using var jpeg = new ImageEncoder(new() { Format = ImageFormat.Jpg, JpegQscale = 2 });
 while (frames.TryRead(out var frame))
     File.WriteAllBytes($"frame_{frame.Index + 1:D6}.jpg", jpeg.Encode(frame));
 ```
+
+`ReadAhead = 4` overlaps that loop's encoding and writing with decoding, as ffmpeg's threaded pipeline does: a thread of
+the reader's own decodes up to 4 frames ahead (deinterlacing and rotating them too) while the loop works on the frame it
+has, for any per-frame work between reads (encoding, analysis, uploads) and with `TryRead`, `TryReadForwardTo`,
+`FrameRate` and seeks alike. The read still converts the frame it gives, so the frame is valid until the next read as
+without, and the frames, their tags and any error are the same, in the same order. It pays where decoding leaves cores
+free; where it keeps every core busy there's nothing to overlap with (1 or 2 hand over nearly every frame on its own and
+can cost a little more than they save). Each frame ahead holds a decoded frame's memory (about 3 MB at 1080p).
 
 Without `JpegQscale`, JPEG uses ffmpeg's default, its rate control, which carries its state from frame to frame in one
 ffmpeg run: `ImageEncoder` starts it afresh for every image, so each file is what a one-frame run
