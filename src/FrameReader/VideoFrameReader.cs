@@ -452,7 +452,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
 
             // The index's keyframe is at or before the target: a target within the second needs no look (nor, reading
             // ahead, the decoding thread stopped while the index is read).
-            long from = (_current ? Pts : 0) + (long)(1 / _decoder.TimeBase.Value);
+            long from = (_current ? Pts : -_decoder.StartOffset) + (long)(1 / _decoder.TimeBase.Value); // before the first read: the start
             if (target > from && Pause() && _decoder.CanSeek && _decoder.KeyframeAtOrBefore(target) is { } found && found > from)
             {
                 key = found;

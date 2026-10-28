@@ -19,6 +19,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     AVPacket* _pkt;
     AVFrame* _frame;
     readonly int _stream;
+    readonly bool _indexUnusable; // MPEG-PS, AVI with B-frames: no keyframe jumps (KeyframeAtOrBefore)
     readonly AVRational _timeBase;
     readonly AVRational _sar; // the container's sample aspect ratio, which ffmpeg's command line puts on every frame (0/1: none)
     bool _draining, _done;
@@ -138,6 +139,8 @@ public sealed unsafe class FrameDecoder : IDisposable
             if (_stream < 0)
                 throw new FrameReaderException(FrameReaderError.InvalidInput, "The input has no video stream.");
             var st = _fmt->streams[_stream];
+            string format = Marshal.PtrToStringAnsi((nint)_fmt->iformat->name) ?? "";
+            _indexUnusable = format == "mpeg" || (format == "avi" && st->codecpar->video_delay > 0);
             _timeBase = st->time_base;
             _sar = st->sample_aspect_ratio;
             var codec = ffmpeg.avcodec_find_decoder(st->codecpar->codec_id);
@@ -284,7 +287,14 @@ public sealed unsafe class FrameDecoder : IDisposable
         long timestamp = time.Ticks / 10; // ffmpeg's -ss in microseconds
         if (_fmt->start_time != ffmpeg.AV_NOPTS_VALUE)
             timestamp += _fmt->start_time;
-        SeekMicroseconds(Demuxer.SeekPoint(_fmt, timestamp));
+        long point = Demuxer.SeekPoint(_fmt, timestamp);
+        if (!TrySeekMicroseconds(point) && _started)
+        {
+            // ffmpeg's command line only warns ("could not seek to position", as when the margin above goes before an
+            // AVI's first index entry) and reads from where it is, which there is the start: so from the start here.
+            SeekMicroseconds(_fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : _fmt->start_time);
+        }
+
         return TrimOffset(time);
     }
 
@@ -295,6 +305,12 @@ public sealed unsafe class FrameDecoder : IDisposable
     /// </summary>
     internal long? KeyframeAtOrBefore(long pts)
     {
+        // None to jump by where a jump doesn't give a full decode's frames: MPEG-PS indexes every PES with a dts as a
+        // keyframe (libavformat/mpeg.c, "FIXME keyframe?") and seeks by dts to any of them, so decoding starts at the next
+        // I-frame, which can be past pts. AVI has only dts: with B-frames its I- and P-frames are timed by libavcodec's
+        // guess from the frames decoded before, which a jump changes (an I-frame three frames late).
+        if (_indexUnusable)
+            return null;
         var st = _fmt->streams[_stream];
         int i = ffmpeg.av_index_search_timestamp(st, pts, ffmpeg.AVSEEK_FLAG_BACKWARD);
         return i < 0 ? null : ffmpeg.avformat_index_get_entry(st, i)->timestamp;
@@ -318,15 +334,26 @@ public sealed unsafe class FrameDecoder : IDisposable
         return ffmpeg.av_rescale_q(-timestamp, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase);
     }
 
-    void SeekMicroseconds(long us)
+    void SeekMicroseconds(long us) => Check(TrySeek(us), "seek");
+
+    /// <summary>
+    /// Seeks (as <see cref="SeekMicroseconds"/>); false when the container can't, the decoder as it was (libavformat has
+    /// dropped the packets it had read ahead, as for ffmpeg's command line).
+    /// </summary>
+    bool TrySeekMicroseconds(long us) => TrySeek(us) >= 0;
+
+    int TrySeek(long us)
     {
         // Deinterlacing keeps frames in yadif (or the row deinterlacer); only a seek before the first frame is clean.
         if (_deinterlace && _started)
             throw new InvalidOperationException("A deinterlacing decoder can seek only before its first frame.");
-        Check(ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, us, us, 0), "seek");
+        int ret = ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, us, us, 0);
+        if (ret < 0)
+            return ret;
         ffmpeg.avcodec_flush_buffers(_dec);
         _unreferenced?.Restart();
         _draining = _done = false;
+        return ret;
     }
 
     bool _started;

@@ -451,5 +451,13 @@
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (pkt->pts == ffmpeg.AV_NOPTS_VALUE)'; Replace = 'if (false)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_decoder.SkipBefore = -_keepFrom.Value;'; Replace = '_decoder.SkipBefore = long.MaxValue;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'reader.SkipTo(times[i + 1]);'; Replace = 'reader.SkipTo(times[^1]);'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+
+        # FrameReader: no keyframe jumps reading forward in MPEG-PS (its index marks every PES as a keyframe) or AVI with
+        # B-frames (I- and P-frames timed by libavcodec's guess); a seek the container refuses reads on, as ffmpeg's -ss,
+        # or from the start once the reader has read
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'format == "mpeg" || '; Replace = ''; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = ' || (format == "avi" && st->codecpar->video_delay > 0)'; Replace = ''; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (!TrySeekMicroseconds(point) && _started)'; Replace = 'if (!TrySeekMicroseconds(point) && false)'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'long point = Demuxer.SeekPoint(_fmt, timestamp);'; Replace = 'long point = Demuxer.SeekPoint(_fmt, timestamp); SeekMicroseconds(point);'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
     )
 }
