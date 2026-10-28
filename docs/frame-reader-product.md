@@ -22,12 +22,16 @@ FrameDecoder's timestamps), and splitting the repository would make each such ch
 
 Separate repositories would spare the costs one repository carries: tag prefixes, a release.yml for two products,
 GitHub's single "Latest" release (FrameReader's are created with `--latest=false`), one issue tracker, and the
-computed CI classification (tools/reach). Reconsider when changes stop crossing over: at each FrameReader release,
-count the commits since the previous one that touch FrameReader (`src/FrameReader*`, `tests/FrameReader.Tests`) or
-ShotDetector (`src/ShotDetector*`, `tests/ShotDetector.Tests`, `tests/ClipMaker`), and how many touch both (tests
-count: a FrameReader feature tested through ShotDetector is coupling). The trigger is fewer than 1 in 20 touching
-both, at two releases in a row, **over at least 20 counted commits**: with fewer, the windows join and counting
-continues at the next release. A met trigger means asking the user, not splitting.
+computed CI classification (tools/reach). Reconsider when changes stop crossing over. Since 2026-10-28 (the user's
+choice, docs/decisions/2026-10-28-split-count-features.md) the count is of **features, not commits**: at each
+FrameReader release, list the changes since the previous one that touch FrameReader (`src/FrameReader*`,
+`tests/FrameReader.Tests`), grouped by the issue or backlog row they serve, and count those that also needed
+ShotDetector (`src/ShotDetector*`, `tests/ShotDetector.Tests`, `tests/ClipMaker`): in the same PR, or a FrameReader PR
+followed in the window by the ShotDetector PR that uses it (a FrameReader feature tested through ShotDetector counts
+too). Work is cut into one PR per product, so the old commit count saw none of that and read near zero for reasons
+that weren't independence. The trigger is no FrameReader feature needing ShotDetector at two releases in a row, over
+at least 3 FrameReader features: with fewer, the windows join. A met trigger means asking the user, not splitting.
+The commit counts below are kept as they were recorded.
 
 History (until 2.6.1 counted without tests): since 2.1.0, 3 of 9 (FrameReader.Native, the clips made by FrameReader,
 the Alpine fix); 2.4.0, 2 of 9; 2.5.0, 2 of 4 (the security fixes, OpenSSL); 2.6.0, 0 of 6; 2.6.1, 0 of 2. Under
@@ -48,7 +52,9 @@ don't split, keep counting (docs/decisions/2026-10-27-framereader-stays-again.md
 and `MaxWidth` touch FrameReader alone), fewer than 20: the window joins the next release's. 2.13.0: 0 of 8 (WebP and the mp4/mov
 scan touch one product each), 0 of 25 with 2.12.0's window: met again; not asked, per the 2026-10-27 answer (ask only
 when something in "What would change the answer" happens, none has). 2.14.0: 0 of 9 (the image encoder,
-read-ahead and ShotDetector's fixes each touch one product), fewer than 20: the window joins the next release's.
+read-ahead and ShotDetector's fixes each touch one product), fewer than 20: the window joins the next release's. Recounted by features (2026-10-28):
+2.13.0, 1 of 2 needing both (the mp4/mov packet scan, which ShotDetector's probe uses to read the file once; WebP alone);
+2.14.0, 1 of 2 (the decoded-frame `ImageEncoder`, then save-images through it; read-ahead, from issue #566, alone).
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
