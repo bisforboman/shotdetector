@@ -307,6 +307,76 @@ public class VideoFrameReaderTests
         return n;
     }
 
+    // A frame without a timestamp (the last one MPEG-PS and AVI with B-frames flush out): the time ffmpeg's command line
+    // makes up for it (the previous frame's plus its duration), for every read, rather than an overflow.
+    [Theory]
+    [InlineData("ps.mpg", "-c:v mpeg2video -bf 2 -g 12")]
+    [InlineData("bframes.avi", "-c:v mpeg4 -bf 2")]
+    [InlineData("gap.mpg", "-vf settb=1/100,setpts=N*4+gte(N\\,45)*20 -fps_mode passthrough -enc_time_base 1/100 -c:v mpeg2video -bf 2 -g 12")] // the duration, not the step
+    public void AFrameWithoutATimestampGetsFfmpegsTime(string name, string encode)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-nopts-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            Run(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=160x120:r=25:d=2", .. encode.Split(' '), path]);
+            var expected = ShowinfoTimes(path);
+            var options = new VideoFrameReaderOptions { FrameFormat = FrameFormat.Gray8, Decoder = new FrameDecoderOptions() };
+            foreach (int ahead in new[] { 0, 2 })
+            {
+                var times = new List<double>();
+                using (var reader = new VideoFrameReader(path, options with { ReadAhead = ahead }))
+                {
+                    while (reader.TryRead(out var frame))
+                        times.Add(frame.Time.TotalSeconds);
+                }
+
+                Assert.Equal(expected.Count, times.Count);
+                for (int i = 0; i < times.Count; i++)
+                    Assert.True(Math.Abs(expected[i] - times[i]) < 1e-6, $"{name} frame {i}, ReadAhead {ahead}: ffmpeg {expected[i]}, read {times[i]}");
+            }
+
+            // Forward (in steps that don't jump) to the last frame's time, and with the frame rate's filter: that frame.
+            using (var reader = new VideoFrameReader(path, options))
+            {
+                for (double t = 0; t < expected[^1] - 0.5; t += 0.5)
+                    Assert.True(reader.TryReadForwardTo(TimeSpan.FromSeconds(t), out _));
+                Assert.True(reader.TryReadForwardTo(TimeSpan.FromSeconds(expected[^1] - 0.001), out var last));
+                Assert.Equal(expected[^1], last.Time.TotalSeconds, 6);
+                Assert.False(reader.TryReadForwardTo(TimeSpan.FromSeconds(expected[^1] + 0.02), out _));
+            }
+
+            var fps = ShowinfoTimes(path, "fps=25,");
+            using (var reader = new VideoFrameReader(path, options with { FrameRate = new Rational(25, 1) }))
+            {
+                int n = 0;
+                while (reader.TryRead(out var frame))
+                    Assert.Equal(fps[n++], frame.Time.TotalSeconds, 6);
+                Assert.Equal(fps.Count, n);
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    /// <summary>Each frame's pts_time as ffmpeg's showinfo prints it (after the <paramref name="filters"/>, with a comma).</summary>
+    static List<double> ShowinfoTimes(string path, string filters = "")
+    {
+        var psi = new ProcessStartInfo(Ffmpeg) { RedirectStandardError = true };
+        foreach (var a in new[] { "-hide_banner", "-i", path, "-vf", filters + "showinfo", "-f", "null", "-" })
+            psi.ArgumentList.Add(a);
+        using var p = Process.Start(psi)!;
+        string log = p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        Assert.True(p.ExitCode == 0, log);
+        return [.. System.Text.RegularExpressions.Regex.Matches(log, "pts_time:(-?[0-9.]+)")
+            .Select(m => double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture))];
+    }
+
     [Fact]
     public void FrameTimesStartAtZeroAndSizesMustComeInPairs()
     {

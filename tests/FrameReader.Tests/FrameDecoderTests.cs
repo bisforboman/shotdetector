@@ -146,6 +146,26 @@ public class FrameDecoderTests
                 Assert.Equal((240, 320), (decoder.Width, decoder.Height));
             }
 
+            // 4:2:2 turned by 90 degrees isn't 4:2:2 (ffmpeg converts it before its transpose): refused, as CanRotate says,
+            // rather than a frame with half its chroma unwritten. Turned by 180 degrees (flips) it decodes.
+            string yuv422 = Clip(dir, "422.mov", "-c:v", "ffv1", "-pix_fmt", "yuv422p");
+            foreach (int degrees in new[] { 90, 180 })
+            {
+                string turned = Path.Combine(dir, $"422-{degrees}.mov");
+                Run("ffmpeg", "-v", "error", "-y", "-display_rotation", degrees.ToString(CultureInfo.InvariantCulture), "-i", yuv422, "-c", "copy", turned);
+                Assert.Equal(degrees == 180, FrameDecoder.CanRotate(degrees, "yuv422p"));
+                using var decoder = new FrameDecoder(turned, Options);
+                if (degrees == 90)
+                {
+                    Assert.Throws<FrameReaderException>(() => decoder.Next());
+                }
+                else
+                {
+                    Assert.True(decoder.Next());
+                    Assert.Equal((320, 240), (decoder.Width, decoder.Height));
+                }
+            }
+
             // A stream (mkv: headers first): the same frames as the file.
             int FromFile()
             {

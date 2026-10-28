@@ -19,6 +19,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Both decoders should give the same. Two h264 .ts encodes joined, the second's timestamps starting over (TimestampResetTests' JoinedEncodes), content detector, FFmpeg 8.1: as a file, both give cuts 50, 75, 100 (frames labelled by time, as scenedetect labels them); as a Stream (`Detect(Stream)`, `DetectStreamAsync(Stream)`), in-process gives 50, 75, 100 and the executable 50, 100, 125, 175, because ffmpeg without `-copyts` makes an mpegts discontinuity's timestamps continue. Pick the reference (the file's labels, or ffmpeg's continuing times, which no scenedetect run compares) and make the other decoder match. In-process, a Stream also can't know the reset ahead, so its OnShot listener misses the shots it told before (OnShot's XML doc; docs/decisions/2026-10-28-retell-shots-after-reset.md); continuing times would end that too
   - Status: Open
 
+- `VideoFrameReader.TryReadForwardTo`'s keyframe jump lands on the wrong frame in MPEG-PS
+  - Why: Found 2026-10-28 while fixing the timestamp-less last frame: a 2 s `-c:v mpeg2video -bf 2 -g 12` .mpg (start time 0.54 s), read from the start: `TryReadForwardTo(0.9 s)` gives the frame at 1.44 s and `TryReadForwardTo(1.85 s)` none, where the same clip in mkv gives 0.92 s and 1.88 s (main 6266830 too, so not that fix's). The jump seeks with `avformat_seek_file` to the target (no `SeekPoint` margin, while MPEG-PS seeks by dts), and the first call compares the target with 0 rather than the start time, so it jumps from 0.46 s on. ReadAt and the TryTake methods share it. Find where MPEG-PS's seek lands, then give the frames a full decode gives (as for mkv)
+  - Status: Open
+
 ## Waiting
 
 - At the next FrameReader release, count the FrameReader features that needed ShotDetector too (docs/frame-reader-product.md, "When to reconsider"; features, not commits, since 2026-10-28)
