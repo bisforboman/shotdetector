@@ -328,16 +328,19 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// to it, so reads and takes mix on one reader: each moves the same position (and counts in
     /// <see cref="VideoFrame.Index"/>). A reference to the decoded buffers, no copy (with
     /// <see cref="VideoFrameReaderOptions.ReadAhead"/>, the queued frame's): the caller disposes it, and it stays valid
-    /// after the next read and after the reader is disposed. Not with <see cref="VideoFrameReaderOptions.FrameRate"/>.
+    /// after the next read and after the reader is disposed. With <see cref="VideoFrameReaderOptions.FrameRate"/>, the
+    /// fps filter's next frame, as <see cref="TryRead"/> gives it there (its <see cref="DecodedFrame.Pts"/> in 1/FrameRate
+    /// units, as <see cref="VideoFrame.Pts"/>), so each file is <c>ffmpeg -i X -vf fps=R[,...] out_%d.jpg</c>'s.
     /// </summary>
     /// <param name="frame">The frame, the caller's to dispose; null at the end.</param>
     /// <returns>False at the end.</returns>
-    /// <exception cref="FrameReaderException">Decoding failed.</exception>
-    /// <exception cref="InvalidOperationException">The reader has a <see cref="VideoFrameReaderOptions.FrameRate"/>.</exception>
+    /// <exception cref="FrameReaderException">Decoding or the fps filter failed.</exception>
     public bool TryTake([NotNullWhen(true)] out DecodedFrame? frame)
     {
-        NoFrameRate(nameof(TryTake));
-        frame = Advance() ? Take() : null;
+        if (_options.FrameRate is { } rate)
+            frame = NextFps() ? TakeFps(rate) : null;
+        else
+            frame = Advance() ? Take() : null;
         return frame is not null;
     }
 
@@ -549,9 +552,39 @@ public sealed unsafe class VideoFrameReader : IDisposable
         return true;
     }
 
-    /// <summary>The fps filter's next frame: decoded frames go in (shifted as ffmpeg shifts them) until one comes out.</summary>
+    /// <summary>The fps filter's next frame, converted.</summary>
     bool TryReadFps(Rational rate, out VideoFrame frame)
     {
+        if (!NextFps())
+        {
+            frame = default;
+            return false;
+        }
+
+        long pts = _fpsFrame->pts; // in 1/rate
+        Convert(_fpsFrame, pts, FpsTime(pts, rate), out frame);
+        return true;
+    }
+
+    static TimeSpan FpsTime(long pts, Rational rate) => TimeSpan.FromSeconds(pts * rate.Den / (double)rate.Num);
+
+    /// <summary>The fps filter's frame given last, as a reference the caller owns (the decoder's bits per raw sample with it).</summary>
+    DecodedFrame TakeFps(Rational rate)
+    {
+        var clone = ffmpeg.av_frame_clone(_fpsFrame);
+        if (clone == null)
+            throw new FrameReaderException(FrameReaderError.DecodeFailed, "Can't reference the frame.");
+        long pts = _fpsFrame->pts;
+        return new DecodedFrame(clone, pts, FpsTime(pts, rate), _decoder.BitsPerRawSample);
+    }
+
+    /// <summary>
+    /// The fps filter's next frame into _fpsFrame (counted in <see cref="VideoFrame.Index"/>): decoded frames go in (shifted
+    /// as ffmpeg shifts them) until one comes out; false at the end.
+    /// </summary>
+    bool NextFps()
+    {
+        var rate = _options.FrameRate!.Value;
         while (true)
         {
             if (_fpsOut != null)
@@ -561,8 +594,6 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 if (got == 0)
                 {
                     _index++;
-                    long pts = _fpsFrame->pts; // in 1/rate
-                    Convert(_fpsFrame, pts, TimeSpan.FromSeconds(pts * rate.Den / (double)rate.Num), out frame);
                     return true;
                 }
 
@@ -600,7 +631,6 @@ public sealed unsafe class VideoFrameReader : IDisposable
             }
         }
 
-        frame = default;
         return false;
     }
 

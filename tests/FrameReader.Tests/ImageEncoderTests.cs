@@ -340,6 +340,74 @@ public class ImageEncoderTests
         }
     }
 
+    // FrameRate's takes (the fps filter's frames, unconverted) through the encoder's graph: the files ffmpeg's one run
+    // writes with -vf fps=R[,...] out_%03d.ext, byte for byte, read ahead or not. JPEG at a fixed qscale (ffmpeg's rate
+    // control carries over from frame to frame in one run otherwise) with a scale, and PNG without a filter (10-bit too).
+    // A source starting at 10 s and an interlaced one deinterlaced (yadif,fps=R).
+    [Theory]
+    [InlineData("wide.mp4", "-c:v mpeg4 -bf 2 -g 12 -q:v 4", "1600x900", false)]
+    [InlineData("late.ts", "-c:v mpeg2video -bf 2 -g 12 -output_ts_offset 10", "320x240", false)]
+    [InlineData("10bit.mkv", "-c:v ffv1 -pix_fmt yuv420p10le", "320x240", false)]
+    [InlineData("interlaced.ts", "-c:v mpeg2video -flags +ilme+ildct -top 1", "320x240", true)]
+    public void FrameRateTakesAreFfmpegsFpsFiles(string name, string encode, string size, bool deinterlace)
+    {
+        if (!CanCompare())
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-img-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            Run(["-v", "error", "-y", "-f", "lavfi", "-i", $"testsrc2=s={size}:r=25:d=3", .. encode.Split(' '), path]);
+            var cases = new (ImageEncoderOptions Options, string Ext, string[] Args, ImageFilterOptions? Filter, string? Vf)[]
+            {
+                (new() { Format = ImageFormat.Jpg, JpegQscale = 2 }, "jpg", ["-q:v", "2"], new() { MaxWidth = 1280 }, "scale='min(1280,iw)':-2"),
+                (new() { Format = ImageFormat.Png }, "png", [], null, null),
+            };
+            var failures = new List<string>();
+            foreach (var rate in new Rational[] { new(1, 1), new(5, 2) })
+            {
+                foreach (var (options, ext, args, filter, vf) in cases)
+                {
+                    string prefix = $"fps{rate.Num}_{rate.Den}_{ext}_";
+                    string chain = (deinterlace ? "yadif," : "") + $"fps={rate.Num}/{rate.Den}" + (vf is null ? "" : "," + vf);
+                    Run(["-v", "error", "-y", "-i", path, "-vf", chain, .. args, Path.Combine(dir, prefix + "%03d." + ext)]);
+                    var expected = Directory.GetFiles(dir, prefix + "*").Order(StringComparer.Ordinal).Select(File.ReadAllBytes).ToList();
+                    Assert.NotEmpty(expected);
+                    using var encoder = new ImageEncoder(options);
+                    foreach (int ahead in new[] { 0, 2 })
+                    {
+                        using var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
+                        {
+                            FrameRate = rate,
+                            ReadAhead = ahead,
+                            Decoder = new FrameDecoderOptions { Deinterlace = deinterlace },
+                        });
+                        int n = 0;
+                        while (reader.TryTake(out var frame))
+                        {
+                            using (frame)
+                            {
+                                if (n < expected.Count && !expected[n].AsSpan().SequenceEqual(encoder.Encode(frame, filter)))
+                                    failures.Add($"{name} {chain} {ext} ReadAhead {ahead}, file {n + 1}: first difference at {FirstDifference(expected[n], encoder.Encode(frame, filter))}");
+                            }
+
+                            n++;
+                        }
+
+                        if (n != expected.Count)
+                            failures.Add($"{name} {chain} {ext} ReadAhead {ahead}: {n} frames, ffmpeg wrote {expected.Count} files");
+                    }
+                }
+            }
+
+            Assert.True(failures.Count == 0, string.Join("\n", failures));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // ShotDetector's save-images chain: square pixels at ffmpeg's default flags, then a bilinear scale to a width.
     const string SaveImagesChain = "scale='round(iw*sar)':ih,setsar=1,scale=160:'trunc(ih*160/iw)':flags=bilinear";
 

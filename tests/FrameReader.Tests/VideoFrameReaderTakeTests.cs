@@ -294,21 +294,70 @@ public class VideoFrameReaderTakeTests
         }
     }
 
-    // FrameRate's frames are the fps filter's, not positions in the decoded stream: no takes, as no TryReadForwardTo.
+    // FrameRate: TryTake gives the fps filter's frames, those the reads give there (number, pts in 1/rate, time, the
+    // frame's own size), reads and takes mixed on one reader, read ahead or not, valid after the reader; seeking and
+    // reading forward to a time stay refused, as for reads.
     [Fact]
-    public void TakesArentAvailableWithFrameRate()
+    public void FrameRateTakesAreTheFpsFiltersFrames()
     {
         if (Libs is null)
             return;
         string dir = Directory.CreateTempSubdirectory("framereader-take-").FullName;
         try
         {
-            string path = Make(dir, "clip.mkv", "-c:v mpeg4", "", 1);
-            using var reader = new VideoFrameReader(path, new VideoFrameReaderOptions { FrameRate = new(1, 1) });
-            Assert.Throws<InvalidOperationException>(() => reader.TryTake(out _));
-            Assert.Throws<InvalidOperationException>(() => reader.TryTakeAt(TimeSpan.Zero, out _));
-            Assert.Throws<InvalidOperationException>(() => reader.TryTakeForwardTo(TimeSpan.Zero, out _));
-            Assert.True(reader.TryRead(out _));
+            string path = Make(dir, "late.ts", "-c:v mpeg2video -bf 2 -g 12 -output_ts_offset 10", "", 4);
+            foreach (var rate in new Rational[] { new(1, 1), new(3, 2), new(30, 1) })
+            {
+                foreach (int ahead in new[] { 0, 2 })
+                {
+                    var options = new VideoFrameReaderOptions { FrameRate = rate, MaxWidth = 100, ReadAhead = ahead };
+                    var held = new List<(DecodedFrame Frame, string Line)>();
+                    try
+                    {
+                        using (var reader = new VideoFrameReader(path, options))
+                        using (var reads = new VideoFrameReader(path, options))
+                        {
+                            for (int step = 0; ; step++)
+                            {
+                                bool read = reads.TryRead(out var expected);
+                                string at = $"{rate} ReadAhead {ahead}, frame {step}";
+                                if (step % 2 == 0)
+                                {
+                                    Assert.Equal(read, reader.TryRead(out var frame));
+                                    if (read)
+                                        Assert.True((expected.Index, expected.Pts, expected.Time) == (frame.Index, frame.Pts, frame.Time), at);
+                                }
+                                else
+                                {
+                                    Assert.Equal(read, reader.TryTake(out var taken));
+                                    if (read)
+                                    {
+                                        Assert.True((expected.Pts, (TimeSpan?)expected.Time) == (taken!.Pts, taken.Time), at);
+                                        Assert.True((320, 240) == (taken.Width, taken.Height), at);
+                                        held.Add((taken, Describe(taken)));
+                                    }
+                                }
+
+                                if (!read)
+                                    break;
+                            }
+
+                            Assert.Throws<InvalidOperationException>(() => reader.TryTakeAt(TimeSpan.Zero, out _));
+                            Assert.Throws<InvalidOperationException>(() => reader.TryTakeForwardTo(TimeSpan.Zero, out _));
+                        }
+
+                        Assert.NotEmpty(held);
+                        foreach (var (frame, line) in held)
+                            Assert.Equal(line, Describe(frame));
+                        Assert.Equal(0, ReadAhead.Held);
+                    }
+                    finally
+                    {
+                        foreach (var (frame, _) in held)
+                            frame.Dispose();
+                    }
+                }
+            }
         }
         finally
         {
