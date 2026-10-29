@@ -307,11 +307,13 @@ internal sealed partial class VideoReader
     readonly FrameReader.IRowDeinterlacer? _yadif;
     long[] _knownPts;                  // presentation timestamps of the frames, in display order (not when streaming); see Pts
 
-    // MPEG-PS (packets without pts) decoded in-process: each frame's timestamp comes with the frame (_collectedPts, from
-    // a read from the start) instead of a decoding pass first; the pass runs only when something needs them all before
-    // then (TakeTimestampPass). Cleared once a read from the start reaches the end or the pass has run.
+    // MPEG-PS (packets without pts): each frame's timestamp comes with the frame in-process, or from ffprobe's pass
+    // running alongside the executable (_passAlongside), as a read from the start reaches it (_collectedPts), instead of
+    // a decoding pass first; the pass runs first only when something needs them all before then (TakeTimestampPass).
+    // Cleared once a read from the start reaches the end or the pass has run.
     bool _ptsPending;
     readonly List<long> _collectedPts = [];
+    TimestampPass? _passAlongside;
     readonly Action? _onFrameTimestamps;
     readonly Lazy<ProbeResult?> _probed;
 
@@ -329,9 +331,10 @@ internal sealed partial class VideoReader
     }
 
     /// <summary>
-    /// Whether frame timestamps arrive with the frames rather than from a probe first: MPEG-PS (packets without pts)
-    /// decoded in-process, until a read from the start has reached the end. A frame's position is known once it has
-    /// arrived; asking for a later one, or for all of them (seeking, the executable), takes the decoding pass.
+    /// Whether frame timestamps arrive with the frames rather than from a probe first: MPEG-PS (packets without pts) read
+    /// from a file (in-process from the frames, through the executable from ffprobe's pass alongside), until a read from
+    /// the start has reached the end. A frame's position is known once it has arrived; asking for a later one, or for all
+    /// of them (seeking), takes the decoding pass (or waits for the rest of the one alongside).
     /// </summary>
     internal bool TimestampsArrive => _ptsPending;
 
@@ -663,25 +666,44 @@ internal sealed partial class VideoReader
         // Some containers (MPEG-PS) carry no pts on every packet. OpenCV then takes the frame's
         // dts (its pts when set and non-zero, else pkt_dts), in output order: get exactly that
         // from a decoding pass, which only such files pay for.
-        // Decoded in-process from the start (a file, not deinterlaced: yadif's frames don't carry the decoded frame's
-        // timestamps), they come with the frames instead (TimestampsArrive); anything else takes the pass now.
+        // Read from the start (a file, not deinterlaced: yadif's frames don't carry the decoded frame's timestamps), they
+        // arrive as the frames do instead (TimestampsArrive): in-process with the frames, through the executable from
+        // that pass run alongside (ffmpeg's command line gives its filters the decoder's best-effort time, which differs
+        // on frames without pts and dts: docs/decisions/2026-10-29-mpeg-ps-pass-executable.md); anything else takes the
+        // pass now.
         _ptsFromFrames = probed?.PtsFromFrames ?? missingPts;
         _onFrameTimestamps = o.OnFrameTimestamps;
         _knownPts = probed?.Pts ?? [.. pts];
         _ptsPending = missingPts && probed is null;
-        if (_ptsPending && (o.FrameTimestampsFirst || Streaming || _stream is not null || _deinterlace || !DecodesInProcess))
+        if (_ptsPending && (o.FrameTimestampsFirst || Streaming || _stream is not null || _deinterlace))
             TakeTimestampPass(cancellationToken);
         _probed = new(() => probed ?? (Streaming || headersOnly ? null : new(stream, Pts, _ptsFromFrames, _xvidIdct, _frameTags, _startsOver)));
     }
 
     /// <summary>
     /// The decoding pass for every frame's timestamp (MPEG-PS: packets without pts), when they haven't all arrived with
-    /// the frames (<see cref="TimestampsArrive"/>) and something needs them; nothing otherwise.
+    /// the frames (<see cref="TimestampsArrive"/>) and something needs them: the rest of the one running alongside the
+    /// executable's read, else one now; nothing otherwise.
     /// </summary>
     void TakeTimestampPass(CancellationToken cancellationToken)
     {
         if (!_ptsPending)
             return;
+        if (_passAlongside is { } alongside)
+        {
+            while (alongside.TakeNext(_collectedPts, cancellationToken))
+            {
+            }
+
+            if (!alongside.Cancelled)
+            {
+                FinishPassAlongside();
+                return;
+            }
+
+            DropPassAlongside();
+        }
+
         _onFrameTimestamps?.Invoke();
         _knownPts = [.. _probesInProcess
             ? InProcessProbe.FrameTimestamps(_path, _ffmpegDirectory, _inputOptions, cancellationToken)
@@ -773,22 +795,61 @@ internal sealed partial class VideoReader
 
     static List<long> FrameTimestamps(string ffprobe, string path, string[] inputOptions, CancellationToken ct)
     {
+        using var pass = new TimestampPass(ffprobe, path, inputOptions, ct);
         var result = new List<long>();
-        long? framePts = null;
-        foreach (var line in Run(ffprobe, FrameTimestampsArgs(path, inputOptions), ct).Split('\n', StringSplitOptions.TrimEntries))
+        while (pass.TakeNext(result, ct))
         {
-            if (line.StartsWith("pts="))
+        }
+
+        ct.ThrowIfCancellationRequested();
+        return result;
+    }
+
+    /// <summary>The pass alongside the executable's read has given every timestamp: they're the frames' from now on.</summary>
+    void FinishPassAlongside()
+    {
+        _knownPts = [.. _collectedPts];
+        _startsOver = StartsOver(_knownPts);
+        _ptsPending = false;
+        DropPassAlongside();
+    }
+
+    /// <summary>Stops the pass alongside the executable's read (if still running); a later one starts over.</summary>
+    void DropPassAlongside()
+    {
+        if (_passAlongside is null)
+            return;
+        _passAlongside.Dispose();
+        _passAlongside = null;
+        if (_ptsPending)
+            _collectedPts.Clear();
+    }
+
+    /// <summary>Tests: the last pass started alongside the executable's read, null if none was.</summary>
+    internal TimestampPass? LastPassAlongside { get; private set; }
+
+    /// <summary>
+    /// The packet of a frame the executable decoded (from its showinfo time, <paramref name="seconds"/>): while MPEG-PS's
+    /// timestamps arrive from the pass alongside, over those so far, waiting for more where they don't settle it, and
+    /// over all of them once it has ended (as <see cref="PacketOfArrived"/> in-process); else from the list.
+    /// </summary>
+    int PacketOfFromPass(double seconds, int previous, CancellationToken cancellationToken)
+    {
+        while (_ptsPending && _passAlongside is { } pass)
+        {
+            var arrived = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_collectedPts);
+            if (PacketOf(arrived, _timeBase, Fps.Value, seconds, previous, complete: false) is { } packet)
+                return packet;
+            if (!pass.TakeNext(_collectedPts, cancellationToken))
             {
-                framePts = long.TryParse(line[4..], CultureInfo.InvariantCulture, out long p) && p != 0 ? p : null;
-            }
-            else if (line.StartsWith("pkt_dts="))
-            {
-                result.Add(framePts ?? (long.TryParse(line[8..], CultureInfo.InvariantCulture, out long d) ? d : 0));
-                framePts = null;
+                if (pass.Cancelled)
+                    DropPassAlongside();
+                else
+                    FinishPassAlongside();
             }
         }
 
-        return result;
+        return PacketOf(seconds, previous);
     }
 
     /// <summary>
@@ -1470,8 +1531,20 @@ internal sealed partial class VideoReader
             _inProcessGaveNothing = true;
         }
 
-        // The executable: every frame's timestamp first (MPEG-PS's from the decoding pass).
-        TakeTimestampPass(cancellationToken);
+        // The executable: every frame's timestamp first (MPEG-PS's from the decoding pass), except MPEG-PS read from the
+        // start, which runs that pass alongside the read and labels each frame from its timestamps so far
+        // (PacketOfFromPass), as in-process from the frames.
+        bool alongside = _ptsPending && startFrame == 0 && restart is null;
+        if (alongside)
+        {
+            if (_passAlongside is { Cancelled: true })
+                DropPassAlongside();
+            _passAlongside ??= LastPassAlongside = new(_ffprobe, _path, _inputOptions, cancellationToken);
+        }
+        else
+        {
+            TakeTimestampPass(cancellationToken);
+        }
 
         var pipeline = Pipeline;
         bool resizeHere = pipeline != FramePipeline.FfmpegScale, yuv = IsYuv(pipeline);
@@ -1849,7 +1922,7 @@ internal sealed partial class VideoReader
                 if (Streaming)
                     _livePts.Add(pts); // from the input's start already (the stderr reader)
                 else
-                    _livePackets.Add(PacketOf(pts * liveTimeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
+                    _livePackets.Add(PacketOfFromPass(pts * liveTimeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1, cancellationToken));
                 if (resizer is null)
                 {
                     previous = buffer;
@@ -1893,11 +1966,19 @@ internal sealed partial class VideoReader
                 proc.WaitForExit();
                 if (proc.ExitCode != 0)
                     throw Failed(ShotDetectionError.DecodeFailed, $"ffmpeg failed ({proc.ExitCode}): {stderr.Result}");
+
+                // Read from the start to the end (not just to a count): the rest of the pass alongside (frames ffmpeg
+                // didn't give).
+                if (alongside && (count is null || emitted < count))
+                    TakeTimestampPass(cancellationToken);
             }
         }
         finally
         {
-            // Caller stopped early (or we failed): stop the reader and ffmpeg before disposing.
+            // Caller stopped early (or we failed): stop the reader and ffmpeg before disposing, and the pass alongside
+            // unless the read goes on from here (a later frame's timestamp then takes a pass, as in-process).
+            if (alongside && !again && next is null)
+                DropPassAlongside();
             cancel.Cancel();
             Kill(proc);
             try
