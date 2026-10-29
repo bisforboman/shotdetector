@@ -38,7 +38,7 @@ public sealed class JoinedEncodes : IDisposable
 /// <summary>
 /// DetectionOptions.OnShot and DetectStreamAsync where timestamps start over: a file shows that in its packets before the
 /// first frame, so its shots are told at the end, exactly the result's; MPEG-PS decoded in-process (timestamps arriving
-/// with the frames) too. Through the ffmpeg executable a Stream's timestamps continue. A clean file still tells each shot
+/// with the frames) too. A Stream can't know it ahead, with either decoder. A clean file still tells each shot
 /// as its cut is confirmed. Needs SHOTDETECTOR_FFMPEG_LIBS (FFmpeg 8.1, its executables beside the libraries).
 /// </summary>
 public class TimestampResetTests(JoinedEncodes joined, MpegPsVariants ps, Clips clips) : IClassFixture<JoinedEncodes>, IClassFixture<MpegPsVariants>, IClassFixture<Clips>
@@ -91,28 +91,74 @@ public class TimestampResetTests(JoinedEncodes joined, MpegPsVariants ps, Clips 
         Assert.Equal(ShotDetection.Detect(joined.Video, options).Shots, yielded);
     }
 
-    // Through the executable, ffmpeg makes a Stream's timestamps continue (no -copyts): nothing comes out of order. In-process
-    // they start over and the shots told before aren't told again (docs/backlog.md: the two decoders differ there).
-    [Fact]
-    public async Task AStreamThroughTheExecutableTellsTheResultsShots()
+    public static TheoryData<string> Decoders() => ["executable", "in-process"];
+
+    // Streamed, the timestamps start over as in the file, as OpenCV gives them on a pipe too (scenedetect 0.7.2 reading
+    // pipe:0: 50, 75, 100). Without -copyts the executable's ffmpeg made them continue (50, 100, 125, 175).
+    [Theory]
+    [MemberData(nameof(Decoders))]
+    public void AStreamGivesTheFilesCuts(string run)
     {
         if (Libs is null)
             return;
-        var options = Options("executable");
-        var told = new Told();
+        var options = Options(run);
         DetectionResult result;
         using (var file = File.OpenRead(joined.Video))
-            result = ShotDetection.Detect(file, options with { OnShot = told });
-        Assert.Equal(result.Shots, told.Shots);
+            result = ShotDetection.Detect(file, options);
+        Assert.Equal(run == "in-process", result.Video.DecodedInProcess);
+        Assert.Equal([50L, 75L, 100L], result.Cuts.Select(c => c.FrameNum));
+        Assert.Equal([50L, 75L, 100L], ShotDetection.Detect(joined.Video, options with { Streaming = true }).Cuts.Select(c => c.FrameNum));
+    }
 
-        var yielded = new List<Shot>();
-        using (var file = File.OpenRead(joined.Video))
+    // Nothing shows the reset ahead on a Stream, so both decoders tell the same shots before it, and none again after.
+    [Fact]
+    public async Task AStreamTellsTheSameShotsWithEitherDecoder()
+    {
+        if (Libs is null)
+            return;
+        var told = new Dictionary<string, List<Shot>>();
+        var yielded = new Dictionary<string, List<Shot>>();
+        foreach (string run in Decoders())
         {
-            await foreach (var shot in ShotDetection.DetectStreamAsync(file, options))
-                yielded.Add(shot);
+            var listener = new Told();
+            using (var file = File.OpenRead(joined.Video))
+                ShotDetection.Detect(file, Options(run) with { OnShot = listener });
+            told[run] = listener.Shots;
+
+            yielded[run] = [];
+            using var stream = File.OpenRead(joined.Video);
+            await foreach (var shot in ShotDetection.DetectStreamAsync(stream, Options(run)))
+                yielded[run].Add(shot);
         }
 
-        Assert.Equal(result.Shots, yielded);
+        Assert.NotEmpty(told["in-process"]);
+        Assert.Equal(told["in-process"], told["executable"]);
+        Assert.Equal(yielded["in-process"], yielded["executable"]);
+    }
+
+    // The input's start on ffmpeg's Duration line (under "Input #0"), which streamed frames' times are taken from.
+    [Theory]
+    [InlineData("  Duration: N/A, start: 1.480000, bitrate: N/A", 1_480_000L)]
+    [InlineData("  Duration: 00:00:09.00, start: 0.000000, bitrate: 150 kb/s", 0L)]
+    [InlineData("  Duration: 00:00:01.00, start: -0.040000, bitrate: 150 kb/s", -40_000L)]
+    [InlineData("  Duration: 00:00:01.00, start: 12345.678901, bitrate: 150 kb/s", 12_345_678_901L)]
+    [InlineData("  Duration: N/A, bitrate: N/A", 0L)]
+    [InlineData("  Duration: N/A, start: N/A, bitrate: N/A", 0L)]
+    [InlineData("    Stream #0:0[0x100]: Video: h264", null)]
+    [InlineData("Input #0, mpegts, from 'pipe:':", null)]
+    public void TheInputsStartFromFfmpegsLog(string line, long? micros) => Assert.Equal(micros, VideoReader.InputStart(line));
+
+    // av_rescale_q from µs, AV_ROUND_NEAR_INF: halves away from 0.
+    [Fact]
+    public void MicrosInATimeBaseRoundAsFfmpeg()
+    {
+        Assert.Equal(133_200L, VideoReader.MicrosIn(1_480_000, 1, 90_000));
+        Assert.Equal(-133_200L, VideoReader.MicrosIn(-1_480_000, 1, 90_000));
+        Assert.Equal(1L, VideoReader.MicrosIn(500, 1, 1000)); // half: away from 0
+        Assert.Equal(-1L, VideoReader.MicrosIn(-500, 1, 1000));
+        Assert.Equal(0L, VideoReader.MicrosIn(499, 1, 1000));
+        Assert.Equal(1_480_000L, VideoReader.MicrosIn(1_480_000, 1, 1_000_000));
+        Assert.Equal(37L, VideoReader.MicrosIn(1_480_000, 1, 25));
     }
 
     // The packets show it before the first frame; MPEG-PS whose timestamps arrive with the frames may start over; a clean
