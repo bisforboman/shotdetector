@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- `TryReadForwardTo`: tell the decoder the next target early, so frame skipping drops more
-  - Why: Skipping unreferenced frames (#578) drops only about 75% of the droppable packets in the issue #566 loop (1701 of 2237), because frame threading and ReadAhead read packets before the next target is known. `ReadAt` already sets each reader's next time as soon as a frame is handed over; `TryReadForwardTo` doesn't know its next target, but could guess it from the last steps and fall back exactly (read those packets again from the keyframe) if a dropped packet turns out to be at or after the real next target. Exact by the same argument as #578; measure the gain on the issue's clip
-  - Status: Open
-
 ## Waiting
 
 - At the next FrameReader release, count the FrameReader features that needed ShotDetector too (docs/frame-reader-product.md, "When to reconsider"; features, not commits, since 2026-10-28)
