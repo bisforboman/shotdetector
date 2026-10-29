@@ -546,8 +546,8 @@ public sealed record DetectionOptions
     /// arrive on the thread that created it, possibly later. A run that fails or is cancelled has told the shots known by
     /// then. Timestamps that start over (two streams joined) make the cuts come out of order: a file whose packets show
     /// that before the first frame, and MPEG-PS decoded in-process (its timestamps arrive with the frames), tell every
-    /// shot at the end. A Stream or URL can't know it ahead: decoded in-process, its shots told before the timestamps
-    /// start over aren't told again from the sorted cuts (through the executable, ffmpeg makes them continue instead).
+    /// shot at the end. A Stream or URL can't know it ahead: its shots told before the timestamps start over aren't told
+    /// again from the sorted cuts, with either decoder (both give the timestamps as OpenCV does, starting over).
     /// </summary>
     public IProgress<Shot>? OnShot { get; init; }
 

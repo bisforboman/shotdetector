@@ -224,6 +224,8 @@
 
         # Streamed timestamps already start at 0 (ffmpeg shifts them); not subtracted again
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(Streaming ? p : p - _startPts)'; Replace = '(p - _startPts)'; Tests = 'VideoTests' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (seek.Length == 0)'; Replace = 'if (!Streaming && seek.Length == 0)'; Tests = 'TimestampResetTests.AStreamGivesTheFilesCuts' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'framePts -= MicrosIn(startMicros, timeBaseNum, timeBaseDen);'; Replace = 'framePts -= 0;'; Tests = 'TimestampResetTests.AStreamGivesTheFilesCuts' }
 
         # Rotation tags: frames arrive upright, so the reported size is swapped
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (Math.Abs(_rotation) % 180 == 90)'; Replace = 'if (false)'; Tests = 'VideoTests' }

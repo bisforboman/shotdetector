@@ -36,3 +36,6 @@ Retelling shots after a timestamp reset: what should be built?
 timestamp, 0, doesn't count; or MPEG-PS's still arriving) turns off telling shots as cuts arrive. A false alarm only
 tells the shots later. A Stream decoded in-process still can't know it: the OnShot XML doc says so, and the two
 decoders' difference on such a Stream is its own backlog row.
+
+Since 2026-10-29 (docs/decisions/2026-10-29-stream-timestamp-reset.md) the executable runs a Stream with `-copyts` too,
+so its timestamps start over as in-process (and as OpenCV's): neither decoder can know the reset ahead on a Stream.

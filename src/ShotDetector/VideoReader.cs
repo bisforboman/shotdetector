@@ -1530,8 +1530,10 @@ internal sealed partial class VideoReader
         // Each frame's timestamp is read from showinfo's log line, so ffmpeg logs at info level and the lines are
         // parsed as they arrive: when streaming there is no packet list, and for a file it says which packet it is.
         // Absolute timestamps for files, so they compare with the packet list as they are (without
-        // -copyts ffmpeg shifts by the container's start, which can differ from the video stream's).
-        if (!Streaming && seek.Length == 0)
+        // -copyts ffmpeg shifts by the container's start, which can differ from the video stream's). Streamed too:
+        // without it ffmpeg makes an MPEG-TS timestamp that starts over (two encodes joined) continue (fftools'
+        // ts_discontinuity_detect), where OpenCV, libavformat alone, gives it as it is; the stderr reader below subtracts the start.
+        if (seek.Length == 0)
             seek = ["-copyts"];
         string[] noStdin = _stream is null ? ["-nostdin"] : [];
 
@@ -1605,6 +1607,12 @@ internal sealed partial class VideoReader
                 // rate), is the previous frame's.
                 (long Pts, bool NewLayout, string Size, FrameColourTags Tags)? pending = null;
                 FrameColourTags previous = default;
+
+                // Streamed (with -copyts, as files, so ffmpeg leaves a timestamp that starts over as it is, as OpenCV
+                // does): times from the input's start, as ffmpeg's shift without -copyts gives them. The start from the
+                // line under "Input #0" (the maps are inputs too), the one connection that is read.
+                bool firstInput = false;
+                long startMicros = 0, timeBaseNum = 1, timeBaseDen = 1;
                 string? line;
                 while ((line = proc.StandardError.ReadLine()) is not null)
                 {
@@ -1616,7 +1624,10 @@ internal sealed partial class VideoReader
 
                         // showinfo sees the decoded frame, before the output's -pix_fmt conversion.
                         var format = FormatField().Match(line);
-                        (long, bool, string, FrameColourTags) info = (long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture),
+                        long framePts = long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture);
+                        if (Streaming)
+                            framePts -= MicrosIn(startMicros, timeBaseNum, timeBaseDen);
+                        (long, bool, string, FrameColourTags) info = (framePts,
                             frame.Groups[2].Value != streamSize || (format.Success && format.Groups[1].Value != _pixelFormat),
                             frame.Groups[2].Value,
                             previous = previous with { ChromaLocation = SitingField(line) ?? previous.ChromaLocation });
@@ -1638,10 +1649,22 @@ internal sealed partial class VideoReader
                     if (timeBase.Success)
                     {
                         // The filter's time base can differ from the container's (mp4: 1/1000000).
-                        liveTimeBase = long.Parse(timeBase.Groups[1].Value, CultureInfo.InvariantCulture) / (double)long.Parse(timeBase.Groups[2].Value, CultureInfo.InvariantCulture);
+                        timeBaseNum = long.Parse(timeBase.Groups[1].Value, CultureInfo.InvariantCulture);
+                        timeBaseDen = long.Parse(timeBase.Groups[2].Value, CultureInfo.InvariantCulture);
+                        liveTimeBase = timeBaseNum / (double)timeBaseDen;
                         if (Streaming)
                             _timeBase = liveTimeBase;
                         continue;
+                    }
+
+                    if (line.StartsWith("Input #"))
+                    {
+                        firstInput = line.StartsWith("Input #0,");
+                    }
+                    else if (firstInput && InputStart(line) is { } start)
+                    {
+                        startMicros = start;
+                        firstInput = false;
                     }
 
                     if (log.Length < 16_000 && !line.StartsWith("  ") && !line.StartsWith("Input #") && !line.StartsWith("Output #") && !line.StartsWith("Stream mapping"))
@@ -1824,7 +1847,7 @@ internal sealed partial class VideoReader
                 if (FirstFrameSize is null && info.Size.Split('x') is [var w, var h])
                     FirstFrameSize = (int.Parse(w, CultureInfo.InvariantCulture), int.Parse(h, CultureInfo.InvariantCulture));
                 if (Streaming)
-                    _livePts.Add(pts); // from the start already: ffmpeg shifts input timestamps to start at 0
+                    _livePts.Add(pts); // from the input's start already (the stderr reader)
                 else
                     _livePackets.Add(PacketOf(pts * liveTimeBase, _livePackets.Count > 0 ? _livePackets[^1] : startFrame - 1));
                 if (resizer is null)
@@ -1996,6 +2019,33 @@ internal sealed partial class VideoReader
 
     [System.Text.RegularExpressions.GeneratedRegex(@"config in time_base: (\d+)/(\d+)")]
     private static partial System.Text.RegularExpressions.Regex TimeBaseLine();
+
+    // av_dump_format's line under "Input #n": "  Duration: N/A, start: 1.480000, bitrate: N/A" (no start: without one).
+    [System.Text.RegularExpressions.GeneratedRegex(@"^  Duration: [^,]*(?:, start: (-?)(\d+)\.(\d{6}))?")]
+    private static partial System.Text.RegularExpressions.Regex DurationLine();
+
+    /// <summary>
+    /// The input's start time in µs on ffmpeg's Duration line (printed to the µs, AV_TIME_BASE, so exact; 0 where it has
+    /// none, start N/A), or null if it isn't that line: what ffmpeg subtracts from every timestamp without -copyts.
+    /// </summary>
+    internal static long? InputStart(string line)
+    {
+        var m = DurationLine().Match(line);
+        if (!m.Success)
+            return null;
+        if (!m.Groups[2].Success)
+            return 0;
+        long micros = (long.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture) * 1_000_000) + long.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture);
+        return m.Groups[1].Value == "-" ? -micros : micros;
+    }
+
+    /// <summary>µs in a time base num/den, rounded to the nearest, halves away from 0 (av_rescale_q, AV_ROUND_NEAR_INF).</summary>
+    internal static long MicrosIn(long micros, long num, long den)
+    {
+        Int128 n = (Int128)Math.Abs(micros) * den, d = (Int128)num * 1_000_000;
+        long r = (long)((n + (d / 2)) / d);
+        return micros < 0 ? -r : r;
+    }
 
     /// <summary>Kills a process unless it has already exited (which can happen at any moment, so no check-then-kill).</summary>
     static void Kill(Process proc)
