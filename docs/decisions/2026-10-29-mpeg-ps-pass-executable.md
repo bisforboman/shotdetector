@@ -55,7 +55,8 @@ stops early (a count, the caller, a failure) stops ffprobe, so a later frame's t
 anything that needs every timestamp mid-read (reading again from a chroma siting change) waits for the rest of the pass.
 `OnFrameTimestamps` (tests) still fires only for a pass taken first.
 
-Measured on the 4-minute 576p PS (4 CPUs, interleaved runs, default detector): MEASURED.
+Measured on the 4-minute 576p PS (this container, 4 CPUs, five interleaved runs each, default detector): 7.8-8.4 s
+wall instead of 10.6-11.5 s (about 27% less); CPU about the same, 24.9-26.5 s (user + system) instead of 26.3-28.5 s.
 
 Checked byte-identical with main's executable path (scene and stats CSVs; every detector, frame skip, `-e`, min-scene-len
 1; 0.7.2 and 0.7.1; one decoding thread) on all the files above. The byte-damaged MPEG-1 copy's stats differ run to run
