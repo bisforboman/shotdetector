@@ -53,12 +53,15 @@ public sealed unsafe class DecodedFrame : IDisposable
     public ReadOnlySpan<byte> GetPlane(int plane, out int stride) => FrameDecoder.Plane(Frame, plane, out stride);
 
     /// <summary>Another reference to the same buffers (no copy), disposed on its own.</summary>
-    internal DecodedFrame Reference()
+    internal DecodedFrame Reference() => Reference(Pts, Time);
+
+    /// <summary>Another reference to the frame, timed <paramref name="pts"/> and <paramref name="time"/>.</summary>
+    internal DecodedFrame Reference(long pts, TimeSpan? time)
     {
         var clone = ffmpeg.av_frame_clone(Frame);
         if (clone == null)
             throw new FrameReaderException(FrameReaderError.DecodeFailed, "Can't reference the frame.");
-        return new DecodedFrame(clone, Pts, Time, BitsPerRawSample);
+        return new DecodedFrame(clone, pts, time, BitsPerRawSample);
     }
 
     /// <summary>Lets go of the frame's buffers.</summary>

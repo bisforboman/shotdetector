@@ -61,7 +61,9 @@ A picture every second of a film: read forward instead of seeking. `TryReadForwa
 the first frame at or after the time and converts only that one, so the whole film is one pass (seeking to each
 second re-decodes from a keyframe every time: on a 1080p trailer, 4x the CPU). When the next picture is further away
 than a keyframe (at least a second ahead, per the container's index), it jumps instead of decoding the frames in
-between, still exact (not in MPEG-PS or AVI with B-frames, whose seeks don't land where a full decode has the frame). Frames before the wanted one that no other frame references (most B-frames of H.264, HEVC,
+between, still exact (not in MPEG-PS, AVI with B-frames or raw streams, whose seeks don't land where a full decode has
+the frame; where a container's index by dts lands past the frame, as in MP4 with MPEG-4 Part 2 B-frames, from the
+keyframe before). Frames before the wanted one that no other frame references (most B-frames of H.264, HEVC,
 MPEG-1/2 and MPEG-4 Part 2) aren't decoded at all, also by `ReadAt` and `TryReadAt`'s seek: the frames given are the
 full decode's all the same, byte for byte (not when deinterlacing, nor on the GPU). CPU for Tears of Steel (12 min,
 1280x534), with keyframes every 0.75 s / every 4.4 s (x264), measured before that:
@@ -197,6 +199,16 @@ For a preview where nearby frames will do, `Decoder = new() { KeyframesOnly = tr
 Seeking is ffmpeg's `-ss` exactly, including its weakness: in open GOPs (MPEG-2, some H.264), the B-frames right after
 the keyframe it lands on are decoded without their reference, so a seek to one of them gives a damaged picture, as
 ffmpeg's does. Reading forward decodes everything and gives the true frames.
+
+Where ffmpeg's `-ss` can't seek, the reader gives the full decode's frame instead, decoding from the start:
+
+- Raw elementary streams (.m2v, .m4v written with `-f m4v`, .h264, .hevc: demuxers without timestamps). ffmpeg's command
+  line drops their timestamps, so its frames are timed from 0 by the frame rate (the reader's are too), its seek lands on
+  some keyframe and keeps every frame from there, and raw H.264 and HEVC, which have no timestamps at all, give no frame
+  at any time. `Seek` reads such a stream from its first byte (or on, when the time is ahead of the frame read last).
+- A seek the container refuses (ffmpeg's margin before the first index entry: AVI, FLV near the start). ffmpeg only
+  warns and reads on from where the refused seek left the input, past the first keyframe: a frame seconds later, or
+  none at all.
 
 Audio: `AudioReader` reads the best audio stream as interleaved float32, at a chosen sample rate and channel count
 (default: the stream's own), the samples `ffmpeg -vn -ar R -ac C -f f32le` gives; `Seek(time)` as `-ss`.

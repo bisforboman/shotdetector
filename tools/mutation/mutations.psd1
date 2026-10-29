@@ -425,7 +425,7 @@
 
         # FrameReader: VideoFrameReader's takes (issue #574): a taken frame is the caller's own reference (read ahead, not
         # the queue's, which the next read lets go), its time is the reads' (shifted by the start), and FrameRate refuses them
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = ': _ahead.Current.Frame.Reference();'; Replace = ': _ahead.Current.Frame;'; Tests = 'VideoFrameReaderTakeTests.TakenFramesOutliveReadsAndTheReader'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'return _ahead.Current.Frame.Reference(Pts, time);'; Replace = 'return _ahead.Current.Frame;'; Tests = 'VideoFrameReaderTakeTests.TakenFramesOutliveReadsAndTheReader'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'TimeSpan.FromSeconds((pts + StartOffset) * TimeBase.Value);'; Replace = 'TimeSpan.FromSeconds(pts * TimeBase.Value);'; Tests = 'VideoFrameReaderTakeTests.TakesAreTheDecodersFramesWhereTheReadsAre'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'NoFrameRate(nameof(TryTakeForwardTo));'; Replace = ''; Tests = 'VideoFrameReaderTakeTests.FrameRateTakesAreTheFpsFiltersFrames'; Project = 'tests/FrameReader.Tests' }
 
@@ -452,12 +452,21 @@
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_decoder.SkipBefore = -_keepFrom.Value;'; Replace = '_decoder.SkipBefore = long.MaxValue;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'reader.SkipTo(times[i + 1]);'; Replace = 'reader.SkipTo(times[^1]);'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
 
-        # FrameReader: no keyframe jumps reading forward in MPEG-PS (its index marks every PES as a keyframe) or AVI with
-        # B-frames (I- and P-frames timed by libavcodec's guess); a seek the container refuses reads on, as ffmpeg's -ss,
-        # or from the start once the reader has read
+        # FrameReader: no keyframe jumps reading forward in MPEG-PS (its index marks every PES as a keyframe), AVI with
+        # B-frames (I- and P-frames timed by libavcodec's guess) or raw streams; a seek the container refuses reads from the
+        # start; raw streams timed as ffmpeg (their timestamps dropped), seeks there decode from the start (or on), and
+        # taken frames carry the reader's times; a jump that lands past the time (an index by dts) from the keyframe before
+        # (AVI's guard has no line: a jump there that goes wrong lands past the time, so the check after it catches it too)
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'format == "mpeg" || '; Replace = ''; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = ' || (format == "avi" && st->codecpar->video_delay > 0)'; Replace = ''; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (!TrySeekMicroseconds(point) && _started)'; Replace = 'if (!TrySeekMicroseconds(point) && false)'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (!TrySeekMicroseconds(point))'; Replace = 'if (false)'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (!TrySeekMicroseconds(start) && _started)'; Replace = 'if (_started)'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '_noTimestamps = (_fmt->iformat->flags & ffmpeg.AVFMT_NOTIMESTAMPS) != 0 && wallclock == 0;'; Replace = '_noTimestamps = false;'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = ' || _noTimestamps;'; Replace = ';'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'long pts = _decoder.TimestampsUnreliable ? ffmpeg.AV_NOPTS_VALUE : _ahead?.Current.Pts ?? _decoder.Pts;'; Replace = 'long pts = _ahead?.Current.Pts ?? _decoder.Pts;'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (_decoder.TimestampsUnreliable)'; Replace = 'if (false)'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_decoder.Rewind();'; Replace = ''; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'bool past = first && Pts + keep > 0;'; Replace = 'bool past = false;'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'return taken.Reference(Pts, time);'; Replace = 'return taken.Reference();'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'long point = Demuxer.SeekPoint(_fmt, timestamp);'; Replace = 'long point = Demuxer.SeekPoint(_fmt, timestamp); SeekMicroseconds(point);'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
     )
 }

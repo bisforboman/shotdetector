@@ -19,7 +19,8 @@ public sealed unsafe class FrameDecoder : IDisposable
     AVPacket* _pkt;
     AVFrame* _frame;
     readonly int _stream;
-    readonly bool _indexUnusable; // MPEG-PS, AVI with B-frames: no keyframe jumps (KeyframeAtOrBefore)
+    readonly bool _indexUnusable; // MPEG-PS, AVI with B-frames, raw streams: no keyframe jumps (KeyframeAtOrBefore)
+    readonly bool _noTimestamps; // TimestampsUnreliable
     readonly AVRational _timeBase;
     readonly AVRational _sar; // the container's sample aspect ratio, which ffmpeg's command line puts on every frame (0/1: none)
     bool _draining, _done;
@@ -71,8 +72,12 @@ public sealed unsafe class FrameDecoder : IDisposable
     /// <summary>The stream's time base as FFmpeg keeps it.</summary>
     internal AVRational StreamTimeBase => _timeBase;
 
-    /// <summary>The container has no timestamps (AVFMT_NOTIMESTAMPS: ffmpeg's command line trusts the codec's frame rate over frame durations).</summary>
-    internal bool TimestampsUnreliable => (_fmt->iformat->flags & ffmpeg.AVFMT_NOTIMESTAMPS) != 0;
+    /// <summary>
+    /// The container has no timestamps (AVFMT_NOTIMESTAMPS: raw elementary streams, unless use_wallclock_as_timestamps is
+    /// set). ffmpeg's command line then drops every packet's timestamps before decoding (fftools' DECODER_FLAG_TS_UNRELIABLE),
+    /// so its frames are timed from 0 by the codec's frame rate, and trusts that rate over frame durations.
+    /// </summary>
+    internal bool TimestampsUnreliable => _noTimestamps;
 
     /// <summary>The codec's frame rate (the decoder context's; 0/1 when unknown).</summary>
     internal AVRational CodecFrameRate => _dec->framerate;
@@ -140,7 +145,10 @@ public sealed unsafe class FrameDecoder : IDisposable
                 throw new FrameReaderException(FrameReaderError.InvalidInput, "The input has no video stream.");
             var st = _fmt->streams[_stream];
             string format = Marshal.PtrToStringAnsi((nint)_fmt->iformat->name) ?? "";
-            _indexUnusable = format == "mpeg" || (format == "avi" && st->codecpar->video_delay > 0);
+            long wallclock = 0;
+            ffmpeg.av_opt_get_int(_fmt, "use_wallclock_as_timestamps", 0, &wallclock);
+            _noTimestamps = (_fmt->iformat->flags & ffmpeg.AVFMT_NOTIMESTAMPS) != 0 && wallclock == 0;
+            _indexUnusable = format == "mpeg" || (format == "avi" && st->codecpar->video_delay > 0) || _noTimestamps;
             _timeBase = st->time_base;
             _sar = st->sample_aspect_ratio;
             var codec = ffmpeg.avcodec_find_decoder(st->codecpar->codec_id);
@@ -288,11 +296,15 @@ public sealed unsafe class FrameDecoder : IDisposable
         if (_fmt->start_time != ffmpeg.AV_NOPTS_VALUE)
             timestamp += _fmt->start_time;
         long point = Demuxer.SeekPoint(_fmt, timestamp);
-        if (!TrySeekMicroseconds(point) && _started)
+        if (!TrySeekMicroseconds(point))
         {
-            // ffmpeg's command line only warns ("could not seek to position", as when the margin above goes before an
-            // AVI's first index entry) and reads from where it is, which there is the start: so from the start here.
-            SeekMicroseconds(_fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : _fmt->start_time);
+            // The container refused (the margin above goes before the first index entry: AVI, FLV). ffmpeg's command line
+            // only warns ("could not seek to position") and reads on from wherever the failed seek left the input: past
+            // the first keyframe, so its frames come from a keyframe seconds later, or none come at all. From the start
+            // instead (the frames a full decode has), where the input can go back; a reader that has read must.
+            long start = _fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : _fmt->start_time;
+            if (!TrySeekMicroseconds(start) && _started)
+                SeekMicroseconds(start);
         }
 
         return TrimOffset(time);
@@ -308,7 +320,9 @@ public sealed unsafe class FrameDecoder : IDisposable
         // None to jump by where a jump doesn't give a full decode's frames: MPEG-PS indexes every PES with a dts as a
         // keyframe (libavformat/mpeg.c, "FIXME keyframe?") and seeks by dts to any of them, so decoding starts at the next
         // I-frame, which can be past pts. AVI has only dts: with B-frames its I- and P-frames are timed by libavcodec's
-        // guess from the frames decoded before, which a jump changes (an I-frame three frames late).
+        // guess from the frames decoded before, which a jump changes (an I-frame three frames late). Raw streams' generic
+        // index is by the parser's dts (a keyframe past pts with B-frames, none at all for H.264 and HEVC), while their
+        // frames are timed by counting from the start (TimestampsUnreliable), which a jump loses.
         if (_indexUnusable)
             return null;
         var st = _fmt->streams[_stream];
@@ -329,7 +343,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     internal long TrimOffset(TimeSpan time)
     {
         long timestamp = time.Ticks / 10;
-        if (_fmt->start_time != ffmpeg.AV_NOPTS_VALUE)
+        if (_fmt->start_time != ffmpeg.AV_NOPTS_VALUE && !_noTimestamps) // without timestamps, frames are timed from 0
             timestamp += _fmt->start_time;
         return ffmpeg.av_rescale_q(-timestamp, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase);
     }
@@ -337,17 +351,23 @@ public sealed unsafe class FrameDecoder : IDisposable
     void SeekMicroseconds(long us) => Check(TrySeek(us), "seek");
 
     /// <summary>
+    /// Back to the input's first byte (libavformat's byte seek), the decoder flushed: from the start again where seeking
+    /// by time can't get there (a raw stream without timestamps has no index to seek by).
+    /// </summary>
+    internal void Rewind() => Check(TrySeek(0, ffmpeg.AVSEEK_FLAG_BYTE), "seek");
+
+    /// <summary>
     /// Seeks (as <see cref="SeekMicroseconds"/>); false when the container can't, the decoder as it was (libavformat has
     /// dropped the packets it had read ahead, as for ffmpeg's command line).
     /// </summary>
     bool TrySeekMicroseconds(long us) => TrySeek(us) >= 0;
 
-    int TrySeek(long us)
+    int TrySeek(long us, int flags = 0)
     {
         // Deinterlacing keeps frames in yadif (or the row deinterlacer); only a seek before the first frame is clean.
         if (_deinterlace && _started)
             throw new InvalidOperationException("A deinterlacing decoder can seek only before its first frame.");
-        int ret = ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, us, us, 0);
+        int ret = ffmpeg.avformat_seek_file(_fmt, -1, long.MinValue, us, us, flags);
         if (ret < 0)
             return ret;
         ffmpeg.avcodec_flush_buffers(_dec);
@@ -357,6 +377,9 @@ public sealed unsafe class FrameDecoder : IDisposable
     }
 
     bool _started;
+
+    /// <summary>Whether a frame has been asked for (so the input may have moved from its start).</summary>
+    internal bool Started => _started;
 
     /// <summary>Decodes the next frame; false at the end. Packets that don't decode are skipped, as ffmpeg's command line does.</summary>
     public bool Next()
@@ -813,11 +836,12 @@ public sealed unsafe class FrameDecoder : IDisposable
     /// <summary>
     /// Leaves packets out of the decoder whose frames are before <see cref="SkipBefore"/> and that no other frame
     /// references (<see cref="UnreferencedPackets"/>): every other frame decodes to the same bytes. Not when
-    /// deinterlacing (yadif reads the neighbours) or decoding on the GPU. Before the first read.
+    /// deinterlacing (yadif reads the neighbours) or decoding on the GPU, nor without timestamps (a raw stream's parser
+    /// pts aren't its frames' times, <see cref="TimestampsUnreliable"/>). Before the first read.
     /// </summary>
     internal void SkipUnreferenced()
     {
-        if (!_deinterlace && _hwDevice == null)
+        if (!_deinterlace && _hwDevice == null && !_noTimestamps)
             _unreferenced = UnreferencedPackets.For(_fmt->streams[_stream]->codecpar);
     }
 

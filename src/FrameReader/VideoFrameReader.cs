@@ -239,11 +239,30 @@ public sealed unsafe class VideoFrameReader : IDisposable
     public void Seek(TimeSpan time)
     {
         NoFrameRate(nameof(Seek));
+        _index = -1;
+        if (_decoder.TimestampsUnreliable)
+        {
+            // A raw stream: ffmpeg's -ss can't seek it (its frames lose their timestamps, so it lands on some keyframe
+            // and keeps every frame from there, or finds none at all), so decode forward from the start instead, to the
+            // frame a full decode has at the time. Forward of the frame read last, on from there.
+            long keep = _decoder.TrimOffset(time);
+            if (!(_current && Pts + keep < 0) && _decoder.Started)
+            {
+                _ahead?.Clear();
+                _decoder.Rewind();
+                _lastPts = ffmpeg.AV_NOPTS_VALUE; // timed from the start again
+            }
+
+            _keepFrom = keep;
+            _decoder.SkipBefore = -keep;
+            _current = false;
+            return;
+        }
+
         _ahead?.Clear(); // the frames read ahead are the old position's
         _keepFrom = _decoder.SeekLikeFfmpeg(time);
         _lastPts = ffmpeg.AV_NOPTS_VALUE; // as ffmpeg's decoder after an input -ss: no frame before
         _decoder.SkipBefore = -_keepFrom.Value; // the frames the trim drops: those nothing references needn't decode
-        _index = -1;
         _current = false;
     }
 
@@ -402,8 +421,19 @@ public sealed unsafe class VideoFrameReader : IDisposable
         return got;
     }
 
-    /// <summary>The frame read last, as a reference the caller owns: taken from the decoder, or another of the queued one.</summary>
-    DecodedFrame Take() => _ahead is null ? _decoder.TakeFrame() : _ahead.Current.Frame.Reference();
+    /// <summary>
+    /// The frame read last, as a reference the caller owns: taken from the decoder, or another of the queued one; timed as
+    /// <see cref="TryRead"/> times it (ffmpeg's command line: a raw stream's frames counted from 0, a frame without a
+    /// timestamp the one before's plus its duration).
+    /// </summary>
+    DecodedFrame Take()
+    {
+        var time = TimeSpan.FromSeconds((Pts + StartOffset) * _decoder.TimeBase.Value);
+        if (_ahead is not null)
+            return _ahead.Current.Frame.Reference(Pts, time);
+        using var taken = _decoder.TakeFrame();
+        return taken.Reference(Pts, time);
+    }
 
     /// <summary>
     /// Reads forward to the first frame at or after <paramref name="time"/> (the frame a full decode has there, as
@@ -452,7 +482,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
 
             // The index's keyframe is at or before the target: a target within the second needs no look (nor, reading
             // ahead, the decoding thread stopped while the index is read).
-            long from = (_current ? Pts : -_decoder.StartOffset) + (long)(1 / _decoder.TimeBase.Value); // before the first read: the start
+            long from = (_current ? Pts : -StartOffset) + (long)(1 / _decoder.TimeBase.Value); // before the first read: the start
             if (target > from && Pause() && _decoder.CanSeek && _decoder.KeyframeAtOrBefore(target) is { } found && found > from)
             {
                 key = found;
@@ -464,18 +494,24 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 (_keepFrom, jumped) = (null, true);
             }
 
-            bool got, beforeKeyframe = jumped;
+            bool got, beforeKeyframe = jumped, first = jumped;
             while (true)
             {
                 got = Next();
                 if (!got)
                     break;
                 beforeKeyframe &= !IsKeyframe;
-                if (Pts + keep < 0 || (_keepFrom is { } k && Pts + k < 0))
+
+                // The first frame after the jump already past the target: frames before it may have been left out. An
+                // index by dts (mp4, mov) lands on a keyframe whose pts is past the target when B-frames before it in
+                // display order follow it, and MPEG-4 Part 2's decoder drops those (no reference before the keyframe).
+                bool past = first && Pts + keep > 0;
+                first = false;
+                if (!past && (Pts + keep < 0 || (_keepFrom is { } k && Pts + k < 0)))
                     continue;
-                if (beforeKeyframe)
+                if (beforeKeyframe || past)
                 {
-                    // Possibly damaged: from the keyframe before instead (no further jumps).
+                    // Possibly damaged or left out: from the keyframe before instead (no further jumps).
                     _ahead?.Clear(); // and from the keyframe before
                     _decoder.Seek(Math.Max(0, key - 1));
                     beforeKeyframe = false;
@@ -502,8 +538,9 @@ public sealed unsafe class VideoFrameReader : IDisposable
         if (!(_ahead?.Next() ?? _decoder.Next()))
             return false;
 
-        // ffmpeg's command line (fftools' decoder): no timestamp, the previous frame's plus its duration estimate.
-        long pts = _ahead?.Current.Pts ?? _decoder.Pts;
+        // ffmpeg's command line (fftools' decoder): no timestamp, the previous frame's plus its duration estimate; a
+        // container without timestamps has its frames' dropped (so its frames count from 0 by the frame rate).
+        long pts = _decoder.TimestampsUnreliable ? ffmpeg.AV_NOPTS_VALUE : _ahead?.Current.Pts ?? _decoder.Pts;
         if (pts == ffmpeg.AV_NOPTS_VALUE)
             pts = _lastPts == ffmpeg.AV_NOPTS_VALUE ? 0 : _lastPts + _lastDuration;
         _lastDuration = DurationEstimate(pts);
@@ -546,6 +583,9 @@ public sealed unsafe class VideoFrameReader : IDisposable
     long Pts => _pts;
 
     bool IsKeyframe => _ahead?.Current.IsKeyframe ?? _decoder.IsKeyframe;
+
+    /// <summary>What turns <see cref="Pts"/> into time from the input's start: the decoder's, or 0 where frames are timed from 0 (no timestamps).</summary>
+    long StartOffset => _decoder.TimestampsUnreliable ? 0 : _decoder.StartOffset;
 
     long Duration => _ahead?.Current.Duration ?? _decoder.Duration;
 
@@ -640,7 +680,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
             try
             {
                 Check(ffmpeg.av_frame_ref(feed, src), "fps");
-                feed->pts = Pts + _decoder.StartOffset; // ffmpeg's command line shifts by the start time (no -copyts)
+                feed->pts = Pts + StartOffset; // ffmpeg's command line shifts by the start time (no -copyts)
                 feed->duration = Duration; // in the stream's time base, as the pts: fps ends the stream by the last one
                 Check(ffmpeg.av_buffersrc_add_frame_flags(_fpsIn, feed, 0), "fps");
             }
@@ -678,7 +718,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     void Convert(out VideoFrame frame)
     {
         long pts = Pts;
-        Convert(Frame(), pts, TimeSpan.FromSeconds((pts + _decoder.StartOffset) * _decoder.TimeBase.Value), out frame);
+        Convert(Frame(), pts, TimeSpan.FromSeconds((pts + StartOffset) * _decoder.TimeBase.Value), out frame);
     }
 
     void Convert(AVFrame* src, long pts, TimeSpan time, out VideoFrame frame)
