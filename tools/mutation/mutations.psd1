@@ -456,8 +456,8 @@
         # B-frames (I- and P-frames timed by libavcodec's guess) or raw streams; a seek the container refuses reads from the
         # start; raw streams timed as ffmpeg (their timestamps dropped), seeks there decode from the start (or on), and
         # taken frames carry the reader's times; a jump that lands past the time (an index by dts) from the keyframe before
+        # (AVI's guard has no line: a jump there that goes wrong lands past the time, so the check after it catches it too)
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'format == "mpeg" || '; Replace = ''; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = ' || (format == "avi" && st->codecpar->video_delay > 0)'; Replace = ''; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (!TrySeekMicroseconds(point))'; Replace = 'if (false)'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (!TrySeekMicroseconds(start) && _started)'; Replace = 'if (_started)'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '_noTimestamps = (_fmt->iformat->flags & ffmpeg.AVFMT_NOTIMESTAMPS) != 0 && wallclock == 0;'; Replace = '_noTimestamps = false;'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }

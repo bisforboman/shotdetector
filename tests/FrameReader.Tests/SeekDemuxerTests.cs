@@ -114,6 +114,17 @@ public class SeekDemuxerTests
                         Assert.True(frame.Data.SequenceEqual(ffmpegs), $"{name} {t} s: not ffmpeg's frame");
                     }
                 }
+
+                // Again from the start, now that the index knows the whole file (a raw stream's is built as it's read):
+                // jumps where the reader would make them (AVI: from the start to 1.072 s gave 1.04 s's frame).
+                reader.Seek(TimeSpan.Zero);
+                foreach (double t in new[] { 1.072, 2.112, 3.312, 5.712 })
+                {
+                    var expected = full.First(f => f.Time >= TimeSpan.FromSeconds(t));
+                    Assert.True(reader.TryReadForwardTo(TimeSpan.FromSeconds(t), out var frame), $"{name} {t} s after Seek(0)");
+                    Assert.True(expected.Time == frame.Time && frame.Data.SequenceEqual(expected.Data),
+                        $"{name} {t} s after Seek(0), ReadAhead {ahead}: the frame at {frame.Time.TotalSeconds} s, the full decode's at {expected.Time.TotalSeconds} s");
+                }
             }
 
             // ReadAt's readers each read forward: the same frames.
