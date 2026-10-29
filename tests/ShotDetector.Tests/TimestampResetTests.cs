@@ -175,26 +175,32 @@ public class TimestampResetTests(JoinedEncodes joined, MpegPsVariants ps, Clips 
         using (var file = File.OpenRead(joined.Video))
             Assert.False(new VideoReader(file, Options("in-process")).TimestampsStartOver);
 
-        var arriving = new VideoReader(ps.Paths["joined"], Options("in-process"));
-        Assert.True(arriving.TimestampsArrive);
-        Assert.True(arriving.TimestampsStartOver);
+        // MPEG-PS's timestamps arrive with the frames (in-process) or alongside them (the executable): they may start over.
+        foreach (string run in (string[])["in-process", "executable"])
+        {
+            var arriving = new VideoReader(ps.Paths["clean"], Options(run));
+            Assert.True(arriving.TimestampsArrive);
+            Assert.True(arriving.TimestampsStartOver);
+        }
 
-        // From the decoding pass (the executable), what the frames' timestamps show: the joined copy's go back.
-        Assert.True(new VideoReader(ps.Paths["joined"], Options("executable")).TimestampsStartOver);
-        Assert.False(new VideoReader(ps.Paths["clean"], Options("executable")).TimestampsStartOver);
+        // From the decoding pass (a start time), what the frames' timestamps show: the joined copy's go back.
+        Assert.True(new VideoReader(ps.Paths["joined"], Options("executable") with { FrameTimestampsFirst = true }).TimestampsStartOver);
+        Assert.False(new VideoReader(ps.Paths["clean"], Options("executable") with { FrameTimestampsFirst = true }).TimestampsStartOver);
     }
 
-    // MPEG-PS decoded in-process tells every shot at the end: after the last frame.
+    // MPEG-PS read from the start tells every shot at the end: after the last frame.
     [Theory]
-    [InlineData("joined")]
-    [InlineData("clean")]
-    public void MpegPsWithArrivingTimestampsTellsTheShotsAtTheEnd(string variant)
+    [InlineData("joined", "in-process")]
+    [InlineData("clean", "in-process")]
+    [InlineData("joined", "executable")]
+    [InlineData("clean", "executable")]
+    public void MpegPsWithArrivingTimestampsTellsTheShotsAtTheEnd(string variant, string run)
     {
-        if (Libs is null)
+        if (Libs is null && run == "in-process")
             return;
         int frames = 0, framesWhenFirstTold = -1;
         var told = new Told();
-        var options = Options("in-process") with
+        var options = Options(run) with
         {
             OnShot = new SynchronousProgress<Shot>(shot =>
             {
@@ -206,7 +212,7 @@ public class TimestampResetTests(JoinedEncodes joined, MpegPsVariants ps, Clips 
             ProgressStep = 0.01,
         };
         var result = ShotDetection.Detect(ps.Paths[variant], options);
-        Assert.True(result.Video.DecodedInProcess);
+        Assert.Equal(run == "in-process", result.Video.DecodedInProcess);
         Assert.True(result.Shots.Count > 1);
         Assert.Equal(result.Shots, told.Shots);
         Assert.Equal(result.FrameCount, framesWhenFirstTold);

@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- MPEG-PS through the ffmpeg executable: drop the frame-timestamp pass, as in-process does since #546
-  - Why: Through the executable, an MPEG-PS file (packets without a pts) still takes an ffprobe frames pass for each frame's time before detection: 8.5 s on a 4-minute 576p clip, 25-35% of the run (pre-scan memo, docs/decisions/2026-10-27-pre-scan.md); #546 removed the pass in-process only. The executable path already reads each frame's showinfo line. Check first whether showinfo's per-frame times reproduce the pass's rule (pts if not 0, else pkt_dts) on every PS sample; if they do, take them from there, byte-identical, else measure what's left and decide
-  - Status: Open
-
 ## Waiting
 
 - At the next FrameReader release, count the FrameReader features that needed ShotDetector too (docs/frame-reader-product.md, "When to reconsider"; features, not commits, since 2026-10-28)

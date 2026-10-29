@@ -130,13 +130,13 @@ public class FrameTimestampsTests(MpegPsClip clip) : IClassFixture<MpegPsClip>
         using var cts = new CancellationTokenSource();
         var sinceCancel = new Stopwatch();
 
-        // In-process, the timestamps come with the frames unless something needs them first: a start time.
+        // The timestamps arrive as the frames do unless something needs them first: a start time.
         var options = new DetectionOptions
         {
             Detector = DetectorKind.Content,
             Decoder = decoder,
             FfmpegDirectory = Libs,
-            StartTime = decoder == VideoDecoder.InProcess ? "10" : null,
+            StartTime = "10",
             OnFrameTimestamps = () =>
             {
                 cts.Cancel();
@@ -148,6 +148,44 @@ public class FrameTimestampsTests(MpegPsClip clip) : IClassFixture<MpegPsClip>
         Assert.True(cts.IsCancellationRequested, "The reader never started the pass for timestamps.");
         Assert.True(sinceCancel.Elapsed < whole / 4,
             $"Stopped {sinceCancel.Elapsed.TotalMilliseconds:F0} ms after cancelling; the whole pass takes {whole.TotalMilliseconds:F0} ms.");
+    }
+
+    // Through the executable, read from the start, the pass runs alongside the read: cancelling the read stops both.
+    [Fact]
+    public void CancellingAReadStopsThePassAlongside()
+    {
+        using var cts = new CancellationTokenSource();
+        var reader = new VideoReader(clip.Path, new DetectionOptions { Decoder = VideoDecoder.FfmpegProcess, FfmpegDirectory = Libs });
+        Assert.True(reader.TimestampsArrive);
+        int frames = 0;
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+        {
+            foreach (var frame in reader.Frames(cts.Token))
+            {
+                if (++frames == 5)
+                    cts.Cancel();
+            }
+        });
+        var pass = reader.LastPassAlongside;
+        Assert.NotNull(pass);
+        var waited = Stopwatch.StartNew();
+        while (!pass.HasExited && waited.Elapsed < TimeSpan.FromSeconds(10))
+            Thread.Sleep(20);
+        Assert.True(pass.HasExited, "ffprobe still runs after the read was cancelled.");
+    }
+
+    // ... and a read that stops early stops it too (a later frame's timestamp takes a pass then, as in-process; a read
+    // from the start again starts another alongside).
+    [Fact]
+    public void StoppingAReadStopsThePassAlongside()
+    {
+        var reader = new VideoReader(clip.Path, new DetectionOptions { Decoder = VideoDecoder.FfmpegProcess, FfmpegDirectory = Libs });
+        Assert.Equal(5, reader.Frames().Take(5).Count());
+        Assert.True(reader.TimestampsArrive);
+        var first = reader.LastPassAlongside!;
+        Assert.True(first.HasExited, "ffprobe still runs after the read stopped.");
+        Assert.Equal(5, reader.Frames().Take(5).Count());
+        Assert.NotSame(first, reader.LastPassAlongside);
     }
 
     /// <summary>

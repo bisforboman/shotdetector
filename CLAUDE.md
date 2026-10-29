@@ -149,7 +149,9 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - MPEG-PS packets mostly lack a pts: OpenCV uses the frame's dts, so the reader takes per-frame timestamps
   from a decoding pass when any packet has none (`FrameTimestamps`); in-process they come with the frames instead
   (`TimestampsArrive`, `PacketOfArrived`: `PacketOf` over those so far, the pass where they don't settle a frame or
-  something needs them all first; docs/decisions/2026-10-27-pre-scan.md).
+  something needs them all first; docs/decisions/2026-10-27-pre-scan.md); through the executable ffprobe's pass runs
+alongside the read and labels frames as its timestamps arrive (`PacketOfFromPass`; showinfo's own times are ffmpeg's
+best-effort ones, which differ: docs/decisions/2026-10-29-mpeg-ps-pass-executable.md).
 - Interlaced video: opencv-python 5.0.0.93 can't convert interlaced frames (FFmpeg 8 swscale: "Cannot convert
   interlaced to progressive") and gives scenedetect one nearly black frame throughout; we read the real frames. CI:
   informational with deinterlacing off, exact with `--deinterlace auto` vs scenedetect on a lossless yadif copy.
