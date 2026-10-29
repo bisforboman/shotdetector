@@ -239,8 +239,8 @@ public sealed record DetectionOptions
 
     /// <summary>
     /// Content: content_val threshold (27). Adaptive: ratio threshold (3). Threshold: fade level (12).
-    /// Histogram: how far the histogram correlation must drop below 1 (0.05).
-    /// Hash: fraction of hash bits that must differ (0.395).
+    /// Histogram: how far the histogram correlation must drop below 1 (0.20; 0.05 with <see cref="PySceneDetectVersion.V0_7_1"/>).
+    /// Hash: fraction of hash bits that must differ (0.35; 0.395 with <see cref="PySceneDetectVersion.V0_7_1"/>).
     /// </summary>
     public double? Threshold { get; init; }
 
