@@ -15,6 +15,14 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
+- MPEG-PS through the ffmpeg executable: drop the frame-timestamp pass, as in-process does since #546
+  - Why: Through the executable, an MPEG-PS file (packets without a pts) still takes an ffprobe frames pass for each frame's time before detection: 8.5 s on a 4-minute 576p clip, 25-35% of the run (pre-scan memo, docs/decisions/2026-10-27-pre-scan.md); #546 removed the pass in-process only. The executable path already reads each frame's showinfo line. Check first whether showinfo's per-frame times reproduce the pass's rule (pts if not 0, else pkt_dts) on every PS sample; if they do, take them from there, byte-identical, else measure what's left and decide
+  - Status: Open
+
+- `TryReadForwardTo`: tell the decoder the next target early, so frame skipping drops more
+  - Why: Skipping unreferenced frames (#578) drops only about 75% of the droppable packets in the issue #566 loop (1701 of 2237), because frame threading and ReadAhead read packets before the next target is known. `ReadAt` already sets each reader's next time as soon as a frame is handed over; `TryReadForwardTo` doesn't know its next target, but could guess it from the last steps and fall back exactly (read those packets again from the keyframe) if a dropped packet turns out to be at or after the real next target. Exact by the same argument as #578; measure the gain on the issue's clip
+  - Status: Open
+
 ## Waiting
 
 - At the next FrameReader release, count the FrameReader features that needed ShotDetector too (docs/frame-reader-product.md, "When to reconsider"; features, not commits, since 2026-10-28)
@@ -34,6 +42,14 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Waiting (on .NET 11's release)
 
 ## Maybe
+
+- MPEG-PS chunking: long DVD/VOB rips on several cores
+  - Why: Files whose packets lack timestamps (MPEG-PS) never run in chunks (`NotChunkable`: "packets without timestamps"), because chunk bounds need every frame's time up front, the pass #546 removed in-process. Long rips can't use more than one decoder. Measure the pass's cost against what chunking gains (1.3-1.5x on 4 CPUs elsewhere) before deciding whether to bring the pass back for long files
+  - Status: Maybe
+
+- Segment decoders inside `ReadAhead`: several decoders on different parts of the file
+  - Why: ffmpeg caps frame threads at 16, so above that cores sit idle; issue #566's own run with 4 `ReadAt` readers (3.2 s against 3.6-4.4 s for the ffmpeg command, 22 CPUs) shows the gain. Building it into `ReadAhead` would give `TryReadForwardTo` callers the same without a time list up front, at the memory of one decoder per segment. Pays only above ~16 cores (offered 2026-10-28)
+  - Status: Maybe
 
 - FrameReader read-ahead: convert ahead too, for TryRead
   - Why: `VideoFrameReaderOptions.ReadAhead` (#568, issue #566) decodes, deinterlaces and rotates frames ahead on a background thread but converts each frame in the read, because `TryReadForwardTo` only knows which frame it wants when asked (at 1 fps, converting ahead would waste 24 of 25 conversions). Plain `TryRead` wants every frame, so its conversion could run ahead too, hiding the conversion's share of each frame; it would need a ring of output buffers to keep the rule that a frame is valid until the next read. Measure first on a caller whose work per frame is shorter than the decode
