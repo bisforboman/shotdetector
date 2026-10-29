@@ -19,10 +19,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Through the executable, an MPEG-PS file (packets without a pts) still takes an ffprobe frames pass for each frame's time before detection: 8.5 s on a 4-minute 576p clip, 25-35% of the run (pre-scan memo, docs/decisions/2026-10-27-pre-scan.md); #546 removed the pass in-process only. The executable path already reads each frame's showinfo line. Check first whether showinfo's per-frame times reproduce the pass's rule (pts if not 0, else pkt_dts) on every PS sample; if they do, take them from there, byte-identical, else measure what's left and decide
   - Status: Open
 
-- `TryReadForwardTo`: tell the decoder the next target early, so frame skipping drops more
-  - Why: Skipping unreferenced frames (#578) drops only about 75% of the droppable packets in the issue #566 loop (1701 of 2237), because frame threading and ReadAhead read packets before the next target is known. `ReadAt` already sets each reader's next time as soon as a frame is handed over; `TryReadForwardTo` doesn't know its next target, but could guess it from the last steps and fall back exactly (read those packets again from the keyframe) if a dropped packet turns out to be at or after the real next target. Exact by the same argument as #578; measure the gain on the issue's clip
-  - Status: Open
-
 ## Waiting
 
 - At the next FrameReader release, count the FrameReader features that needed ShotDetector too (docs/frame-reader-product.md, "When to reconsider"; features, not commits, since 2026-10-28)

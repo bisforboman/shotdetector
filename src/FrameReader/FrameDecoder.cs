@@ -21,14 +21,20 @@ public sealed unsafe class FrameDecoder : IDisposable
     readonly int _stream;
     readonly bool _indexUnusable; // MPEG-PS, AVI with B-frames, raw streams: no keyframe jumps (KeyframeAtOrBefore)
     readonly bool _noTimestamps; // TimestampsUnreliable
+    readonly bool _headerIndex; // the container's own index, read with its header (mp4, mov, mkv cues): CanReadAgain
     readonly AVRational _timeBase;
     readonly AVRational _sar; // the container's sample aspect ratio, which ffmpeg's command line puts on every frame (0/1: none)
     bool _draining, _done;
 
-    // Packets of frames nothing references, before SkipBefore, aren't sent to the decoder (VideoFrameReader's reads
-    // forward); null: every packet is.
+    // Packets of frames nothing references, before SkipBefore (or before SkipAhead's next time, past a frame kept for
+    // the target), aren't sent to the decoder (VideoFrameReader's reads forward); null: every packet is.
     UnreferencedPackets? _unreferenced;
-    long _skipBefore = long.MinValue;
+    Window _window = new(long.MinValue, long.MinValue);
+    Window? _keptFor; // the window _keptMin is for
+    long _keptMin; // the lowest pts at or after its Before sent to the decoder while it was set
+    readonly List<long> _leftOut = []; // the pts of the packets left out since the last seek (those under the reader's last target pruned)
+
+    sealed record Window(long Before, long Ahead);
 
     // Deinterlacing: decoded frames go through buffer -> yadif -> buffersink (as ffmpeg's -vf yadif), and _frame is
     // the sink's output. The graph is built from the first decoded frame.
@@ -149,6 +155,7 @@ public sealed unsafe class FrameDecoder : IDisposable
             ffmpeg.av_opt_get_int(_fmt, "use_wallclock_as_timestamps", 0, &wallclock);
             _noTimestamps = (_fmt->iformat->flags & ffmpeg.AVFMT_NOTIMESTAMPS) != 0 && wallclock == 0;
             _indexUnusable = format == "mpeg" || (format == "avi" && st->codecpar->video_delay > 0) || _noTimestamps;
+            _headerIndex = ffmpeg.avformat_index_get_entries_count(st) > 0 && (_fmt->iformat->flags & ffmpeg.AVFMT_GENERIC_INDEX) == 0;
             _timeBase = st->time_base;
             _sar = st->sample_aspect_ratio;
             var codec = ffmpeg.avcodec_find_decoder(st->codecpar->codec_id);
@@ -372,6 +379,8 @@ public sealed unsafe class FrameDecoder : IDisposable
             return ret;
         ffmpeg.avcodec_flush_buffers(_dec);
         _unreferenced?.Restart();
+        lock (_leftOut)
+            _leftOut.Clear(); // decoded again from here
         _draining = _done = false;
         return ret;
     }
@@ -851,9 +860,40 @@ public sealed unsafe class FrameDecoder : IDisposable
     /// </summary>
     internal long SkipBefore
     {
-        get => Volatile.Read(ref _skipBefore);
-        set => Volatile.Write(ref _skipBefore, value);
+        get => Volatile.Read(ref _window).Before;
+        set => Volatile.Write(ref _window, new Window(value, value));
     }
+
+    /// <summary>
+    /// <see cref="SkipBefore"/> <paramref name="before"/>, and packets before <paramref name="ahead"/> (the next time the
+    /// reader expects to be asked for) too, once a packet at or after <paramref name="before"/> and before theirs was
+    /// sent: theirs then isn't the first frame at or after <paramref name="before"/>. A guess: the reader checks with
+    /// <see cref="LeftOut"/> that none of them is the frame it wants.
+    /// </summary>
+    internal void SkipAhead(long before, long ahead) => Volatile.Write(ref _window, new Window(before, Math.Max(before, ahead)));
+
+    /// <summary>
+    /// Whether a packet with a pts from <paramref name="from"/> up to (not including) <paramref name="to"/> was left out
+    /// since the last seek: the first frame at or after <paramref name="from"/> could be one of them. Forgets those before
+    /// <paramref name="from"/> (the reader's targets only go forward between seeks: a time before the frame given last gets
+    /// that frame again, or none after the end).
+    /// </summary>
+    internal bool LeftOut(long from, long to)
+    {
+        lock (_leftOut)
+        {
+            _leftOut.RemoveAll(pts => pts < from);
+            return _leftOut.Exists(pts => pts < to);
+        }
+    }
+
+    /// <summary>
+    /// Whether the input can go back for <see cref="VideoFrameReader"/>'s look-ahead to read again what a wrong guess left
+    /// out: a file with an index of its own, read with its header (mp4, mov, mkv's cues), that seeks to the keyframe at or
+    /// before a time. Not a Stream, nor MPEG-TS (indexed only as it is read, its seeks by timestamp can land a keyframe
+    /// late), MPEG-PS, AVI with B-frames or a raw stream.
+    /// </summary>
+    internal bool CanReadAgain => _io == null && !_indexUnusable && _headerIndex && CanSeek;
 
     /// <summary>Packets left out so far (tests).</summary>
     internal long SkippedPackets { get; private set; }
@@ -874,11 +914,22 @@ public sealed unsafe class FrameDecoder : IDisposable
             return false;
         }
 
-        if ((pkt->flags & ffmpeg.AV_PKT_FLAG_KEY) == 0 && pkt->pts >= SkipBefore)
+        var w = Volatile.Read(ref _window);
+        if (w != _keptFor)
+            (_keptFor, _keptMin) = (w, long.MaxValue);
+        long pts = pkt->pts;
+        bool before = pts < w.Before || (pts < w.Ahead && _keptMin < pts);
+        if (((pkt->flags & ffmpeg.AV_PKT_FLAG_KEY) == 0 && !before)
+            || pkt->data == null || !u.Unreferenced(new ReadOnlySpan<byte>(pkt->data, pkt->size)) || !before)
+        {
+            if (pts >= w.Before && pts < _keptMin)
+                _keptMin = pts;
             return false;
-        if (pkt->data == null || !u.Unreferenced(new ReadOnlySpan<byte>(pkt->data, pkt->size)) || pkt->pts >= SkipBefore)
-            return false;
+        }
+
         SkippedPackets++;
+        lock (_leftOut)
+            _leftOut.Add(pts);
         return true;
     }
 
