@@ -6,6 +6,17 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.20.1 – 2026-10-29
+
+A stream whose timestamps start over gives the same shots through both decoders.
+
+### Fixed
+
+- A Stream whose timestamps start over (two MPEG-TS encodes joined), read through the ffmpeg executable, now gives the
+  shots in-process decoding and scenedetect give (OpenCV reading the same bytes from a pipe): the executable runs streamed
+  input with `-copyts`, so ffmpeg no longer makes such timestamps continue (cuts 50, 100, 125, 175 where scenedetect
+  finds 50, 75, 100).
+
 ## 3.20.0 – 2026-10-28
 
 save-images without the ffmpeg executable, and exact labels on damaged and joined files.
