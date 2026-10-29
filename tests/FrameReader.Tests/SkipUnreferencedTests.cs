@@ -252,6 +252,10 @@ public class SkipUnreferencedTests
                 continue;
             }
 
+            // Before the short step, decoding ahead (ReadAhead) has time to leave out frames past it: read again for sure,
+            // also where the decoder has no frame threads to read ahead (MPEG-1/2).
+            if (t == 2.04)
+                Thread.Sleep(50);
             if (t < 0 ? reader.TryRead(out var frame) : reader.TryReadForwardTo(TimeSpan.FromSeconds(t), out frame))
                 lines.Add(Line(frame));
         }
