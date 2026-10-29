@@ -65,7 +65,11 @@ between, still exact (not in MPEG-PS, AVI with B-frames or raw streams, whose se
 the frame; where a container's index by dts lands past the frame, as in MP4 with MPEG-4 Part 2 B-frames, from the
 keyframe before). Frames before the wanted one that no other frame references (most B-frames of H.264, HEVC,
 MPEG-1/2 and MPEG-4 Part 2) aren't decoded at all, also by `ReadAt` and `TryReadAt`'s seek: the frames given are the
-full decode's all the same, byte for byte (not when deinterlacing, nor on the GPU). CPU for Tears of Steel (12 min,
+full decode's all the same, byte for byte (not when deinterlacing, nor on the GPU). Reading forward at steps, those
+after the wanted frame and before the next time stay out too, while the frame threads and `ReadAhead` decode ahead:
+`ReadAt` knows the next time, `TryReadForwardTo` guesses it after steps of one length (in mp4, mov and mkv, whose index
+it can go back by; where a guess was too late, what it left out is read again from the keyframe before, and it takes
+twice as many equal steps to guess again). CPU for Tears of Steel (12 min,
 1280x534), with keyframes every 0.75 s / every 4.4 s (x264), measured before that:
 
 | Pictures | Decodes | CPU |

@@ -57,7 +57,7 @@ public class SkipUnreferencedTests
             string path = Path.Combine(dir, name);
             Ffmpeg(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=4", "-f", "lavfi", "-i", "mandelbrot=s=320x240:r=25",
                 "-filter_complex", "[1]trim=duration=3,setpts=PTS-STARTPTS[m];[0][m]concat=n=2:v=1:a=0,format=yuv420p", "-g", "50", .. encode.Split(' '), path]);
-            long skipped = 0;
+            long skipped = 0, again = 0;
             foreach (int ahead in new[] { 0, 4 })
             {
                 foreach (int threads in new[] { 1, 0 })
@@ -69,8 +69,9 @@ public class SkipUnreferencedTests
                         Decoder = new FrameDecoderOptions { Threads = threads },
                     };
                     foreach (double step in new[] { 1, 0.36 })
-                        skipped += Same(path, options, $"{name} forward {step} s, ReadAhead {ahead}, threads {threads}", r => Forward(r, step));
-                    skipped += Same(path, options, $"{name} at, ReadAhead {ahead}, threads {threads}", r => At(r, 0.7));
+                        skipped += Same(path, options, $"{name} forward {step} s, ReadAhead {ahead}, threads {threads}", r => Forward(r, step), ref again);
+                    skipped += Same(path, options, $"{name} at, ReadAhead {ahead}, threads {threads}", r => At(r, 0.7), ref again);
+                    skipped += Same(path, options, $"{name} steps, ReadAhead {ahead}, threads {threads}", Steps, ref again);
                 }
             }
 
@@ -91,6 +92,14 @@ public class SkipUnreferencedTests
             Assert.Equal(ReadAt(true), ReadAt(false));
             if (skips is { } expected)
                 Assert.True(expected == skipped > 0, $"{name}: {skipped} packets left out");
+
+            // A short step after longer ones guesses the next time too late: read again where the input can go back to
+            // its index's keyframes (mp4, mkv), never guessed elsewhere (MPEG-TS, AVI: their seeks can land late).
+            bool indexed = Path.GetExtension(name) is ".mp4" or ".mkv";
+            if (skips == true)
+                Assert.True(indexed == again > 0, $"{name}: read again {again} times");
+            else
+                Assert.Equal(0, again);
         }
         finally
         {
@@ -180,6 +189,12 @@ public class SkipUnreferencedTests
     /// <summary>The frames <paramref name="read"/> gives with every packet decoded and with packets left out: the same.</summary>
     static long Same(string path, VideoFrameReaderOptions options, string what, Func<VideoFrameReader, List<string>> read)
     {
+        long again = 0;
+        return Same(path, options, what, read, ref again);
+    }
+
+    static long Same(string path, VideoFrameReaderOptions options, string what, Func<VideoFrameReader, List<string>> read, ref long again)
+    {
         List<string> every, some;
         using (var reader = new VideoFrameReader(path, options with { DecodeEveryPacket = true }))
             every = read(reader);
@@ -188,6 +203,7 @@ public class SkipUnreferencedTests
         {
             some = read(reader);
             skipped = reader.SkippedPackets;
+            again += reader.ReadAgain;
         }
 
         Assert.True(every.Count > 5, what);
@@ -209,6 +225,35 @@ public class SkipUnreferencedTests
                 using (taken)
                     lines.Add($"take {taken.Pts} {taken.Time?.Ticks}");
             }
+        }
+
+        return lines;
+    }
+
+    /// <summary>
+    /// Forward reads at irregular steps, which the reader guesses the next time from after steps of one length: constant,
+    /// a short step after them (the guess too late: what it left out is read again), increasing, constant again (guessed
+    /// after more of them), a jump over more than a second, a read back, plain reads and takes in between (the next frame,
+    /// which a guess may have left out), and past the end, then back (still none).
+    /// </summary>
+    static List<string> Steps(VideoFrameReader reader)
+    {
+        var lines = new List<string>();
+        foreach (double t in new[] { 0, 0.5, 1, 1.5, 2, 2.04, 2.6, 3.3, 3.34, 3.38, 3.42, 3.46, 3.5, 3.54, -1, -2, 4.9, 5.1, 5.3, 5.32, -1, -2, 5.6, 5.9, 2, 6.2, -1, 6.24, 6.28, 6.9, 9, 6.95, -1 })
+        {
+            if (t == -2)
+            {
+                if (reader.TryTake(out var taken))
+                {
+                    using (taken)
+                        lines.Add($"take {taken.Pts} {taken.Time?.Ticks}");
+                }
+
+                continue;
+            }
+
+            if (t < 0 ? reader.TryRead(out var frame) : reader.TryReadForwardTo(TimeSpan.FromSeconds(t), out frame))
+                lines.Add(Line(frame));
         }
 
         return lines;

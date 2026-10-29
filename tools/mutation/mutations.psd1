@@ -452,7 +452,10 @@
         @{ File = 'src/FrameReader/UnreferencedPackets.cs'; Find = 'AVCodecID.AV_CODEC_ID_MPEG2VIDEO when progressive'; Replace = 'AVCodecID.AV_CODEC_ID_MPEG2VIDEO'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (pkt->pts == ffmpeg.AV_NOPTS_VALUE)'; Replace = 'if (false)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_decoder.SkipBefore = -_keepFrom.Value;'; Replace = '_decoder.SkipBefore = long.MaxValue;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'reader.SkipTo(times[i + 1]);'; Replace = 'reader.SkipTo(times[^1]);'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'i + 1 < to ? times[i + 1] : null'; Replace = 'i + 1 < to ? times[^1] : null'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (!_decoder.LeftOut(wanted, got ? Pts : long.MaxValue))'; Replace = 'if (true)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (_current && _guessed)'; Replace = 'if (false)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '&& _headerIndex && CanSeek;'; Replace = '&& CanSeek;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
 
         # FrameReader: no keyframe jumps reading forward in MPEG-PS (its index marks every PES as a keyframe), AVI with
         # B-frames (I- and P-frames timed by libavcodec's guess) or raw streams; a seek the container refuses reads from the

@@ -166,6 +166,11 @@ public sealed unsafe class VideoFrameReader : IDisposable
     byte[] _packed = [];
     int _index = -1;
     long? _keepFrom; // after a seek: frames whose pts plus this is below 0 are dropped (ffmpeg's trim)
+    TimeSpan? _lastTarget; // the time read forward to last (since the last seek), and the step to it: the next one's guess
+    TimeSpan _lastStep, _shortestStep;
+    int _equalSteps; // steps in a row as long as the last (within a millisecond)
+    int _stepsToGuess = 2; // how many it takes to guess: doubled by each wrong guess
+    bool _guessed; // packets may have been left out on a guess since the last seek
 
     // The frame read last's timestamp, as ffmpeg's command line gives it: one without (the last frame MPEG-PS and AVI
     // flush out) gets the previous one's plus that one's estimated duration.
@@ -240,6 +245,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     {
         NoFrameRate(nameof(Seek));
         _index = -1;
+        (_lastTarget, _guessed) = (null, false); // no steps to guess the next time by
         if (_decoder.TimestampsUnreliable)
         {
             // A raw stream: ffmpeg's -ss can't seek it (its frames lose their timestamps, so it lands on some keyframe
@@ -318,10 +324,9 @@ public sealed unsafe class VideoFrameReader : IDisposable
             for (int i = from; i < to; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!reader.TryReadForwardTo(times[i], out var frame))
+                if (!reader.AdvanceTo(times[i], i + 1 < to ? times[i + 1] : null))
                     break;
-                if (i + 1 < to)
-                    reader.SkipTo(times[i + 1]); // while the handler works, decoding ahead needn't decode what the next time passes over
+                reader.Convert(out var frame);
                 handler(i, frame);
                 Interlocked.Increment(ref found);
             }
@@ -410,6 +415,14 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <summary>To the next frame (after a seek, the first one ffmpeg's trim keeps); false at the end.</summary>
     bool Advance()
     {
+        if (_current && _guessed)
+        {
+            // Frames after this one may have been left out on a guess of the next time (TryReadForwardTo), also by the
+            // decoding thread before this read: to the frame after it as a read forward, which reads again what it needs.
+            _decoder.SkipBefore = Pts + 1;
+            return Forward(-(Pts + 1), false, 0);
+        }
+
         bool got;
         while ((got = Next()) && _keepFrom is { } keep && Pts + keep < 0)
         {
@@ -442,7 +455,9 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// picture every second is one pass, a picture every few seconds or more decodes a fraction of the video. When the
     /// frame last read is already at or after the time, that frame again. Times behind it don't go back (use
     /// <see cref="Seek"/>). Frames before it that no other frame references (most B-frames of H.264, HEVC, MPEG-1/2 and
-    /// MPEG-4 Part 2) stay out of the decoder: the frames given are those of decoding everything, byte for byte.
+    /// MPEG-4 Part 2) stay out of the decoder, and in mp4, mov and mkv also those after it before the next time, guessed
+    /// after steps of one length (what a guess too late left out is read again from the keyframe before): the frames given
+    /// are those of decoding everything, byte for byte.
     /// </summary>
     /// <param name="time">From the input's start.</param>
     /// <param name="frame">The frame, valid until the next call.</param>
@@ -461,16 +476,38 @@ public sealed unsafe class VideoFrameReader : IDisposable
     }
 
     /// <summary>
-    /// The next read is forward to <paramref name="time"/> or later: frames before it that nothing references needn't be
-    /// decoded (the decoding thread, reading ahead, leaves them out from now on).
+    /// The next time read forward to, guessed after steps of one length (a picture every second): this one plus the
+    /// shortest of them (a guess too early only leaves less out). Null until enough such steps in a row (since a seek or a
+    /// wrong guess, which also doubles how many it takes), so a caller whose steps vary is soon no longer guessed for.
     /// </summary>
-    void SkipTo(TimeSpan time) => _decoder.SkipBefore = -_decoder.TrimOffset(time);
+    TimeSpan? Guess(TimeSpan time)
+    {
+        var step = _lastTarget is { } last ? time - last : TimeSpan.Zero;
+        if (step > TimeSpan.Zero && _equalSteps > 0 && (step - _lastStep).Duration() <= TimeSpan.FromMilliseconds(1))
+            (_equalSteps, _shortestStep) = (_equalSteps + 1, step < _shortestStep ? step : _shortestStep);
+        else
+            (_equalSteps, _shortestStep) = (step > TimeSpan.Zero ? 1 : 0, step);
+        (_lastTarget, _lastStep) = (time, step);
+        return _equalSteps >= _stepsToGuess ? time + _shortestStep : null;
+    }
 
-    /// <summary>To the first frame at or after <paramref name="time"/> (<see cref="TryReadForwardTo"/>'s positioning); false at the end.</summary>
-    bool AdvanceTo(TimeSpan time)
+    /// <summary>
+    /// To the first frame at or after <paramref name="time"/> (<see cref="TryReadForwardTo"/>'s positioning); false at the end.
+    /// <paramref name="next"/>: the time the next read forward asks for, when the caller knows it (<see cref="ReadAt"/>);
+    /// else guessed from the last steps.
+    /// </summary>
+    bool AdvanceTo(TimeSpan time, TimeSpan? next = null)
     {
         long keep = _decoder.TrimOffset(time);
-        _decoder.SkipBefore = -keep; // frames before the one wanted that nothing references needn't decode
+
+        // Frames before the one wanted that nothing references needn't decode, nor those after it before the next time
+        // (once a frame between is in the decoder, so they aren't the one wanted): the frame threads and the decoding
+        // thread read packets past the one wanted before the next time is asked for. A wrong guess is read again (below),
+        // where the input can go back.
+        var guess = Guess(time);
+        long ahead = (next ?? guess) is { } n && _decoder.CanReadAgain ? -_decoder.TrimOffset(n) : -keep;
+        _decoder.SkipAhead(-keep, ahead);
+        _guessed |= ahead > -keep;
         if (!(_current && Pts + keep >= 0))
         {
             // Far ahead (the target's keyframe, per the index, at least a second past where decoding is): jump there. Frames that come out
@@ -494,12 +531,30 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 (_keepFrom, jumped) = (null, true);
             }
 
-            bool got, beforeKeyframe = jumped, first = jumped;
-            while (true)
+            if (!Forward(keep, jumped, key))
+                return false;
+        }
+
+        // While the caller works, decoding ahead needn't decode what the next time passes over.
+        if (next is { } known)
+            _decoder.SkipBefore = -_decoder.TrimOffset(known);
+        else if (ahead > _decoder.SkipBefore)
+            _decoder.SkipBefore = ahead;
+        return true;
+    }
+
+    /// <summary>
+    /// To the first frame whose pts plus <paramref name="keep"/> is 0 or more (and that a seek's trim keeps), after a jump
+    /// to the keyframe <paramref name="key"/> when <paramref name="jumped"/>; false at the end.
+    /// </summary>
+    bool Forward(long keep, bool jumped, long key)
+    {
+        bool got, beforeKeyframe = jumped, first = jumped;
+        while (true)
+        {
+            got = Next();
+            if (got)
             {
-                got = Next();
-                if (!got)
-                    break;
                 beforeKeyframe &= !IsKeyframe;
 
                 // The first frame after the jump already past the target: frames before it may have been left out. An
@@ -517,18 +572,33 @@ public sealed unsafe class VideoFrameReader : IDisposable
                     beforeKeyframe = false;
                     continue;
                 }
-
-                break;
             }
 
-            _current = got;
-            if (!got)
-                return false;
-            _index++;
+            // A packet at or after the time and before this frame (or the end) was left out on a guess: it may have been
+            // the frame wanted. Read again from the keyframe before, leaving nothing out from the time on, as a jump.
+            long wanted = _keepFrom is { } kf ? Math.Max(-keep, -kf) : -keep;
+            if (!_decoder.LeftOut(wanted, got ? Pts : long.MaxValue))
+                break;
+            Pause();
+            key = _decoder.KeyframeAtOrBefore(wanted) ?? 0;
+            _ahead?.Clear();
+            _decoder.SkipBefore = wanted;
+            _decoder.Seek(wanted);
+            (keep, _keepFrom, _lastTarget) = (-wanted, null, null); // and guess again after twice as many equal steps
+            _stepsToGuess = Math.Min(2 * _stepsToGuess, 1 << 20);
+            beforeKeyframe = first = true;
+            ReadAgain++;
         }
 
+        _current = got;
+        if (!got)
+            return false;
+        _index++;
         return true;
     }
+
+    /// <summary>How many times a wrong guess of the next time was read again (tests).</summary>
+    internal int ReadAgain { get; private set; }
 
     bool _current; // the decoder holds a frame read (not past the end)
 
