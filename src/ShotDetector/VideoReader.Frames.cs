@@ -147,10 +147,9 @@ internal sealed partial class VideoReader
                 : Array.BinarySearch(entries, _lastEntry + 1, entries.Length - _lastEntry - 1, f.Pts);
             if (entry < 0)
             {
-                throw new ShotDetectionException(ShotDetectionError.InvalidInput,
-                    string.Create(CultureInfo.InvariantCulture, _lastEntry < 0
-                        ? $"Frame {_framesRead}'s pts is {f.Pts}, not its entry in YuvVideo.FrameTimestamps ({(_framesRead < entries.Length ? entries[_framesRead].ToString(CultureInfo.InvariantCulture) : "none: there are " + entries.Length)}): is it that frame?"
-                        : $"Frame {_framesRead}'s pts ({f.Pts}) isn't in YuvVideo.FrameTimestamps after the previous frame's ({entries[_lastEntry]}): frames must come in presentation order, at their timestamps."));
+                throw new ShotDetectionException(ShotDetectionError.InvalidInput, _lastEntry < 0
+                    ? string.Create(CultureInfo.InvariantCulture, $"Frame {_framesRead}'s pts is {f.Pts}, not its entry in YuvVideo.FrameTimestamps ({(_framesRead < entries.Length ? entries[_framesRead].ToString(CultureInfo.InvariantCulture) : "none: there are " + entries.Length)}): is it that frame?")
+                    : string.Create(CultureInfo.InvariantCulture, $"Frame {_framesRead}'s pts ({f.Pts}) isn't in YuvVideo.FrameTimestamps after the previous frame's ({entries[_lastEntry]}): frames must come in presentation order, at their timestamps."));
             }
 
             _lastEntry = entry;
@@ -197,7 +196,7 @@ internal sealed partial class VideoReader
     }
 
     /// <summary>Every frame's pts, <see cref="YuvVideo.FrameTimestamps"/>; null when not given.</summary>
-    internal IReadOnlyList<long>? FrameTimestamps => _frameTimestamps;
+    internal IReadOnlyList<long>? GivenTimestamps => _frameTimestamps;
 
     /// <summary>Whether the frames carry pts (<see cref="YuvVideo.TimeBase"/> set).</summary>
     internal bool FramesTimed => _framesTimed;

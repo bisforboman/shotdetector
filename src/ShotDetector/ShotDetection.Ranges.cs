@@ -399,7 +399,7 @@ public static partial class ShotDetection
                 // With every frame's timestamp given, each frame at its own (a range's frames are numbered from its
                 // first, so a frame dropped in one is refused here, where Detect takes it as a file's run does).
                 var reader = new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o);
-                var entries = reader.FrameTimestamps;
+                var entries = reader.GivenTimestamps;
                 for (int k = entries is null ? 1 : 0; k < pts.Length; k++)
                 {
                     try
@@ -658,11 +658,6 @@ public static partial class ShotDetection
         nameof(DetectionOptions.ConvertThreads), nameof(DetectionOptions.FfmpegDirectory), nameof(DetectionOptions.Decoder),
     ];
 
-    /// <summary>
-    /// What a range's scores depend on, as text (one "name=value" line each): every property of <paramref name="video"/>
-    /// and the resolved options in <see cref="Fingerprinted"/> (the converter by its type). Equal for equal inputs on any
-    /// machine (invariant culture, doubles round-tripped).
-    /// </summary>
     /// <summary>The count and the SHA-256 of every frame's timestamp (<see cref="YuvVideo.FrameTimestamps"/>), for the fingerprint.</summary>
     static string TimestampsDigest(IReadOnlyList<long> entries)
     {
@@ -672,6 +667,11 @@ public static partial class ShotDetection
         return string.Create(CultureInfo.InvariantCulture, $"{entries.Count}:{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))}");
     }
 
+    /// <summary>
+    /// What a range's scores depend on, as text (one "name=value" line each): every property of <paramref name="video"/>
+    /// and the resolved options in <see cref="Fingerprinted"/> (the converter by its type). Equal for equal inputs on any
+    /// machine (invariant culture, doubles round-tripped).
+    /// </summary>
     internal static string Fingerprint(YuvVideo video, DetectionOptions o)
     {
         var sb = new StringBuilder();
