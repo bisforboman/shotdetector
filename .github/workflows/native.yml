@@ -39,7 +39,7 @@ jobs:
               {"rid": "linux-x64", "os": "ubuntu-22.04"},        # an older glibc, so the libraries load on more systems
               {"rid": "linux-arm64", "os": "ubuntu-22.04-arm"},
               {"rid": "linux-musl-x64", "os": "ubuntu-26.04", "alpine": "3.20"},  # built in an Alpine container (docker run)
-              {"rid": "osx-arm64", "os": "macos-14"},
+              {"rid": "osx-arm64", "os": "macos-15"},            # MACOSX_DEPLOYMENT_TARGET keeps macOS 14 (macos-14 retired 2026-11-02)
           ]
           wanted = json.loads(os.environ["RIDS"])
           print("include=" + json.dumps([p for p in all if p["rid"] in wanted]))
@@ -92,6 +92,10 @@ jobs:
 
       - name: Build FFmpeg
         if: steps.cache.outputs.cache-hit != 'true' && !matrix.alpine
+        env:
+          # clang reads it in every part of the build (zlib, dav1d, FFmpeg): the dylibs load on macOS 14 and newer,
+          # whichever macOS the runner has. Empty elsewhere.
+          MACOSX_DEPLOYMENT_TARGET: ${{ startsWith(matrix.rid, 'osx-') && '14.0' || '' }}
         run: sh tools/native/build-ffmpeg.sh ${{ matrix.rid }} native
 
       - name: Build FFmpeg (Alpine)
@@ -108,7 +112,11 @@ jobs:
           python3 -c "import json, sys; d = json.load(open('native/sbom.spdx.json')); print(d['name'], [p['name'] + ' ' + p['versionInfo'] for p in d['packages']])"
           case "${{ matrix.rid }}" in
             win-x64) command -v x86_64-w64-mingw32-objdump > /dev/null && for f in native/*.dll; do echo "$f:"; x86_64-w64-mingw32-objdump -p "$f" | grep "DLL Name"; done || true ;;
-            osx-*) for f in native/*.dylib; do otool -L "$f"; done ;;
+            osx-*) for f in native/*.dylib; do otool -L "$f"
+                     # The oldest macOS each library loads on: 14.0, MACOSX_DEPLOYMENT_TARGET above
+                     minos=$(otool -l "$f" | awk '/LC_BUILD_VERSION/ { b = 1 } b && $1 == "minos" { print $2; exit }')
+                     echo "minos $minos"; [ "$minos" = "14.0" ] || { echo "::error::$f needs macOS $minos, not 14.0"; exit 1; }
+                   done ;;
             *) for f in native/*.so.*; do echo "$f:"; readelf -d "$f" | grep -E "NEEDED|RUNPATH|SONAME"; done ;;
           esac
 
