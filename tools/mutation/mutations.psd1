@@ -345,6 +345,16 @@
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'VideoReader.CheckConstantRate(pts[0], pts[k], k, reader.FramesTimeBase, reader.FramesRate);'; Replace = '_ = k;'; Tests = 'FrameRangeTests.MergeRefusesFramesNotWhereTheirPtsPutThem' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (_framePts.Count > 0 && _frameBase == 0)'; Replace = 'if (_framePts.Count > 0)'; Tests = 'FrameRangeTests.RangesMergeIntoTheSequentialResult' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_framesRead = frameBase;'; Replace = '_framesRead = 0;'; Tests = 'FrameRangeTests.RangesMergeIntoTheSequentialResult' }
+        # ... and the shots a range tells (OnShot) as it scores its frames: from frame 0, or continuing from the earlier
+        # ranges' scores (their shots not told again), whose ranges must lead to it and whose overlap frames must match
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'o.OnShot is not null && (firstFrame == 0 || before is not null)'; Replace = 'o.OnShot is not null && before is not null'; Tests = 'FrameRangeTests.ARangeFromFrameZeroTellsTheShotsDetectTells' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'telling = live is null || k >= live.TellFrom;'; Replace = 'telling = true;'; Tests = 'FrameRangeTests.ARangeContinuingFromEarlierOnesTellsTheRestOfTheShots' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'return firstFrame == 0 ? null : throw'; Replace = 'return true ? null : throw'; Tests = 'FrameRangeTests.AContinuingRangeRefusesEarlierRangesThatDontLeadToIt' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (firstFrame <= start)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.AContinuingRangeRefusesEarlierRangesThatDontLeadToIt' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (end < firstFrame)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.AContinuingRangeRefusesEarlierRangesThatDontLeadToIt' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (end == firstFrame)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.AContinuingRangeRefusesEarlierRangesThatDontLeadToIt' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (x != pts)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.AContinuingRangeRefusesEarlierRangesThatDontLeadToIt' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (!Equals(a, b))'; Replace = 'if (false)'; Tests = 'FrameRangeTests.AContinuingRangeRefusesEarlierRangesThatDontLeadToIt' }
         @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (bytes.Length < Magic.Length + 2 || !bytes[..Magic.Length].SequenceEqual(Magic))'; Replace = 'if (bytes.Length < Magic.Length + 2)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
         @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (version != FormatVersion)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
         @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (Checksum(body) != BinaryPrimitives.ReadUInt64LittleEndian(bytes[^8..]))'; Replace = 'if (false)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }

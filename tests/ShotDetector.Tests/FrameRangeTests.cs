@@ -229,10 +229,152 @@ public class FrameRangeTests
         var expected = ShotDetection.Detect(video, all, options);
         var detected = told.Values.ToList();
         told.Values.Clear();
-        var merged = InRanges(video, all, [0, 30, 70], options);
+        int[] starts = [0, 30, 70];
+        var ranges = starts.Select((first, i) => Score(video, all, first, i + 1 < starts.Length ? starts[i + 1] : Count, options with { OnShot = null })).ToList();
+        Assert.Empty(told.Values);
+        var merged = ShotDetection.Merge(video, ranges, options);
         Assert.Equal(detected, told.Values);
         Assert.Equal(expected.Shots, told.Values);
         Assert.Equal(merged.Shots, told.Values);
+    }
+
+    /// <summary>
+    /// A listener that notes with each shot how many frames had been pulled from <see cref="Counted"/>'s source, or -1
+    /// once it had ended (the shots told when the frames stop).
+    /// </summary>
+    sealed class Pulled : IProgress<Shot>
+    {
+        int _frames;
+        bool _ended;
+
+        public List<(Shot Shot, int Pulled)> Told { get; } = [];
+
+        public List<Shot> Shots => [.. Told.Select(t => t.Shot)];
+
+        /// <summary>The shots told while frames were still coming: those the frames' end didn't decide.</summary>
+        public List<Shot> Confirmed => [.. Told.Where(t => t.Pulled >= 0).Select(t => t.Shot)];
+
+        public void Report(Shot value) => Told.Add((value, _ended ? -1 : _frames));
+
+        public IEnumerable<YuvFrame> Counted(IEnumerable<YuvFrame> frames)
+        {
+            foreach (var frame in frames)
+            {
+                _frames++;
+                yield return frame;
+            }
+
+            _ended = true;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Detectors))]
+    public async Task ARangeFromFrameZeroTellsTheShotsDetectTells(string detector, bool stats)
+    {
+        var video = Video(timed: detector != "untimed");
+        var all = Frames(video);
+        var options = Options(detector, stats);
+        foreach (int stop in new[] { Count, 50, 35 })
+        {
+            // The whole video, and a run stopped half-way: the shots, each told after the same frame as DetectAsync tells it.
+            var frames = all.Take(stop).ToList();
+            var detected = new Pulled();
+            await ShotDetection.DetectAsync(video, FrameSourceAsyncTests.Yielding(detected.Counted(frames)), options with { OnShot = detected });
+            Assert.Contains(detected.Told, t => t.Pulled < 0);
+            var told = new Pulled();
+            var scores = ShotDetection.ScoreRange(video, told.Counted(frames), 0, options with { OnShot = told });
+            Assert.Equal(detected.Told, told.Told);
+            told = new Pulled();
+            var awaited = await ShotDetection.ScoreRangeAsync(video, FrameSourceAsyncTests.Yielding(told.Counted(frames)), 0, options with { OnShot = told });
+            Assert.Equal(detected.Told, told.Told);
+            told = new Pulled();
+            var none = await ShotDetection.ScoreRangeAsync(video, [], FrameSourceAsyncTests.Yielding(told.Counted(frames)), 0, options with { OnShot = told });
+            Assert.Equal(detected.Told, told.Told);
+
+            // Telling changes no score.
+            byte[] plain = ShotDetection.ScoreRange(video, frames, 0, options).ToBytes();
+            Assert.Equal(plain, scores.ToBytes());
+            Assert.Equal(plain, awaited.ToBytes());
+            Assert.Equal(plain, none.ToBytes());
+        }
+
+        // A range from a later frame on its own tells nothing: Merge does.
+        var later = new Pulled();
+        ShotDetection.ScoreRange(video, RangeFrames(all, 50, Count), 50, options with { OnShot = later });
+        Assert.Empty(later.Told);
+    }
+
+    [Theory]
+    [MemberData(nameof(Detectors))]
+    public async Task ARangeContinuingFromEarlierOnesTellsTheRestOfTheShots(string detector, bool stats)
+    {
+        var video = Video(timed: detector != "untimed");
+        var all = Frames(video);
+        var options = Options(detector, stats);
+        var whole = new Pulled();
+        var expected = ShotDetection.Detect(video, whole.Counted(all), options with { OnShot = whole });
+        Assert.Equal(expected.Shots, whole.Shots);
+        foreach (int[] stops in new[] { new[] { 50 }, [35], [71], [30, 31, 60], [2, 3] })
+        {
+            // Each run stops where its frames do, and the next continues from the last frame it scored (the overlap
+            // frame), given the scores so far through their bytes: the shots told before each run's frames stopped, then
+            // all of the last run's, are the whole video's, each told after the same frame as the whole run tells it.
+            var ranges = new List<RangeScores>();
+            var told = new List<(Shot Shot, int Frame)>();
+            int first = 0;
+            for (int i = 0; i <= stops.Length; i++)
+            {
+                int end = i < stops.Length ? stops[i] : Count, from = Math.Max(0, first - 1);
+                var run = new Pulled();
+                var earlier = ranges.Select(r => RangeScores.FromBytes(r.ToBytes()));
+                var frames = run.Counted(all.Skip(from).Take(end - from));
+                var scores = i % 2 == 0
+                    ? ShotDetection.ScoreRange(video, earlier, frames, first, options with { OnShot = run })
+                    : await ShotDetection.ScoreRangeAsync(video, earlier, FrameSourceAsyncTests.Yielding(frames), first, options with { OnShot = run });
+                told.AddRange(run.Told.Where(t => t.Pulled >= 0 || i == stops.Length).Select(t => (t.Shot, t.Pulled < 0 ? -1 : from + t.Pulled)));
+                ranges.Add(scores);
+                first = end - 1;
+            }
+
+            Assert.Equal(whole.Told, told);
+            AssertSame(expected, ShotDetection.Merge(video, ranges, options));
+        }
+    }
+
+    [Fact]
+    public void AContinuingRangeRefusesEarlierRangesThatDontLeadToIt()
+    {
+        var video = Video();
+        var all = Frames(video);
+        var options = Options("adaptive", true);
+        RangeScores a = Score(video, all, 0, 50, options), b = Score(video, all, 50, 70, options);
+        IEnumerable<YuvFrame> From(int first, IReadOnlyList<YuvFrame>? frames = null) => RangeFrames(frames ?? all, first, Count);
+        var told = new Told<Shot>();
+        var telling = options with { OnShot = told };
+        Assert.Equal(ShotDetection.ScoreRange(video, From(60), 60, options).ToBytes(), ShotDetection.ScoreRange(video, [a, b], From(60), 60, telling).ToBytes());
+        Assert.NotEmpty(told.Values);
+
+        Assert.Contains("none were given", Refused(() => ShotDetection.ScoreRange(video, [], From(50), 50, telling)).Message);
+        Assert.Contains("must start at frame 0, not 50", Refused(() => ShotDetection.ScoreRange(video, [b], From(60), 60, telling)).Message);
+        Assert.Contains("starts at frame 40, not after the last earlier range's start, frame 50", Refused(() => ShotDetection.ScoreRange(video, [a, b], From(40), 40, telling)).Message);
+        Assert.Contains("Frames 71 to 79 are in no range", Refused(() => ShotDetection.ScoreRange(video, [a, b], From(80), 80, telling)).Message);
+        Assert.Contains("end at frame 70, without this range's first frame (71)", Refused(() => ShotDetection.ScoreRange(video, [a, b], From(71), 71, telling)).Message);
+        var other = Score(video, all, 50, 70, options with { MinContentVal = 10 });
+        Assert.Contains("Range 1 (from frame 50) was scored for another video or other options than this range's", Refused(() => ShotDetection.ScoreRange(video, [a, other], From(60), 60, telling)).Message);
+
+        // A frame of both differs, with or without telling: its pts, or its score.
+        var moved = all.Select((f, i) => i == 62 ? f with { Pts = f.Pts + 1 } : f).ToList();
+        var changed = all.Select((f, i) => i == 65 ? f with { Y = f.Y.ToArray().Select(v => (byte)(255 - v)).ToArray() } : f).ToList();
+        foreach (var o in new[] { options, telling })
+        {
+            Assert.Contains("Frame 62 is at pts 289 in the earlier ranges and 288 in this range", Refused(() => ShotDetection.ScoreRange(video, [a, Score(video, moved, 50, 70, options)], From(60), 60, o)).Message);
+            Assert.Contains("Frame 65's score differs between the earlier ranges", Refused(() => ShotDetection.ScoreRange(video, [a, b], From(60, changed), 60, o)).Message);
+        }
+
+        Assert.Throws<ArgumentNullException>(() => ShotDetection.ScoreRange(video, null!, From(60), 60, options));
+        Assert.Throws<ArgumentNullException>(() => ShotDetection.ScoreRange(video, [a, null!], From(60), 60, options));
+        Assert.Throws<ArgumentNullException>(() => { _ = ShotDetection.ScoreRangeAsync(video, null!, FrameSourceAsyncTests.Yielding(From(60)), 60, options); }); // at once
     }
 
     [Fact]

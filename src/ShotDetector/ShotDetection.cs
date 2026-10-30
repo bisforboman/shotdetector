@@ -1120,7 +1120,8 @@ public static partial class ShotDetection
     /// The run, as steps: null where its next action takes a frame from the caller (the driver puts one in the
     /// <see cref="FrameFeed"/> first, awaited in <see cref="RunAsync"/>), then the result. A file's or a stream's run goes
     /// through to the end without stopping (<see cref="Run"/>). With <paramref name="prescored"/> (<see cref="Merge"/>), its
-    /// scores take the place of the frames': the decisions run over them as over a chunked file's. What only a file or a
+    /// scores take the place of the frames': the decisions run over them as over a chunked file's; a live one
+    /// (<see cref="LiveShots"/>) gets them as a range scores its frames, a null step waiting for each. What only a file or a
     /// Stream does goes through <paramref name="decoded"/> (ShotDetection.Decoded.cs: frame-source apps trim it out).
     /// </summary>
     static IEnumerable<DetectionResult?> Steps(IDecodedInput? decoded,
@@ -1215,6 +1216,7 @@ public static partial class ShotDetection
         // is taken then (below); asked for now, it would take the decoding pass this reading spares.
         var start = video.TimestampsArrive ? default : video.Position(0);
         FrameTime? lastCut = null;
+        bool telling = true; // false while a live range's decisions go over the earlier ranges' frames, which told their shots
         void Cut(FrameTime cut)
         {
             cuts.Add(cut);
@@ -1239,7 +1241,8 @@ public static partial class ShotDetection
             lastCut = cut;
             var shot = new Shot(shots.Count + 1, start, cut);
             shots.Add(shot);
-            onShot?.Invoke(shot);
+            if (telling)
+                onShot?.Invoke(shot);
             start = cut;
         }
 
@@ -1316,8 +1319,15 @@ public static partial class ShotDetection
             Warn("read sequentially, from the start, as scoring in chunks fell back: " + fallback); // no notChunked then
         if (chunked is { } scored)
         {
-            for (int k = 0; k < scored.Frames; k++)
+            var live = prescored?.Live;
+            for (int k = 0; ; k++)
             {
+                // A live range's scores: each frame's once the range has scored it, until its frames end.
+                while (live is { Ended: false } && k >= scored.Metrics[0].Count)
+                    yield return null;
+                if (k >= (live is null ? scored.Frames : scored.Metrics[0].Count))
+                    break;
+                telling = live is null || k >= live.TellFrom;
                 for (int d = 0; d < detectors.Count; d++)
                 {
                     if (detectors[d].Decide(k, scored.Metrics[d][k]) is { } cut)
@@ -1325,9 +1335,10 @@ public static partial class ShotDetection
                 }
             }
 
+            telling = true;
             foreach (var chunkStats in scored.Stats)
                 stats?.Merge(chunkStats.Stats!, chunkStats.From, chunkStats.To);
-            frameCount = scored.Frames;
+            frameCount = live is null ? scored.Frames : scored.Metrics[0].Count;
         }
         else
         {

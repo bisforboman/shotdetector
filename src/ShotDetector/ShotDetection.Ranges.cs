@@ -45,8 +45,13 @@ public static partial class ShotDetection
     /// phase runs across the ranges) and <see cref="DetectionMode.Parallel"/> (the host does the chunking).
     /// <see cref="DetectionOptions.Progress"/> is told the range's frames (<see cref="DetectionProgress.FramesProcessed"/>
     /// counts those from <paramref name="firstFrame"/> on; <see cref="DetectionProgress.ExpectedFrames"/> is 0, as the range
-    /// ends where the frames stop; with <see cref="DetectionOptions.ProgressStep"/> set, only the first report and the last), the last report once they have. <see cref="DetectionOptions.OnShot"/> isn't: shots are
-    /// decided in <see cref="Merge"/>. Every frame's position comes from its pts (<see cref="YuvFrame.Pts"/>), and
+    /// ends where the frames stop; with <see cref="DetectionOptions.ProgressStep"/> set, only the first report and the last), the last report once they have.
+    /// A range from frame 0 tells <see cref="DetectionOptions.OnShot"/> its shots as Detect would on its frames, as each cut
+    /// is confirmed (with one detector and neither DropShortScenes nor MergeLastScene; else all once its frames stop): the
+    /// shots <see cref="Merge"/> gives for this range alone, the last ending where its frames stop. A range from a later
+    /// frame tells them only when given the earlier ranges' scores
+    /// (<see cref="ScoreRange(YuvVideo, IEnumerable{RangeScores}, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/>);
+    /// without them it tells none (<see cref="Merge"/> does). Every frame's position comes from its pts (<see cref="YuvFrame.Pts"/>), and
     /// <see cref="Merge"/> checks every range's frames against frame 0's on the constant-rate grid, which also catches a
     /// wrong <paramref name="firstFrame"/>.
     /// </remarks>
@@ -59,13 +64,60 @@ public static partial class ShotDetection
         ArgumentNullException.ThrowIfNull(video);
         ArgumentNullException.ThrowIfNull(frames);
         CheckFirstFrame(firstFrame);
+        return Scored(video, null, frames, (int)firstFrame, options, cancellationToken);
+    }
+
+    /// <summary>
+    /// <see cref="ScoreRange(YuvVideo, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/> for a range that
+    /// continues from earlier ranges (a run resumed where it stopped, across visits of a page): the same frames, options,
+    /// refusals and scores (<see cref="Merge"/> takes them with the earlier ones, as any range's), and with
+    /// <see cref="DetectionOptions.OnShot"/> set, its shots told as they are known, as the whole video's Detect tells them.
+    /// The decisions run over <paramref name="earlier"/>'s scores first, telling nothing (those ranges told their shots as
+    /// they scored their frames), then over this range's as its frames are scored. So this range tells every shot of the
+    /// whole video's from the first that the earlier ranges' frames didn't confirm: with one detector and neither
+    /// DropShortScenes nor MergeLastScene, those told before the earlier ranges' frames stopped plus those told here are the
+    /// whole video's shots, each once. The shots an earlier range told when its frames stopped (its last, else all) ended
+    /// there; this range tells them again from their number (<see cref="Shot.Number"/>) on, to where they really end.
+    /// </summary>
+    /// <param name="video">The video's properties, the same for every range.</param>
+    /// <param name="earlier">The earlier ranges' scores, in order, as <see cref="Merge"/> would take them: the first from
+    /// frame 0, the last ending at or after <paramref name="firstFrame"/> (its overlap frames: this range's first frame at
+    /// least, which is compared). Empty only for a range from frame 0.</param>
+    /// <param name="frames">The range's frames, as for the other overload: from frame <paramref name="firstFrame"/> - 1.</param>
+    /// <param name="firstFrame">The 0-based index in the video of the range's first frame.</param>
+    /// <param name="options">The detection's settings, as every range was scored with.</param>
+    /// <param name="cancellationToken">Checked before each frame is pulled.</param>
+    /// <returns>The range's scores (this range's only).</returns>
+    /// <exception cref="ArgumentException">Invalid or unavailable options, an unsupported video, or a frame's plane smaller than the frame.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="firstFrame"/> is negative or too large.</exception>
+    /// <exception cref="ShotDetectionException">The earlier ranges don't make up the video's frames before this range, as
+    /// <see cref="Merge"/> checks them (another video or options, not from frame 0, out of order, a gap or no overlap frame
+    /// before this range's start), a frame of both differs, or the frames end before frame <paramref name="firstFrame"/>
+    /// (<see cref="ShotDetectionError.InvalidInput"/>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public static RangeScores ScoreRange(YuvVideo video,
+        IEnumerable<RangeScores> earlier,
+        IEnumerable<YuvFrame> frames,
+        long firstFrame,
+        DetectionOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(video);
+        ArgumentNullException.ThrowIfNull(earlier);
+        ArgumentNullException.ThrowIfNull(frames);
+        CheckFirstFrame(firstFrame);
+        return Scored(video, [.. earlier], frames, (int)firstFrame, options, cancellationToken);
+    }
+
+    static RangeScores Scored(YuvVideo video, List<RangeScores>? earlier, IEnumerable<YuvFrame> frames, int firstFrame, DetectionOptions? options, CancellationToken cancellationToken)
+    {
         using var activity = Tracing.StartActivity("ShotDetection.ScoreRange");
         try
         {
             using var e = frames.GetEnumerator();
             var feed = new FrameFeed();
             RangeScores result;
-            using (var steps = RangeSteps(video, feed, (int)firstFrame, options, cancellationToken).GetEnumerator())
+            using (var steps = RangeSteps(video, feed, firstFrame, earlier, options, cancellationToken).GetEnumerator())
             {
                 while (!Stepped(steps, out result))
                 {
@@ -116,10 +168,48 @@ public static partial class ShotDetection
         ArgumentNullException.ThrowIfNull(video);
         ArgumentNullException.ThrowIfNull(frames);
         CheckFirstFrame(firstFrame);
-        return ScoreRangeAwaited(video, frames, (int)firstFrame, options, cancellationToken);
+        return ScoreRangeAwaited(video, null, frames, (int)firstFrame, options, cancellationToken);
     }
 
-    static async Task<RangeScores> ScoreRangeAwaited(YuvVideo video, IAsyncEnumerable<YuvFrame> frames, int firstFrame, DetectionOptions? options, CancellationToken cancellationToken)
+    /// <summary>
+    /// <see cref="ScoreRange(YuvVideo, IEnumerable{RangeScores}, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/>
+    /// on frames from an asynchronous source, as
+    /// <see cref="ScoreRangeAsync(YuvVideo, IAsyncEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/> is
+    /// the synchronous ScoreRange's: a range continuing from earlier ranges, telling its shots as they are known.
+    /// </summary>
+    /// <param name="video">The video's properties, the same for every range.</param>
+    /// <param name="earlier">The earlier ranges' scores, as for the synchronous overload.</param>
+    /// <param name="frames">The range's frames; enumerated once, with <paramref name="cancellationToken"/>, and disposed
+    /// when the scoring ends, fails or is cancelled.</param>
+    /// <param name="firstFrame">The 0-based index in the video of the range's first frame.</param>
+    /// <param name="options">The detection's settings, as for the synchronous overload.</param>
+    /// <param name="cancellationToken">Checked before each frame is awaited.</param>
+    /// <returns>The range's scores.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="video"/>, <paramref name="earlier"/> or <paramref name="frames"/> is null (thrown at once).</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="firstFrame"/> is negative or too large (thrown at once).</exception>
+    /// <exception cref="ArgumentException">Invalid or unavailable options, an unsupported video, or a frame's plane smaller than the frame (in the task).</exception>
+    /// <exception cref="ShotDetectionException">As for the synchronous overload (in the task).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled (in the task).</exception>
+    public static Task<RangeScores> ScoreRangeAsync(YuvVideo video,
+        IEnumerable<RangeScores> earlier,
+        IAsyncEnumerable<YuvFrame> frames,
+        long firstFrame,
+        DetectionOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(video);
+        ArgumentNullException.ThrowIfNull(earlier);
+        ArgumentNullException.ThrowIfNull(frames);
+        CheckFirstFrame(firstFrame);
+        return ScoreRangeAwaited(video, [.. earlier], frames, (int)firstFrame, options, cancellationToken);
+    }
+
+    static async Task<RangeScores> ScoreRangeAwaited(YuvVideo video,
+        List<RangeScores>? earlier,
+        IAsyncEnumerable<YuvFrame> frames,
+        int firstFrame,
+        DetectionOptions? options,
+        CancellationToken cancellationToken)
     {
         using var activity = Tracing.StartActivity("ShotDetection.ScoreRange");
         try
@@ -129,7 +219,7 @@ public static partial class ShotDetection
             var source = frames.GetAsyncEnumerator(cancellationToken);
             await using (source.ConfigureAwait(false))
             {
-                using var steps = RangeSteps(video, feed, firstFrame, options, cancellationToken).GetEnumerator();
+                using var steps = RangeSteps(video, feed, firstFrame, earlier, options, cancellationToken).GetEnumerator();
                 while (!Stepped(steps, out result))
                 {
                     if (feed.NeedsFrame)
@@ -162,12 +252,18 @@ public static partial class ShotDetection
     /// The scoring of a range, as steps (<see cref="Steps"/>' way): null where it takes the next frame from the caller (the
     /// driver puts it in the <see cref="FrameFeed"/> first), then the scores.
     /// </summary>
-    static IEnumerable<RangeScores?> RangeSteps(YuvVideo video, FrameFeed feed, int firstFrame, DetectionOptions? options, CancellationToken cancellationToken)
+    static IEnumerable<RangeScores?> RangeSteps(YuvVideo video,
+        FrameFeed feed,
+        int firstFrame,
+        List<RangeScores>? earlier,
+        DetectionOptions? options,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var o = (options ?? new DetectionOptions()).Resolved();
         CheckOptions(o, null);
         CheckRangeOptions(o);
+        var before = earlier is null ? null : Earlier(video, o, earlier, firstFrame);
         int from = Math.Max(0, firstFrame - 1);
         var reader = new VideoReader(video, feed, o, from);
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, reader.Fps);
@@ -175,6 +271,10 @@ public static partial class ShotDetection
         var stats = o.CollectStats ? new Stats() : null;
         var detectors = settings.Select(st => Build(st, o, reader, minSceneLen, stats)).ToList();
         var metrics = settings.Select(_ => new List<double?>()).ToArray();
+
+        // DetectionOptions.OnShot: the shots as the frames are scored, for a range from frame 0 or one given the earlier
+        // ranges' scores (a later range on its own tells none: Merge does).
+        using var live = o.OnShot is not null && (firstFrame == 0 || before is not null) ? new LiveShots(video, options, firstFrame, before, settings.Count) : null;
         DetectionProgress Progress(int done, int expected) => new() { FramesProcessed = done, ExpectedFrames = expected };
         o.Progress?.Report(Progress(0, 0));
         long lastReport = Environment.TickCount64;
@@ -188,6 +288,14 @@ public static partial class ShotDetection
                 var m = detectors[d].Metric(k, frame);
                 if (k >= firstFrame)
                     metrics[d].Add(m);
+            }
+
+            if (k >= firstFrame)
+            {
+                long? pts = reader.FramesTimed ? reader.FramePts[k - from] : null;
+                if (before is { } joined && k < joined.Scores.Frames)
+                    CheckOverlap(joined, k, metrics, firstFrame, pts);
+                live?.Add(k, metrics, firstFrame, pts);
             }
 
             k++;
@@ -207,6 +315,7 @@ public static partial class ShotDetection
                     $"The range from frame {firstFrame} was given {k - from} frames: it needs frame {firstFrame - 1} (the previous frame, which the scores compare with) and at least frame {firstFrame}."));
         }
 
+        live?.End();
         int scored = k - firstFrame;
         o.Progress?.Report(Progress(scored, scored));
         yield return new RangeScores(Fingerprint(video, o),
@@ -259,7 +368,9 @@ public static partial class ShotDetection
     /// </para>
     /// <para>
     /// <see cref="DetectionOptions.OnShot"/> is told the shots here, as Detect tells them (as each cut is confirmed with
-    /// one detector and neither DropShortScenes nor MergeLastScene, else all at the end), all before Merge returns.
+    /// one detector and neither DropShortScenes nor MergeLastScene, else all at the end), all before Merge returns. A range
+    /// from frame 0, or one continuing from earlier ranges, scored with it set told its shots already as it scored its
+    /// frames: leave it out here, or there, to have each told once.
     /// <see cref="DetectionOptions.Progress"/> isn't told (ScoreRange reports each range's frames), and
     /// <see cref="DetectionOptions.Warnings"/> is told the ranges' warnings, which the result lists once each.
     /// </para>
@@ -277,17 +388,7 @@ public static partial class ShotDetection
             var o = (options ?? new DetectionOptions()).Resolved();
             CheckOptions(o, null);
             CheckRangeOptions(o);
-            string fingerprint = Fingerprint(video, o);
-            for (int i = 0; i < list.Count; i++)
-            {
-                ArgumentNullException.ThrowIfNull(list[i], nameof(ranges));
-                if (list[i].Fingerprint != fingerprint)
-                {
-                    throw new ShotDetectionException(ShotDetectionError.InvalidInput,
-                        $"Range {i} (from frame {list[i].FirstFrame}) was scored for another video or other options than this merge's: {FirstDifference(list[i].Fingerprint, fingerprint)}.");
-                }
-            }
-
+            CheckFingerprints(video, o, list, nameof(ranges), "this merge's");
             var (pts, scores) = Joined(list);
             if (pts.Length > 0)
             {
@@ -338,6 +439,74 @@ public static partial class ShotDetection
             Failed(activity, x);
             throw;
         }
+    }
+
+    /// <summary>Every range was scored for this video and these options (as their fingerprints say), else which wasn't.</summary>
+    static void CheckFingerprints(YuvVideo video, DetectionOptions o, List<RangeScores> list, string paramName, string whose)
+    {
+        string fingerprint = Fingerprint(video, o);
+        for (int i = 0; i < list.Count; i++)
+        {
+            ArgumentNullException.ThrowIfNull(list[i], paramName);
+            if (list[i].Fingerprint != fingerprint)
+            {
+                throw new ShotDetectionException(ShotDetectionError.InvalidInput,
+                    $"Range {i} (from frame {list[i].FirstFrame}) was scored for another video or other options than {whose}: {FirstDifference(list[i].Fingerprint, fingerprint)}.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The earlier ranges' scores a range from <paramref name="firstFrame"/> continues from, joined as <see cref="Merge"/>
+    /// joins them, after the checks it makes of them and of this range's place after them; null when there are none (a
+    /// range from frame 0).
+    /// </summary>
+    static (long[] Pts, (List<double?>[] Metrics, int Frames, (Stats? Stats, int From, int To)[] Stats) Scores)? Earlier(YuvVideo video,
+        DetectionOptions o,
+        List<RangeScores> earlier,
+        int firstFrame)
+    {
+        if (earlier.Count == 0)
+            return firstFrame == 0 ? null : throw InvalidRanges($"A range from frame {firstFrame} continues from the earlier ranges' scores, from frame 0: none were given.");
+        CheckFingerprints(video, o, earlier, nameof(earlier), "this range's");
+        var joined = Joined(earlier);
+        int start = earlier[^1].FirstFrame, end = joined.Scores.Frames;
+        if (firstFrame <= start)
+            throw InvalidRanges($"This range starts at frame {firstFrame}, not after the last earlier range's start, frame {start}.");
+        if (end < firstFrame)
+            throw InvalidRanges($"Frames {end} to {firstFrame - 1} are in no range: the earlier ranges end at frame {end - 1}, this range starts at frame {firstFrame}.");
+        if (end == firstFrame)
+            throw InvalidRanges($"The earlier ranges end at frame {end - 1}, without this range's first frame ({firstFrame}) to compare: a range's frames go to one frame past its end.");
+        return joined;
+    }
+
+    static ShotDetectionException InvalidRanges(string message) => new(ShotDetectionError.InvalidInput, message);
+
+    /// <summary>
+    /// Frame <paramref name="k"/> of a range that continues from earlier ranges is one of theirs too: it must be the same
+    /// there, as <see cref="Merge"/> checks an overlap frame (its pts, then each detector's score).
+    /// </summary>
+    static void CheckOverlap((long[] Pts, (List<double?>[] Metrics, int Frames, (Stats? Stats, int From, int To)[] Stats) Scores) earlier,
+        int k,
+        List<double?>[] metrics,
+        int firstFrame,
+        long? pts)
+    {
+        long? x = k < earlier.Pts.Length ? earlier.Pts[k] : null;
+        if (x != pts)
+            throw InvalidRanges($"Frame {k} is at pts {Text(x)} in the earlier ranges and {Text(pts)} in this range: not the same frame.");
+        for (int d = 0; d < metrics.Length; d++)
+        {
+            double? a = earlier.Scores.Metrics[d][k], b = metrics[d][k - firstFrame];
+            if (!Equals(a, b))
+            {
+                throw InvalidRanges($"Frame {k}'s score differs between the earlier ranges ({Score(a)}) and this range ({Score(b)}, detector {d}): this range's frames aren't "
+                    + "the ones a sequential decode gives (a range not starting at a keyframe, an open GOP's leading frames, a decoder that depends on earlier frames).");
+            }
+        }
+
+        static string Text(long? value) => value?.ToString(CultureInfo.InvariantCulture) ?? "none";
+        static string Score(double? s) => s is { } v ? v.ToString("R", CultureInfo.InvariantCulture) : "none";
     }
 
     /// <summary>
@@ -557,5 +726,92 @@ public static partial class ShotDetection
     }
 
     /// <summary>Scores computed elsewhere (<see cref="Merge"/>) for <see cref="Steps"/>, in place of the frames', with the warnings that came with them.</summary>
-    internal sealed record Prescored((List<double?>[] Metrics, int Frames, (Stats? Stats, int From, int To)[] Stats) Scores, IReadOnlyList<string> Warnings);
+    internal sealed record Prescored((List<double?>[] Metrics, int Frames, (Stats? Stats, int From, int To)[] Stats) Scores,
+        IReadOnlyList<string> Warnings,
+        LiveRange? Live = null);
+
+    /// <summary>
+    /// A live <see cref="Prescored"/>'s state (<see cref="LiveShots"/>): its metrics grow as the range scores its frames,
+    /// until they have <see cref="Ended"/>; the shots confirmed deciding frames before <see cref="TellFrom"/> (the earlier
+    /// ranges' frames, which told them) aren't told.
+    /// </summary>
+    internal sealed class LiveRange
+    {
+        /// <summary>Whether the range's frames have ended: the decisions go on to the result.</summary>
+        public bool Ended { get; set; }
+
+        /// <summary>The first frame whose decisions tell their shots.</summary>
+        public int TellFrom { get; init; }
+    }
+
+    /// <summary>
+    /// The shots a range tells <see cref="DetectionOptions.OnShot"/> as it scores its frames: <see cref="Merge"/>'s
+    /// decisions (<see cref="Steps"/> over scores) over the earlier ranges' scores to this range's first frame and this
+    /// range's from there, a frame at a time as each is scored, so Detect's shots on the same frames, told when Detect
+    /// would tell them. Those confirmed deciding the earlier ranges' frames aren't told: those ranges told them.
+    /// </summary>
+    sealed class LiveShots : IDisposable
+    {
+        readonly List<double?>[] _metrics; // every frame's so far: the earlier ranges' before this range's first frame, then this range's
+        readonly List<long> _pts;          // their pts; none untimed
+        readonly LiveRange _range;
+        readonly IEnumerator<DetectionResult?> _steps;
+        VideoReader? _reader;              // the decisions' reader, made at their first step
+        int _loaded;                       // the frames it has
+
+        public LiveShots(YuvVideo video,
+            DetectionOptions? options,
+            int firstFrame,
+            (long[] Pts, (List<double?>[] Metrics, int Frames, (Stats? Stats, int From, int To)[] Stats) Scores)? earlier,
+            int detectors)
+        {
+            _metrics = earlier is { } e
+                ? [.. e.Scores.Metrics.Select(m => m.Take(firstFrame).ToList())]
+                : [.. Enumerable.Range(0, detectors).Select(_ => new List<double?>())];
+            _pts = [.. (earlier?.Pts ?? []).Take(firstFrame)];
+            _range = new LiveRange { TellFrom = earlier?.Scores.Frames ?? 0 };
+            _steps = Steps(null,
+                (options ?? new DetectionOptions()) with { Progress = null, Warnings = null },
+                null,
+                CancellationToken.None,
+                ro =>
+                {
+                    _reader = new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), ro);
+                    _loaded = _metrics[0].Count;
+                    _reader.LoadFrames(_pts, _loaded);
+                    return _reader;
+                },
+                new Prescored((_metrics, 0, []), [], _range)).GetEnumerator();
+        }
+
+        /// <summary>Frame <paramref name="k"/>'s scores (<paramref name="metrics"/>: the range's, from <paramref name="firstFrame"/>) and pts; then the decisions, as far as the scores go.</summary>
+        public void Add(int k, List<double?>[] metrics, int firstFrame, long? pts)
+        {
+            for (int d = 0; d < metrics.Length; d++)
+                _metrics[d].Add(metrics[d][k - firstFrame]);
+            if (pts is { } p)
+                _pts.Add(p);
+            Step();
+        }
+
+        /// <summary>The range's frames have ended: the decisions run to the end, telling the last shots.</summary>
+        public void End()
+        {
+            _range.Ended = true;
+            Step();
+        }
+
+        void Step()
+        {
+            if (_reader is not null)
+            {
+                for (; _loaded < _metrics[0].Count; _loaded++)
+                    _reader.LoadFrame(_loaded < _pts.Count ? _pts[_loaded] : null);
+            }
+
+            _steps.MoveNext();
+        }
+
+        public void Dispose() => _steps.Dispose();
+    }
 }

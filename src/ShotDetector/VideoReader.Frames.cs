@@ -178,6 +178,14 @@ internal sealed partial class VideoReader
         _framesStarted = true;
     }
 
+    /// <summary>One more frame for a reader of <see cref="LoadFrames"/>: a range's next, as it is scored (ShotDetection.LiveShots).</summary>
+    internal void LoadFrame(long? pts)
+    {
+        if (pts is { } p)
+            _framePts.Add(p);
+        _framesRead++;
+    }
+
     /// <summary>The frame's position, as <see cref="Position"/> computes a file's: from its pts, else from its number.</summary>
     FrameTime FramePosition(int frame)
     {

@@ -1,0 +1,3 @@
+### New
+
+- `ShotDetection.ScoreRange` and `ScoreRangeAsync` from frame 0 tell `DetectionOptions.OnShot` each shot as `Detect` would, as its cut is confirmed: the shots `Merge` gives for that range alone, the last ending where its frames stop. New overloads taking the earlier ranges' `RangeScores` continue a stopped run and tell the rest of the whole video's shots as they are known, without telling the confirmed ones again; they check the earlier ranges and the frames they share as `Merge` does. A range given `OnShot` used to tell nothing: with the same options in `Merge` too, its shots are now told twice, so leave `OnShot` out of one (issue #598).
