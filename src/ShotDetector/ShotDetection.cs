@@ -754,10 +754,14 @@ public static partial class ShotDetection
     /// <see cref="YuvVideo.TimeBase"/> set: a frame more than half a frame from where the rate puts it is an error), at
     /// one size, turned upright after converting by <see cref="YuvVideo.Rotation"/> as a rotated file's. Options: the detectors' settings, stats, the time range
     /// (<see cref="DetectionOptions.StartTime"/>: the frames before it are still enumerated, not converted), frame skip,
-    /// crop, downscale, the frame rate override, merge and drop of short shots, progress, warnings and
-    /// <see cref="DetectionOptions.OnShot"/> (each shot as soon as it is known, while frames are still pulled). Not available
-    /// (an <see cref="ArgumentException"/>): <see cref="DetectionOptions.Deinterlace"/>, <see cref="DetectionOptions.Yadif"/>,
-    /// <see cref="DetectionOptions.FfmpegResize"/>, <see cref="DetectionOptions.TrimReferenceTone"/>. Ignored, as nothing
+    /// crop, downscale, the frame rate override, merge and drop of short shots, progress, warnings,
+    /// <see cref="DetectionOptions.OnShot"/> (each shot as soon as it is known, while frames are still pulled) and
+    /// <see cref="DetectionOptions.Deinterlace"/> with <see cref="DetectionOptions.Yadif"/> (an <see cref="ArgumentException"/>
+    /// without it, when it would deinterlace: Auto goes by <see cref="YuvVideo.FieldOrder"/>, each frame's parity by its
+    /// <see cref="YuvFrame.Interlaced"/> and <see cref="YuvFrame.TopFieldFirst"/>; the frames held as FrameDecoder's row-wise
+    /// yadif holds them, deinterlaced before they are turned). Not available
+    /// (an <see cref="ArgumentException"/>): <see cref="DetectionOptions.FfmpegResize"/>,
+    /// <see cref="DetectionOptions.TrimReferenceTone"/>. Ignored, as nothing
     /// is decoded here: <see cref="DetectionOptions.Decoder"/>, <see cref="DetectionOptions.FfmpegDirectory"/>,
     /// <see cref="DetectionOptions.DecodeThreads"/>, <see cref="DetectionOptions.Streaming"/>,
     /// <see cref="DetectionOptions.ProbeBytes"/>; the frames are read once, in order (<see cref="DetectionMode.Parallel"/>

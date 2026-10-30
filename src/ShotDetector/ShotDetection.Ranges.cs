@@ -42,7 +42,9 @@ public static partial class ShotDetection
     /// its refusals, except those a range can't honour on its own, which are refused too (an <see cref="ArgumentException"/>):
     /// the time range (<see cref="DetectionOptions.StartTime"/>, <see cref="DetectionOptions.EndTime"/>,
     /// <see cref="DetectionOptions.RangeDuration"/> and their typed forms), <see cref="DetectionOptions.FrameSkip"/> (its
-    /// phase runs across the ranges) and <see cref="DetectionMode.Parallel"/> (the host does the chunking).
+    /// phase runs across the ranges), deinterlacing (<see cref="DetectionOptions.Deinterlace"/> On, or Auto with an
+    /// interlaced <see cref="YuvVideo.FieldOrder"/>: yadif reads the frames on either side of a range) and
+    /// <see cref="DetectionMode.Parallel"/> (the host does the chunking).
     /// <see cref="DetectionOptions.Progress"/> is told the range's frames (<see cref="DetectionProgress.FramesProcessed"/>
     /// counts those from <paramref name="firstFrame"/> on; <see cref="DetectionProgress.ExpectedFrames"/> is 0, as the range
     /// ends where the frames stop; with <see cref="DetectionOptions.ProgressStep"/> set, only the first report and the last), the last report once they have.
@@ -262,7 +264,7 @@ public static partial class ShotDetection
         cancellationToken.ThrowIfCancellationRequested();
         var o = (options ?? new DetectionOptions()).Resolved();
         CheckOptions(o, null);
-        CheckRangeOptions(o);
+        CheckRangeOptions(video, o);
         var before = earlier is null ? null : Earlier(video, o, earlier, firstFrame);
         int from = Math.Max(0, firstFrame - 1);
         var reader = new VideoReader(video, feed, o, from);
@@ -328,8 +330,10 @@ public static partial class ShotDetection
     }
 
     /// <summary>The options a range can't honour on its own (an <see cref="ArgumentException"/>), for <see cref="ScoreRange(YuvVideo, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/> and <see cref="Merge"/>.</summary>
-    static void CheckRangeOptions(DetectionOptions o)
+    static void CheckRangeOptions(YuvVideo video, DetectionOptions o)
     {
+        if (VideoReader.DeinterlacesFrames(video, o))
+            throw new ArgumentException("Deinterlacing isn't available for ranges: yadif reads the frames on either side of each; run Detect, or Deinterlace Off.");
         if (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null)
             throw new ArgumentException("A time range (StartTime, EndTime, Duration) isn't available for ranges: score the whole video, from frame 0, in ranges.");
         if (o.FrameSkip != 0)
@@ -387,7 +391,7 @@ public static partial class ShotDetection
                 throw new ArgumentException("Merge needs at least one range.", nameof(ranges));
             var o = (options ?? new DetectionOptions()).Resolved();
             CheckOptions(o, null);
-            CheckRangeOptions(o);
+            CheckRangeOptions(video, o);
             CheckFingerprints(video, o, list, nameof(ranges), "this merge's");
             var (pts, scores) = Joined(list);
             if (pts.Length > 0)
@@ -666,6 +670,7 @@ public static partial class ShotDetection
         Line("Codec", video.Codec);
         Line("Container", video.Container);
         Line("Rotation", video.Rotation);
+        Line("FieldOrder", video.FieldOrder);
         Line(nameof(o.Compatibility), o.Compatibility);
         Line(nameof(o.Detector), o.Detector);
         Line(nameof(o.Threshold), o.Threshold);

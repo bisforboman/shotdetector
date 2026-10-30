@@ -506,7 +506,14 @@ public class FrameRangeTests
         }
 
         Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Yuv420Converter = null }));
-        Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Deinterlace = DeinterlaceMode.Auto }));
+
+        // Deinterlacing reads the frames on either side of a range's: refused when it would deinterlace.
+        Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() }));
+        var interlaced = video with { FieldOrder = FrameReader.FieldOrder.TopFirst };
+        Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(interlaced, all, 0, options with { Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() }));
+        Assert.Throws<ArgumentException>(() => ShotDetection.Merge(interlaced, [ShotDetection.ScoreRange(interlaced, all, 0, options)], options with { Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() }));
+        Assert.Equal(ShotDetection.Merge(video, [ShotDetection.ScoreRange(video, all, 0, options)], options).Shots,
+            ShotDetection.Merge(video, [ShotDetection.ScoreRange(video, all, 0, options with { Deinterlace = DeinterlaceMode.Auto })], options with { Deinterlace = DeinterlaceMode.Auto }).Shots);
         Assert.Throws<ArgumentOutOfRangeException>(() => ShotDetection.ScoreRange(video, all, -1, options));
         Assert.Throws<ArgumentOutOfRangeException>(() => { _ = ShotDetection.ScoreRangeAsync(video, FrameSourceAsyncTests.Yielding(all), int.MaxValue, options); }); // at once, not in the task
 

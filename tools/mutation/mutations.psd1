@@ -290,7 +290,7 @@
 
         # Frames from the caller (YuvVideo): what a file's result needs and what can't be reproduced without FFmpeg
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (o.Yuv420Converter is null)'; Replace = 'if (false)'; Tests = 'FrameInputTests.NeedsAConverter' }
-        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (o.Deinterlace != DeinterlaceMode.Off || o.Yadif is not null)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (DeinterlacesFrames(video, o) && o.Yadif is null)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (o.FfmpegResize)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.PixelFormat is not ("yuv420p" or "yuvj420p"))'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.Height % 2 != 0)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
@@ -304,6 +304,14 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.Rotation % 90 != 0 || Math.Abs(video.Rotation) >= 360)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RotationIsAQuarterTurn' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line("Rotation", video.Rotation);'; Replace = ''; Tests = 'FrameInputTests.RangesFromKeyframesMergeIntoTheSequentialResult' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if ((k - startFrame) % (_frameSkip + 1) == 0)'; Replace = 'if ((k - startFrame) % (_frameSkip + 1) == 1)'; Tests = 'FrameInputTests.SameAsTheFile' }
+        # ... deinterlaced as FrameDecoder's row-wise yadif: frames k-1, k, k+1 (the first its own previous, the last its own
+        # next), each frame's parity from its flags, Auto by the field order, the start taking the first frame's next, ranges refused
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'Deinterlace(_held[Math.Max(k - 1, 0) % 3], cur,'; Replace = 'Deinterlace(cur, cur,'; Tests = 'FrameInputTests.SameAsTheFileDeinterlaced' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_framesRead > k + 1 ? _held[(k + 1) % 3] : cur'; Replace = 'cur'; Tests = 'FrameInputTests.SameAsTheFileDeinterlaced' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_heldTff[_framesRead % 3] = !f.Interlaced || f.TopFieldFirst;'; Replace = '_heldTff[_framesRead % 3] = true;'; Tests = 'FrameInputTests.EachFramesFlagsSetItsParity' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'video.FieldOrder is not (FieldOrder.Progressive or FieldOrder.Unknown)'; Replace = 'false'; Tests = 'FrameInputTests.AutoDeinterlacesWhatTheFieldOrderSays' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'StartEstimate(s) : 0) + FramesAhead;'; Replace = 'StartEstimate(s) : 0);'; Tests = 'FrameInputTests.SameAsTheFileDeinterlaced' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (VideoReader.DeinterlacesFrames(video, o))'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }
 
         # Frames from an asynchronous source (DetectAsync): the start's frames taken one per step, the token checked before each pull
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'while (video.TakesBeforeStart(startSeconds))'; Replace = 'while (false)'; Tests = 'FrameSourceAsyncTests.SameAsTheSynchronousDetect' }
