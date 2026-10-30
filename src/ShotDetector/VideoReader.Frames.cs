@@ -250,6 +250,9 @@ internal sealed partial class VideoReader
     /// </summary>
     IEnumerable<byte[]> FramesFromCaller(int startFrame, int? count, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (count is <= 0)
+            yield break;
         bool resize = (Width, Height) != (CropRegion.Width, CropRegion.Height);
         var resizer = resize ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
         var convert = YuvForVideo!;

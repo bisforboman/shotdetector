@@ -722,7 +722,7 @@ public static partial class ShotDetection
     /// says which (a FrameReader failure is its InnerException).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled; ffmpeg is stopped.</exception>
     public static DetectionResult Detect(string videoPath, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
-        Run(videoPath, null, options, onShot: null, cancellationToken);
+        Run(new DecodedInput(videoPath, null), options, onShot: null, cancellationToken);
 
     /// <summary>
     /// As <see cref="Detect(string, DetectionOptions?, CancellationToken)"/>, reading the video's bytes
@@ -731,7 +731,7 @@ public static partial class ShotDetection
     /// temporary file first, deleted afterwards, and read as a file.
     /// </summary>
     public static DetectionResult Detect(Stream video, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
-        Run(null, video, options, onShot: null, cancellationToken);
+        Run(new DecodedInput(null, video), options, onShot: null, cancellationToken);
 
     /// <summary>
     /// Detects shots on frames the caller decoded, without FFmpeg: nothing here loads FFmpeg's libraries or starts
@@ -771,7 +771,6 @@ public static partial class ShotDetection
         using var e = frames.GetEnumerator();
         var feed = new FrameFeed();
         return Run(null,
-            null,
             options,
             onShot: null,
             cancellationToken,
@@ -943,11 +942,11 @@ public static partial class ShotDetection
     /// caller's thread (a UI, a request) isn't blocked while ffmpeg decodes.
     /// </summary>
     public static Task<DetectionResult> DetectAsync(string videoPath, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
-        Task.Run(() => Run(videoPath, null, options, onShot: null, cancellationToken), cancellationToken);
+        Task.Run(() => Run(new DecodedInput(videoPath, null), options, onShot: null, cancellationToken), cancellationToken);
 
     /// <summary><see cref="Detect(Stream, DetectionOptions?, CancellationToken)"/> on a thread-pool thread.</summary>
     public static Task<DetectionResult> DetectAsync(Stream video, DetectionOptions? options = null, CancellationToken cancellationToken = default) =>
-        Task.Run(() => Run(null, video, options, onShot: null, cancellationToken), cancellationToken);
+        Task.Run(() => Run(new DecodedInput(null, video), options, onShot: null, cancellationToken), cancellationToken);
 
     /// <summary>
     /// Like <see cref="Detect(string, DetectionOptions?, CancellationToken)"/>, but yields each shot as soon as it is known, while the rest of the
@@ -987,7 +986,7 @@ public static partial class ShotDetection
         {
             try
             {
-                Run(videoPath, video, options, shot => channel.Writer.TryWrite(shot), stop.Token);
+                Run(new DecodedInput(videoPath, video), options, shot => channel.Writer.TryWrite(shot), stop.Token);
                 channel.Writer.Complete();
             }
             catch (Exception e)
@@ -1008,8 +1007,13 @@ public static partial class ShotDetection
         }
     }
 
-    static DetectionResult Run(string? videoPath,
-        Stream? videoStream,
+    /// <param name="decoded">A file's or a Stream's input; null with <paramref name="frames"/>.</param>
+    /// <param name="options">The caller's options.</param>
+    /// <param name="onShot">Told each shot as it is known.</param>
+    /// <param name="cancellationToken">Stops the run.</param>
+    /// <param name="frames">The reader of the caller's frames; null with <paramref name="decoded"/>.</param>
+    /// <param name="beforeStep">Puts the caller's next frame in the feed before each step but the first.</param>
+    static DetectionResult Run(IDecodedInput? decoded,
         DetectionOptions? options,
         Action<Shot>? onShot,
         CancellationToken cancellationToken,
@@ -1021,7 +1025,7 @@ public static partial class ShotDetection
         {
             // The steps to the end; frames from the caller go into the feed before each step but the first.
             DetectionResult result;
-            using (var steps = Steps(videoPath, videoStream, options, onShot, cancellationToken, frames).GetEnumerator())
+            using (var steps = Steps(decoded, options, onShot, cancellationToken, frames).GetEnumerator())
             {
                 while (!Stepped(steps, out result))
                     beforeStep?.Invoke();
@@ -1051,7 +1055,7 @@ public static partial class ShotDetection
             var source = frames.GetAsyncEnumerator(cancellationToken);
             await using (source.ConfigureAwait(false))
             {
-                using var steps = Steps(null, null, options, null, cancellationToken, o => new VideoReader(video, feed, o)).GetEnumerator();
+                using var steps = Steps(null, options, null, cancellationToken, o => new VideoReader(video, feed, o)).GetEnumerator();
                 while (!Stepped(steps, out result))
                 {
                     if (feed.NeedsFrame)
@@ -1116,10 +1120,10 @@ public static partial class ShotDetection
     /// The run, as steps: null where its next action takes a frame from the caller (the driver puts one in the
     /// <see cref="FrameFeed"/> first, awaited in <see cref="RunAsync"/>), then the result. A file's or a stream's run goes
     /// through to the end without stopping (<see cref="Run"/>). With <paramref name="prescored"/> (<see cref="Merge"/>), its
-    /// scores take the place of the frames': the decisions run over them as over a chunked file's.
+    /// scores take the place of the frames': the decisions run over them as over a chunked file's. What only a file or a
+    /// Stream does goes through <paramref name="decoded"/> (ShotDetection.Decoded.cs: frame-source apps trim it out).
     /// </summary>
-    static IEnumerable<DetectionResult?> Steps(string? videoPath,
-        Stream? videoStream,
+    static IEnumerable<DetectionResult?> Steps(IDecodedInput? decoded,
         DetectionOptions? options,
         Action<Shot>? onShot,
         CancellationToken cancellationToken,
@@ -1141,16 +1145,12 @@ public static partial class ShotDetection
             };
         }
 
+        string? videoPath = decoded?.Path;
         CheckOptions(o, videoPath);
 
-        // A streamed mp4 without "faststart" (headers last) can't be read from a pipe: it goes to a temporary file first,
-        // read as a file and deleted at the end. Other streams stream.
-        byte[]? prefix = videoStream is null ? null : VideoReader.ReadPrefix(videoStream, o.ProbeBytes, cancellationToken);
-        using var spilled = prefix is not null && VideoReader.HeadersLast(prefix) ? VideoReader.Spill(prefix, videoStream!, cancellationToken) : null;
-        var video = frames is not null ? frames(o)
-            : spilled is not null ? new VideoReader(spilled.Path, o, cancellationToken)
-            : videoStream is not null ? new VideoReader(videoStream, prefix!, o, cancellationToken)
-            : new VideoReader(videoPath!, o, cancellationToken);
+        // A spilled Stream's temporary file is deleted at the end.
+        using var input = decoded;
+        var video = frames is not null ? frames(o) : decoded!.Open(o, cancellationToken);
 
         // Warnings for the result, each also told to DetectionOptions.Warnings as soon as it is known (streaming callers
         // get no result).
@@ -1182,7 +1182,7 @@ public static partial class ShotDetection
         {
             if (video.Streaming)
                 throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately).");
-            tone = FindReferenceTone(videoPath!, o, cancellationToken);
+            tone = decoded!.ReferenceTone(o, cancellationToken);
             o = TrimmedToTone(o, tone, video.Duration);
         }
 
@@ -1289,7 +1289,7 @@ public static partial class ShotDetection
         long pixels = (long)video.SourceWidth * video.SourceHeight;
         string? notChunked = !parallel ? null
             : video.FromFrames ? "frames from the caller"
-            : NotChunkable(videoPath is null || spilled is not null || video.Streaming, video.PtsFromFrames, startFrame != 0 || endFrame is not null, stride != 1);
+            : NotChunkable(decoded?.Chunkable != true || video.Streaming, video.PtsFromFrames, startFrame != 0 || endFrame is not null, stride != 1);
         int chunks = parallel && notChunked is null
             ? o.Chunks ?? AutoChunks(Environment.ProcessorCount, video.ExpectedFrames, video.Fps, pixels, o.Mode == DetectionMode.Parallel, o.DecodeThreads)
             : 1;
@@ -1302,8 +1302,7 @@ public static partial class ShotDetection
         int scoredFrames = 0;
         var chunked = prescored is not null ? prescored.Scores
             : chunks > 1
-            ? ScoreChunked(videoPath!,
-                o,
+            ? decoded!.ScoreChunked(o,
                 video,
                 settings,
                 minSceneLen,

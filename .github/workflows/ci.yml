@@ -25,6 +25,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
       light: ${{ steps.diff.outputs.light }}
+      wasm: ${{ steps.diff.outputs.wasm }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         if: github.event_name == 'pull_request'
@@ -491,6 +492,41 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: dotnet test ShotDetector.slnx --logger GitHubActions
 
+  # The frame-source entry points (Detect and DetectAsync on YuvFrames, ScoreRange, Merge) must not reach FFmpeg's code,
+  # so a trimmed app on them alone (browser WebAssembly: shotdetector-web) ships no FFmpeg.AutoGen (issue #597):
+  # benchmarks/wasm, which calls each of them, published trimmed (as AOT trims, without compiling ahead of time) must
+  # have no FFmpeg.AutoGen in its bundle. When it has, the trimmer's dependency dump says why (tools/trim_path.py: the
+  # chain from Main). On pull requests touching the library, FastYuv, FrameReader, benchmarks/wasm or this check
+  # (tools/ci-changes.sh's `wasm`).
+  wasm-trim:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.wasm == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish and check the bundle
+        run: |
+          dotnet workload install wasm-tools
+          publish() { dotnet publish benchmarks/wasm/Wasm -c Release -v q -nologo -warnaserror -p:_TrimmerDumpDependencies=true; }
+          # NETSDK1147: the workload can list as installed with its packs missing; installing it again brings them.
+          publish || { dotnet workload install wasm-tools; publish; }
+          bundle=benchmarks/wasm/Wasm/bin/Release/net10.0/browser-wasm/AppBundle/_framework
+          { echo "### benchmarks/wasm's trimmed bundle (no AOT)"; echo
+            echo '| File | Bytes |'; echo '|---|---:|'
+            for f in "$bundle"/*.wasm; do echo "| $(basename "$f") | $(stat -c %s "$f") |"; done; } >> "$GITHUB_STEP_SUMMARY"
+          if [ -e "$bundle/FFmpeg.AutoGen.wasm" ]; then
+            python3 tools/trim_path.py benchmarks/wasm/Wasm/obj/Release/net10.0/browser-wasm/linked/linker-dependencies.xml FFmpeg.AutoGen | tee chain.txt || true
+            { echo; echo '```'; cat chain.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=FFmpeg.AutoGen in the WebAssembly bundle::a frame-source entry point reaches FFmpeg's code: the chain from Main is in the log and the summary (tools/trim_path.py)"
+            exit 1
+          fi
+
   # The sample clips parity compares on (tools/make-samples.ps1, two minutes on a runner), made once and cached by
   # the script and the FFmpeg series; both sides read the same clips, so a newer daily build making slightly
   # different ones doesn't matter. On main too: a pull request reads only its own caches and main's, so this is
@@ -866,7 +902,7 @@ jobs:
   # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
   passed:
     name: CI passed
-    needs: [changes, line-endings, native, build, aot, native-aot, clip, native-arm, arm, alpine, samples, parity, arch, arch-diff]
+    needs: [changes, line-endings, native, build, aot, native-aot, clip, native-arm, arm, alpine, wasm-trim, samples, parity, arch, arch-diff]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

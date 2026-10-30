@@ -325,7 +325,8 @@ internal sealed partial class VideoReader
     {
         get
         {
-            TakeTimestampPass(_cancellationToken);
+            if (_ptsPending)
+                _decoding!.TakeTimestampPass(_cancellationToken);
             return _knownPts;
         }
     }
@@ -467,6 +468,7 @@ internal sealed partial class VideoReader
         _yadif = o.Yadif;
         _path = path;
         _stream = video;
+        _decoding = new Decoding(this);
         _ffmpegResize = o.FfmpegResize;
         _decodeThreads = o.DecodeThreads;
         _frameBuffers = o.FrameBuffers;
@@ -1446,7 +1448,7 @@ internal sealed partial class VideoReader
     /// be lost, so the read starts over from <see cref="SeekBackAgain"/> frames early, up to from the start.
     /// </remarks>
     internal IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken = default, int seekBack = 2) =>
-        Frames(startFrame, count, cancellationToken, seekBack, null);
+        _decoding is { } decoding ? decoding.Frames(startFrame, count, cancellationToken, seekBack) : FramesFromCaller(startFrame, count, cancellationToken);
 
     /// <summary>
     /// Where a read through the executable goes on after a frame whose chroma siting isn't the one its scale filter was
@@ -1491,6 +1493,7 @@ internal sealed partial class VideoReader
         + "(a file is read again from each change), so per-frame stats after the change can differ from scenedetect's."
         : null;
 
+    /// <summary><see cref="Frames(int, int?, CancellationToken, int)"/> for a decoded input (<see cref="IDecoding"/>).</summary>
     /// <param name="startFrame">The first frame.</param>
     /// <param name="count">How many frames; null: to the end.</param>
     /// <param name="cancellationToken">Kills ffmpeg.</param>
@@ -1500,18 +1503,11 @@ internal sealed partial class VideoReader
     /// and the frames before the first one with it (already given: in two joined encodes the earlier one's last frames
     /// can share the later one's first times) are dropped.
     /// </param>
-    IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken, int seekBack, SitingRestart? restart)
+    IEnumerable<byte[]> FramesDecoded(int startFrame, int? count, CancellationToken cancellationToken, int seekBack, SitingRestart? restart)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (count is <= 0)
             yield break;
-        if (_frames is not null)
-        {
-            foreach (var frame in FramesFromCaller(startFrame, count, cancellationToken))
-                yield return frame;
-            yield break;
-        }
-
         if (Streaming && startFrame > 0)
             throw new NotSupportedException("A streamed input can't be seeked.");
         if (DecodesInProcess)
@@ -2015,7 +2011,7 @@ internal sealed partial class VideoReader
         {
             if (restart is not null)
                 _livePackets.RemoveRange(packetMark, _livePackets.Count - packetMark);
-            foreach (var frame in Frames(startFrame, count, cancellationToken, againBack, restart).Skip(emitted))
+            foreach (var frame in FramesDecoded(startFrame, count, cancellationToken, againBack, restart).Skip(emitted))
                 yield return frame;
         }
 
@@ -2023,7 +2019,7 @@ internal sealed partial class VideoReader
         // with the exact seek.
         else if (next is not null)
         {
-            foreach (var frame in Frames(FirstAtOrAfter(next.Seconds), count - emitted, cancellationToken, 2, next))
+            foreach (var frame in FramesDecoded(FirstAtOrAfter(next.Seconds), count - emitted, cancellationToken, 2, next))
                 yield return frame;
         }
     }

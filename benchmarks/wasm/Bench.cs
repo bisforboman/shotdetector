@@ -1,7 +1,9 @@
 // The frame-source path's benchmark (benchmark.yml, README.md here), shared by the WebAssembly build (Wasm/) and the
 // native one (Native/): raw yuv420p frames read from a file, ShotDetection.Detect(YuvVideo, frames) with FastYuv's
 // converter, the content and adaptive detectors and content with stats, best of N runs, one JSON line on stdout. The
-// CSVs' SHA-256 lets the job check the WebAssembly run's results against the native run's on the same frames.
+// CSVs' SHA-256 lets the job check the WebAssembly run's results against the native run's on the same frames. Before
+// the runs, the other frame-source entry points on each input's first frames must give Detect's CSVs (CheckPaths); being
+// here also keeps them in the trimmed WebAssembly bundle, which ci.yml's wasm-trim job checks for FFmpeg's code.
 //
 // Usage: <host> [--runs N] name=path,width,height,num/den,frames,colorspace ...
 // (the raw file holds at least `frames` frames of width x height yuv420p; colorspace as ffprobe names it, or "")
@@ -68,6 +70,7 @@ static class Bench
             try
             {
                 var read = host.Read(handle);
+                CheckPaths(input, read);
                 foreach (var (detector, kind, stats) in Cases)
                     cases.Add(Measure(input, read, detector, kind, stats, runs));
             }
@@ -144,13 +147,46 @@ static class Bench
         return new Result(input, detector, stats, frames, best, walls, bestRead, gcPeak, shots, sceneHash!, statsHash);
     }
 
+    /// <summary>
+    /// DetectAsync, ScoreRangeAsync and ScoreRange in two ranges (one through its bytes) and Merge, on the first frames of
+    /// <paramref name="input"/>: each must give Detect's scene and stats CSVs, with nothing decoded in-process.
+    /// </summary>
+    static void CheckPaths(Input input, ReadAt read)
+    {
+        long frames = Math.Min(input.Frames, 300);
+        int half = (int)(frames / 2);
+        var video = new YuvVideo
+        {
+            Width = input.Width,
+            Height = input.Height,
+            FrameRate = input.Rate,
+            ColorSpace = input.ColorSpace,
+            FrameCount = frames,
+        };
+        var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, Yuv420Converter = new SwscaleYuv420() };
+        string Csvs(DetectionResult r) => Shots.Csv(r.Shots, cuts: r.Cuts) + r.Stats!.Csv(r.Video.Position);
+        string expected = Csvs(ShotDetection.Detect(video, Frames(input, read, new Counters(), 0, frames), options));
+        var detected = ShotDetection.DetectAsync(video, Frames(input, read, new Counters(), 0, frames).ToAsyncEnumerable(), options).GetAwaiter().GetResult();
+        var first = ShotDetection.ScoreRangeAsync(video, Frames(input, read, new Counters(), 0, half + 1).ToAsyncEnumerable(), 0, options).GetAwaiter().GetResult();
+        var second = ShotDetection.ScoreRange(video, Frames(input, read, new Counters(), half - 1, frames), half, options);
+        var merged = ShotDetection.Merge(video, [RangeScores.FromBytes(first.ToBytes()), second], options);
+        foreach (var (name, result) in new[] { ("DetectAsync", detected), ("ScoreRange and Merge", merged) })
+        {
+            if (Csvs(result) != expected || result.Video.DecodedInProcess)
+                throw new InvalidOperationException($"{input.Name}: {name}'s CSVs differ from Detect's on the first {frames} frames, or it says it decoded in-process.");
+        }
+    }
+
     // One buffer for all frames: Detect reads a frame's planes before it asks for the next.
-    static IEnumerable<YuvFrame> Frames(Input input, ReadAt read, Counters counters)
+    static IEnumerable<YuvFrame> Frames(Input input, ReadAt read, Counters counters) => Frames(input, read, counters, 0, input.Frames);
+
+    /// <summary>Frames <paramref name="from"/> to <paramref name="to"/> - 1 of the input.</summary>
+    static IEnumerable<YuvFrame> Frames(Input input, ReadAt read, Counters counters, long from, long to)
     {
         int w = input.Width, h = input.Height, cw = (w + 1) / 2, ch = (h + 1) / 2;
         int luma = w * h, chroma = cw * ch;
         var buffer = new byte[luma + (2 * chroma)];
-        for (long i = 0; i < input.Frames; i++)
+        for (long i = from; i < to; i++)
         {
             long start = Stopwatch.GetTimestamp();
             int n = 0;
