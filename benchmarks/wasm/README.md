@@ -10,8 +10,10 @@ anywhere else. Its CSVs must equal the native run's on the same frames, so a res
 fails the step; the timings show a slowdown week to week, and the native run beside it says how far behind WebAssembly
 is on the same runner.
 
-- `Bench.cs`: the benchmark, shared by both hosts. For each input, the content and adaptive detectors and content with
-  stats, best of 3 runs by wall time; one line of JSON on stdout with each case's frames, wall time, the time spent
+- `Bench.cs`: the benchmark, shared by both hosts. For each input, first a check: `DetectAsync`, `ScoreRangeAsync` and
+  `ScoreRange` in two ranges and `Merge` must give `Detect`'s CSVs on its first 300 frames (which also keeps them in the
+  bundle for ci.yml's `wasm-trim` job: no FFmpeg.AutoGen may be reached from them). Then the content and adaptive
+  detectors and content with stats, best of 3 runs by wall time; one line of JSON on stdout with each case's frames, wall time, the time spent
   reading frames from the file, detection time (wall minus reading), nanoseconds per pixel (of detection), the managed
   heap's peak (`GC.GetTotalMemory`, sampled every frame), shots and the SHA-256 of the scene and stats CSVs.
 - `Wasm/`: the browser-wasm app (`main.mjs` starts it under Node and reads the host's files for it in slices, a frame at

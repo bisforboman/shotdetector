@@ -11,13 +11,12 @@ internal sealed partial class VideoReader
     /// for, and rotations other than quarter turns. Never frames from the caller (<see cref="FromFrames"/>), which nothing
     /// decodes: their reader asks nothing of FFmpeg.
     /// </summary>
-    public bool DecodesInProcess => _frames is null && DecodesWithLibraries();
+    public bool DecodesInProcess => _decoding?.DecodesInProcess == true;
 
     /// <summary>
-    /// <see cref="DecodesInProcess"/> for a decoder's input. A method of its own, never inlined, so compiling
-    /// DecodesInProcess doesn't load FFmpeg.AutoGen for frames from the caller (browser WebAssembly has no FFmpeg).
+    /// <see cref="DecodesInProcess"/> for a decoder's input, through <see cref="IDecoding"/>, so frames from the caller
+    /// never reach FFmpeg.AutoGen (browser WebAssembly has no FFmpeg).
     /// </summary>
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     bool DecodesWithLibraries() => _decoder != VideoDecoder.FfmpegProcess && (_stream is not null || !Streaming || _urlInProcess)
         && !_inProcessGaveNothing && !_alwaysBt601
         && (_decoder == VideoDecoder.InProcess || InProcess.CanLoad(_ffmpegDirectory))

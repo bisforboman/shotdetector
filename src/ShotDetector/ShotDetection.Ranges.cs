@@ -312,7 +312,6 @@ public static partial class ShotDetection
 
             // The decisions as Detect makes them: Steps with the scores in place of the frames (the chunked file's path).
             var steps = Steps(null,
-                null,
                 (options ?? new DetectionOptions()) with { Progress = null },
                 null,
                 CancellationToken.None,
