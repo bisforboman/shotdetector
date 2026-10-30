@@ -13,6 +13,8 @@ internal sealed partial class VideoReader
     readonly IEnumerator<YuvFrame>? _frames; // the caller's frames; null for every other input
     readonly bool _framesTimed;              // the frames carry pts (YuvVideo.TimeBase set)
     readonly double _framesRate;             // the video's own rate, for the constant-rate check
+    readonly long[]? _frameTimestamps;       // every frame's pts (YuvVideo.FrameTimestamps), in place of that check
+    int _lastEntry = -1;                     // the entry of _frameTimestamps the last frame taken is at
     readonly List<long> _framePts = [];      // each frame's pts as it arrives
     readonly int _frameSkip;                 // frames FrameSkip won't analyse aren't converted
     readonly int _frameBase;                 // the first frame's index in the video (a range's, ShotDetection.ScoreRange); 0 otherwise
@@ -28,7 +30,8 @@ internal sealed partial class VideoReader
     /// <param name="o">The resolved options.</param>
     /// <param name="frameBase">The index in the video of the first frame <paramref name="frames"/> gives: 0, or a range's
     /// first frame (<see cref="ShotDetection.ScoreRange(YuvVideo, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/>),
-    /// whose frames aren't checked for the constant rate here (that needs frame 0's pts: <see cref="ShotDetection.Merge"/> checks them).</param>
+    /// whose frames aren't checked for the constant rate here (that needs frame 0's pts: <see cref="ShotDetection.Merge"/> checks them);
+    /// with <see cref="YuvVideo.FrameTimestamps"/>, its first frame must be at that frame's entry.</param>
     internal VideoReader(YuvVideo video, IEnumerator<YuvFrame> frames, DetectionOptions o, int frameBase = 0)
     {
         if (o.Yuv420Converter is null)
@@ -51,6 +54,22 @@ internal sealed partial class VideoReader
             throw new ArgumentException("YuvVideo.FrameRate must be positive.");
         if (video.TimeBase is { } t && (t.Num <= 0 || t.Den <= 0))
             throw new ArgumentException("YuvVideo.TimeBase must be positive.");
+        if (video.FrameTimestamps is { } entries)
+        {
+            if (video.TimeBase is null)
+                throw new ArgumentException("YuvVideo.FrameTimestamps are in YuvVideo.TimeBase, which isn't set.");
+            for (int i = 1; i < entries.Count; i++)
+            {
+                if (entries[i] <= entries[i - 1])
+                {
+                    throw new ArgumentException(string.Create(CultureInfo.InvariantCulture,
+                        $"YuvVideo.FrameTimestamps must rise from each frame to the next (presentation order): entry {i} is {entries[i]}, after {entries[i - 1]}."));
+                }
+            }
+
+            _frameTimestamps = [.. entries];
+        }
+
         if (video.Rotation % 90 != 0 || Math.Abs(video.Rotation) >= 360)
             throw new ArgumentException($"YuvVideo.Rotation must be a quarter turn (0, 90, 180, 270, or -90, -180, -270), not {video.Rotation}.");
 
@@ -118,7 +137,25 @@ internal sealed partial class VideoReader
         CheckPlane(f.Y, f.YStride, w, h, "Y");
         CheckPlane(f.U, f.UStride, cw, ch, "U");
         CheckPlane(f.V, f.VStride, cw, ch, "V");
-        if (_framesTimed)
+        if (_frameTimestamps is { } entries)
+        {
+            // At its entry: the first frame given at its own (frame 0's, or a range's first frame's), each next one at a
+            // later one. Skipping entries is a frame the decoder dropped, which a file's run takes as it comes (the
+            // frame keeps its own time, the numbers go on); ranges are checked frame by frame when merged.
+            int entry = _lastEntry < 0
+                ? (_framesRead < entries.Length && entries[_framesRead] == f.Pts ? _framesRead : -1)
+                : Array.BinarySearch(entries, _lastEntry + 1, entries.Length - _lastEntry - 1, f.Pts);
+            if (entry < 0)
+            {
+                throw new ShotDetectionException(ShotDetectionError.InvalidInput, _lastEntry < 0
+                    ? string.Create(CultureInfo.InvariantCulture, $"Frame {_framesRead}'s pts is {f.Pts}, not its entry in YuvVideo.FrameTimestamps ({(_framesRead < entries.Length ? entries[_framesRead].ToString(CultureInfo.InvariantCulture) : "none: there are " + entries.Length)}): is it that frame?")
+                    : string.Create(CultureInfo.InvariantCulture, $"Frame {_framesRead}'s pts ({f.Pts}) isn't in YuvVideo.FrameTimestamps after the previous frame's ({entries[_lastEntry]}): frames must come in presentation order, at their timestamps."));
+            }
+
+            _lastEntry = entry;
+            _framePts.Add(f.Pts);
+        }
+        else if (_framesTimed)
         {
             // Frame k at k / rate from the first, within half a frame: no variable rate, no frame the decoder dropped
             // (a file's frames are labelled by their packets, which frames from the caller can't say). A range's frames
@@ -157,6 +194,9 @@ internal sealed partial class VideoReader
                     $"Frame {frame} is {from:0.######} s after the first, not {expected:0.######} s: frames from the caller must come at a constant frame rate (variable frame rate and dropped frames aren't supported yet)."));
         }
     }
+
+    /// <summary>Every frame's pts, <see cref="YuvVideo.FrameTimestamps"/>; null when not given.</summary>
+    internal IReadOnlyList<long>? GivenTimestamps => _frameTimestamps;
 
     /// <summary>Whether the frames carry pts (<see cref="YuvVideo.TimeBase"/> set).</summary>
     internal bool FramesTimed => _framesTimed;
@@ -197,28 +237,33 @@ internal sealed partial class VideoReader
     FrameTime FramePosition(int frame)
     {
         // Before the frames are read (where a run starts): taken without converting them. Once reading has started,
-        // a frame past the last one taken has no pts, as a file's past its last packet.
-        while (frame >= _framesRead && !_framesStarted && TakeFrame())
+        // a frame past the last one taken has no pts, as a file's past its last packet. With every frame's timestamp
+        // given, a frame not taken is at its entry, as a file's frame is at its packet's.
+        while (frame >= _framesRead && !_framesStarted && _frameTimestamps is null && TakeFrame())
         {
         }
 
         if (_framesTimed && frame - _frameBase is >= 0 and var given && given < _framePts.Count)
-        {
-            double ms = (_framePts[given] - _startPts) * _timeBase * 1000;
-            long micros = (long)Math.Round(ms * 1000);
-            if (micros > 0)
-                return FrameTime.Pts(micros, 1_000_000, Fps);
-        }
-
+            return PtsPosition(_framePts[given], frame);
+        if (_frameTimestamps is { } entries && frame >= 0 && frame < entries.Length)
+            return PtsPosition(entries[frame], frame);
         return FrameTime.Pts((long)frame * Fps.Den, Fps.Num, Fps);
+    }
+
+    /// <summary>Frame <paramref name="frame"/>'s position at <paramref name="pts"/>: in microseconds from the start, or by its number where that isn't positive.</summary>
+    FrameTime PtsPosition(long pts, int frame)
+    {
+        double ms = (pts - _startPts) * _timeBase * 1000;
+        long micros = (long)Math.Round(ms * 1000);
+        return micros > 0 ? FrameTime.Pts(micros, 1_000_000, Fps) : FrameTime.Pts((long)frame * Fps.Den, Fps.Num, Fps);
     }
 
     bool _framesStarted; // FramesFromCaller has begun: frames are taken only there from then on
 
     /// <summary>
     /// <see cref="SeekFrame"/> for frames from the caller: round(seconds × fps), as for a constant-rate file, clamped to
-    /// the frame count when known. The file path's search for the nearest frame needs every timestamp first; at a
-    /// constant rate the estimate is the frame.
+    /// the frame count when known. The file path's search for the nearest frame needs every timestamp first: with
+    /// <see cref="YuvVideo.FrameTimestamps"/> it is that search; without them, at a constant rate the estimate is the frame.
     /// </summary>
     int FramesSeekFrame(double seconds)
     {
@@ -231,6 +276,19 @@ internal sealed partial class VideoReader
                 throw new ArgumentException($"StartTime is after the last frame ({_framesRead} frames).");
         }
 
+        if (_frameTimestamps is { } entries)
+        {
+            // Frame k at entry k, as the file path's frame after its seek is the one at that packet: a frame dropped
+            // before it would number the frames from there otherwise.
+            if (_framePts[estimate - _frameBase] != entries[estimate])
+            {
+                throw new ShotDetectionException(ShotDetectionError.InvalidInput,
+                    string.Create(CultureInfo.InvariantCulture, $"Frame {estimate}, where StartTime starts, isn't at its entry in YuvVideo.FrameTimestamps: a frame before it was dropped."));
+            }
+
+            return estimate;
+        }
+
         // Within a frame, as Position's check for a file; else (the start past the last frame) the last.
         double at = FramePosition(estimate).Seconds;
         if (Math.Abs(at - seconds) <= 1.0 / Fps.Value || (estimate == FrameCountHint - 1 && at < seconds))
@@ -239,9 +297,32 @@ internal sealed partial class VideoReader
             string.Create(CultureInfo.InvariantCulture, $"Frame {estimate} is at {at} s, too far from the start time {seconds} s for a constant frame rate."));
     }
 
-    /// <summary>The frame <see cref="FramesSeekFrame"/> starts from: round(seconds × fps), clamped to the frame count when known.</summary>
+    /// <summary>
+    /// The frame <see cref="FramesSeekFrame"/> starts from: round(seconds × fps), clamped to the frame count when known;
+    /// with <see cref="YuvVideo.FrameTimestamps"/>, the file path's frame (<see cref="SeekFrame"/>) from them.
+    /// </summary>
     int StartEstimate(double seconds)
     {
+        if (_frameTimestamps is { Length: > 0 } entries)
+        {
+            // As the file's: the estimate when it is within a frame, else the first frame at or after half a frame before the time.
+            int at = Math.Clamp(FrameAt(seconds), 0, entries.Length - 1);
+            if (Math.Abs(PtsPosition(entries[at], at).Seconds - seconds) <= 1.0 / Fps.Value)
+                return at;
+            double target = seconds - (0.5 / Fps.Value);
+            int lo = 0, hi = entries.Length - 1;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) / 2;
+                if (PtsPosition(entries[mid], mid).Seconds >= target)
+                    hi = mid;
+                else
+                    lo = mid + 1;
+            }
+
+            return lo;
+        }
+
         int estimate = FrameAt(seconds);
         return FrameCountHint > 0 ? (int)Math.Clamp(estimate, 0, FrameCountHint - 1) : estimate;
     }

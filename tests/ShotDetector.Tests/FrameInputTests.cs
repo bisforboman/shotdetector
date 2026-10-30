@@ -100,6 +100,109 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal((file.Video.Rotation, file.Video.Width, file.Video.Height), (ours.Video.Rotation, ours.Video.Width, ours.Video.Height));
     }
 
+    // A variable frame rate (issue #609's clip: frames last twice as long from frame 50 on, so the average rate is no
+    // frame's): with every frame's timestamp given up front, the frames are at their own times and StartTime finds its
+    // frame as the file path does (by the estimate where it is within a frame, else by searching the timestamps).
+    [Theory]
+    [InlineData("content")]
+    [InlineData("adaptive")]
+    [InlineData("histogram")]
+    [InlineData("hash")]
+    [InlineData("start")]
+    [InlineData("start-early")]
+    [InlineData("end")]
+    [InlineData("v071")]
+    public async Task SameAsTheFileAtAVariableRate(string name)
+    {
+        if (Libs is null)
+            return;
+        var options = new DetectionOptions { CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() };
+        options = name switch
+        {
+            "content" => options with { Detector = DetectorKind.Content },
+            "histogram" => options with { Detector = DetectorKind.Histogram },
+            "hash" => options with { Detector = DetectorKind.Hash },
+            "start" => options with { Detector = DetectorKind.Content, StartTime = "4.33" },
+            "start-early" => options with { Detector = DetectorKind.Content, StartTime = "1.2" },
+            "end" => options with { Detector = DetectorKind.Content, StartTime = "1", EndTime = "6.5" },
+            "v071" => options with { Compatibility = PySceneDetectVersion.V0_7_1 },
+            _ => options,
+        };
+        string clip = VariableRateClip(clips.ThreeShots);
+        if (name == "start")
+        {
+            // Not round(4.33 x the average rate): the search finds the frame, the one at 4.32 s (within half a frame).
+            var reader = new VideoReader(clip, options);
+            Assert.NotEqual(reader.FrameAt(4.33), reader.SeekFrame(4.33));
+            Assert.Equal(4.32, reader.Position(reader.SeekFrame(4.33)).Seconds, 6);
+        }
+
+        await AssertSame(clip, options, timestamps: true);
+
+        // Without the timestamps, the frames off the average rate's grid are refused.
+        var (video, frames) = Decoded(clip);
+        Assert.Null(video.FrameTimestamps);
+        Assert.Equal(ShotDetectionError.InvalidInput, Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(video, frames, options with { StartTime = null, EndTime = null })).Reason);
+    }
+
+    [Fact]
+    public void FrameTimestampsAreChecked()
+    {
+        var video = Video() with { TimeBase = new(1, 100), FrameTimestamps = [.. Enumerable.Range(0, 10).Select(i => i * 4L)] };
+        var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420() };
+        IEnumerable<YuvFrame> At(params long[] pts) => Frames(video, pts.Length).Select((f, i) => f with { Pts = pts[i] });
+
+        // A time base to count them in, and rising.
+        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video with { TimeBase = null }, At(0, 4), options));
+        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video with { FrameTimestamps = [0, 4, 4, 8] }, At(0, 4), options));
+
+        // Frame 0 at entry 0; each next frame at a later entry.
+        Assert.Equal(ShotDetectionError.InvalidInput, Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(video, At(4, 8), options)).Reason);
+        Assert.Equal(ShotDetectionError.InvalidInput, Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(video, At(0, 5), options)).Reason);
+        Assert.Equal(ShotDetectionError.InvalidInput, Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(video, At(0, 8, 4), options)).Reason);
+        Assert.Equal(ShotDetectionError.InvalidInput, Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(video, At(0, 4, 40), options)).Reason);
+
+        // Off the constant-rate grid is fine with them (no grid check), as a frame the decoder dropped is: the frames keep
+        // their own times and the numbers go on, as a file's run takes them.
+        var uneven = video with { FrameTimestamps = [0, 4, 12, 13, 30, 31, 32, 33, 60, 61] };
+        Assert.Equal(10, ShotDetection.Detect(uneven, At([.. uneven.FrameTimestamps]), options).FrameCount);
+        var dropped = ShotDetection.Detect(video, At(0, 4, 8, 16, 20), options);
+        Assert.Equal(5, dropped.FrameCount);
+        Assert.Equal(FrameTime.Pts(160_000, 1_000_000, new Fps(25, 1)), dropped.Video.Position(3));
+
+        // Not at a start time after a dropped frame: the file path would number the frames from the start's packet.
+        Assert.Equal(ShotDetectionError.InvalidInput,
+            Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(video, At(0, 4, 12, 16, 20, 24), options with { StartTime = "0.16" })).Reason);
+        Assert.Equal(4, ShotDetection.Detect(video, At(0, 4, 8, 12, 16, 20, 24), options with { StartTime = "0.16" }).Shots[0].Start.FrameNum);
+    }
+
+    [Fact]
+    public void RangesAreAtTheirFrameTimestamps()
+    {
+        // A range's frames at their entries; Merge refuses a frame that isn't (a drop, or the range given under another
+        // first frame), which the overlap frames alone wouldn't show here.
+        var video = Video() with { TimeBase = new(1, 100), FrameTimestamps = [.. Enumerable.Range(0, 40).Select(i => i < 20 ? i * 4L : 80 + ((i - 20) * 8L))] };
+        var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420(), CollectStats = true };
+        var pts = video.FrameTimestamps;
+        IEnumerable<YuvFrame> Range(int from, int to) => Frames(video, 40).Select((f, i) => f with { Pts = pts[i] }).Skip(from).Take(to - from);
+        var expected = ShotDetection.Detect(video, Range(0, 40), options);
+        var first = ShotDetection.ScoreRange(video, Range(0, 21), 0, options);
+        var second = ShotDetection.ScoreRange(video, Range(19, 40), 20, options);
+        var merged = ShotDetection.Merge(video, [first, second], options);
+        Assert.Equal(expected.Stats!.Csv(expected.Video.Position), merged.Stats!.Csv(merged.Video.Position));
+        Assert.Equal(Shots.Csv(expected.Shots, cuts: expected.Cuts), Shots.Csv(merged.Shots, cuts: merged.Cuts));
+
+        // A range's first frame given under another first frame is refused as it is scored.
+        Assert.Equal(ShotDetectionError.InvalidInput, Assert.Throws<ShotDetectionException>(() => ShotDetection.ScoreRange(video, Range(20, 40), 20, options)).Reason);
+
+        // A frame dropped inside a range: Merge refuses it.
+        var dropping = ShotDetection.ScoreRange(video, Range(19, 40).Where((_, i) => i != 5), 20, options);
+        Assert.Equal(ShotDetectionError.InvalidInput, Assert.Throws<ShotDetectionException>(() => ShotDetection.Merge(video, [first, dropping], options)).Reason);
+
+        // Other timestamps are another video.
+        Assert.Throws<ShotDetectionException>(() => ShotDetection.Merge(video with { FrameTimestamps = [.. pts.Select(p => p + 1)] }, [first, second], options));
+    }
+
     [Theory]
     [InlineData(45)]
     [InlineData(360)]
@@ -236,15 +339,15 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     }
 
     // The frames of a file, as a decoder gives them, and the file's result for them.
-    static async Task AssertSame(string path, DetectionOptions options)
+    static async Task AssertSame(string path, DetectionOptions options, bool timestamps = false)
     {
         var file = ShotDetection.Detect(path, options);
         Assert.True(file.Video.DecodedInProcess);
-        var (video, frames) = Decoded(path);
+        var (video, frames) = Decoded(path, timestamps);
         var ours = ShotDetection.Detect(video, frames, options);
 
         // The same frames from an asynchronous source (DetectAsync) give the same result.
-        var awaited = await ShotDetection.DetectAsync(video, FrameSourceAsyncTests.Yielding(Decoded(path).Frames, every: 5), options);
+        var awaited = await ShotDetection.DetectAsync(video, FrameSourceAsyncTests.Yielding(Decoded(path, timestamps).Frames, every: 5), options);
         Assert.Equal(ours.FrameCount, awaited.FrameCount);
         Assert.Equal(ours.Shots, awaited.Shots);
         Assert.Equal(Shots.Csv(ours.Shots, cuts: ours.Cuts), Shots.Csv(awaited.Shots, cuts: awaited.Cuts));
@@ -276,12 +379,21 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     [InlineData("mpeg4", DetectorKind.Content)]
     [InlineData("mpeg4", DetectorKind.Hash)]
     [InlineData("mpeg4-turned", DetectorKind.Content)]
+    [InlineData("mpeg4-vfr", DetectorKind.Adaptive)]
+    [InlineData("mpeg4-vfr", DetectorKind.Hash)]
     public void RangesFromKeyframesMergeIntoTheSequentialResult(string clip, DetectorKind detector)
     {
-        if (Libs is null || (clip == "h264" ? H264Clip() : clip == "mpeg4-turned" ? Rotated(clips.ThreeShots, 90) : clips.ThreeShots) is not { } path)
+        string? file = clip switch
+        {
+            "h264" => H264Clip(),
+            "mpeg4-turned" => Rotated(clips.ThreeShots, 90),
+            "mpeg4-vfr" => VariableRateClip(clips.ThreeShots),
+            _ => clips.ThreeShots,
+        };
+        if (Libs is null || file is not { } path)
             return;
         var options = new DetectionOptions { Detector = detector, CollectStats = true, Yuv420Converter = new SwscaleYuv420() };
-        var (video, frames) = Decoded(path);
+        var (video, frames) = Decoded(path, timestamps: clip == "mpeg4-vfr");
         var pts = frames.Select(f => f.Pts).ToList();
         var expected = ShotDetection.Detect(video, Decoded(path).Frames, options);
 
@@ -307,6 +419,13 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         }
 
         var merged = ShotDetection.Merge(video, ranges, options);
+        if (video.FrameTimestamps is not null)
+        {
+            var fromFile = ShotDetection.Detect(path, options with { FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess });
+            Assert.Equal(Shots.Csv(fromFile.Shots, cuts: fromFile.Cuts), Shots.Csv(merged.Shots, cuts: merged.Cuts));
+            Assert.Equal(fromFile.Stats!.Csv(fromFile.Video.Position), merged.Stats!.Csv(merged.Video.Position));
+        }
+
         Assert.Throws<ShotDetectionException>(() => ShotDetection.Merge(video with { Rotation = video.Rotation == 0 ? 90 : 0 }, ranges, options));
         Assert.Equal(expected.FrameCount, merged.FrameCount);
         Assert.Equal(expected.Cuts, merged.Cuts);
@@ -343,10 +462,14 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
-    /// <summary>The file's properties as FFmpeg gives them, and its frames decoded as the file path decodes them.</summary>
-    static (YuvVideo Video, IEnumerable<YuvFrame> Frames) Decoded(string path)
+    /// <summary>
+    /// The file's properties as FFmpeg gives them (with <paramref name="timestamps"/>, every frame's: its packets' pts,
+    /// sorted), and its frames decoded as the file path decodes them.
+    /// </summary>
+    static (YuvVideo Video, IEnumerable<YuvFrame> Frames) Decoded(string path, bool timestamps = false)
     {
-        var info = FrameReader.MediaProbe.Probe(path).Video!;
+        var probed = FrameReader.MediaProbe.Probe(path, new FrameReader.ProbeOptions { PacketTimestamps = timestamps });
+        var info = probed.Video!;
         var decoderOptions = DecoderOptions(path);
         string colorSpace, colorRange;
         using (var first = new FrameReader.FrameDecoder(path, decoderOptions))
@@ -370,6 +493,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             Duration = info.DurationPts is { } d ? TimeSpan.FromTicks((long)Math.Round(d * 1e7 * info.TimeBase.Num / info.TimeBase.Den / 10) * 10) : null,
             Codec = info.Codec,
             Rotation = (int)Math.Round(info.Rotation ?? 0) % 360,
+            FrameTimestamps = timestamps ? [.. probed.PacketTimestamps!.Select(p => p!.Value).Order()] : null,
         };
         return (video, Frames());
 
@@ -429,6 +553,26 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         }
 
         return rotated;
+    }
+
+    /// <summary>
+    /// A copy of <paramref name="path"/> at a variable frame rate (issue #609's): its frames at 25 fps to frame 50, then
+    /// each lasting twice as long; MPEG-4 Part 2 again, in mp4.
+    /// </summary>
+    static string VariableRateClip(string path)
+    {
+        string vfr = Path.Combine(Path.GetDirectoryName(path)!, $"{Path.GetFileNameWithoutExtension(path)}-vfr.mp4");
+        lock (H264Lock)
+        {
+            if (!File.Exists(vfr))
+            {
+                string partial = vfr + ".part.mp4";
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", path, "-vf", "setpts='if(lt(N,50),N,50+(N-50)*2)/(25*TB)'", "-fps_mode", "passthrough", "-c:v", "mpeg4", "-q:v", "3", partial], default);
+                File.Move(partial, vfr, true);
+            }
+        }
+
+        return vfr;
     }
 
     static string? _h264;

@@ -303,6 +303,12 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'var (sx, sy) = CvResize.TurnedSource(turn, CropRegion.X + x, CropRegion.Y + y, w, h);'; Replace = 'var (sx, sy) = CvResize.TurnedSource(180, CropRegion.X + x, CropRegion.Y + y, w, h);'; Tests = 'FrameInputTests.SameAsTheFileTurned' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.Rotation % 90 != 0 || Math.Abs(video.Rotation) >= 360)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RotationIsAQuarterTurn' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line("Rotation", video.Rotation);'; Replace = ''; Tests = 'FrameInputTests.RangesFromKeyframesMergeIntoTheSequentialResult' }
+        # ... at a variable rate with every frame's timestamp given: each at its entry, StartTime as the file path's search
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (entry < 0)'; Replace = 'if (false)'; Tests = 'FrameInputTests.FrameTimestampsAreChecked' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (_framePts[estimate - _frameBase] != entries[estimate])'; Replace = 'if (false)'; Tests = 'FrameInputTests.FrameTimestampsAreChecked' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'double target = seconds - (0.5 / Fps.Value);'; Replace = 'double target = seconds;'; Tests = 'FrameInputTests.SameAsTheFileAtAVariableRate' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'else if (k >= entries.Count || pts[k] != entries[k])'; Replace = 'else if (k >= entries.Count)'; Tests = 'FrameInputTests.RangesAreAtTheirFrameTimestamps' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line("FrameTimestamps", video.FrameTimestamps is { } entries ? TimestampsDigest(entries) : null);'; Replace = ''; Tests = 'FrameRangeTests.TheFingerprintCoversEveryOption' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if ((k - startFrame) % (_frameSkip + 1) == 0)'; Replace = 'if ((k - startFrame) % (_frameSkip + 1) == 1)'; Tests = 'FrameInputTests.SameAsTheFile' }
 
         # Frames from an asynchronous source (DetectAsync): the start's frames taken one per step, the token checked before each pull
