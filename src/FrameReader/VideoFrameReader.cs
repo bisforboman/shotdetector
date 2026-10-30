@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using FFmpeg.AutoGen;
 
 namespace FrameReader;
@@ -300,6 +301,15 @@ public sealed unsafe class VideoFrameReader : IDisposable
         VideoFrameReaderOptions? options,
         int? parallelism,
         FrameHandler handler,
+        CancellationToken cancellationToken = default) => ReadAtCounting(path, times, options, parallelism, handler, null, cancellationToken);
+
+    /// <summary><see cref="ReadAt"/>, adding up its readers' <see cref="ReadAgain"/> in <paramref name="readAgain"/> (tests).</summary>
+    internal static int ReadAtCounting(string path,
+        IReadOnlyList<TimeSpan> times,
+        VideoFrameReaderOptions? options,
+        int? parallelism,
+        FrameHandler handler,
+        StrongBox<int>? readAgain,
         CancellationToken cancellationToken = default)
     {
         options ??= new VideoFrameReaderOptions();
@@ -330,6 +340,9 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 handler(i, frame);
                 Interlocked.Increment(ref found);
             }
+
+            if (readAgain != null)
+                Interlocked.Add(ref readAgain.Value, reader.ReadAgain);
         });
         return found;
     }

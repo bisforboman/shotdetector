@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using FFmpeg.AutoGen;
 using FrameReader;
@@ -76,21 +77,29 @@ public class SkipUnreferencedTests
                 }
             }
 
-            // ReadAt (two readers, the next time known while a slow handler works and decoding runs ahead).
+            // ReadAt (two readers, the next time known while a slow handler works and decoding runs ahead): never read
+            // again, as it knows the next time rather than guessing it.
             var times = Enumerable.Range(0, 30).Select(i => TimeSpan.FromSeconds(i * 0.2)).ToList();
+            var readAtAgain = new StrongBox<int>();
             string ReadAt(bool every)
             {
                 var lines = new string[times.Count];
                 var options = new VideoFrameReaderOptions { FrameFormat = FrameFormat.Gray8, ReadAhead = 8, DecodeEveryPacket = every };
-                int found = VideoFrameReader.ReadAt(path, times, options, 2, (i, f) =>
-                {
-                    lines[i] = Line(f);
-                    Thread.Sleep(10);
-                });
+                int found = VideoFrameReader.ReadAtCounting(path,
+                    times,
+                    options,
+                    2,
+                    (i, f) =>
+                    {
+                        lines[i] = Line(f);
+                        Thread.Sleep(10);
+                    },
+                    readAtAgain);
                 return string.Join('\n', lines.Take(found));
             }
 
             Assert.Equal(ReadAt(true), ReadAt(false));
+            Assert.Equal(0, readAtAgain.Value);
             if (skips is { } expected)
                 Assert.True(expected == skipped > 0, $"{name}: {skipped} packets left out");
 
