@@ -32,6 +32,7 @@ public class SkipUnreferencedTests
         { "h264.ts", "-c:v libx264 -preset veryfast", true },                // Annex B, the SPS in the packets
         { "opengop.ts", "-c:v libx264 -preset veryfast -x264-params open-gop=1:keyint=30", true }, // seeks land on non-IDR I-frames
         { "mbaff.mkv", "-c:v libx264 -preset veryfast -flags +ildct+ilme -x264-params interlaced=1", false }, // fields coded
+        { "intrarefresh.ts", "-c:v libx264 -preset veryfast -x264-params intra-refresh=1:keyint=30", true }, // recovery points
         { "hevc.mp4", "-c:v libx265 -preset fast -x265-params log-level=error", true },
         { "hevc.ts", "-c:v libx265 -preset fast -x265-params log-level=error", true },
         { "mpeg1.mkv", "-c:v mpeg1video -q:v 3 -bf 2", true },
@@ -94,8 +95,9 @@ public class SkipUnreferencedTests
                 Assert.True(expected == skipped > 0, $"{name}: {skipped} packets left out");
 
             // A short step after longer ones guesses the next time too late: read again where the input can go back to
-            // its index's keyframes (mp4, mkv), never guessed elsewhere (MPEG-TS, AVI: their seeks can land late).
-            bool indexed = Path.GetExtension(name) is ".mp4" or ".mkv";
+            // a keyframe (mp4, mkv: their index's; MPEG-TS: one read), never guessed elsewhere (AVI, MPEG-PS: their seeks
+            // can land late).
+            bool indexed = Path.GetExtension(name) is ".mp4" or ".mkv" or ".ts";
             if (skips == true)
                 Assert.True(indexed == again > 0, $"{name}: read again {again} times");
             else
