@@ -7,6 +7,18 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.17.0 – 2026-10-30
+
+Forward reads at steps on MPEG-TS skip the frames nothing references too.
+
+### Faster
+
+- `VideoFrameReader.TryReadForwardTo` and `TryTakeForwardTo` in MPEG-TS files: reading forward at steps of one
+  length leaves out the frames nothing references after the wanted frame and before the next time, as in mp4, mov
+  and mkv since 2.16.0. Where a guess was too late, it reads what it left out again from a keyframe it has read, by
+  the keyframe's byte position: a TS seek by time lands a whole keyframe interval late. The frames are still those
+  of decoding every packet.
+
 ## 2.16.0 – 2026-10-30
 
 Forward reads at steps skip more of the frames nothing references.

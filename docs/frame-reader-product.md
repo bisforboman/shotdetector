@@ -57,7 +57,9 @@ read-ahead and ShotDetector's fixes each touch one product), fewer than 20: the 
 2.14.0, 1 of 2 (the decoded-frame `ImageEncoder`, then save-images through it; read-ahead, from issue #566, alone). 2.15.0, 0 of 4 (`TryTake` from issue #574,
 skipping unreferenced frames, the last-frame and 4:2:2 fixes, the MPEG-PS/AVI seek fixes): one release without, after 2.14.0's 1 of 2,
 so the trigger isn't met. 2.15.1: 0 of 1 (the raw-stream/FLV seeks), joined with the next window. 2.16.0: 0 of 1 (the forward-read
-look-ahead), 0 of 2 with 2.15.1's window, still fewer than 3: the window joins the next release's; not met.
+look-ahead), 0 of 2 with 2.15.1's window, still fewer than 3: the window joins the next release's; not met. 2.17.0: 0 of 1 (MPEG-TS
+frame skipping), 0 of 3 with the joined window, after 2.15.0's 0 of 4: met, the first time by features; the user's
+choice: don't split, keep counting (docs/decisions/2026-10-30-framereader-stays-by-features.md).
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
