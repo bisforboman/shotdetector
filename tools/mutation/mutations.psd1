@@ -297,6 +297,12 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (stride < width || plane.Length < (long)stride * (height - 1) + width)'; Replace = 'if (stride < width)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (!(Math.Abs(from - expected) <= 0.5 / rate))'; Replace = 'if (false)'; Tests = 'FrameInputTests.FramesMustComeAtTheFrameRate' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_startPts = video.StartPts;'; Replace = '_startPts = 0;'; Tests = 'FrameInputTests.FramesAreAtTheirPtsFromTheStreamsStart' }
+        # ... turned by the display rotation as OpenCV turns a file's (after converting, flips ignored), any quarter turn
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_rotation = video.Rotation;'; Replace = '_rotation = 0;'; Tests = 'FrameInputTests.SameAsTheFileTurned' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'resizer.ResizeYuv(yuv, small, convert, w, h, turn, CropRegion.X, CropRegion.Y);'; Replace = 'resizer.ResizeYuv(yuv, small, convert, w, h, 0, CropRegion.X, CropRegion.Y);'; Tests = 'FrameInputTests.SameAsTheFileTurned' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'var (sx, sy) = CvResize.TurnedSource(turn, CropRegion.X + x, CropRegion.Y + y, w, h);'; Replace = 'var (sx, sy) = CvResize.TurnedSource(180, CropRegion.X + x, CropRegion.Y + y, w, h);'; Tests = 'FrameInputTests.SameAsTheFileTurned' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.Rotation % 90 != 0 || Math.Abs(video.Rotation) >= 360)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RotationIsAQuarterTurn' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line("Rotation", video.Rotation);'; Replace = ''; Tests = 'FrameInputTests.RangesFromKeyframesMergeIntoTheSequentialResult' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if ((k - startFrame) % (_frameSkip + 1) == 0)'; Replace = 'if ((k - startFrame) % (_frameSkip + 1) == 1)'; Tests = 'FrameInputTests.SameAsTheFile' }
 
         # Frames from an asynchronous source (DetectAsync): the start's frames taken one per step, the token checked before each pull

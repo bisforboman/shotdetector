@@ -58,7 +58,7 @@ def wasm_section(wasm_files: list[str], native_files: list[str]) -> dict:
     out = {"runtime": wasm_runs[0]["runtime"] if wasm_runs else None,
            "native_runtime": native_runs[0]["runtime"] if native_runs else None,
            "node": sh("node", "--version").strip() or None, "aot": True,
-           "runs": wasm_runs[0]["runs"] if wasm_runs else None, "cases": []}
+           "runs": wasm_runs[0]["runs"] if wasm_runs else None, "cases": [], "checks": []}
     for key in list(wasm) + [k for k in native if k not in wasm]:
         w, n = wasm.get(key), native.get(key)
         c = w or n
@@ -73,6 +73,14 @@ def wasm_section(wasm_files: list[str], native_files: list[str]) -> dict:
             "csv_equal": bool(w and n and w["frames"] == n["frames"] and w["scene_csv_sha256"] == n["scene_csv_sha256"]
                               and w["stats_csv_sha256"] == n["stats_csv_sha256"]),
         })
+
+    # The checks' variants (frames turned, ...): each one's CSVs on WebAssembly against the native run's.
+    def checks(runs):
+        return {(c["film"], c["check"]): c["csv_sha256"] for r in runs for c in r.get("checks", [])}
+    wasm_checks, native_checks = checks(wasm_runs), checks(native_runs)
+    for key in list(wasm_checks) + [k for k in native_checks if k not in wasm_checks]:
+        out["checks"].append({"film": key[0], "check": key[1],
+                              "csv_equal": wasm_checks.get(key) is not None and wasm_checks.get(key) == native_checks.get(key)})
     return out
 
 
@@ -85,6 +93,10 @@ def wasm_report(section: dict) -> tuple[str, bool]:
                      f"{c['ns_per_pixel']} | {c['native_ns_per_pixel']} | {c['ratio']} | {c['read_ms']} | "
                      f"{c['wasm_heap_mb']} | {'yes' if c['csv_equal'] else '**no**'} |")
     ok = bool(section["cases"]) and all(c["csv_equal"] for c in section["cases"])
+    if section.get("checks"):
+        lines += ["", "| film | check | CSVs equal |", "|---|---|---|"]
+        lines += [f"| {c['film']} | {c['check']} | {'yes' if c['csv_equal'] else '**no**'} |" for c in section["checks"]]
+        ok = ok and all(c["csv_equal"] for c in section["checks"])
     return "\n".join(lines) + "\n", ok
 
 

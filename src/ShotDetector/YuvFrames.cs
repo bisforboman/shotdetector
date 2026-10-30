@@ -4,11 +4,11 @@ namespace ShotDetector;
 /// A video whose frames the caller decodes (<see cref="ShotDetection.Detect(YuvVideo, IEnumerable{YuvFrame}, DetectionOptions?, CancellationToken)"/>):
 /// what the headers would say. Nothing is probed, so the values must be the ones FFmpeg reports for the same file for
 /// the results to equal <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/>'s: the average
-/// frame rate, the stream's time base and start pts, and the first frame's colour tags.
+/// frame rate, the stream's time base and start pts, the first frame's colour tags and the display rotation.
 /// </summary>
 public sealed record YuvVideo
 {
-    /// <summary>Width of the decoded frames in pixels (all frames have this size).</summary>
+    /// <summary>Width of the decoded frames in pixels (all frames have this size), as decoded: before <see cref="Rotation"/>.</summary>
     public required int Width { get; init; }
 
     /// <summary>Height of the decoded frames in pixels; even (swscale's yuv420p conversion, which the converter reproduces, needs that).</summary>
@@ -44,6 +44,14 @@ public sealed record YuvVideo
 
     /// <summary>The container's duration; null if unknown. Without <see cref="FrameCount"/>, the length is this times the frame rate, as OpenCV's.</summary>
     public TimeSpan? Duration { get; init; }
+
+    /// <summary>
+    /// The display rotation in degrees, counterclockwise (the display matrix's angle, ffprobe's rotation; 0 when none), as
+    /// <see cref="DetectedVideo.Rotation"/> reports a file's: a quarter turn, 90 and -270 alike. The frames are given as
+    /// decoded and turned upright after converting, as a file's (flips ignored, as OpenCV does), and
+    /// <see cref="DetectedVideo"/>'s size is the upright one.
+    /// </summary>
+    public int Rotation { get; init; }
 
     /// <summary>The codec's FFmpeg name (h264, ...), reported back in <see cref="DetectedVideo.Codec"/>.</summary>
     public string Codec { get; init; } = "";

@@ -65,6 +65,64 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         await AssertSame(clip, new DetectionOptions { Detector = detector, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() });
     }
 
+    // A phone's file: the pixels stored sideways or upside down, with a display matrix (ffmpeg -display_rotation: a
+    // file of that rotation, counterclockwise, which OpenCV turns back clockwise). The frames are given as decoded,
+    // YuvVideo.Rotation says the file's angle, and they are turned after converting as the file's: through the resize,
+    // without one (Downscale 1: the whole frame converted, then turned), cropped (the crop is the upright frame's).
+    [Theory]
+    [InlineData(90, "content")]
+    [InlineData(180, "content")]
+    [InlineData(-90, "content")]
+    [InlineData(180, "hash")]
+    [InlineData(90, "adaptive")]
+    [InlineData(-90, "crop")]
+    [InlineData(90, "scale")]
+    [InlineData(180, "crop-scale")]
+    public async Task SameAsTheFileTurned(int displayRotation, string name)
+    {
+        if (Libs is null || (name.EndsWith("scale", StringComparison.Ordinal) && RuntimeInformation.ProcessArchitecture != Architecture.X64))
+            return;
+        string clip = Rotated(clips.ThreeShots, displayRotation);
+        var options = new DetectionOptions { CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() };
+        options = name switch
+        {
+            "content" => options with { Detector = DetectorKind.Content },
+            "hash" => options with { Detector = DetectorKind.Hash },
+            "crop" => options with { Detector = DetectorKind.Content, Crop = (10, 21, 220, 290) },
+            "scale" => options with { Detector = DetectorKind.Content, Downscale = 1 },
+            "crop-scale" => options with { Detector = DetectorKind.Content, Crop = (11, 20, 300, 201), Downscale = 1 },
+            _ => options,
+        };
+        var file = ShotDetection.Detect(clip, options);
+        Assert.Equal(0, (file.Video.Rotation - displayRotation) % 360); // 180 is -180: av_display_rotation_get's angle
+        await AssertSame(clip, options);
+        var ours = ShotDetection.Detect(Decoded(clip).Video, Decoded(clip).Frames, options);
+        Assert.Equal((file.Video.Rotation, file.Video.Width, file.Video.Height), (ours.Video.Rotation, ours.Video.Width, ours.Video.Height));
+    }
+
+    [Theory]
+    [InlineData(45)]
+    [InlineData(360)]
+    [InlineData(-450)]
+    public void RotationIsAQuarterTurn(int rotation)
+    {
+        var video = Video() with { Rotation = rotation };
+        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video, Frames(video, 3), new DetectionOptions { Yuv420Converter = new SwscaleYuv420() }));
+    }
+
+    [Fact]
+    public void TurnedFramesAreUpright()
+    {
+        // 64 x 48 as decoded, 48 x 64 upright: the planes are the decoded size's, the result the upright one's, and 270
+        // is -90.
+        var video = Video() with { Rotation = 270 };
+        var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420(), CollectStats = true, Downscale = 1 };
+        var result = ShotDetection.Detect(video, Frames(video, 30), options);
+        Assert.Equal((270, 48, 64, 48, 64), (result.Video.Rotation, result.Video.Width, result.Video.Height, result.Video.ProcessedWidth, result.Video.ProcessedHeight));
+        var minus = ShotDetection.Detect(video with { Rotation = -90 }, Frames(video, 30), options);
+        Assert.Equal(result.Stats!.Csv(result.Video.Position), minus.Stats!.Csv(minus.Video.Position));
+    }
+
     [Fact]
     public async Task NeedsAConverter()
     {
@@ -217,9 +275,10 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     [InlineData("h264", DetectorKind.Histogram)]
     [InlineData("mpeg4", DetectorKind.Content)]
     [InlineData("mpeg4", DetectorKind.Hash)]
+    [InlineData("mpeg4-turned", DetectorKind.Content)]
     public void RangesFromKeyframesMergeIntoTheSequentialResult(string clip, DetectorKind detector)
     {
-        if (Libs is null || (clip == "h264" ? H264Clip() : clips.ThreeShots) is not { } path)
+        if (Libs is null || (clip == "h264" ? H264Clip() : clip == "mpeg4-turned" ? Rotated(clips.ThreeShots, 90) : clips.ThreeShots) is not { } path)
             return;
         var options = new DetectionOptions { Detector = detector, CollectStats = true, Yuv420Converter = new SwscaleYuv420() };
         var (video, frames) = Decoded(path);
@@ -248,6 +307,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         }
 
         var merged = ShotDetection.Merge(video, ranges, options);
+        Assert.Throws<ShotDetectionException>(() => ShotDetection.Merge(video with { Rotation = video.Rotation == 0 ? 90 : 0 }, ranges, options));
         Assert.Equal(expected.FrameCount, merged.FrameCount);
         Assert.Equal(expected.Cuts, merged.Cuts);
         Assert.Equal(expected.Shots, merged.Shots);
@@ -309,6 +369,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             FrameCount = info.FrameCount,
             Duration = info.DurationPts is { } d ? TimeSpan.FromTicks((long)Math.Round(d * 1e7 * info.TimeBase.Num / info.TimeBase.Den / 10) * 10) : null,
             Codec = info.Codec,
+            Rotation = (int)Math.Round(info.Rotation ?? 0) % 360,
         };
         return (video, Frames());
 
@@ -351,6 +412,23 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
 
             yield return new YuvFrame(Plane(w, h), w + 3, Plane(cw, ch), cw + 3, Plane(cw, ch), cw + 3);
         }
+    }
+
+    /// <summary>A copy of <paramref name="path"/> with a display matrix of ffmpeg's -display_rotation <paramref name="degrees"/>.</summary>
+    static string Rotated(string path, int degrees)
+    {
+        string rotated = Path.Combine(Path.GetDirectoryName(path)!, $"{Path.GetFileNameWithoutExtension(path)}-rotated{degrees}.mp4");
+        lock (H264Lock)
+        {
+            if (!File.Exists(rotated))
+            {
+                string partial = rotated + ".part.mp4";
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-display_rotation", degrees.ToString(System.Globalization.CultureInfo.InvariantCulture), "-i", path, "-c", "copy", partial], default);
+                File.Move(partial, rotated, true);
+            }
+        }
+
+        return rotated;
     }
 
     static string? _h264;
