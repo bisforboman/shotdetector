@@ -156,6 +156,13 @@ there is no file to seek, so the host does what `ScoreChunked` does and ShotDete
   Detect does per frame, which plays the part of the file path's check against the probe's positions.
 - **What can't be split** is refused rather than read sequentially: a time range, frame skip and
   `DetectionMode.Parallel`. Every detector works, with stats too (threshold's dedupe by position stays in Decide).
+- **Shots as they come** (`DetectionOptions.OnShot`, 2026-10-30, docs/decisions/2026-10-30-score-range-on-shot.md): a
+  range from frame 0 runs Merge's decisions as it scores (`LiveShots`: `Steps` over a live `Prescored` that grows a frame
+  at a time, a null step waiting for each), so it tells Detect's shots after the same frames. A run that stops is resumed
+  with `ScoreRange(video, earlier, frames, firstFrame, options)`: the decisions go over the earlier ranges' scores first,
+  telling nothing (shots confirmed deciding their frames were told by them), then over this range's. The shots a stopped
+  range told when its frames ended (its last; with several detectors, DropShortScenes or MergeLastScene, all) ended
+  there, so the resumed range tells them again from their number on.
 
 ## Prototype (2026-10-16)
 

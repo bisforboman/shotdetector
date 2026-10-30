@@ -148,7 +148,8 @@ static class Bench
     }
 
     /// <summary>
-    /// DetectAsync, ScoreRangeAsync and ScoreRange in two ranges (one through its bytes) and Merge, on the first frames of
+    /// DetectAsync, ScoreRangeAsync and ScoreRange in two ranges (one through its bytes, the second continuing from the
+    /// first's scores) and Merge, on the first frames of
     /// <paramref name="input"/>: each must give Detect's scene and stats CSVs, with nothing decoded in-process.
     /// </summary>
     static void CheckPaths(Input input, ReadAt read)
@@ -168,7 +169,7 @@ static class Bench
         string expected = Csvs(ShotDetection.Detect(video, Frames(input, read, new Counters(), 0, frames), options));
         var detected = ShotDetection.DetectAsync(video, Frames(input, read, new Counters(), 0, frames).ToAsyncEnumerable(), options).GetAwaiter().GetResult();
         var first = ShotDetection.ScoreRangeAsync(video, Frames(input, read, new Counters(), 0, half + 1).ToAsyncEnumerable(), 0, options).GetAwaiter().GetResult();
-        var second = ShotDetection.ScoreRange(video, Frames(input, read, new Counters(), half - 1, frames), half, options);
+        var second = ShotDetection.ScoreRange(video, [first], Frames(input, read, new Counters(), half - 1, frames), half, options);
         var merged = ShotDetection.Merge(video, [RangeScores.FromBytes(first.ToBytes()), second], options);
         foreach (var (name, result) in new[] { ("DetectAsync", detected), ("ScoreRange and Merge", merged) })
         {

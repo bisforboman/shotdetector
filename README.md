@@ -189,6 +189,8 @@ are (docs/decisions/2026-10-24-managedcodecs-showcase.md). A long video can be s
 memory (Web Workers): `ShotDetection.ScoreRange` scores a range of frames (from the frame before it to one past its
 end), its `RangeScores` travel as bytes (`ToBytes`, `FromBytes`), and `ShotDetection.Merge` gives exactly `Detect`'s
 result for the whole video, refusing ranges that don't fit together (docs/parallel-detection.md, "Frame-source ranges").
+A range from frame 0 tells `OnShot` its shots as `Detect` would, and one scored after the earlier ranges' `RangeScores`
+(a run resumed where it stopped) tells the rest of the whole video's.
 
 Each detection is an OpenTelemetry-ready span: `.AddSource(ShotDetection.ActivitySourceName)` shows
 "ShotDetection.Detect" with the video's size, frame rate, pipeline, frames and shots.
