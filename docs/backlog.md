@@ -35,6 +35,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 ## Maybe
 
+- FrameReader: skip unreferenced frames on MPEG-TS too (forward reads at steps), by making its re-read from a keyframe exact
+  - Why: #594's skipping (`SkipAhead`, `CanReadAgain`) left out 1701 -> 2136 of 2237 packets and about 10% CPU on the issue loop, but only where a wrong guess can read again from the index (mp4, mov, mkv); MPEG-TS is excluded because its timestamp seeks landed a keyframe late in the tests, and TS is the broadcast container. Find why the seek lands late, make the re-read exact there, then let TS in (SkipUnreferencedTests on a TS source)
+  - Status: Maybe
+
 - MPEG-PS chunking: long DVD/VOB rips on several cores
   - Why: Files whose packets lack timestamps (MPEG-PS) never run in chunks (`NotChunkable`: "packets without timestamps"), because chunk bounds need every frame's time up front, the pass #546 removed in-process. Long rips can't use more than one decoder. Measure the pass's cost against what chunking gains (1.3-1.5x on 4 CPUs elsewhere) before deciding whether to bring the pass back for long files
   - Status: Maybe
