@@ -6,6 +6,23 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.21.0 – 2026-10-30
+
+MPEG-PS through the executable without waiting for the timestamp pass; the threshold defaults documented right.
+
+### Faster
+
+- MPEG-PS (VOB, .mpg: packets without timestamps) through the ffmpeg executable: the decoding pass for each frame's
+  timestamp now runs alongside detection instead of before it, so where a core is free a detection no longer waits for
+  it (the same CPU time). Results are unchanged: each frame takes its label from the pass's timestamps as they arrive,
+  as in-process frames have since 3.19.0.
+
+### Fixed
+
+- `DetectionOptions.Threshold`'s documentation and the CLI's `--threshold` help gave scenedetect 0.7.1's histogram and
+  hash defaults (0.05, 0.395); the defaults used, for 0.7.2, are 0.20 and 0.35, as they now say, with 0.7.1's alongside
+  (issue #591).
+
 ## 3.20.1 – 2026-10-29
 
 A stream whose timestamps start over gives the same shots through both decoders.
