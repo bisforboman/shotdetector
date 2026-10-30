@@ -665,6 +665,7 @@ public static partial class ShotDetection
         Line("Duration", video.Duration?.Ticks);
         Line("Codec", video.Codec);
         Line("Container", video.Container);
+        Line("Rotation", video.Rotation);
         Line(nameof(o.Compatibility), o.Compatibility);
         Line(nameof(o.Detector), o.Detector);
         Line(nameof(o.Threshold), o.Threshold);

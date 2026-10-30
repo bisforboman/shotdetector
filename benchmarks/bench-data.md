@@ -64,7 +64,9 @@ wasm            benchmarks/wasm (x64 only; null or missing elsewhere and in olde
                              wasm_heap_mb (the WebAssembly memory at the end of that film's process: its peak),
                              shots, native_detect_ms, native_ns_per_pixel (the native run's, same frames),
                              ratio (ns_per_pixel / native_ns_per_pixel),
-                             csv_equal (the scene and stats CSVs equal the native run's, byte for byte) } }
+                             csv_equal (the scene and stats CSVs equal the native run's, byte for byte) },
+                  checks[]: { film, check (a variant of the film's first frames: "rotation 90", ...),
+                              csv_equal (its content --stats CSVs equal the native run's) } (missing in older files) }
 ```
 
 A variant, row, micro or wasm section is missing when its step failed in that run. Numbers belong to the runner they were

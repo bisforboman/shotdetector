@@ -51,6 +51,8 @@ internal sealed partial class VideoReader
             throw new ArgumentException("YuvVideo.FrameRate must be positive.");
         if (video.TimeBase is { } t && (t.Num <= 0 || t.Den <= 0))
             throw new ArgumentException("YuvVideo.TimeBase must be positive.");
+        if (video.Rotation % 90 != 0 || Math.Abs(video.Rotation) >= 360)
+            throw new ArgumentException($"YuvVideo.Rotation must be a quarter turn (0, 90, 180, 270, or -90, -180, -270), not {video.Rotation}.");
 
         Compatibility = o.Compatibility;
         _yuv420 = o.Yuv420Converter;
@@ -69,6 +71,11 @@ internal sealed partial class VideoReader
         SourceWidth = video.Width;
         SourceHeight = video.Height;
         _codedSize = (video.Width, video.Height);
+
+        // As a file's: frames turned upright after converting (Turn), the upright size reported and analysed.
+        _rotation = video.Rotation;
+        if (Math.Abs(_rotation) % 180 == 90)
+            (SourceWidth, SourceHeight) = (SourceHeight, SourceWidth);
 
         // As a file's: scenedetect's fraction of the average rate, or the frame rate override.
         _framesRate = video.FrameRate.Value;
@@ -107,7 +114,7 @@ internal sealed partial class VideoReader
         }
 
         var f = _frames.Current;
-        int w = SourceWidth, h = SourceHeight, cw = (w + 1) / 2, ch = (h + 1) / 2;
+        int w = _codedSize.W, h = _codedSize.H, cw = (w + 1) / 2, ch = (h + 1) / 2;
         CheckPlane(f.Y, f.YStride, w, h, "Y");
         CheckPlane(f.U, f.UStride, cw, ch, "U");
         CheckPlane(f.V, f.VStride, cw, ch, "V");
@@ -264,15 +271,17 @@ internal sealed partial class VideoReader
         bool resize = (Width, Height) != (CropRegion.Width, CropRegion.Height);
         var resizer = resize ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
         var convert = YuvForVideo!;
-        int w = SourceWidth, h = SourceHeight, cw = (w + 1) / 2, ch = (h + 1) / 2;
+        int w = _codedSize.W, h = _codedSize.H, cw = (w + 1) / 2, ch = (h + 1) / 2;
         var yuv = new byte[IYuv420Converter.FrameSize(w, h)];
         var small = new byte[Width * Height * 3];
 
         // The rows the resize reads, when the converter says which chroma rows those take; every row without a resize.
         var rows = resizer is not null ? YuvRowsRead(resizer) : null;
         int[] luma = rows?.Luma ?? [.. Enumerable.Range(0, h)], chroma = rows?.Chroma ?? [.. Enumerable.Range(0, ch)];
-        int[] cols = [.. Enumerable.Range(CropRegion.X, CropRegion.Width)];
+        int turn = Turn;
+        int[] cols = turn != 0 ? [.. Enumerable.Range(0, w)] : [.. Enumerable.Range(CropRegion.X, CropRegion.Width)];
         var bgrRow = resize ? [] : new byte[w * 3];
+        var bgr = resize || turn == 0 ? [] : new byte[w * h * 3];
         _framesStarted = true;
         for (int k = startFrame; count is null || k < startFrame + count; k++)
         {
@@ -298,7 +307,22 @@ internal sealed partial class VideoReader
 
                 if (resizer is not null)
                 {
-                    resizer.ResizeYuv(yuv, small, convert, w, h, 0, CropRegion.X, CropRegion.Y);
+                    resizer.ResizeYuv(yuv, small, convert, w, h, turn, CropRegion.X, CropRegion.Y);
+                }
+                else if (turn != 0)
+                {
+                    // Turned without a resize (ffmpeg's scale,format=bgr24 and transpose or flips, then the crop, for a
+                    // file): the whole frame converted, then the crop's pixels taken from where the turn puts them.
+                    for (int y = 0; y < h; y++)
+                        convert.Row(yuv, w, h, y, cols, bgr.AsSpan(y * w * 3, w * 3));
+                    for (int y = 0; y < CropRegion.Height; y++)
+                    {
+                        for (int x = 0; x < CropRegion.Width; x++)
+                        {
+                            var (sx, sy) = CvResize.TurnedSource(turn, CropRegion.X + x, CropRegion.Y + y, w, h);
+                            bgr.AsSpan(((sy * w) + sx) * 3, 3).CopyTo(small.AsSpan(((y * CropRegion.Width) + x) * 3));
+                        }
+                    }
                 }
                 else
                 {

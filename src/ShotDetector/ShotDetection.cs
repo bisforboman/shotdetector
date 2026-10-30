@@ -752,7 +752,7 @@ public static partial class ShotDetection
     /// <remarks>
     /// So far 8-bit 4:2:0 (yuv420p, yuvj420p) of an even height, at a constant frame rate (checked, with
     /// <see cref="YuvVideo.TimeBase"/> set: a frame more than half a frame from where the rate puts it is an error), at
-    /// one size, upright (no rotation is applied). Options: the detectors' settings, stats, the time range
+    /// one size, turned upright after converting by <see cref="YuvVideo.Rotation"/> as a rotated file's. Options: the detectors' settings, stats, the time range
     /// (<see cref="DetectionOptions.StartTime"/>: the frames before it are still enumerated, not converted), frame skip,
     /// crop, downscale, the frame rate override, merge and drop of short shots, progress, warnings and
     /// <see cref="DetectionOptions.OnShot"/> (each shot as soon as it is known, while frames are still pulled). Not available

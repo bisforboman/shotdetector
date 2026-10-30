@@ -3,7 +3,9 @@
 // converter, the content and adaptive detectors and content with stats, best of N runs, one JSON line on stdout. The
 // CSVs' SHA-256 lets the job check the WebAssembly run's results against the native run's on the same frames. Before
 // the runs, the other frame-source entry points on each input's first frames must give Detect's CSVs (CheckPaths); being
-// here also keeps them in the trimmed WebAssembly bundle, which ci.yml's wasm-trim job checks for FFmpeg's code.
+// here also keeps them in the trimmed WebAssembly bundle, which ci.yml's wasm-trim job checks for FFmpeg's code. The
+// checks' variants of the input (its frames turned by a display rotation) report their CSVs' SHA-256 too, which must
+// equal the native run's.
 //
 // Usage: <host> [--runs N] name=path,width,height,num/den,frames,colorspace ...
 // (the raw file holds at least `frames` frames of width x height yuv420p; colorspace as ffprobe names it, or "")
@@ -64,13 +66,15 @@ static class Bench
         }
 
         var cases = new List<Result>();
+        var checks = new List<(string Film, string Check, string Sha256)>();
         foreach (var input in inputs)
         {
             int handle = host.Open(input.Path);
             try
             {
                 var read = host.Read(handle);
-                CheckPaths(input, read);
+                foreach (var (check, hash) in CheckPaths(input, read))
+                    checks.Add((input.Name, check, hash));
                 foreach (var (detector, kind, stats) in Cases)
                     cases.Add(Measure(input, read, detector, kind, stats, runs));
             }
@@ -96,6 +100,17 @@ static class Bench
             json.WriteStartArray("cases");
             foreach (var r in cases)
                 r.Write(json);
+            json.WriteEndArray();
+            json.WriteStartArray("checks");
+            foreach (var (film, check, hash) in checks)
+            {
+                json.WriteStartObject();
+                json.WriteString("film", film);
+                json.WriteString("check", check);
+                json.WriteString("csv_sha256", hash);
+                json.WriteEndObject();
+            }
+
             json.WriteEndArray();
             json.WriteEndObject();
         }
@@ -150,9 +165,24 @@ static class Bench
     /// <summary>
     /// DetectAsync, ScoreRangeAsync and ScoreRange in two ranges (one through its bytes, the second continuing from the
     /// first's scores) and Merge, on the first frames of
-    /// <paramref name="input"/>: each must give Detect's scene and stats CSVs, with nothing decoded in-process.
+    /// <paramref name="input"/>: each must give Detect's scene and stats CSVs, with nothing decoded in-process. The same
+    /// for the frames turned by each display rotation; the SHA-256 of each variant's CSVs, by its name.
     /// </summary>
-    static void CheckPaths(Input input, ReadAt read)
+    static List<(string Check, string Sha256)> CheckPaths(Input input, ReadAt read)
+    {
+        var hashes = new List<(string, string)>();
+        foreach (int rotation in new[] { 0, 90, 180, -90 })
+        {
+            string csvs = CheckPaths(input, read, rotation);
+            if (rotation != 0)
+                hashes.Add(($"rotation {rotation}", Hash(csvs)));
+        }
+
+        return hashes;
+    }
+
+    /// <summary>One variant's checks (above): Detect's CSVs, which the other entry points gave.</summary>
+    static string CheckPaths(Input input, ReadAt read, int rotation)
     {
         long frames = Math.Min(input.Frames, 300);
         int half = (int)(frames / 2);
@@ -163,6 +193,7 @@ static class Bench
             FrameRate = input.Rate,
             ColorSpace = input.ColorSpace,
             FrameCount = frames,
+            Rotation = rotation,
         };
         var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, Yuv420Converter = new SwscaleYuv420() };
         string Csvs(DetectionResult r) => Shots.Csv(r.Shots, cuts: r.Cuts) + r.Stats!.Csv(r.Video.Position);
@@ -174,8 +205,10 @@ static class Bench
         foreach (var (name, result) in new[] { ("DetectAsync", detected), ("ScoreRange and Merge", merged) })
         {
             if (Csvs(result) != expected || result.Video.DecodedInProcess)
-                throw new InvalidOperationException($"{input.Name}: {name}'s CSVs differ from Detect's on the first {frames} frames, or it says it decoded in-process.");
+                throw new InvalidOperationException($"{input.Name}, rotation {rotation}: {name}'s CSVs differ from Detect's on the first {frames} frames, or it says it decoded in-process.");
         }
+
+        return expected;
     }
 
     // One buffer for all frames: Detect reads a frame's planes before it asks for the next.
