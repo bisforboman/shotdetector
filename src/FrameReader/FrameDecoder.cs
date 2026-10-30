@@ -22,6 +22,7 @@ public sealed unsafe class FrameDecoder : IDisposable
     readonly bool _indexUnusable; // MPEG-PS, AVI with B-frames, raw streams: no keyframe jumps (KeyframeAtOrBefore)
     readonly bool _noTimestamps; // TimestampsUnreliable
     readonly bool _headerIndex; // the container's own index, read with its header (mp4, mov, mkv cues): CanReadAgain
+    readonly List<(long Pts, long Pos)>? _keyframes; // MPEG-TS: the keyframe packets read, by pts (ReadAgainFrom)
     readonly AVRational _timeBase;
     readonly AVRational _sar; // the container's sample aspect ratio, which ffmpeg's command line puts on every frame (0/1: none)
     bool _draining, _done;
@@ -156,6 +157,7 @@ public sealed unsafe class FrameDecoder : IDisposable
             _noTimestamps = (_fmt->iformat->flags & ffmpeg.AVFMT_NOTIMESTAMPS) != 0 && wallclock == 0;
             _indexUnusable = format == "mpeg" || (format == "avi" && st->codecpar->video_delay > 0) || _noTimestamps;
             _headerIndex = ffmpeg.avformat_index_get_entries_count(st) > 0 && (_fmt->iformat->flags & ffmpeg.AVFMT_GENERIC_INDEX) == 0;
+            _keyframes = format == "mpegts" && io == null ? [] : null;
             _timeBase = st->time_base;
             _sar = st->sample_aspect_ratio;
             var codec = ffmpeg.avcodec_find_decoder(st->codecpar->codec_id);
@@ -834,6 +836,8 @@ public sealed unsafe class FrameDecoder : IDisposable
                 continue;
             }
 
+            if (_keyframes != null && _pkt->stream_index == _stream && (_pkt->flags & ffmpeg.AV_PKT_FLAG_KEY) != 0)
+                Keyframe(_pkt->pts, _pkt->pos);
             if (_pkt->stream_index == _stream && !Skips(_pkt))
                 ffmpeg.avcodec_send_packet(_dec, _pkt); // errors (damaged data) only lose that packet
             ffmpeg.av_packet_unref(_pkt);
@@ -889,11 +893,72 @@ public sealed unsafe class FrameDecoder : IDisposable
 
     /// <summary>
     /// Whether the input can go back for <see cref="VideoFrameReader"/>'s look-ahead to read again what a wrong guess left
-    /// out: a file with an index of its own, read with its header (mp4, mov, mkv's cues), that seeks to the keyframe at or
-    /// before a time. Not a Stream, nor MPEG-TS (indexed only as it is read, its seeks by timestamp can land a keyframe
-    /// late), MPEG-PS, AVI with B-frames or a raw stream.
+    /// out (<see cref="ReadAgainFrom"/>): a file with an index of its own, read with its header (mp4, mov, mkv's cues),
+    /// that seeks to the keyframe at or before a time, or an MPEG-TS file, back to a keyframe packet it has read. Not a
+    /// Stream, MPEG-PS, AVI with B-frames or a raw stream.
     /// </summary>
-    internal bool CanReadAgain => _io == null && !_indexUnusable && _headerIndex && CanSeek;
+    internal bool CanReadAgain => _io == null && !_indexUnusable && (_headerIndex || _keyframes != null) && CanSeek;
+
+    /// <summary>
+    /// The keyframe at or before <paramref name="pts"/> that <see cref="ReadAgainFrom"/> goes back to: the index's (as
+    /// <see cref="KeyframeAtOrBefore"/>), on MPEG-TS the last keyframe packet read at or before it; null when none.
+    /// </summary>
+    internal long? ReadAgainKeyframe(long pts)
+    {
+        if (_keyframes == null)
+            return KeyframeAtOrBefore(pts);
+        lock (_keyframes)
+        {
+            int i = LastKeyframe(pts);
+            return i < 0 ? null : _keyframes[i].Pts;
+        }
+    }
+
+    /// <summary>
+    /// Seeks so that decoding starts at the keyframe at or before <paramref name="pts"/> (<see cref="ReadAgainKeyframe"/>).
+    /// On MPEG-TS by the byte position of a keyframe packet read: its seeks by timestamp search for the last packet with
+    /// a dts before the time, which mpegts_get_dts indexes as a keyframe whether or not it is one ("FIXME keyframe?"),
+    /// so decoding started at the next keyframe, a whole GOP late. From the start when no keyframe at or before was read.
+    /// </summary>
+    internal void ReadAgainFrom(long pts)
+    {
+        if (_keyframes == null)
+        {
+            Seek(pts);
+            return;
+        }
+
+        long pos;
+        lock (_keyframes)
+        {
+            int i = LastKeyframe(pts);
+            pos = i < 0 ? 0 : _keyframes[i].Pos;
+        }
+
+        Check(TrySeek(pos, ffmpeg.AVSEEK_FLAG_BYTE), "seek");
+    }
+
+    /// <summary>Records a keyframe packet of the video stream read (MPEG-TS), once per pts, when it has a pts and a position.</summary>
+    void Keyframe(long pts, long pos)
+    {
+        if (pts == ffmpeg.AV_NOPTS_VALUE || pos < 0)
+            return;
+        lock (_keyframes!)
+        {
+            int i = _keyframes.BinarySearch((pts, pos), KeyframeOrder);
+            if (i < 0)
+                _keyframes.Insert(~i, (pts, pos));
+        }
+    }
+
+    static readonly Comparer<(long Pts, long Pos)> KeyframeOrder = Comparer<(long Pts, long Pos)>.Create((a, b) => a.Pts.CompareTo(b.Pts));
+
+    /// <summary>The index in <see cref="_keyframes"/> of the last keyframe at or before <paramref name="pts"/>; -1 when none.</summary>
+    int LastKeyframe(long pts)
+    {
+        int i = _keyframes!.BinarySearch((pts, 0), KeyframeOrder);
+        return i >= 0 ? i : ~i - 1;
+    }
 
     /// <summary>Packets left out so far (tests).</summary>
     internal long SkippedPackets { get; private set; }

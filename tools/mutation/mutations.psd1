@@ -471,7 +471,12 @@
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'i + 1 < to ? times[i + 1] : null'; Replace = 'i + 1 < to ? times[^1] : null'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (!_decoder.LeftOut(wanted, got ? Pts : long.MaxValue))'; Replace = 'if (true)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (_current && _guessed)'; Replace = 'if (false)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '&& _headerIndex && CanSeek;'; Replace = '&& CanSeek;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        # MPEG-TS reads again (its keyframes read, by pts), by the byte position of the one at or before the time (its seeks
+        # by timestamp land a GOP late), and from the one before that when the check fails
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '_keyframes = format == "mpegts" && io == null ? [] : null;'; Replace = '_keyframes = null;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'Check(TrySeek(pos, ffmpeg.AVSEEK_FLAG_BYTE), "seek");'; Replace = 'Seek(pts);'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'return i >= 0 ? i : ~i - 1;'; Replace = 'return i >= 0 ? i : ~i;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_decoder.ReadAgainFrom(Math.Max(0, key - 1)); // MPEG-TS'; Replace = '_decoder.Seek(Math.Max(0, key - 1)); //'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
 
         # FrameReader: no keyframe jumps reading forward in MPEG-PS (its index marks every PES as a keyframe), AVI with
         # B-frames (I- and P-frames timed by libavcodec's guess) or raw streams; a seek the container refuses reads from the

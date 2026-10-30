@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using FFmpeg.AutoGen;
 
 namespace FrameReader;
@@ -300,6 +301,15 @@ public sealed unsafe class VideoFrameReader : IDisposable
         VideoFrameReaderOptions? options,
         int? parallelism,
         FrameHandler handler,
+        CancellationToken cancellationToken = default) => ReadAtCounting(path, times, options, parallelism, handler, null, cancellationToken);
+
+    /// <summary><see cref="ReadAt"/>, adding up its readers' <see cref="ReadAgain"/> in <paramref name="readAgain"/> (tests).</summary>
+    internal static int ReadAtCounting(string path,
+        IReadOnlyList<TimeSpan> times,
+        VideoFrameReaderOptions? options,
+        int? parallelism,
+        FrameHandler handler,
+        StrongBox<int>? readAgain,
         CancellationToken cancellationToken = default)
     {
         options ??= new VideoFrameReaderOptions();
@@ -330,6 +340,9 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 handler(i, frame);
                 Interlocked.Increment(ref found);
             }
+
+            if (readAgain != null)
+                Interlocked.Add(ref readAgain.Value, reader.ReadAgain);
         });
         return found;
     }
@@ -455,9 +468,9 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// picture every second is one pass, a picture every few seconds or more decodes a fraction of the video. When the
     /// frame last read is already at or after the time, that frame again. Times behind it don't go back (use
     /// <see cref="Seek"/>). Frames before it that no other frame references (most B-frames of H.264, HEVC, MPEG-1/2 and
-    /// MPEG-4 Part 2) stay out of the decoder, and in mp4, mov and mkv also those after it before the next time, guessed
-    /// after steps of one length (what a guess too late left out is read again from the keyframe before): the frames given
-    /// are those of decoding everything, byte for byte.
+    /// MPEG-4 Part 2) stay out of the decoder, and in mp4, mov, mkv and MPEG-TS also those after it before the next time,
+    /// guessed after steps of one length (what a guess too late left out is read again from the keyframe before): the
+    /// frames given are those of decoding everything, byte for byte.
     /// </summary>
     /// <param name="time">From the input's start.</param>
     /// <param name="frame">The frame, valid until the next call.</param>
@@ -549,7 +562,7 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// </summary>
     bool Forward(long keep, bool jumped, long key)
     {
-        bool got, beforeKeyframe = jumped, first = jumped;
+        bool got, beforeKeyframe = jumped, first = jumped, again = false;
         while (true)
         {
             got = Next();
@@ -568,7 +581,10 @@ public sealed unsafe class VideoFrameReader : IDisposable
                 {
                     // Possibly damaged or left out: from the keyframe before instead (no further jumps).
                     _ahead?.Clear(); // and from the keyframe before
-                    _decoder.Seek(Math.Max(0, key - 1));
+                    if (again)
+                        _decoder.ReadAgainFrom(Math.Max(0, key - 1)); // MPEG-TS: by a keyframe read, not by timestamp
+                    else
+                        _decoder.Seek(Math.Max(0, key - 1));
                     beforeKeyframe = false;
                     continue;
                 }
@@ -580,13 +596,13 @@ public sealed unsafe class VideoFrameReader : IDisposable
             if (!_decoder.LeftOut(wanted, got ? Pts : long.MaxValue))
                 break;
             Pause();
-            key = _decoder.KeyframeAtOrBefore(wanted) ?? 0;
+            key = _decoder.ReadAgainKeyframe(wanted) ?? 0;
             _ahead?.Clear();
             _decoder.SkipBefore = wanted;
-            _decoder.Seek(wanted);
+            _decoder.ReadAgainFrom(wanted);
             (keep, _keepFrom, _lastTarget) = (-wanted, null, null); // and guess again after twice as many equal steps
             _stepsToGuess = Math.Min(2 * _stepsToGuess, 1 << 20);
-            beforeKeyframe = first = true;
+            beforeKeyframe = first = again = true;
             ReadAgain++;
         }
 

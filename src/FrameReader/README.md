@@ -68,7 +68,7 @@ MPEG-1/2 and MPEG-4 Part 2) aren't decoded at all, also by `ReadAt` and `TryRead
 full decode's all the same, byte for byte (not when deinterlacing, nor on the GPU). Reading forward at steps, those
 after the wanted frame and before the next time stay out too, while the frame threads and `ReadAhead` decode ahead:
 `ReadAt` knows the next time, `TryReadForwardTo` guesses it after steps of one length (in mp4, mov and mkv, whose index
-it can go back by; where a guess was too late, what it left out is read again from the keyframe before, and it takes
+it can go back by, and MPEG-TS, back to a keyframe it has read; where a guess was too late, what it left out is read again from the keyframe before, and it takes
 twice as many equal steps to guess again). CPU for Tears of Steel (12 min,
 1280x534), with keyframes every 0.75 s / every 4.4 s (x264), measured before that:
 
