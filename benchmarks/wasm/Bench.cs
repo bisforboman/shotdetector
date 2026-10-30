@@ -166,7 +166,8 @@ static class Bench
     /// DetectAsync, ScoreRangeAsync and ScoreRange in two ranges (one through its bytes, the second continuing from the
     /// first's scores) and Merge, on the first frames of
     /// <paramref name="input"/>: each must give Detect's scene and stats CSVs, with nothing decoded in-process. The same
-    /// for the frames turned by each display rotation; the SHA-256 of each variant's CSVs, by its name.
+    /// for the frames turned by each display rotation, and Detect and DetectAsync for them deinterlaced (FastYuv's Yadif;
+    /// ranges refuse deinterlacing); the SHA-256 of each variant's CSVs, by its name.
     /// </summary>
     static List<(string Check, string Sha256)> CheckPaths(Input input, ReadAt read)
     {
@@ -178,7 +179,27 @@ static class Bench
                 hashes.Add(($"rotation {rotation}", Hash(csvs)));
         }
 
+        hashes.Add(("deinterlace", Hash(CheckDeinterlaced(input, read))));
         return hashes;
+    }
+
+    /// <summary>
+    /// The first frames deinterlaced (Deinterlace On with Yadif; each frame flagged interlaced, top field first on even
+    /// frames, bottom first on odd ones, so both parities run): DetectAsync must give Detect's CSVs, which it returns.
+    /// </summary>
+    static string CheckDeinterlaced(Input input, ReadAt read)
+    {
+        long frames = Math.Min(input.Frames, 300);
+        var video = new YuvVideo { Width = input.Width, Height = input.Height, FrameRate = input.Rate, ColorSpace = input.ColorSpace, FrameCount = frames, FieldOrder = FrameReader.FieldOrder.TopFirst };
+        var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, Yuv420Converter = new SwscaleYuv420(), Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
+        IEnumerable<YuvFrame> Flagged() => Frames(input, read, new Counters(), 0, frames).Select((f, i) => f with { Interlaced = true, TopFieldFirst = i % 2 == 0 });
+        string Csvs(DetectionResult r) => Shots.Csv(r.Shots, cuts: r.Cuts) + r.Stats!.Csv(r.Video.Position);
+        var result = ShotDetection.Detect(video, Flagged(), options);
+        string expected = Csvs(result);
+        var detected = ShotDetection.DetectAsync(video, Flagged().ToAsyncEnumerable(), options).GetAwaiter().GetResult();
+        if (Csvs(detected) != expected || !result.Video.Deinterlaced || !detected.Video.Deinterlaced)
+            throw new InvalidOperationException($"{input.Name}, deinterlaced: DetectAsync's CSVs differ from Detect's on the first {frames} frames, or it says it didn't deinterlace.");
+        return expected;
     }
 
     /// <summary>One variant's checks (above): Detect's CSVs, which the other entry points gave.</summary>
