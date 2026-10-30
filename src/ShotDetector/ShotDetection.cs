@@ -747,11 +747,13 @@ public static partial class ShotDetection
     /// <param name="options">Detection settings; see the remarks for which apply.</param>
     /// <param name="cancellationToken">Stops between frames.</param>
     /// <exception cref="ArgumentException">Invalid options, an unsupported video, or a frame's plane smaller than the frame.</exception>
-    /// <exception cref="ShotDetectionException">The frames don't come at a constant frame rate (<see cref="ShotDetectionError.InvalidInput"/>).</exception>
+    /// <exception cref="ShotDetectionException">The frames don't come at a constant frame rate, or aren't at their
+    /// <see cref="YuvVideo.FrameTimestamps"/> (<see cref="ShotDetectionError.InvalidInput"/>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     /// <remarks>
     /// So far 8-bit 4:2:0 (yuv420p, yuvj420p) of an even height, at a constant frame rate (checked, with
-    /// <see cref="YuvVideo.TimeBase"/> set: a frame more than half a frame from where the rate puts it is an error), at
+    /// <see cref="YuvVideo.TimeBase"/> set: a frame more than half a frame from where the rate puts it is an error) or,
+    /// with every frame's timestamp given up front (<see cref="YuvVideo.FrameTimestamps"/>), at any rate as a file's, at
     /// one size, turned upright after converting by <see cref="YuvVideo.Rotation"/> as a rotated file's. Options: the detectors' settings, stats, the time range
     /// (<see cref="DetectionOptions.StartTime"/>: the frames before it are still enumerated, not converted), frame skip,
     /// crop, downscale, the frame rate override, merge and drop of short shots, progress, warnings and
@@ -806,7 +808,8 @@ public static partial class ShotDetection
     /// <returns>The detection's result.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="video"/> or <paramref name="frames"/> is null (thrown at once).</exception>
     /// <exception cref="ArgumentException">Invalid options, an unsupported video, or a frame's plane smaller than the frame (in the task).</exception>
-    /// <exception cref="ShotDetectionException">The frames don't come at a constant frame rate (<see cref="ShotDetectionError.InvalidInput"/>, in the task).</exception>
+    /// <exception cref="ShotDetectionException">The frames don't come at a constant frame rate, or aren't at their
+    /// <see cref="YuvVideo.FrameTimestamps"/> (<see cref="ShotDetectionError.InvalidInput"/>, in the task).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled (in the task).</exception>
     public static Task<DetectionResult> DetectAsync(YuvVideo video,
         IAsyncEnumerable<YuvFrame> frames,

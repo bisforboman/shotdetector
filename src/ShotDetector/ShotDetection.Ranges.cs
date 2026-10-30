@@ -52,8 +52,8 @@ public static partial class ShotDetection
     /// frame tells them only when given the earlier ranges' scores
     /// (<see cref="ScoreRange(YuvVideo, IEnumerable{RangeScores}, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/>);
     /// without them it tells none (<see cref="Merge"/> does). Every frame's position comes from its pts (<see cref="YuvFrame.Pts"/>), and
-    /// <see cref="Merge"/> checks every range's frames against frame 0's on the constant-rate grid, which also catches a
-    /// wrong <paramref name="firstFrame"/>.
+    /// <see cref="Merge"/> checks every range's frames against frame 0's on the constant-rate grid, or each at its entry in
+    /// <see cref="YuvVideo.FrameTimestamps"/> (a variable-rate video), which also catches a wrong <paramref name="firstFrame"/>.
     /// </remarks>
     public static RangeScores ScoreRange(YuvVideo video,
         IEnumerable<YuvFrame> frames,
@@ -355,7 +355,8 @@ public static partial class ShotDetection
     /// <exception cref="ArgumentException">Invalid or unavailable options (as for ScoreRange), or no ranges.</exception>
     /// <exception cref="ShotDetectionException">The ranges don't make up the video's frames (<see cref="ShotDetectionError.InvalidInput"/>,
     /// the reason names the range and the frame): another video or options than this merge's, not from frame 0, out of
-    /// order, a gap or a missing overlap frame, an overlap frame that differs, or frames off the constant-rate grid.</exception>
+    /// order, a gap or a missing overlap frame, an overlap frame that differs, or frames off the constant-rate grid (not at
+    /// their entries in <see cref="YuvVideo.FrameTimestamps"/>, when given).</exception>
     /// <remarks>
     /// <para>
     /// The overlap check: each range's frames from the next range's first frame on are the next range's too, and their
@@ -363,8 +364,10 @@ public static partial class ShotDetection
     /// the previous frame, so a decoder that gives other frames there than a sequential decode (a range not starting at a
     /// keyframe, an open GOP's leading frames, a decoder that depends on earlier frames) shows up there. Without a sequential
     /// pass to fall back on, as a chunked file has, a mismatch is an error. With <see cref="YuvVideo.TimeBase"/> set, every
-    /// frame's pts must also lie on the constant-rate grid from frame 0's, as for Detect, which catches frames given under
-    /// another <c>firstFrame</c> than theirs; without it frames are identified by <c>firstFrame</c> alone.
+    /// frame's pts must also lie on the constant-rate grid from frame 0's, as for Detect, or, with
+    /// <see cref="YuvVideo.FrameTimestamps"/>, be its entry there (a variable-rate video's ranges, and no frame dropped in
+    /// any), which catches frames given under another <c>firstFrame</c> than theirs; without it frames are identified by
+    /// <c>firstFrame</c> alone.
     /// </para>
     /// <para>
     /// <see cref="DetectionOptions.OnShot"/> is told the shots here, as Detect tells them (as each cut is confirmed with
@@ -393,12 +396,23 @@ public static partial class ShotDetection
             if (pts.Length > 0)
             {
                 // The sequential run's check of every frame, from frame 0's pts; at a range's first frames, says which.
+                // With every frame's timestamp given, each frame at its own (a range's frames are numbered from its
+                // first, so a frame dropped in one is refused here, where Detect takes it as a file's run does).
                 var reader = new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o);
-                for (int k = 1; k < pts.Length; k++)
+                var entries = reader.FrameTimestamps;
+                for (int k = entries is null ? 1 : 0; k < pts.Length; k++)
                 {
                     try
                     {
-                        VideoReader.CheckConstantRate(pts[0], pts[k], k, reader.FramesTimeBase, reader.FramesRate);
+                        if (entries is null)
+                        {
+                            VideoReader.CheckConstantRate(pts[0], pts[k], k, reader.FramesTimeBase, reader.FramesRate);
+                        }
+                        else if (k >= entries.Count || pts[k] != entries[k])
+                        {
+                            throw new ShotDetectionException(ShotDetectionError.InvalidInput, string.Create(CultureInfo.InvariantCulture,
+                                $"Frame {k} is at pts {pts[k]}, not at its entry in YuvVideo.FrameTimestamps ({(k < entries.Count ? entries[k].ToString(CultureInfo.InvariantCulture) : "none: there are " + entries.Count)})."));
+                        }
                     }
                     catch (ShotDetectionException e)
                     {
@@ -649,6 +663,15 @@ public static partial class ShotDetection
     /// and the resolved options in <see cref="Fingerprinted"/> (the converter by its type). Equal for equal inputs on any
     /// machine (invariant culture, doubles round-tripped).
     /// </summary>
+    /// <summary>The count and the SHA-256 of every frame's timestamp (<see cref="YuvVideo.FrameTimestamps"/>), for the fingerprint.</summary>
+    static string TimestampsDigest(IReadOnlyList<long> entries)
+    {
+        var bytes = new byte[entries.Count * sizeof(long)];
+        for (int i = 0; i < entries.Count; i++)
+            System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(i * sizeof(long)), entries[i]);
+        return string.Create(CultureInfo.InvariantCulture, $"{entries.Count}:{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))}");
+    }
+
     internal static string Fingerprint(YuvVideo video, DetectionOptions o)
     {
         var sb = new StringBuilder();
@@ -666,6 +689,7 @@ public static partial class ShotDetection
         Line("Codec", video.Codec);
         Line("Container", video.Container);
         Line("Rotation", video.Rotation);
+        Line("FrameTimestamps", video.FrameTimestamps is { } entries ? TimestampsDigest(entries) : null);
         Line(nameof(o.Compatibility), o.Compatibility);
         Line(nameof(o.Detector), o.Detector);
         Line(nameof(o.Threshold), o.Threshold);

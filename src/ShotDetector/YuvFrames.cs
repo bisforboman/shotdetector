@@ -16,7 +16,8 @@ public sealed record YuvVideo
 
     /// <summary>
     /// The average frame rate (FFmpeg's avg_frame_rate, which OpenCV reports): turned into scenedetect's fraction as a
-    /// file's is. The frames must come at this constant rate.
+    /// file's is. The frames must come at this constant rate (each within half a frame of where it puts it, from frame
+    /// 0's pts), unless <see cref="FrameTimestamps"/> are given.
     /// </summary>
     public required Fps FrameRate { get; init; }
 
@@ -35,6 +36,16 @@ public sealed record YuvVideo
     /// so the times in the CSVs can then differ from a file's in the last digits.
     /// </summary>
     public FrameReader.Rational? TimeBase { get; init; }
+
+    /// <summary>
+    /// Every frame's pts in <see cref="TimeBase"/>, in presentation order (a file's packets' pts, sorted: what the file
+    /// path labels its frames with); null: unknown, and the frames must come at the constant <see cref="FrameRate"/>.
+    /// Given, the frames may come at any rate (variable frame rate, as a file's): each frame must be at its entry, and
+    /// <see cref="DetectionOptions.StartTime"/> finds its frame from them as the file path does. A frame the decoder
+    /// dropped (an entry skipped) is taken as a file's run takes it, in <see cref="ShotDetection.Detect(YuvVideo, IEnumerable{YuvFrame}, DetectionOptions?, CancellationToken)"/>;
+    /// ranges (<see cref="ShotDetection.Merge"/>) and a start time need every frame at its entry.
+    /// </summary>
+    public IReadOnlyList<long>? FrameTimestamps { get; init; }
 
     /// <summary>The stream's start time in <see cref="TimeBase"/> (FFmpeg's AVStream.start_time, ffprobe's start_pts): times count from it.</summary>
     public long StartPts { get; init; }
