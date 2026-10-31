@@ -315,6 +315,8 @@
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line(nameof(o.Deinterlace), "frames");'; Replace = ';'; Tests = 'FrameRangeTests.TheFingerprintCoversEveryOption' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'int margin = VideoReader.DeinterlacesFrames(video, (options ?? new DetectionOptions()).Resolved()) ? 2 : 1;'; Replace = 'int margin = 1;'; Tests = 'FrameRangeTests.RangeFramesGiveTheFramesEachRangeNeeds' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_frames is not null && !_framesStarted && !_framesEnded && _framesRead < frame + FramesAhead;'; Replace = 'false;'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (converts)'; Replace = 'if (true)'; Tests = 'FrameRangeTests.LoadScenesTakesTheVideosPropertiesAndAListAsText' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (converts && YuvForVideo is null)'; Replace = 'if (YuvForVideo is null)'; Tests = 'FrameRangeTests.LoadScenesTakesTheVideosPropertiesAndAListAsText' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (stride < width || plane.Length < (long)stride * (height - 1) + width)'; Replace = 'if (stride < width)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (!(Math.Abs(from - expected) <= 0.5 / rate))'; Replace = 'if (false)'; Tests = 'FrameInputTests.FramesMustComeAtTheFrameRate' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_startPts = video.StartPts;'; Replace = '_startPts = 0;'; Tests = 'FrameInputTests.FramesAreAtTheirPtsFromTheStreamsStart' }
@@ -544,7 +546,8 @@
         @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'return Bin(Lufs(mean) + below);'; Replace = 'return Bin(Lufs(mean) + below + 0.005);'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'wanted = (ulong)((95 * powers * 0.01) + 0.5);'; Replace = 'wanted = (ulong)(95 * powers * 0.01);'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'static double Energy(int bin) => Exp2(Log2Of10'; Replace = 'static double Energy(int bin) => Math.Pow(2, Log2Of10'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ChannelWeights.cs'; Find = 'weights.Add(c is Lfe or Lfe2 ? 0 :'; Replace = 'weights.Add(c is Lfe2 ? 0 :'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ChannelWeights.cs'; Find = 'channel is Lfe or Lfe2 ? 0 :'; Replace = 'channel is Lfe2 ? 0 :'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ChannelWeights.cs'; Find = 'return count < 0 || count == weights.Count ?'; Replace = 'return true ?'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/TruePeakMeter.cs'; Find = '_factor = sampleRate < 192000 ? 4 : 1;'; Replace = '_factor = sampleRate < 96000 ? 4 : sampleRate < 192000 ? 2 : 1;'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
 
         # --loudness: integrated loudness judged on both sides of the target, true peak against its maximum, exit 3 out

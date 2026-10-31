@@ -302,7 +302,8 @@ percentile walk, and the order its x86-64 AVX kernel adds in. The sample peak is
 host: ebur128 takes its bins' energies from the libm's `exp2`, whose last bit differs between glibc builds. The meter
 uses correctly rounded energies, so in the rare programme that fills a bin where a host's libm is an ulp off, I differs
 there by about an ulp. Channel weights follow BS.1770-4 as ebur128 does: 0 for the LFE, 1.41 for side and back channels. Pass
-`ChannelWeights.ForLayout(info.ChannelLayout)` when the layout isn't FFmpeg's default for the count.
+`ChannelWeights.ForLayout(info.ChannelLayout)` when the layout isn't FFmpeg's default for the count: a named layout
+or any other, as FFmpeg describes it (`5 channels (FL+FR+LFE+BL+BR)`).
 
 The true peak is where they differ, on purpose (docs/decisions/2026-10-31-frame-reader-measures.md). The meter follows
 BS.1770-4 Annex 2: 4 times oversampled below 192 kHz, a 16-tap windowed sinc per phase. ebur128 resamples to 192 kHz
