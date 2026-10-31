@@ -48,6 +48,10 @@ in-process when the video was decoded there. Files of every kind decode
 in-process, including image sequences, rotated phone video, AV1 (dav1d in our build) and deinterlacing; a codec the
 libraries can't decode and a rotation that isn't a quarter turn use the executable.
 
+The executable gives scenedetect's results with FFmpeg 8 (opencv-python's) or 9; an older one may decode or convert
+differently. Before FFmpeg 7.1, whose scale filter brought `in_chroma_loc`, it reads 8-bit 4:2:0 video only (most
+files): other formats (10-bit, 4:2:2, ...) stop with a message asking for 7.1 or newer.
+
 Releases are built by GitHub Actions from the tagged commit: packages carry SourceLink and symbol packages, and
 every package and binary has a signed build attestation (`gh attestation verify <file> --repo bisforboman/shotdetector`,
 the file a package or a binary's archive).

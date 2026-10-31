@@ -131,7 +131,11 @@ public sealed record VideoInfo
 /// <summary>How frames are decoded.</summary>
 public enum VideoDecoder
 {
-    /// <summary>The ffmpeg executable, frames through a pipe (any ffmpeg version on PATH).</summary>
+    /// <summary>
+    /// The ffmpeg executable, frames through a pipe. Results are scenedetect's with FFmpeg 8 (opencv-python's); an older
+    /// ffmpeg may decode or convert differently. Before 7.1 (no <c>in_chroma_loc</c>), formats whose conversion interpolates
+    /// chroma (10-bit, 4:2:2, ...) fail with <see cref="ShotDetectionError.FfmpegNotFound"/>; 8-bit 4:2:0 still works.
+    /// </summary>
     FfmpegProcess,
 
     /// <summary>

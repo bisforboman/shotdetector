@@ -1631,6 +1631,8 @@ internal sealed partial class VideoReader
         // The stream's size, explicitly: a frame of another size (a resolution change) is scaled to it in the same
         // conversion, as OpenCV's sws_scale_frame does into its buffer (ffmpeg would convert, then scale at the encoder).
         string? siting = restart is null ? ChromaLocation : restart.Location;
+        if (siting is not null)
+            siting = ScaleChromaLocation(siting, _pixelFormat, FfmpegExe, ScaleHasChromaLocation(FfmpegExe, cancellationToken));
         string toBgr = $"scale={_codedSize.W}:{_codedSize.H}:flags=bicubic" + (siting is { } cl ? ":in_chroma_loc=" + cl : "")
             + (_alwaysBt601 ? ":in_color_matrix=bt601" : "") + ",format=bgr24" + TurnFilters;
         args = pipeline switch
@@ -2172,6 +2174,38 @@ internal sealed partial class VideoReader
         }
 
         return beside; // not found: starting it fails with FfmpegNotFound
+    }
+
+    /// <summary>
+    /// The chroma location to give ffmpeg's scale filter (<paramref name="siting"/>), or null to leave it out. in_chroma_loc
+    /// came with FFmpeg 7.1, and an older ffmpeg rejects it. That only matters where the conversion interpolates chroma:
+    /// 8-bit 4:2:0's unscaled one doesn't (as FramesDecoded's followSiting), so there it's left out; any other format fails.
+    /// </summary>
+    /// <exception cref="ShotDetectionException">The ffmpeg is too old for this format (<see cref="ShotDetectionError.FfmpegNotFound"/>).</exception>
+    internal static string? ScaleChromaLocation(string siting, string pixelFormat, string ffmpeg, bool ffmpegHasIt)
+    {
+        if (ffmpegHasIt)
+            return siting;
+        if (pixelFormat is "yuv420p" or "yuvj420p")
+            return null;
+        throw new ShotDetectionException(ShotDetectionError.FfmpegNotFound,
+            $"{ffmpeg} is older than FFmpeg 7.1: its scale filter has no in_chroma_loc, which {pixelFormat} video needs "
+            + "(the chroma siting OpenCV converts with). Use FFmpeg 7.1 or newer, or VideoDecoder.InProcess.");
+    }
+
+    static readonly ConcurrentDictionary<string, bool> ChromaLocationByFfmpeg = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether this ffmpeg's scale filter takes <c>in_chroma_loc</c> (FFmpeg 7.1 and newer), asked once per executable
+    /// (<c>ffmpeg -h filter=scale</c>).
+    /// </summary>
+    internal static bool ScaleHasChromaLocation(string ffmpeg, CancellationToken cancellationToken)
+    {
+        if (ChromaLocationByFfmpeg.TryGetValue(ffmpeg, out bool has))
+            return has;
+        has = Run(ffmpeg, ["-hide_banner", "-h", "filter=scale"], cancellationToken, failure: ShotDetectionError.FfmpegNotFound)
+            .Contains("in_chroma_loc", StringComparison.Ordinal);
+        return ChromaLocationByFfmpeg.GetOrAdd(ffmpeg, has);
     }
 
     /// <summary>Runs ffmpeg/ffprobe to completion and returns its stdout; cancelling kills it.</summary>
