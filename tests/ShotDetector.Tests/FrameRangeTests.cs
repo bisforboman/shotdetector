@@ -507,6 +507,11 @@ public class FrameRangeTests
 
         Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Yuv420Converter = null }));
 
+        // The tone trim sets a time range: refused for ranges, even with the tone given.
+        var toned = video with { ReferenceTone = [] };
+        Assert.Contains("isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(toned, all, 0, options with { TrimReferenceTone = true })).Message);
+        Assert.Contains("isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.Merge(toned, [ShotDetection.ScoreRange(toned, all, 0, options)], options with { TrimReferenceTone = true })).Message);
+
         // Deinterlacing reads the frames on either side of a range's: refused when it would deinterlace.
         Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() }));
         var interlaced = video with { FieldOrder = FrameReader.FieldOrder.TopFirst };
@@ -601,7 +606,9 @@ public class FrameRangeTests
 
         // ChromaLocation only when set: the ranges scored before it existed keep their fingerprint.
         string sited = ShotDetection.Fingerprint(Video() with { ChromaLocation = "left" }, new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());
-        foreach (var p in typeof(YuvVideo).GetProperties().Where(p => p.Name != "EqualityContract"))
+
+        // ReferenceTone isn't: ranges refuse the trim, so the tone changes no range's scores.
+        foreach (var p in typeof(YuvVideo).GetProperties().Where(p => p.Name is not ("EqualityContract" or "ReferenceTone")))
             Assert.Contains("\n" + p.Name + "=", "\n" + sited);
         Assert.DoesNotContain("\nChromaLocation=", "\n" + text);
         foreach (var p in typeof(DetectorSettings).GetProperties().Where(p => p.Name is not ("EqualityContract" or "MinSceneDuration" or "MinOutDuration")))

@@ -112,6 +112,7 @@ internal sealed partial class VideoReader
         OpenCvFrameCount = FrameCountHint > 0 ? FrameCountHint
             : video.Duration is { } length ? (long)Math.Floor(length.TotalSeconds * _framesRate + 0.5) : 0;
         Duration = video.Duration;
+        GivenTone = video.ReferenceTone;
         (CropRegion, Width, Height) = AnalysedSize(SourceWidth, SourceHeight, o);
         _pixelFormat = video.PixelFormat;
         var stream = new Dictionary<string, string>
@@ -260,6 +261,9 @@ internal sealed partial class VideoReader
 
     /// <summary>Every frame's pts, <see cref="YuvVideo.FrameTimestamps"/>; null when not given.</summary>
     internal IReadOnlyList<long>? GivenTimestamps => _frameTimestamps;
+
+    /// <summary>The reference tone the caller found, <see cref="YuvVideo.ReferenceTone"/>; null when not given.</summary>
+    internal IReadOnlyList<FrameReader.ToneSegment>? GivenTone { get; }
 
     /// <summary>Whether the frames carry pts (<see cref="YuvVideo.TimeBase"/> set).</summary>
     internal bool FramesTimed => _framesTimed;
