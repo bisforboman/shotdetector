@@ -76,6 +76,8 @@ const string Usage = """
           --save-fcp <file>              Final Cut Pro XML (save-fcp); --fcp-format <fcpx|fcp7> (default fcpx)
           --save-otio <file>             OpenTimelineIO timeline (save-otio); --otio-name <n>, --otio-no-audio
           --save-keyframes <file>        Aegisub keyframes file, a line per cut (save-keyframes)
+          --save-shotchanges <file>      Subtitle Edit's shot changes: each cut's time in seconds, a line per cut
+                                         (SE: Video > Generate/import shot changes > Import). Not in scenedetect
           --save-qp <file>               x264 QP file with a keyframe at each cut (save-qp); --qp-disable-shift
           --split-video <dir>            Cut the video into one mp4 per shot (like scenedetect split-video)
           --image-filename <template>    save-images name, no extension (default $VIDEO_NAME-Scene-$SCENE_NUMBER-$IMAGE_NUMBER)
@@ -126,7 +128,7 @@ var waveformBits = FrameReader.WaveformBits.Sixteen;
 int? htmlWidth = null, htmlHeight = null;
 string? htmlPath = null;
 string? edlPath = null, edlTitle = null, edlReel = "AX", edlStart = null, fcpPath = null, fcpFormat = "fcpx";
-string? otioPath = null, otioName = null, qpPath = null, keyframesPath = null;
+string? otioPath = null, otioName = null, qpPath = null, keyframesPath = null, shotChangesPath = null;
 bool otioAudio = true, qpShift = true;
 string? outputDir = null, loadScenes = null, loadColumn = "Start Frame";
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
@@ -328,6 +330,9 @@ try
                 break;
             case "--save-keyframes":
                 keyframesPath = Next();
+                break;
+            case "--save-shotchanges":
+                shotChangesPath = Next();
                 break;
             case "--qp-disable-shift":
                 qpShift = false;
@@ -677,8 +682,8 @@ try
         ? null
         : Path.Combine(outputDir ?? "", path.Replace("$VIDEO_NAME", videoName).Replace("${VIDEO_NAME}", videoName));
     (csvPath, jsonPath, statsPath, imagesDir, htmlPath, splitDir) = (Out(csvPath), Out(jsonPath), Out(statsPath), Out(imagesDir), Out(htmlPath), Out(splitDir));
-    (edlPath, fcpPath, otioPath, qpPath, keyframesPath) = (Out(edlPath), Out(fcpPath), Out(otioPath), Out(qpPath), Out(keyframesPath));
-    foreach (var file in new[] { csvPath, jsonPath, statsPath, htmlPath, edlPath, fcpPath, otioPath, qpPath, keyframesPath })
+    (edlPath, fcpPath, otioPath, qpPath, keyframesPath, shotChangesPath) = (Out(edlPath), Out(fcpPath), Out(otioPath), Out(qpPath), Out(keyframesPath), Out(shotChangesPath));
+    foreach (var file in new[] { csvPath, jsonPath, statsPath, htmlPath, edlPath, fcpPath, otioPath, qpPath, keyframesPath, shotChangesPath })
     {
         if (file is not null && Path.GetDirectoryName(Path.GetFullPath(file)) is { } dir)
             Directory.CreateDirectory(dir);
@@ -738,6 +743,8 @@ try
         File.WriteAllText(qpPath, Timeline.Qp(result, qpShift));
     if (keyframesPath is not null)
         File.WriteAllText(keyframesPath, Timeline.Keyframes(result));
+    if (shotChangesPath is not null)
+        File.WriteAllText(shotChangesPath, Timeline.ShotChanges(result));
     if (splitDir is not null)
         Console.Error.WriteLine($"Wrote {Export.SplitVideo(result, splitDir, split).Count} clips to {splitDir}");
     return 0;

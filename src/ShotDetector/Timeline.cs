@@ -247,6 +247,17 @@ public static class Timeline
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Subtitle Edit's shot changes (its .shotchanges files, and what its Import shot changes reads as seconds): each
+    /// cut's time in seconds, one per line, as <see cref="FrameTime.SecondsText"/> writes it (invariant culture,
+    /// milliseconds, always with a '.', which is how SE's import picks seconds over frames). The cut frame's
+    /// presentation time, so variable frame rates place it right. No line for the video's start (unlike
+    /// <see cref="Keyframes"/>); lines joined by '\n' with no newline after the last, as SE's ShotChangesHelper.ToText.
+    /// Not a scenedetect output.
+    /// </summary>
+    /// <param name="result">The detection result.</param>
+    public static string ShotChanges(DetectionResult result) => string.Join('\n', result.Cuts.Select(c => c.SecondsText()));
+
     /// <summary>scenedetect's name templates: $VIDEO_NAME is the video's name.</summary>
     static string Template(string text, DetectionResult result) => text.Replace("$VIDEO_NAME", VideoName(result));
 

@@ -113,7 +113,7 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - ShotDetector as Subtitle Edit's shot-change engine (#633)
   - Why: Subtitlers snap cues to shot changes; Subtitle Edit uses FFmpeg's scene score. Scoping: docs/ideas/subtitle-edit.md (no engine seam in SE; SE5 MIT, SE4 GPL-3.0; 3-5 PRs here plus 1 in SE)
-  - Status: Maybe; first slice (`--save-shotchanges`, SE's .shotchanges format) in progress 2026-10-31; the SE side waits on the owner
+  - Status: Maybe; first slice done 2026-10-31 (`--save-shotchanges` and `Timeline.ShotChanges`, SE's .shotchanges format); next, machine-readable progress for SE; the SE side waits on the owner
 
 - A Jellyfin plugin: chapters from shots, credits and black segments (#634)
   - Why: Most rips have no chapters; Jellyfin 12 is net10.0 and ships jellyfin-ffmpeg 8.1. Scoping: docs/ideas/jellyfin-plugin.md (4-6 PRs; six owner questions)
