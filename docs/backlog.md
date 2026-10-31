@@ -39,9 +39,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
   - Status: Open
 
-- VideoFrameReader Yuv420p: last chroma row zero at odd heights (#656); fix and test against ffmpeg -f rawvideo
-  - Why: VideoFrameReader with FrameFormat.Yuv420p leaves the last chroma row as zeros at odd heights (321x241: U/V row 120), likely swscale's unscaled copy in Convert(); found by the #646 session, near #630
-  - Status: Open, after #647, frame-source session
 
 - FrameReader: managed picture and loudness measures (#646)
   - Why: The owner chose (2026-10-31) to move shotdetector-web's managed measures (signalstats, blackdetect, cropdetect and colour-bar equivalents; a BS.1770-4 loudness meter; silences and peaks) into FrameReader, so the page's QC report (shotdetector-web#94) and the delivery-QC command (#636) share one implementation checked against FFmpeg once; FrameReader's own `Loudness` (#642) runs on FFmpeg's ebur128, which the browser can't use

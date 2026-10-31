@@ -605,5 +605,10 @@
         @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = '4 => Paeth(a, b, c),'; Replace = '4 => a,'; Tests = 'ContactSheetTests' }
         @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = '3 => (a + b) / 2,'; Replace = '3 => (a + b + 1) / 2,'; Tests = 'ContactSheetTests' }
         @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = 'if (pages[^1].Count > 0 && used + heights[r] > room)'; Replace = 'if (pages[^1].Count > 0 && used + heights[r] > room * 10)'; Tests = 'ContactSheetTests' }
+
+        # VideoFrameReader at odd sizes (#656): aligned output rows (swscale's unaligned paths differ at an odd width), and a
+        # frame already in the output's format and size passed through as the scale filter does (swscale's copy drops a row)
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'Check(ffmpeg.av_frame_get_buffer(_out, 0), "frame buffer");'; Replace = 'Check(ffmpeg.av_frame_get_buffer(_out, 1), "frame buffer");'; Tests = 'VideoFrameReaderTests.OddSizesAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'bool passThrough = src->format == (int)_format && (src->width, src->height) == (width, height);'; Replace = 'bool passThrough = false;'; Tests = 'VideoFrameReaderTests.OddSizesAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
     )
 }
