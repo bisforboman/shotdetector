@@ -269,6 +269,11 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
 - `--save-html <file>` writes scenedetect's `save-html` page (cut list and shot table with the
   thumbnails), byte-identical to scenedetect's; `--html-no-images`, `--html-image-width/height`.
   In the library: `Shots.Html`.
+- `--contact-sheet <file>` writes a contact sheet (not a scenedetect output), a `.png` or a `.pdf` by the extension: a
+  row per shot, its number, start timecode and length, then the frames `--save-images` picks (`--num-images`,
+  `--frame-margin`), `--contact-sheet-width <px>` wide (320 by default). The PNG is one image (its labels in a small
+  built-in font); the PDF has A4 pages with the video's name, for long films, and embeds the JPEGs as encoded
+  ([why](docs/decisions/2026-10-31-contact-sheet.md)).
 - `--save-edl`, `--save-fcp` (`--fcp-format fcpx|fcp7`), `--save-otio` and `--save-qp` write scenedetect's
   timeline exports for editors and encoders (CMX 3600 EDL, Final Cut Pro XML, OpenTimelineIO, x264 QP
   keyframes), byte-identical to scenedetect's except the EDL's comment line, which names ShotDetector.

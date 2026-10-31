@@ -559,5 +559,12 @@
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'Math.Ceiling(Math.Round(cut, 3, MidpointRounding.AwayFromZero))'; Replace = 'Math.Ceiling(cut)'; Tests = 'YouTubeChaptersTests' }
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (!(minLength >= 10))'; Replace = 'if (minLength < 5)'; Tests = 'YouTubeChaptersTests' }
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (!(minLength > 0))'; Replace = 'if (minLength < 0)'; Tests = 'YouTubeChaptersTests' }
+
+        # --contact-sheet: save-images' own frames (its options but the size and format), our PNG decoder's row filters,
+        # and the PDF's page breaks
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = 'FileName = "$SCENE_NUMBER-$IMAGE_NUMBER",'; Replace = 'FileName = "$SCENE_NUMBER-$IMAGE_NUMBER", FrameMargin = 0,'; Tests = 'ContactSheetTests' }
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = '4 => Paeth(a, b, c),'; Replace = '4 => a,'; Tests = 'ContactSheetTests' }
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = '3 => (a + b) / 2,'; Replace = '3 => (a + b + 1) / 2,'; Tests = 'ContactSheetTests' }
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = 'if (pages[^1].Count > 0 && used + heights[r] > room)'; Replace = 'if (pages[^1].Count > 0 && used + heights[r] > room * 10)'; Tests = 'ContactSheetTests' }
     )
 }

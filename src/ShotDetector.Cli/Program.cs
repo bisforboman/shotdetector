@@ -70,6 +70,9 @@ const string Usage = """
           --save-html <file>             Write the shot list as an HTML page with thumbnails (scenedetect
                                          save-html); images go to --save-images <dir>, or next to the page
           --html-no-images               Leave the thumbnails out of the HTML page
+          --contact-sheet <file>         A contact sheet, .png or .pdf: a row per shot, its number, timecode and
+                                         length, then save-images' frames (--num-images, --frame-margin) at
+                                         --contact-sheet-width <px> (default 320). Not in scenedetect
           --html-image-width <px>, --html-image-height <px>   Size attributes of the HTML thumbnails
           --save-edl <file>              CMX 3600 EDL (scenedetect save-edl); --edl-title <t>, --edl-reel <r>,
                                          --edl-start-timecode <HH:MM:SS:FF>
@@ -132,6 +135,8 @@ string? htmlPath = null;
 string? edlPath = null, edlTitle = null, edlReel = "AX", edlStart = null, fcpPath = null, fcpFormat = "fcpx";
 string? otioPath = null, otioName = null, qpPath = null, keyframesPath = null, shotChangesPath = null, chaptersPath = null;
 double chapterMinLength = 10;
+string? contactSheetPath = null;
+int contactSheetWidth = 320;
 bool otioAudio = true, qpShift = true;
 string? outputDir = null, loadScenes = null, loadColumn = "Start Frame";
 string? input = null, csvPath = null, jsonPath = null, statsPath = null, imagesDir = null, splitDir = null;
@@ -336,6 +341,14 @@ try
                 break;
             case "--save-shotchanges":
                 shotChangesPath = Next();
+                break;
+            case "--contact-sheet":
+                contactSheetPath = Next();
+                if (Path.GetExtension(contactSheetPath).ToLowerInvariant() is not (".png" or ".pdf"))
+                    throw new ArgumentException("--contact-sheet is a .png or a .pdf file");
+                break;
+            case "--contact-sheet-width":
+                contactSheetWidth = NextInt();
                 break;
             case "--save-youtube-chapters":
                 chaptersPath = Next();
@@ -692,7 +705,8 @@ try
         : Path.Combine(outputDir ?? "", path.Replace("$VIDEO_NAME", videoName).Replace("${VIDEO_NAME}", videoName));
     (csvPath, jsonPath, statsPath, imagesDir, htmlPath, splitDir) = (Out(csvPath), Out(jsonPath), Out(statsPath), Out(imagesDir), Out(htmlPath), Out(splitDir));
     (edlPath, fcpPath, otioPath, qpPath, keyframesPath, shotChangesPath, chaptersPath) = (Out(edlPath), Out(fcpPath), Out(otioPath), Out(qpPath), Out(keyframesPath), Out(shotChangesPath), Out(chaptersPath));
-    foreach (var file in new[] { csvPath, jsonPath, statsPath, htmlPath, edlPath, fcpPath, otioPath, qpPath, keyframesPath, shotChangesPath, chaptersPath })
+    contactSheetPath = Out(contactSheetPath);
+    foreach (var file in new[] { csvPath, jsonPath, statsPath, htmlPath, edlPath, fcpPath, otioPath, qpPath, keyframesPath, shotChangesPath, chaptersPath, contactSheetPath })
     {
         if (file is not null && Path.GetDirectoryName(Path.GetFullPath(file)) is { } dir)
             Directory.CreateDirectory(dir);
@@ -729,6 +743,12 @@ try
     {
         saved = Export.SaveImages(result, imagesDir, images);
         Console.Error.WriteLine($"Saved {saved.Count} images to {imagesDir}");
+    }
+
+    if (contactSheetPath is not null)
+    {
+        ContactSheet.Write(result, contactSheetPath, images, contactSheetWidth);
+        Console.Error.WriteLine($"Wrote {contactSheetPath}");
     }
 
     if (htmlPath is not null)
