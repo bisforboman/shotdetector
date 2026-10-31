@@ -280,8 +280,9 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
   at 0:00, at least three, each at least 10 s long. Shots merge into chapters: a cut starts a new one only once the
   current one has run `--chapter-min-length <s>` (10 by default; a minute suits a film), a last chapter shorter than
   that joins the one before, and fewer than three chapters is an error. Each cut's time is rounded up to the second, so
-  a chapter starts in its first shot. In the library: `Timeline.YouTubeChapters`
-  ([why](docs/decisions/2026-10-31-youtube-chapters.md)).
+  a chapter starts in its first shot. In the library: `Timeline.YouTubeChapters`; the merge alone, for other players'
+  chapters, is `Timeline.ChapterStarts` ([why](docs/decisions/2026-10-31-youtube-chapters.md),
+  [where](docs/decisions/2026-10-31-youtube-chapters-home.md)).
 - `--split-video <dir>` writes `{video}-Scene-{NNN}.mp4` with scenedetect's `split-video` ffmpeg
   command (libx264 veryfast CRF 22, AAC, subtitles dropped), and its options: `--split-copy`,
   `--split-high-quality`, `--split-crf`, `--split-preset`, `--split-args`, `--split-expand`

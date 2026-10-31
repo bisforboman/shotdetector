@@ -46,8 +46,24 @@ public class YouTubeChaptersTests(Clips clips) : IClassFixture<Clips>
     [Fact]
     public void TheMinimumIsYouTubesTenSecondsOrMore()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => Timeline.ChapterStarts([10, 20], 30, 9.99));
-        Assert.Throws<ArgumentOutOfRangeException>(() => Timeline.ChapterStarts([10, 20], 30, double.NaN));
+        var r = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content });
+        Assert.Throws<ArgumentOutOfRangeException>(() => Timeline.YouTubeChapters(r, 9.99));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Timeline.YouTubeChapters(r, double.NaN));
+    }
+
+    // Other players' chapters (the Jellyfin plugin's, #634) take the same rule with a shorter minimum: cuts at 2 s and
+    // 4 s of the 6 s clip are chapters 2 s long.
+    [Fact]
+    public void ChapterStartsTakeAnyMinimum()
+    {
+        var r = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content });
+        Assert.Equal([TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4)], Timeline.ChapterStarts(r, 2));
+
+        // At 2.5 s, 2 s is too soon and the chapter from 4 s would run 2 s to the end: one chapter.
+        Assert.Equal([TimeSpan.Zero], Timeline.ChapterStarts(r, 2.5));
+        Assert.Equal([TimeSpan.Zero], Timeline.ChapterStarts(r));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Timeline.ChapterStarts(r, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Timeline.ChapterStarts(r, double.NaN));
     }
 
     [Fact]

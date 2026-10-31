@@ -274,9 +274,9 @@ public static class Timeline
     /// <exception cref="InvalidOperationException">The shots make fewer than three chapters.</exception>
     public static string YouTubeChapters(DetectionResult result, double minLength = 10)
     {
-        var shots = result.Shots;
-        double end = shots.Count > 0 ? shots[^1].End.Seconds : 0;
-        var starts = ChapterStarts(result.Cuts.Select(c => c.Seconds), end, minLength);
+        if (!(minLength >= 10))
+            throw new ArgumentOutOfRangeException(nameof(minLength), minLength, "YouTube's chapters are 10 s or longer.");
+        var starts = Merge(result, minLength);
         if (starts.Count < 3)
         {
             throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
@@ -290,14 +290,34 @@ public static class Timeline
     }
 
     /// <summary>
+    /// Chapter points from the shots, by <see cref="YouTubeChapters"/>' rule with any least length: the first at 0, then
+    /// each cut, rounded up to a whole second, that comes at least <paramref name="minLength"/> seconds after the chapter
+    /// before; a last chapter shorter than that joins the one before. For any player's chapters (YouTube's own checks,
+    /// 10 s and three chapters, are <see cref="YouTubeChapters"/>'), so every export picks the same points from the same
+    /// shots.
+    /// </summary>
+    /// <param name="result">The detection result.</param>
+    /// <param name="minLength">Each chapter's least length in seconds, above 0.</param>
+    /// <returns>The chapters' starts, whole seconds from the video's start; one (at 0) when the shots make one chapter.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="minLength"/> isn't above 0.</exception>
+    public static IReadOnlyList<TimeSpan> ChapterStarts(DetectionResult result, double minLength = 10) =>
+        [.. Merge(result, minLength).Select(s => TimeSpan.FromSeconds(s))];
+
+    static List<long> Merge(DetectionResult result, double minLength)
+    {
+        var shots = result.Shots;
+        return ChapterStarts(result.Cuts.Select(c => c.Seconds), shots.Count > 0 ? shots[^1].End.Seconds : 0, minLength);
+    }
+
+    /// <summary>
     /// The chapters' starts in whole seconds: 0, then each cut rounded up (from its milliseconds, so a float a hair over
     /// a whole second stays on it) that is at least <paramref name="minLength"/> after the chapter before; the last start
     /// dropped while its chapter would end under <paramref name="minLength"/> before <paramref name="end"/>.
     /// </summary>
     internal static List<long> ChapterStarts(IEnumerable<double> cutSeconds, double end, double minLength)
     {
-        if (!(minLength >= 10))
-            throw new ArgumentOutOfRangeException(nameof(minLength), minLength, "YouTube's chapters are 10 s or longer.");
+        if (!(minLength > 0))
+            throw new ArgumentOutOfRangeException(nameof(minLength), minLength, "A chapter's least length is above 0 s.");
         var starts = new List<long> { 0 };
         foreach (double cut in cutSeconds)
         {
