@@ -598,8 +598,12 @@ public class FrameRangeTests
         string text = ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());
         foreach (string name in ShotDetection.Fingerprinted.Except(["MinSceneDuration", "MinOutDuration"]))
             Assert.Contains("\n" + name + "=", "\n" + text);
+
+        // ChromaLocation only when set: the ranges scored before it existed keep their fingerprint.
+        string sited = ShotDetection.Fingerprint(Video() with { ChromaLocation = "left" }, new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());
         foreach (var p in typeof(YuvVideo).GetProperties().Where(p => p.Name != "EqualityContract"))
-            Assert.Contains("\n" + p.Name + "=", "\n" + text);
+            Assert.Contains("\n" + p.Name + "=", "\n" + sited);
+        Assert.DoesNotContain("\nChromaLocation=", "\n" + text);
         foreach (var p in typeof(DetectorSettings).GetProperties().Where(p => p.Name is not ("EqualityContract" or "MinSceneDuration" or "MinOutDuration")))
             Assert.Contains("\nDetectors[0]." + p.Name + "=", "\n" + text);
         Assert.Equal(text, ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved()));

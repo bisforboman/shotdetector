@@ -301,6 +301,7 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.Height % 2 != 0 && video.PixelFormat != "yuv420p10le")'; Replace = 'if (video.Height % 2 != 0)'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'int BytesPerSample => TenBit ? 2 : 1;'; Replace = 'int BytesPerSample => 1;'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'int ChromaHeight => Yuv422 ? _codedSize.H : (_codedSize.H + 1) / 2;'; Replace = 'int ChromaHeight => (_codedSize.H + 1) / 2;'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line("ChromaLocation", siting);'; Replace = ';'; Tests = 'FrameRangeTests.TheFingerprintCoversEveryOption' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (stride < width || plane.Length < (long)stride * (height - 1) + width)'; Replace = 'if (stride < width)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (!(Math.Abs(from - expected) <= 0.5 / rate))'; Replace = 'if (false)'; Tests = 'FrameInputTests.FramesMustComeAtTheFrameRate' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_startPts = video.StartPts;'; Replace = '_startPts = 0;'; Tests = 'FrameInputTests.FramesAreAtTheirPtsFromTheStreamsStart' }
