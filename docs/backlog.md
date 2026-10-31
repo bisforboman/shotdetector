@@ -111,5 +111,21 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The `shotdetect` binaries leave FastYuv (LGPL) out, so on ARM (Apple silicon too) they give ARM's default results, not x86's (docs/decisions/2026-10-17-arm-results.md). The CLI already ships LGPL FFmpeg libraries as separate, replaceable files; FastYuv as its own DLL beside the dotnet tool (not inside a Native AOT binary) could follow the same LGPL terms (docs/decisions/2026-10-01-cli-and-licensing.md). A licensing question for the owner before any work. Found in the 2026-10-31 decision review
   - Status: Maybe
 
+- ShotDetector as Subtitle Edit's shot-change engine (#633)
+  - Why: Subtitlers snap cues to shot changes; Subtitle Edit uses FFmpeg's scene score. Scoping: docs/ideas/subtitle-edit.md (no engine seam in SE; SE5 MIT, SE4 GPL-3.0; 3-5 PRs here plus 1 in SE)
+  - Status: Maybe; first slice (`--save-shotchanges`, SE's .shotchanges format) in progress 2026-10-31; the SE side waits on the owner
+
+- A Jellyfin plugin: chapters from shots, credits and black segments (#634)
+  - Why: Most rips have no chapters; Jellyfin 12 is net10.0 and ships jellyfin-ffmpeg 8.1. Scoping: docs/ideas/jellyfin-plugin.md (4-6 PRs; six owner questions)
+  - Status: Maybe; first slice (scheduled task saving the strongest cut per N minutes as chapters) waits on the owner creating bisforboman/jellyfin-plugin-shotdetector (GPL-3.0)
+
+- A video reader for Microsoft.Extensions.DataIngestion (#635)
+  - Why: Video as searchable, timestamped chunks in .NET RAG pipelines. Scoping: docs/ideas/dataingestion-video-reader.md (verdict park: a preview API, waits on StanzaSharp#233)
+  - Status: Maybe; first slice (examples/VideoRag, PR #641) in progress 2026-10-31
+
+- A delivery-QC command: black, bars and tone, broadcast range, loudness (#636)
+  - Why: What broadcasters check before accepting a file, mostly built already (FFmpeg's ebur128 through FrameReader, shotdetector-web's picture measures). Scoping: docs/ideas/delivery-qc.md (6-8 PRs; owner questions on where PictureMeter lives, subcommand or tool, freeze detection)
+  - Status: Maybe; first slice (`shotdetect --loudness`, PR #642) in progress 2026-10-31
+
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and
 why: [decisions/](decisions/).
