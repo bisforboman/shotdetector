@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- Frame-source parity audit: list in one pass what `Detect(path)` handles or reports that `YuvVideo`/`YuvFrame` can't express, and file what's missing
-  - Why: #608 (rotation), #609 (variable frame rate) and #614 (deinterlacing) were filed on one day, one at a time, from the same caller (shotdetector-web's ManagedCodecs path). One audit of the file path's inputs and `DetectedVideo`'s fields against the frame-source path's (colour tags, chroma location, field order, rotation, timing, start time, crop and scale inputs, warnings) finds the rest at once. After #614
-  - Status: Open
-
 ## Waiting
 
 - At the next FrameReader release, count the FrameReader features that needed ShotDetector too (docs/frame-reader-product.md, "When to reconsider"; features, not commits, since 2026-10-28)
