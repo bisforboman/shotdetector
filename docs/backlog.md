@@ -51,14 +51,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The owner chose (2026-10-31) to move shotdetector-web's managed measures (signalstats, blackdetect, cropdetect and colour-bar equivalents; a BS.1770-4 loudness meter; silences and peaks) into FrameReader, so the page's QC report (shotdetector-web#94) and the delivery-QC command (#636) share one implementation checked against FFmpeg once; FrameReader's own `Loudness` (#642) runs on FFmpeg's ebur128, which the browser can't use
   - Status: Building: slice 1 (LoudnessMeter) merged in #655; slices 2-3 (SilenceFinder, PictureMeter) next
 
-- Timeline: YouTube chapters export (#648)
-  - Why: A chapters export beside Edl, Fcpx, Otio, Qp and ShotChanges, for the CLI and shotdetector-web's page (shotdetector-web#84's chapters part); YouTube's rules (first chapter at 0:00, at least three, each at least 10 s) to verify before building, and how shots merge into chapters that meet them to decide
-  - Status: #654 merged 2026-10-31; #649 next
-
-- CLI: exact contact sheet next to --save-images (#649)
-  - Why: A grid of each shot's frames with its number, timecode and length, as PNG or PDF, built from `--save-images`' exact frames (the page's version, shotdetector-web#93, stays there with the browser's stills); format, layout and what it shares with `--save-html` to scope
-  - Status: Open, after #645, one CLI session, #648 first
-
 ## Waiting
 
 - Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)
