@@ -27,3 +27,6 @@ docs/backlog-done.md as Won't do.
 
 Note (2026-10-22): "concealing like scenedetect" means the same kind of concealment, not the same bytes on every run:
 corrupt input varies from run to run in both tools (2026-10-22-damaged-files-best-effort.md).
+
+Since 2026-10-31 ([2026-10-31-sequential-decoder-threads-remeasure.md](2026-10-31-sequential-decoder-threads-remeasure.md))
+to be measured again, with damaged files best effort.
