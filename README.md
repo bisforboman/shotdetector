@@ -242,6 +242,11 @@ and `--probe-json` prints the same as JSON. `--waveform peaks.dat` writes the au
 by the extension. `--find-tone` only lists reference tone (1 kHz line-up tone) in the audio, also of audio-only files; `--trim-tone`
 detects shots without it at the start and end (`--tone-min-duration` sets the shortest run, 5 s by default;
 `--tone-search 180` searches only the first 3 minutes, much faster on a feature film, and then finds no tone at the end).
+`--loudness` measures the audio's loudness per EBU R128 / ITU-R BS.1770 with FFmpeg's own `ebur128` filter (so the
+figures are `ffmpeg -af ebur128=peak=true+sample`'s): integrated loudness, loudness range, true and sample peak. It
+exits with 3 when integrated loudness is more than `--loudness-tolerance` (0.5 LU) from `--loudness-target` (-23 LUFS)
+or the true peak is above `--true-peak-max` (-1 dBTP), EBU R128's limits, so a pipeline can stop there;
+`--loudness-json` prints the figures at full precision with each verdict. Not in scenedetect.
 
 ## Using the shot list
 

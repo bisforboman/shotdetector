@@ -271,6 +271,17 @@ Our native libraries carry volume, equalizer, bass, treble, highpass, lowpass, b
 acompressor, alimiter, dynaudnorm, agate, ebur128, loudnorm, silencedetect and astats; a full FFmpeg build loaded with
 `FFmpegLibraries.Load(folder)` brings every filter it has.
 
+`Result(filter, option)` reads what an analysis filter keeps as a read-only option, at full precision: after the last
+chunk, the whole input's. `Loudness.Measure(audio)` uses it for EBU R128 / ITU-R BS.1770 loudness, `ffmpeg -af
+ebur128=peak=true+sample`'s figures (integrated loudness, loudness range and its ends, sample and true peak), including
+the samples after the last whole 100 ms block, which ebur128's per-frame metadata leaves out:
+
+```csharp
+using var audio = new AudioReader("programme.mxf");
+var loudness = Loudness.Measure(audio);
+Console.WriteLine($"{loudness.Integrated:0.0} LUFS, LRA {loudness.Range:0.0} LU, true peak {loudness.TruePeak:0.0} dBTP");
+```
+
 Writing audio: `AudioWriter` encodes interleaved float32 samples to MP3 (LAME), AAC (.m4a, .aac, .mka) or WAV, the
 file `ffmpeg -f f32le -ar R -ac C -i - -c:a ENCODER [-b:a B] OUT` writes, byte for byte with `Bitexact = true` on
 both sides (without it, files carry FFmpeg's usual encoder tags). Read, filter, write:

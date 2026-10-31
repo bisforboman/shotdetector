@@ -103,6 +103,13 @@ const string Usage = """
                                          filters' results (silencedetect, ebur128=metadata=1, astats=metadata=1)
                                          go to standard output with their times
           --audio-out <file>             Write the (filtered) audio, encoded by the extension (.mp3, .m4a, .wav, ...)
+          --loudness                     Only measure the audio's loudness (EBU R128 / BS.1770, FFmpeg's ebur128):
+                                         integrated loudness, loudness range, true and sample peak; then stop,
+                                         exit code 3 when integrated loudness or true peak is out of range
+          --loudness-json                The same as JSON on standard output
+          --loudness-target <LUFS>       Integrated loudness target (default -23, EBU R128)
+          --loudness-tolerance <LU>      How far from the target still passes (default 0.5)
+          --true-peak-max <dBTP>         Highest true peak that passes (default -1)
           --find-tone                    Only list reference tone (1 kHz line-up tone) in the audio, then stop;
                                          video or audio-only input. Not in scenedetect
           --trim-tone                    Leave reference tone at the start and end out of detection
@@ -113,6 +120,8 @@ const string Usage = """
     """;
 
 bool skipCuts = false, quiet = false, htmlNoImages = false, findTone = false, probe = false, probeJson = false;
+bool loudness = false, loudnessJson = false;
+double loudnessTarget = -23, loudnessTolerance = 0.5, truePeakMax = -1;
 string? waveformPath = null, audioFilter = null, audioOut = null;
 var waveform = new FrameReader.WaveformOptions();
 var waveformBits = FrameReader.WaveformBits.Sixteen;
@@ -434,6 +443,24 @@ try
             case "--split-expand":
                 split = split with { Expand = true };
                 break;
+            case "--loudness":
+                loudness = true;
+                break;
+            case "--loudness-json":
+                loudness = loudnessJson = true;
+                break;
+            case "--loudness-target":
+                loudnessTarget = NextDouble();
+                loudness = true;
+                break;
+            case "--loudness-tolerance":
+                loudnessTolerance = NextDouble();
+                loudness = true;
+                break;
+            case "--true-peak-max":
+                truePeakMax = NextDouble();
+                loudness = true;
+                break;
             case "--find-tone":
                 findTone = true;
                 break;
@@ -526,6 +553,25 @@ try
         var info = ShotDetection.Probe(input, options);
         Console.WriteLine(probeJson ? ProbeJson(info) : string.Join(Environment.NewLine, ProbeLines(info)));
         return 0;
+    }
+
+    if (loudness)
+    {
+        if (input == "-")
+            throw new ArgumentException("--loudness needs a file or URL");
+        try
+        {
+            FrameReader.FFmpegLibraries.Load(options.FfmpegDirectory);
+            using var audio = new FrameReader.AudioReader(input);
+            var verdict = new LoudnessVerdict(FrameReader.Loudness.Measure(audio), loudnessTarget, loudnessTolerance, truePeakMax);
+            Console.WriteLine(loudnessJson ? verdict.Json() : string.Join(Environment.NewLine, verdict.Lines()));
+            return verdict.Pass ? 0 : 3;
+        }
+        catch (FrameReader.FrameReaderException e)
+        {
+            Console.Error.WriteLine(e.Message);
+            return 1;
+        }
     }
 
     if (audioFilter is not null || audioOut is not null)

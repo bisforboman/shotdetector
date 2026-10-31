@@ -51,6 +51,57 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
         Assert.Empty(err);
     }
 
+    // --loudness: FFmpeg's ebur128 against the limits; exit 3 when integrated loudness is off the target by more than
+    // the tolerance (either side) or the true peak is above the maximum (docs/decisions/2026-10-31-loudness-verdict.md).
+    // Needs SHOTDETECTOR_FFMPEG_LIBS (in-process only, like --audio-filter).
+    [Fact]
+    public void LoudnessExitsThreeOutOfRange()
+    {
+        string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+        if (libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetect-loudness-").FullName;
+        try
+        {
+            string wav = Path.Combine(dir, "tone.wav");
+            using (var ffmpeg = Process.Start("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "aevalsrc=0.1*sin(440*2*PI*t)|0.08*sin(660*2*PI*t):s=48000:d=4", "-c:a", "pcm_s16le", wav]))
+                ffmpeg.WaitForExit();
+            (int ExitCode, System.Text.Json.JsonElement Json) Loudness(params string[] limits)
+            {
+                var (exitCode, output, err) = Run(["-i", wav, "--ffmpeg-dir", libs, "--loudness-json", .. limits]);
+                Assert.True(exitCode is 0 or 3, err);
+                return (exitCode, System.Text.Json.JsonDocument.Parse(output).RootElement);
+            }
+
+            static string N(double v) => v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var (_, measured) = Loudness();
+            double integrated = measured.GetProperty("integrated").GetDouble(), truePeak = measured.GetProperty("truePeak").GetDouble();
+            Assert.InRange(integrated, -30, -15);
+            string[] peakOk = ["--true-peak-max", N(truePeak + 0.1)];
+
+            Assert.Equal(0, Loudness([.. peakOk, "--loudness-target", N(integrated + 0.4)]).ExitCode);
+            Assert.Equal(0, Loudness([.. peakOk, "--loudness-target", N(integrated - 0.4)]).ExitCode);
+            var (high, json) = Loudness([.. peakOk, "--loudness-target", N(integrated + 0.6)]);
+            Assert.Equal(3, high);
+            Assert.False(json.GetProperty("integratedPass").GetBoolean());
+            Assert.True(json.GetProperty("truePeakPass").GetBoolean());
+            Assert.Equal(3, Loudness([.. peakOk, "--loudness-target", N(integrated - 0.6)]).ExitCode);
+            Assert.Equal(0, Loudness([.. peakOk, "--loudness-target", N(integrated + 0.9), "--loudness-tolerance", "1"]).ExitCode);
+            var (peak, peakJson) = Loudness("--true-peak-max", N(truePeak - 0.1), "--loudness-target", N(integrated));
+            Assert.Equal(3, peak);
+            Assert.False(peakJson.GetProperty("truePeakPass").GetBoolean());
+
+            var (exitCode, text, err) = Run("-i", wav, "--ffmpeg-dir", libs, "--loudness", "--loudness-target", N(integrated + 5));
+            Assert.True(exitCode == 3, err);
+            Assert.Contains("Integrated loudness: ", text, StringComparison.Ordinal);
+            Assert.Contains("Loudness: out of range", text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // --save-shotchanges writes Timeline.ShotChanges (Subtitle Edit's format; ShotChangesTests reads it as SE does).
     [Fact]
     public void SaveShotChangesWritesTheCutsInSeconds()
