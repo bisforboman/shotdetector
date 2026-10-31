@@ -66,6 +66,33 @@ public class YouTubeChaptersTests(Clips clips) : IClassFixture<Clips>
         Assert.Throws<ArgumentOutOfRangeException>(() => Timeline.ChapterStarts(r, double.NaN));
     }
 
+    // shotdetector-web's hand-made cases for its own rule (its branch claude/youtube-chapters, NativeCheck's ChaptersCheck),
+    // with these starts rounded up where the web's rounded down: only "rounded down" differs (61.5 s starts at 62, not 61).
+    // An empty expectation: fewer than three chapters, which YouTubeChapters refuses.
+    [Theory]
+    [InlineData("every 4 s, 30 s", "4:116:4", 120, 30, "0,32,64")]
+    [InlineData("every 4 s, 10 s", "4:116:4", 120, 10, "0,12,24,36,48,60,72,84,96,108")]
+    [InlineData("rounded up", "29.96,30.04,61.5", 100, 30, "0,30,62")]
+    [InlineData("a whole second from below", "11.9999999,23.9999999", 40, 10, "0,12,24")]
+    [InlineData("the last too short", "30,60,95", 110, 30, "0,30,60")]
+    [InlineData("two chapters", "40", 100, 30, "")]
+    [InlineData("no cuts", "", 300, 30, "")]
+    [InlineData("a short video", "3,6", 9, 10, "")]
+    [InlineData("an hour", "1200,2400", 3700, 30, "0,1200,2400")]
+    [InlineData("past ten minutes", "700,1400", 2000, 30, "0,700,1400")]
+    public void TheWebPagesCases(string name, string cuts, double end, double minLength, string expected)
+    {
+        double[] seconds = cuts.Contains(':', StringComparison.Ordinal)
+            ? [.. Enumerable.Range(0, 29).Select(i => 4.0 + (4 * i))]
+            : [.. cuts.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(c => double.Parse(c, System.Globalization.CultureInfo.InvariantCulture))];
+        var starts = Timeline.ChapterStarts(seconds, end, minLength);
+        long[] want = [.. expected.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(long.Parse)];
+        if (want.Length == 0)
+            Assert.True(starts.Count < 3, name);
+        else
+            Assert.Equal(want, starts);
+    }
+
     [Fact]
     public void TimestampsAreMinutesAndSecondsThenHours()
     {
