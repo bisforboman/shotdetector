@@ -449,6 +449,68 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         return path;
     }
 
+    // A spliced stream (libx264 BT.709 then SMPTE 170M, joined in MPEG-TS): each frame converted with its own colour
+    // matrix, as the file path in-process (and OpenCV) converts it, gives the file's stats byte for byte.
+    [Theory]
+    [InlineData(DetectorKind.Content)]
+    [InlineData(DetectorKind.Histogram)]
+    [InlineData(DetectorKind.Adaptive)]
+    public async Task SameAsTheFileWhereTheColourTagsChange(DetectorKind detector)
+    {
+        if (Libs is null || TagsChange() is not { } path)
+            return;
+        var (video, _) = Decoded(path);
+        Assert.Equal("bt709", video.ColorSpace);
+        await AssertSame(path, new DetectionOptions { Detector = detector, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() });
+    }
+
+    [Fact]
+    public void EachFrameIsConvertedWithItsOwnColours()
+    {
+        // Frames tagged BT.709 full range in a video tagged otherwise: the stats of a video tagged that way; null tags
+        // the video's; a matrix the converter doesn't take is refused at its frame.
+        var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420(), Detector = DetectorKind.Content, CollectStats = true };
+        var tagged = Video() with { ColorSpace = "bt709", FullRange = true };
+        string Stats(YuvVideo video, IEnumerable<YuvFrame> frames) => ShotDetection.Detect(video, frames, options) is var r ? r.Stats!.Csv(r.Video.Position) : "";
+        string expected = Stats(tagged, Frames(tagged, 30));
+        Assert.Equal(expected, Stats(Video(), Frames(Video(), 30).Select(f => f with { ColorSpace = "bt709", FullRange = true })));
+        Assert.Equal(expected, Stats(tagged, Frames(tagged, 30).Select(f => f with { ColorSpace = null, FullRange = null })));
+        Assert.NotEqual(expected, Stats(tagged, Frames(tagged, 30).Select(f => f with { FullRange = false })));
+        Assert.NotEqual(expected, Stats(tagged, Frames(tagged, 30).Select(f => f with { ColorSpace = "smpte170m" })));
+        var e = Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(Video(), Frames(Video(), 30).Select((f, i) => i == 12 ? f with { ColorSpace = "ycgco" } : f), options));
+        Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
+        Assert.Contains("Frame 12's colours", e.Message);
+    }
+
+    /// <summary>The three-shot clip's first 75 frames in libx264 tagged BT.709, the rest tagged SMPTE 170M (h264_metadata), joined in MPEG-TS; null without libx264.</summary>
+    string? TagsChange()
+    {
+        string dir = Path.GetDirectoryName(clips.ThreeShots)!, path = Path.Combine(dir, "tags-change.ts");
+        lock (H264Lock)
+        {
+            if (File.Exists(path))
+                return path;
+            string a = Path.Combine(dir, "tags-a.ts"), b = Path.Combine(dir, "tags-b.ts"), list = Path.Combine(dir, "tags.txt");
+            try
+            {
+                string[] x264 = ["-c:v", "libx264", "-bf", "0", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"];
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-frames:v", "75", .. x264, a], default);
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-vf", "trim=start_frame=75,setpts=PTS-STARTPTS", .. x264, "-bsf:v", "h264_metadata=matrix_coefficients=6", b], default);
+            }
+            catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+            {
+                return null;
+            }
+
+            File.WriteAllText(list, $"file '{a}'\nfile '{b}'\n");
+            string partial = path + ".part.ts";
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", partial], default);
+            File.Move(partial, path, true);
+        }
+
+        return path;
+    }
+
     [Theory]
     [InlineData(1, false)]
     [InlineData(3, true)]
@@ -695,7 +757,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
                 var y = decoder.GetPlane(0, out int ys).ToArray();
                 var u = decoder.GetPlane(1, out int us).ToArray();
                 var v = decoder.GetPlane(2, out int vs).ToArray();
-                yield return new YuvFrame(y, ys, u, us, v, vs) { Width = decoder.Width, Height = decoder.Height, Pts = decoder.Pts, Interlaced = flags[i].Interlaced, TopFieldFirst = flags[i].TopFieldFirst };
+                yield return new YuvFrame(y, ys, u, us, v, vs) { Width = decoder.Width, Height = decoder.Height, ColorSpace = decoder.ColorSpace, FullRange = decoder.ColorRange is { } range ? range == "pc" : null, Pts = decoder.Pts, Interlaced = flags[i].Interlaced, TopFieldFirst = flags[i].TopFieldFirst };
             }
         }
     }

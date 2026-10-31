@@ -19,7 +19,6 @@ Line numbers are at commit 15a2d89 (main after the 3.23.0 release).
 | Feature | File path | Frame source | Status | Evidence |
 |---|---|---|---|---|
 | Frame size changing midway | A frame of another size is scaled to the stream's size in its conversion (bicubic), as OpenCV's `sws_scale_frame` does into its buffer | `YuvFrame.Width`/`Height` (0: the video's) say each frame's size; a frame of another size is refused (`ShotDetectionException`, `InvalidInput`) since #625, where it was read as the video's size (a larger frame's top-left corner) | **Gap: refused** (was silent; scaling it is a backlog row, docs/decisions/2026-10-31-frame-source-size-change.md) | `VideoReader.cs:1631-1634`, `FrameWriter.cs:12`, `VideoReader.InProcess.cs:230`; the check in `VideoReader.Frames.cs` `TakeFrame`. Probe: two libx264 segments, 320x240 then 352x288 (`-vf scale=352:288`), joined with the concat demuxer and `-c copy` in MPEG-TS: the file path's cuts are 50, 100; the frame source's were 50, 75, 100, 60 of 151 stats rows differing, no warning; now "Frame 75 is 352x288, not the video's 320x240" (`FrameInputTests.AResolutionChangeIsRefused`, `AFrameOfAnotherSizeIsRefused`) |
-| Colour tags changing midway (a spliced stream) | In-process, each frame is converted with its own colour matrix and range (`FrameConversions.For`), as OpenCV's `sws_scale_frame` | Every frame is converted with `YuvVideo.ColorSpace`/`FullRange`: `YuvFrame` has no colour tags | **Gap, silent: other stats** | `VideoReader.InProcess.cs:98-127`; `VideoReader.Frames.cs:116-121`. Probe: libx264 BT.709 (3 s) then SMPTE 170M (3 s, `h264_metadata=matrix_coefficients=6`) joined with `-c copy` in MPEG-TS (ffprobe: 75 frames each): same cuts, but 52 of 151 content stats rows differ from frame 76 on (56 for histogram), no warning |
 | 10-bit 4:2:0 (yuv420p10le) | FastYuv's 10-bit converter (pipeline `Yuv420P10Sampled`), chroma interpolated from the first frame's chroma location | Refused: `ArgumentException` "must be yuv420p or yuvj420p so far". `YuvVideo` has no chroma location either, which this format's conversion needs | **Gap: refused** | `VideoReader.Frames.cs:53-54`; `VideoReader.cs:739` (chroma location, used for 10-bit only, `:772`). Probe: libx264 `-pix_fmt yuv420p10le`: file 150 frames, cuts 50, 100; frame source throws |
 | 8-bit 4:2:2 (yuv422p, yuvj422p) | FastYuv's 4:2:2 converter (pipeline `Yuv422Sampled`) | Refused, as above | **Gap: refused** | `VideoReader.Frames.cs:53-54`; `RejectsWhatItCantReproduce("format")`. Probe: libx264 yuv422p and mjpeg yuvj422p: file path fine, frame source throws |
 | Deinterlacing in ranges | `Detect(path)` chunks a deinterlaced file too: deinterlacing isn't one of `NotChunkable`'s reasons, and each chunk's decoder reads from before its start | `ScoreRange`/`Merge` refuse `Deinterlace` On, or Auto on an interlaced field order (yadif needs the frame before and after a range's edges). shotdetector-web then runs a deinterlaced video on one worker, with no split run and no resume across visits | **Gap: refused (ranges only)** | `ShotDetection.Ranges.cs:333-336`; `ShotDetection.cs:1498-1503`. Probe: `ScoreRange` with `Deinterlace = On` and `Yadif`: "Deinterlacing isn't available for ranges" |
@@ -56,6 +55,7 @@ Line numbers are at commit 15a2d89 (main after the 3.23.0 release).
 | Rotation | `YuvVideo.Rotation` | #608; `SameAsTheFileTurned` |
 | Deinterlacing (sequential), field order | `Deinterlace` + `Yadif`, `YuvVideo.FieldOrder`, `YuvFrame.Interlaced`/`TopFieldFirst` | #614; `SameAsTheFileDeinterlaced` |
 | Colour matrix and range of the first frame | `YuvVideo.ColorSpace`, `FullRange`, `PixelFormat` yuvj420p | `VideoReader.Frames.cs:116-123` (refused where FastYuv declines them: `RejectsWhatItCantReproduce("colour")`). Colour primaries and transfer: the file path doesn't use them either (`VideoReader.cs:767-773`) |
+| Colour tags changing midway (a spliced stream), since #626 | `YuvFrame.ColorSpace`, `FullRange` (null: the video's): each frame converted with its own, through the file path's `FrameConversions`; a frame whose colours FastYuv declines is refused (the file path converts it with FFmpeg) | `FrameInputTests.SameAsTheFileWhereTheColourTagsChange` (libx264 BT.709 then SMPTE 170M via `h264_metadata=matrix_coefficients=6`, joined in MPEG-TS: content, histogram, adaptive stats equal; before #626, 52 of 151 content stats rows differed from frame 76 on), `EachFrameIsConvertedWithItsOwnColours` |
 | Chroma location (8-bit 4:2:0) | Not needed: the file path uses it for 10-bit only | `VideoReader.cs:772` |
 | Odd frame width | Taken | Probe: ffv1 at 319x240, downscaled and not (`Downscale = 1`, pipeline `FfmpegScale` on the file): equal |
 | IDCT (MPEG-1/2, MPEG-4 Part 2, MJPEG) | The caller's decoder's business | Probe on x64: mpeg4 and mpeg2video decoded at FFmpeg's default IDCT (no `-idct`): equal to the file path. Not checked on ARM, where the file path's rule (`VideoReader.IdctOptions`, internal) matters (CLAUDE.md, ARM gotcha) |
@@ -76,7 +76,7 @@ Line numbers are at commit 15a2d89 (main after the 3.23.0 release).
 | `Chunks`, `ChunkFallback` | 1, null |
 | `Position(frame)` | From the frame's pts, its `FrameTimestamps` entry, or its number (`VideoReader.Frames.cs` `FramePosition`) |
 | `DetectionResult.VideoPath`, `ReferenceTone` | Null (see the gaps and exports above) |
-| Warnings | The file path's HLS and chroma-siting warnings don't arise (no ffmpeg executable, no siting); the colour-tag change above gives no warning on the frame source (a size change is refused) |
+| Warnings | The file path's HLS and chroma-siting warnings don't arise (no ffmpeg executable, no siting); a size change is refused on the frame source (#625); colour tags are followed per frame (#626) |
 
 ## Proposed issues
 
@@ -87,7 +87,7 @@ For the owner to pick from; not filed.
    Add the frame's size to `YuvFrame` (optional, defaulting to the video's) and either scale it to the video's size as
    the file path does (bicubic, as OpenCV) or, as a first step, refuse it with a clear error, so a result is never
    silently another file's.
-2. **Frame sources: each frame's colour tags** (medium: silently other stats on spliced streams). The file path
+2. **Frame sources: each frame's colour tags** (medium: silently other stats on spliced streams; done in #626). The file path
    converts each frame with its own matrix and range; the frame source with the video's. Optional per-frame
    `ColorSpace`/`FullRange` on `YuvFrame` (null: the video's), converted as `FrameConversions.For` does.
 3. **Frame sources: 10-bit 4:2:0 and 8-bit 4:2:2** (medium: HEVC Main 10, 10-bit H.264, ProRes-like 4:2:2 refused).
