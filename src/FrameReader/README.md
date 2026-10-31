@@ -282,6 +282,35 @@ var loudness = Loudness.Measure(audio);
 Console.WriteLine($"{loudness.Integrated:0.0} LUFS, LRA {loudness.Range:0.0} LU, true peak {loudness.TruePeak:0.0} dBTP");
 ```
 
+### Loudness without FFmpeg
+
+`LoudnessMeter` measures samples you decode yourself (a browser, ManagedCodecs), a chunk at a time, touching nothing of
+FFmpeg. It gives the same `LoudnessResult` plus each channel's sample peak, true peak and count of samples at full
+scale:
+
+```csharp
+var meter = new LoudnessMeter(48000, 2);            // weights: FFmpeg's default layout for the count
+foreach (var samples in decoded)                    // interleaved float, full scale 1
+    meter.Add(samples);
+var m = meter.Finish();
+Console.WriteLine($"{m.Loudness.Integrated:0.0} LUFS, {m.Channels[0].FullScale} clipped samples on the left");
+```
+
+Integrated loudness, loudness range and its ends are ebur128's own arithmetic, so they are the same doubles as
+`Loudness.Measure` on the same samples. That covers its running sums, its 0.01 LU histogram (truncated), its gates and
+percentile walk, and the order its x86-64 AVX kernel adds in. The sample peak is equal too. One thing depends on the
+host: ebur128 takes its bins' energies from the libm's `exp2`, whose last bit differs between glibc builds. The meter
+uses correctly rounded energies, so in the rare programme that fills a bin where a host's libm is an ulp off, I differs
+there by about an ulp. Channel weights follow BS.1770-4 as ebur128 does: 0 for the LFE, 1.41 for side and back channels. Pass
+`ChannelWeights.ForLayout(info.ChannelLayout)` when the layout isn't FFmpeg's default for the count.
+
+The true peak is where they differ, on purpose (docs/decisions/2026-10-31-frame-reader-measures.md). The meter follows
+BS.1770-4 Annex 2: 4 times oversampled below 192 kHz, a 16-tap windowed sinc per phase. ebur128 resamples to 192 kHz
+with swresample. On programme audio they agree within 0.1 dB. Where the audio has energy near Nyquist (white noise,
+abrupt high sines, short clips), swresample overshoots and ebur128 reads up to about 0.8 dB higher than an ideal
+reconstruction, while the meter stays within 0.05 dB of it on the test's clips (tests/FrameReader.Tests/LoudnessMeterTests.cs,
+tools/true_peak_reference.py). Its filter's passband ends below Nyquist: at 96 kHz a 29 kHz sine reads 0.13 dB low. Matching ebur128 there would mean porting an LGPL resampler to reproduce an overestimate.
+
 Writing audio: `AudioWriter` encodes interleaved float32 samples to MP3 (LAME), AAC (.m4a, .aac, .mka) or WAV, the
 file `ffmpeg -f f32le -ar R -ac C -i - -c:a ENCODER [-b:a B] OUT` writes, byte for byte with `Bitexact = true` on
 both sides (without it, files carry FFmpeg's usual encoder tags). Read, filter, write:
