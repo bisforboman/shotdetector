@@ -292,8 +292,8 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (o.Yuv420Converter is null)'; Replace = 'if (false)'; Tests = 'FrameInputTests.NeedsAConverter' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (DeinterlacesFrames(video, o) && o.Yadif is null)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (o.FfmpegResize)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
-        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.PixelFormat is not ("yuv420p" or "yuvj420p"))'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
-        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.Height % 2 != 0)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.PixelFormat is not ("yuv420p" or "yuvj420p" or "yuv422p" or "yuvj422p" or "yuv420p10le"))'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.Height % 2 != 0 && video.PixelFormat != "yuv420p10le")'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if ((f.Width == 0 ? w : f.Width, f.Height == 0 ? h : f.Height) != (w, h))'; Replace = 'if (false)'; Tests = 'FrameInputTests.AFrameOfAnotherSizeIsRefused' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'new(f.ColorSpace, f.FullRange is { } full ? (full ? "pc" : "tv") : null, f.ChromaLocation)'; Replace = 'new(null, null, f.ChromaLocation)'; Tests = 'FrameInputTests.EachFrameIsConvertedWithItsOwnColours' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '["chroma_location"] = video.ChromaLocation ?? "",'; Replace = '["chroma_location"] = "",'; Tests = 'FrameInputTests.TenBitChromaIsSitedAsTheFramesSay' }

@@ -372,8 +372,14 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         var frames = Frames(video, 3);
         if (name == "plane")
             frames = frames.Select(f => f with { U = f.U[..^4] });
-        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video, frames, options));
+        var e = Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video, frames, options));
         await Assert.ThrowsAsync<ArgumentException>(() => ShotDetection.DetectAsync(video, FrameSourceAsyncTests.Yielding(frames), options));
+
+        // Refused for what it is, not by a later check that happens to catch it too.
+        if (name == "format")
+            Assert.Contains("must be yuv420p, yuvj420p, yuv422p, yuvj422p or yuv420p10le so far, not yuv444p", e.Message);
+        if (name == "odd")
+            Assert.Contains("height must be even", e.Message);
     }
 
     [Theory]
