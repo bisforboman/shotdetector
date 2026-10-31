@@ -26,7 +26,7 @@ with its own versions and changelog; FFmpeg's libraries in `FrameReader.Native`)
 
 ```
 dotnet add package ShotDetector                 # the library
-dotnet add package ShotDetector.FastYuv         # optional, LGPL: faster on large video
+dotnet add package ShotDetector.FastYuv         # optional, LGPL: x86's results on ARM
 dotnet add package FrameReader.Native.linux-x64  # optional, LGPL: FFmpeg's libraries for in-process decoding
 dotnet tool install -g ShotDetector.Cli         # the shotdetect command (needs the .NET 10 SDK; bundles those libraries)
 ```
@@ -98,7 +98,7 @@ var fades = ShotDetection.Detect("video.mp4", new DetectionOptions { Detector = 
 Export.SaveImages(result, "thumbs");
 File.WriteAllText("shots.csv", Shots.Csv(result.Shots));
 
-// Optional, from ShotDetector.FastYuv (LGPL): faster on large video, identical results.
+// Optional, from ShotDetector.FastYuv (LGPL): identical results, and x86's on ARM too.
 var fast = ShotDetection.Detect("video.mp4", new DetectionOptions { Yuv420Converter = new ShotDetector.FastYuv.SwscaleYuv420() });
 ```
 
@@ -125,7 +125,9 @@ come from ffmpeg as frames arrive, the frame count isn't known up front and `Sta
 exports need a path.
 
 All five scenedetect detectors are available: `DetectorKind.Adaptive`, `Content`, `Threshold`,
-`Histogram` and `Hash` (CLI `-d adaptive|content|threshold|hist|hash`), with scenedetect's defaults.
+`Histogram` and `Hash` (CLI `-d adaptive|content|threshold|hist|hash`), with scenedetect's defaults: its command
+line's (`scenedetect detect-*`), which differ from its Python API's in places: detect-threshold's `MinOutLength` is
+0.1 s, where `ThresholdDetector()` takes 0.
 Several can run at once and their cuts are combined, as with several `detect-*` commands:
 `Detectors = [new(DetectorKind.Content) { Threshold = 30 }, new(DetectorKind.Threshold)]` (CLI
 `-d content -t 30 -d threshold`: `-t`, `-m` and `--filter-mode` after a `-d` belong to it). Also as in
@@ -150,7 +152,10 @@ Interlaced sources (1080i broadcast): `Deinterlace = DeinterlaceMode.On` (CLI `-
 before analysis, so there is no need to re-encode first; results equal scenedetect's on a lossless `ffmpeg -vf yadif`
 copy. `DeinterlaceMode.Auto` (`--deinterlace auto`) does so only when the stream is flagged interlaced. With
 ShotDetector.FastYuv, `Yadif = new ShotDetector.FastYuv.Yadif()` deinterlaces in-process only the rows the resize
-reads (same results, about a third faster with few cores).
+reads (same results, about a third faster with few cores). At 9 to 16 bits (10-bit AVC-Intra, ProRes) FFmpeg 8.1's
+x86 SIMD yadif gives a slightly different picture on every run (its C code doesn't), so without FastYuv, as with
+`ffmpeg -vf yadif`, the stats of such a file can differ from run to run; FastYuv's `Yadif` follows the C code and is
+deterministic (equal to `ffmpeg -cpuflags 0 -vf yadif`).
 
 `ShotDetection.Probe(path)` / `ProbeAsync` reads a video's headers in milliseconds, without ffprobe when FFmpeg's
 libraries load: size, frame rate, frame count, duration, codec, pixel format, field order (`IsInterlaced`),
@@ -356,9 +361,10 @@ but not for `DetectStreamAsync`, so its shots still come as they are found; `Seq
 frame size (CLI `--parallel`), `DetectStreamAsync` too, whose shots then all come at the end. The older
 `Parallel = true` still works and is obsolete ([docs/parallel-detection.md](docs/parallel-detection.md)).
 
-The FastYuv package (LGPL) converts the raw yuv420p or yuv422p planes (from ffmpeg, or decoded in-process) with a
-bit-exact port of x86 swscale's converter, only the pixels the resize reads. Files in other pixel formats (10-bit,
-4:4:4) or with an odd decoded height take the default conversion, still with identical results. In-process on x64 it
+The FastYuv package (LGPL) converts the raw yuv420p, yuv422p or 10-bit yuv420p planes (from ffmpeg, or decoded
+in-process) with a bit-exact port of x86 swscale's conversion, only the pixels the resize reads. Files in other pixel
+formats (10-bit 4:2:2, 4:4:4) or sizes it leaves to FFmpeg (an odd decoded height at 8 bits, an odd width at 10) take
+the default conversion, still with identical results. In-process on x64 it
 isn't needed for exactness (the default path converts only those rows with FFmpeg's own swscale, and costs a little
 less CPU); there its point is ARM, where it gives x86's results.
 
@@ -481,7 +487,8 @@ breaking change against the last stable release (the SDK's package validation):
   any reason other than the one below.
 - **Minor**: new options and outputs, speed and memory, and following a new scenedetect release: the default
   compatibility mode tracks the newest scenedetect, since matching it is the point (the previous release stays
-  available as a `PySceneDetectVersion` value).
+  available as a `PySceneDetectVersion` value; the one before it becomes `[Obsolete]` in that minor and goes at the
+  next major: docs/decisions/2026-10-31-retiring-scenedetect-modes.md).
 - **Patch**: fixes that make results match scenedetect where they didn't.
 
 ## License

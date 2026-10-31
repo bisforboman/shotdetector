@@ -22,9 +22,10 @@ CHANGELOG section (release.yml extracts it), so keep sections grouped: breaking 
 All five detectors, scenedetect 0.7.2 (`PySceneDetectVersion.V0_7_2`, default) and 0.7.1 (`V0_7_1`; the 0.6.4 mode was
 dropped in 0.9.0), exports
 (save-images, save-html, split-video), stats, streaming out (`DetectStreamAsync`) and in (`Detect(Stream)`, URLs,
-CLI `-i -`). CI compares every sample clip against scenedetect 0.7.2 and 0.7.1 on Linux for the core and FastYuv
-paths (10-bit h264 too), 0.7.2 both through the ffmpeg executable and in-process (our FFmpeg build; `compare.py`
-adds `SHOTDETECTOR_OURS_ARGS` to every run, CI sets `--decoder`). `Detect` chunks long files (in-process, or a process each through the executable) on several
+CLI `-i -`). CI compares every sample clip against scenedetect 0.7.2 on Linux for the core and FastYuv
+paths (10-bit h264 too), both through the ffmpeg executable and in-process (our FFmpeg build; `compare.py`
+adds `SHOTDETECTOR_OURS_ARGS` to every run, CI sets `--decoder`), and against 0.7.1 in one job (core path, main
+comparison, executable; docs/decisions/2026-10-12-the-previous-scenedetect-release-in-ci.md). `Detect` chunks long files (in-process, or a process each through the executable) on several
 cores by default from 4 CPUs on (docs/parallel-detection.md; `--sequential` one pass, `--parallel` also above 4K and
 says why it couldn't, hidden `--chunks N`); detect-hash and interlaced 10-bit (AVC-Intra, ProRes) are informational. `realworld.yml` runs whole films nightly (and FrameReader's audio on their soundtracks); `benchmark.yml`
 weekly. `docs/backlog.md` has what's next, in order (Next, Waiting, Maybe; finished rows in `docs/backlog-done.md`);
@@ -39,15 +40,17 @@ X.Y.Z "summary"`), opened once every PR going into it has merged (never stacked 
 both. Merging it releases: release.yml (on every push to main) releases each product whose newest version isn't tagged
 yet, FrameReader first, each with its own tag and GitHub release; ShotDetector's package depends on FrameReader's
 current version. Never pass `-p:Version` (it would reach FrameReader through ShotDetector's reference):
-`-p:ShotDetectorVersion` and `-p:FrameReaderVersion`. At each FrameReader release, count the features needing both
-products (docs/frame-reader-product.md, "When to reconsider") and tell the user when the split trigger is met. Prereleases (`-`) publish without
+`-p:ShotDetectorVersion` and `-p:FrameReaderVersion`. At each FrameReader release, record the count of features needing
+both products (docs/frame-reader-product.md, "When to reconsider"), as information; ask the user whether to split only
+when one of that section's conditions happens (docs/decisions/2026-10-31-split-trigger-criteria.md). Prereleases (`-`) publish without
 approval (the `prerelease` environment allows `v*-*` tags, and `main` once the user adds it; with tags only, push
 `vX.Y.Z-pre` on the release commit), stable ones wait for the user's approval of the `release` environment. A hand-pushed `v*` tag still works.
 After a stable release is on nuget.org, set that product's baseline in Directory.Build.props to it: `ApiBaselineVersion`
 (ShotDetector, FastYuv) or `FrameReaderApiBaselineVersion` (release.yml opens an issue per product as the reminder):
-packing then fails on any breaking change (SDK package validation, CP000x errors). FrameReader.dll, inside
-ShotDetector's package, isn't under semver: its changes go in src/ShotDetector/CompatibilitySuppressions.xml (regenerate
-with `-p:ApiCompatGenerateSuppressionFile=true`, FrameReader.dll entries only).
+packing then fails on any breaking change (SDK package validation, CP000x errors). FrameReader is a package dependency
+with its own versions (since 1.5.0; ShotDetector's package carried FrameReader.dll only up to 1.4.x). When a
+`PySceneDetectVersion` goes: obsolete two scenedetect releases back, removed at the next major
+(docs/decisions/2026-10-31-retiring-scenedetect-modes.md).
 
 ## Working on this repository
 
@@ -106,7 +109,7 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   histogram), `HashDetector`, `ContentScorer`, `EdgeDetector`, `Hsv`, `CvResize`, `FrameTime` (FrameTimecode
   arithmetic), `Shots`, `Stats`, `Export`, `IYuv420Converter`.
 - `src/FrameReader`: the general frame-reader library (docs/frame-reader-library.md), MIT, its own package `FrameReader`
-  at ShotDetector's version, stable from 1.5.0 (semver and package validation like ShotDetector's); ShotDetector
+  with its own versions since 2.1.0 (docs/frame-reader-product.md), stable from 1.5.0 (semver and package validation like ShotDetector's); ShotDetector
   depends on it, one way, through its public API only. So far
   `FFmpegLibraries` (loading FFmpeg 8's libraries), `MediaProbe` (headers, packet pts, Stream input; ShotDetector's
   `InProcessProbe` formats it as ffprobe text), `VideoFrameReader` (frames at a size and format, the bytes of ffmpeg's scale+format filters),
@@ -158,14 +161,18 @@ best-effort ones, which differ: docs/decisions/2026-10-29-mpeg-ps-pass-executabl
 - 10-bit (any format without swscale's unscaled path to BGR): chroma is interpolated from where the samples sit. OpenCV's
   `sws_scale_frame` takes that from the frame (h264/HEVC 4:2:0: left); ffmpeg's command line drops it before its filters
   (center), so the executable path passes `in_chroma_loc` (the first frame's, read with ffprobe or FrameDecoder: a container's
-  header can contradict the stream's own, as can its colour matrix and range, which FastYuv takes from there too) and
+  header can contradict the stream's own, as can its colour matrix and range, which FastYuv takes from there too; a file
+  is read again from each frame whose siting differs, with its own, a stream keeps the first frame's and warns:
+  docs/decisions/2026-10-27-per-frame-tags-executable.md) and
   BgrConverter's row context sets swscale's position. Linux
   OpenCV can't decode AV1 at all. Use a throwaway `debug/**` branch with a push-triggered workflow for Linux-only experiments
   (files for it outside a `debug/` folder: .gitignore ignores those, so they'd silently not be committed). To time a
   change against main on other runners (ARM, macOS), dispatch `compare.yml` on its branch instead: no branch to delete.
 - Frame labels (0.7.1): each decoded frame's showinfo time is matched to its packet (`PacketOf`), so frames
-  the decoder drops make numbers skip as in OpenCV. Files always run with `-copyts` (absolute times); streamed
-  times already start at 0 (ffmpeg shifts them), so `_startPts` must not be subtracted there.
+  the decoder drops make numbers skip as in OpenCV. Files and streams both run with `-copyts` (absolute times; streams
+  since docs/decisions/2026-10-29-stream-timestamp-reset.md): a stream's showinfo times have the input's start
+  subtracted as they are read (`InputStart`, from ffmpeg's "Input #0" Duration line, the connection being read), so
+  ffprobe's `_startPts` must not be subtracted there too.
 - The core path's frames: ffmpeg converts to BGR, then `remap` (two looping 16-bit PGM maps, x and y) keeps only
   `CvResize.SourceCols` x `SourceRows`; `ResizeSampled` resizes from that. Equivalent to the full frames by test
   (`SampledFramesAreTheFullFramesResized`); `DetectionOptions.FullFrames` (internal) brings the old path back.
@@ -191,8 +198,8 @@ best-effort ones, which differ: docs/decisions/2026-10-29-mpeg-ps-pass-executabl
 - NuGet trusted publishing: the policy's workflow must be `release.yml`, package glob `ShotDetector*`.
 - FFmpeg.AutoGen lays structs out for 8-byte `long`: on Windows every AVIOContext field from `checksum` (an `unsigned
   long`) on is 8 bytes off, so don't write `seekable` and the like through it (StreamInput passes callbacks instead).
-- Runners are pinned to an Ubuntu version (ubuntu-26.04 since 2026-10-11, after CI passed there), so the image
-  can't change under CI unannounced; move the pin after a do-not-merge PR runs CI on the new one. The native builds
+- Runners are pinned to an image version (ubuntu-26.04 since 2026-10-11, after CI passed there; windows-2025 and
+  macos-15 since 2026-10-31), so the image can't change under CI unannounced; move the pin after a do-not-merge PR runs CI on the new one. The native builds
   stay on ubuntu-22.04 on purpose (glibc baseline).
 - VideoWriter vs `ffmpeg -c:v libx264`: on AVX-512 CPUs, x264's AVX-512 code plus .NET's tiered JIT differ ~1 run in 250,
   so CI's VideoWriter step sets `DOTNET_TieredCompilation=0`. GitHub's runners are a mix of CPUs (EPYC 7763 without

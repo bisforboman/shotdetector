@@ -29,8 +29,13 @@ FrameReader release, list the changes since the previous one that touch FrameRea
 ShotDetector (`src/ShotDetector*`, `tests/ShotDetector.Tests`, `tests/ClipMaker`): in the same PR, or a FrameReader PR
 followed in the window by the ShotDetector PR that uses it (a FrameReader feature tested through ShotDetector counts
 too). Work is cut into one PR per product, so the old commit count saw none of that and read near zero for reasons
-that weren't independence. The trigger is no FrameReader feature needing ShotDetector at two releases in a row, over
-at least 3 FrameReader features: with fewer, the windows join. A met trigger means asking the user, not splitting.
+that weren't independence. Until 2026-10-31 the trigger was no FrameReader feature needing ShotDetector at two
+releases in a row, over at least 3 FrameReader features (with fewer, the windows joined), and a met trigger meant
+asking the user. It was met four times, each answered "don't split" for reasons the count doesn't measure, so since
+2026-10-31 (docs/decisions/2026-10-31-split-trigger-criteria.md) the count is recorded at each FrameReader release as
+information, and the question comes back only when one of these happens: a FrameReader issue or pull request from
+outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader
+surface on its own (a package split inside this repository, a different question).
 The commit counts below are kept as they were recorded.
 
 History (until 2.6.1 counted without tests): since 2.1.0, 3 of 9 (FrameReader.Native, the clips made by FrameReader,
