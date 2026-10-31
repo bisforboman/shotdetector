@@ -407,6 +407,15 @@ internal sealed partial class VideoReader
     /// <summary>The frames taken past the one converted: deinterlacing, its next (yadif's), so one step takes one frame.</summary>
     int FramesAhead => _deinterlace ? 1 : 0;
 
+    /// <summary>
+    /// Whether a range's reading from <paramref name="frame"/> would take another frame first: deinterlacing, the frames
+    /// given before it (yadif's previous frame for the frame before the range) and its next, one per step
+    /// (<see cref="TakeBeforeStart"/>), so the range's driver can put each in the feed first. False otherwise: the
+    /// reading takes its first frame itself.
+    /// </summary>
+    internal bool TakesBeforeFrame(int frame) =>
+        _frames is not null && !_framesStarted && !_framesEnded && _framesRead < frame + FramesAhead;
+
     /// <summary>Takes one of the frames <see cref="TakesBeforeStart"/> wants.</summary>
     internal void TakeBeforeStart() => TakeFrame();
 
