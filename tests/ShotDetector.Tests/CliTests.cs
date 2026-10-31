@@ -143,4 +143,32 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
             Directory.Delete(dir, true);
         }
     }
+
+    // --contact-sheet: a PNG or PDF by its extension (ContactSheetTests checks the sheets); another extension is a usage
+    // error before detecting.
+    [Fact]
+    public void ContactSheetWritesAPngOrAPdf()
+    {
+        string dir = Directory.CreateTempSubdirectory("shotdetect-sheet-").FullName;
+        try
+        {
+            string png = Path.Combine(dir, "sheet.png"), pdf = Path.Combine(dir, "sheet.pdf");
+            var (exitCode, _, err) = Run("-i", clips.ThreeShots, "-d", "content", "-q", "--contact-sheet", png, "--num-images", "2", "--contact-sheet-width", "100");
+            Assert.True(exitCode == 0, err);
+            var image = ContactSheet.DecodePng(File.ReadAllBytes(png));
+            Assert.Equal((8 + 160 + (2 * 108), 8 + (3 * (75 + 8))), (image.Width, image.Height));
+            (exitCode, _, err) = Run("-i", clips.ThreeShots, "-d", "content", "-q", "--contact-sheet", pdf);
+            Assert.True(exitCode == 0, err);
+            Assert.StartsWith("%PDF-1.4", File.ReadAllText(pdf), StringComparison.Ordinal);
+
+            (exitCode, _, err) = Run("-i", clips.ThreeShots, "--contact-sheet", Path.Combine(dir, "sheet.jpg"));
+            Assert.Equal(2, exitCode);
+            Assert.Contains("--contact-sheet is a .png or a .pdf file", err, StringComparison.Ordinal);
+            Assert.DoesNotContain("frames, processed at", err, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }

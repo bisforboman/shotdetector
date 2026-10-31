@@ -112,8 +112,11 @@ public sealed record ImageOptions
         };
     }
 
+    /// <summary>A pixel format the images are converted to last (the contact sheet's PNGs: rgb24); null: the encoder's choice.</summary>
+    internal string? PixelFormat { get; init; }
+
     /// <summary>Each image's filters after picking its frame: square pixels (at ffmpeg's default flags), then the size.</summary>
-    internal string Filter() => "scale='round(iw*sar)':ih,setsar=1" + ScaleFilter();
+    internal string Filter() => "scale='round(iw*sar)':ih,setsar=1" + ScaleFilter() + (PixelFormat is { } f ? ",format=" + f : "");
 
     /// <summary>The ffmpeg scale filter for these settings (bilinear, as scenedetect's default scale-method).</summary>
     internal string ScaleFilter() => (Width, Height, Scale) switch
