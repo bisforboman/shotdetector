@@ -82,18 +82,27 @@
         # FastYuv as x86's swscale: 4:2:2 reads its own row's chroma (YUV2RGB_LOOP's vshift), only where
         # swscale takes the unscaled converter (even decoded height), converted before turning (cv::rotate)
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.cs'; Find = 'RowToBgr(yuv, width, height, height, y, y, cols, bgrRow);'; Replace = 'RowToBgr(yuv, width, height, height, y, y >> 1, cols, bgrRow);'; Tests = 'FastYuvTests' }
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '!_sizeChanges && (TenBit || _codedSize.H % 2 == 0)'; Replace = '!_sizeChanges'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (!TenBit && _codedSize.H % 2 != 0)'; Replace = 'if (false)'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
 
         # FastYuv for 10-bit 4:2:0 as x86's swscale scales it: any height, even widths, MMXEXT's vertical scaler (from
         # vRounder) and output except the last two rows (C, chroma clipped), chroma interpolated from where it sits
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(TenBit || _codedSize.H % 2 == 0)'; Replace = '(_codedSize.H % 2 == 0)'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'bool asm = y < height - 2;'; Replace = 'bool asm = true;'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'const int VRounder = 4;'; Replace = 'const int VRounder = 0;'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'Math.Clamp(uc >> 19, 0, 255)'; Replace = '((uc >> 19) & 255)'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'SwscaleFilter.LocalPos(1, hChrPos)'; Replace = 'SwscaleFilter.LocalPos(1, -513)'; Tests = 'FastYuvTests.Converts10BitAsSwscaleOnX64' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'if (width % 2 != 0 || width < 2'; Replace = 'if (width < 2'; Tests = 'FastYuvTests.TenBitDeclinesWhatItDoesNotReproduce' }
-        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'h.Size <= cw && v.Size > 2'; Replace = 'h.Size <= cw'; Tests = 'FastYuvTests.TenBitDeclinesWhatItDoesNotReproduce' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'h.Size <= cw && (chroma422 || v.Size > 2)'; Replace = 'h.Size <= cw'; Tests = 'FastYuvTests.TenBitDeclinesWhatItDoesNotReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '_codedSize.W, _codedSize.H, Turn, CropRegion.X'; Replace = '_codedSize.W, _codedSize.H, 0, CropRegion.X'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
+
+        # ... and 8-bit 4:2:0 and 4:2:2 of an odd height (#630), which swscale scales too: the 8-bit samples widened to 10
+        # (times 4, not swscale's 8-to-10 expansion), chroma sited as the frame says, 4:2:2's yuv2bgr24_1 (no rounder,
+        # psraw 4), only odd heights
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '=> TenBit || _codedSize.H % 2 != 0;'; Replace = '=> TenBit;'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'to[i] = (ushort)(from[i] << 2);'; Replace = 'to[i] = (ushort)((from[i] << 2) | (from[i] >> 6));'; Tests = 'FastYuvTests.ConvertsOddHeightsAsSwscaleOnX64' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = '_rounder = plan.Chroma422 ? 0 : VRounder;'; Replace = '_rounder = VRounder;'; Tests = 'FastYuvTests.ConvertsOddHeightsAsSwscaleOnX64' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'int uu = (short)((f[k] >> 4) - 1024)'; Replace = 'int uu = (short)((f[k] + 8 >> 4) - 1024)'; Tests = 'FastYuvTests.ConvertsOddHeightsAsSwscaleOnX64' }
+        @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420.cs'; Find = 'height % 2 == 0 || pixelFormat is not'; Replace = 'pixelFormat is not'; Tests = 'FastYuvTests.OddHeightsDecline' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'video.PixelFormat == "yuv420p10le" || video.Height % 2 != 0'; Replace = 'video.PixelFormat == "yuv420p10le"'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
 
         # FastYuv's 8-bit rows with Vector128: blocks of 16 pixels only where they fit the row, start at an even column (whole
         # chroma samples) and write only the columns asked for; a plan per set of columns and width; the columns checked

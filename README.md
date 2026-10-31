@@ -189,7 +189,7 @@ decode failure (`DecodeFailed`) or a failed export (`ExportFailed`). ShotDetecto
 that also calls FrameReader directly catches either with one `catch (MediaException)`, and each keeps its own `Reason`.
 
 Frames from another decoder (a managed one, in the browser): `ShotDetection.Detect(YuvVideo, IEnumerable<YuvFrame>,
-options)` takes decoded 8-bit 4:2:0 planes (with strides) and the video's properties as FFmpeg reports them (average
+options)` takes decoded 8-bit 4:2:0 planes (with strides; also 4:2:2, 10-bit 4:2:0 and odd heights: `YuvVideo.PixelFormat`) and the video's properties as FFmpeg reports them (average
 frame rate, time base and start pts, first frame's colour tags), and gives the file's result, byte for byte, with the
 same converter. Nothing on that path loads FFmpeg or starts ffmpeg, so it needs `Yuv420Converter` (ShotDetector.FastYuv's
 `SwscaleYuv420`): there is no other conversion without FFmpeg. A constant frame rate (checked), or any rate with every frame's
@@ -388,7 +388,7 @@ frame size (CLI `--parallel`), `DetectStreamAsync` too, whose shots then all com
 
 The FastYuv package (LGPL) converts the raw yuv420p, yuv422p or 10-bit yuv420p planes (from ffmpeg, or decoded
 in-process) with a bit-exact port of x86 swscale's conversion, only the pixels the resize reads. Files in other pixel
-formats (10-bit 4:2:2, 4:4:4) or sizes it leaves to FFmpeg (an odd decoded height at 8 bits, an odd width at 10) take
+formats (10-bit 4:2:2, 4:4:4) or sizes it leaves to FFmpeg (an odd width at 10 bits, or at 8 with an odd height) take
 the default conversion, still with identical results. In-process on x64 it
 isn't needed for exactness (the default path converts only those rows with FFmpeg's own swscale, and costs a little
 less CPU); there its point is ARM, where it gives x86's results.

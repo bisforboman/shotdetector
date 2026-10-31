@@ -76,6 +76,28 @@ The sections below are the scoping written before 4:2:2 was built. Where they de
 differing, rotation turning the planes first, `WriteYuv420`, the only 4:2:2 sample being turned), the list above
 replaces them; for 10-bit they still stand.
 
+## As built (8-bit odd heights)
+
+Issue #630 (2026-10-31; the owner's scope: docs/decisions/2026-10-31-frame-source-odd-heights.md).
+swscale_unscaled.c takes the special converter only at an even height, so 8-bit yuv420p and yuv422p (and their yuvj
+forms) at an odd height scale, as 10-bit does (`print_info`: "bicubic scaler ... using MMXEXT"; FFmpeg 8.1.3 x86-64,
+`-cpuflags -mmxext` changes the bytes, `-ssse3`, `-sse2` don't), and interpolate the chroma from where it sits.
+
+- **4:2:0**: the vertical chroma filter has 4 taps, so the output is 10-bit's (`yuv2bgr24_X` MMXEXT, the C output
+  for the last two rows). The horizontal scaler is hScale8To15 (`>> 7`) where 10-bit's is hScale16To15 (`>> 9`): 8-bit
+  samples times 4 give the same 15-bit rows, chroma and luma (`Y << 7`), so `SwscaleYuv420P10` runs on the 8-bit
+  samples widened, only the rows read.
+- **4:2:2**: a chroma row for every row, so both vertical filters have one tap and vscale.c takes `yuv2packed1`: on x86
+  `yuv2bgr24_1`, `YSCALEYUV2RGB1` (uvalpha 0): each 15-bit sample `>> 4` (psraw), no rounder, less the offsets,
+  pmulhw; the last two rows `yuv2rgb_1_c_template` (`(v + 64) >> 7` into the tables, what 10-bit's C output gives for a
+  one-tap filter of 4096). The horizontal chroma filter still shifts by the siting: centred, every row but the last two
+  equals the unscaled converter's (a crop of a 4:2:2 frame to an odd height: rows 0 to h - 3 the same bytes); sited
+  left, every row differs from it.
+- Odd widths at odd heights take swscale's full chroma interpolation (C): declined, the default path converts them.
+- Checked: `FastYuvTests.ConvertsOddHeightsAsSwscaleOnX64` (every pixel against the ffmpeg executable's: noise and
+  0/255 extremes, each siting, matrices, both ranges, widths to 856, heights down to 3) and `SameFramesAsTheDefaultPath`
+  (whole ffv1 clips, both decoders, cropped and turned).
+
 ## Goal
 
 On ARM, ShotDetector with ShotDetector.FastYuv gives x64's exact results on 8-bit 4:2:0 (docs/decisions/2026-10-17-arm-results.md;
@@ -100,7 +122,8 @@ the frame) and what OpenCV's `sws_scale_frame` does. Each was hashed (framemd5) 
 | yuv420p, even height | unscaled special converter | `ssse3` only | `ff_yuv_420_bgr24_ssse3` (FastYuv's port, today) |
 | yuv422p / yuvj422p, even height | unscaled special converter, **the same function** | `ssse3` only | `ff_yuv_420_bgr24_ssse3` with the chroma row `y`, not `y >> 1` |
 | yuv420p10le, even width | scaled path, "bicubic scaler ... using MMXEXT" | `mmxext` only | `yuv2bgr24_X_mmxext` and its vertical filter |
-| yuv422p, odd height | scaled path, MMXEXT | `mmxext` only | as 10-bit, with 8-bit input |
+| yuv420p, odd height | scaled path, MMXEXT | `mmxext` only | as 10-bit, with 8-bit input |
+| yuv422p, odd height | scaled path, MMXEXT | `mmxext` only | `yuv2bgr24_1` (one-tap vertical filters) |
 | yuv420p10le, odd width | scaled path, full chroma interpolation | nothing (default = `-cpuflags 0`) | none: C |
 | yuv420p or yuv422p, odd width, even height | unscaled special converter (as for even widths) | `ssse3` only | as for even widths |
 
@@ -150,7 +173,8 @@ unscaled SSSE3 converter like even widths, `print_info` says so and FastYuv's ar
 FFmpeg 8.1.3; the full chroma interpolation below applies to the scaled path only.) An odd width forces full chroma interpolation (`SWS_FULL_CHR_H_INT`, utils.c "Forcing full internal H
 chroma due to odd output size"), which x86 runs in C (`yuv2bgr24_full_X_c`): x64 default equals `-cpuflags 0` there.
 Whether ARM's default equals it too is **unverified** (no odd-width 10-bit or 4:2:2 sample). An odd-height 4:2:2 frame
-can't take the unscaled converter and runs the same MMXEXT output as 10-bit.
+can't take the unscaled converter and scales; its output is `yuv2bgr24_1`, not 10-bit's (see "As built (8-bit odd
+heights)").
 
 ## What to port
 

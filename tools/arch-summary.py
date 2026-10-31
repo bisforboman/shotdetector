@@ -2,7 +2,7 @@
 per clip, detector and decoder, how many stats rows differ and by how much at most, and the cuts only one side has; the
 frame checksums (decoded, single-threaded, b's -idct simple against a's default, bgr24, bgr24 from swscale's C code, bgr24 +bitexact), as frames differing;
 and whether b's FastYuv files equal a's default ones. Exits 1 unless they do on every 8-bit 4:2:0 and 4:2:2 clip of even
-size (yuv420p, yuvj420p, yuv422p, yuvj422p, turned or not; MPEG-1/2, MJPEG and MPEG-4 Part 2 too, which decode with the
+width (yuv420p, yuvj420p, yuv422p, yuvj422p, turned or not, odd heights too; MPEG-1/2, MJPEG and MPEG-4 Part 2 too, which decode with the
 C IDCT or, Xvid's, the Xvid one; odd widths reported for now): the rest is FFmpeg's rounding on ARM, reported
 (docs/decisions/2026-10-17-arm-results.md, 2026-10-18-fastyuv-422.md, 2026-10-18-mpeg4-xvid-idct.md).
 Usage: python3 tools/arch-summary.py <a-dir> <b-dir>"""
@@ -92,10 +92,11 @@ def main() -> int:
         info = dict(line.split("=", 1) for line in (a / codec).read_text().splitlines() if "=" in line)
         codec_name, pix_fmt = info.get("codec_name", ""), info.get("pix_fmt", "")
         width, height = int(info.get("width") or 0), int(info.get("height") or 0)
-        # FastYuv converts what swscale's unscaled converter takes (an even decoded height); odd widths reported only
-        # until their first ARM table is read (docs/decisions/2026-10-18-fastyuv-422.md). 10-bit 4:2:0: even widths,
-        # any height (swscale's scaled path, docs/fastyuv-10bit-422.md).
-        required = (pix_fmt in ("yuv420p", "yuvj420p", "yuv422p", "yuvj422p") and width % 2 == 0 and height % 2 == 0
+        # FastYuv converts what swscale's unscaled converter takes (an even decoded height) and, at an odd height,
+        # its scaled path (docs/fastyuv-10bit-422.md, "As built (8-bit odd heights)"); odd widths reported only until
+        # their first ARM table is read (docs/decisions/2026-10-18-fastyuv-422.md). 10-bit 4:2:0: even widths, any
+        # height (swscale's scaled path).
+        required = (pix_fmt in ("yuv420p", "yuvj420p", "yuv422p", "yuvj422p") and width % 2 == 0 and (height % 2 == 0 or width >= 8 and height > 8)
                     or pix_fmt == "yuv420p10le" and width % 2 == 0 and width >= 8 and height > 8)
         checked += required
         if required and (not fast or hits != len(fast)):
