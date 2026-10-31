@@ -13,8 +13,9 @@ is on the same runner.
 - `Bench.cs`: the benchmark, shared by both hosts. For each input, first a check: `DetectAsync`, `ScoreRangeAsync` and
   `ScoreRange` in two ranges and `Merge` must give `Detect`'s CSVs on its first 300 frames (which also keeps them in the
   bundle for ci.yml's `wasm-trim` job: no FFmpeg.AutoGen may be reached from them), and again with the frames turned
-  by each display rotation (`YuvVideo.Rotation` 90, 180, -90) and at a variable frame rate (`YuvVideo.FrameTimestamps`:
-  the second half's frames twice as long; also from a start time there), whose CSVs' SHA-256 go in the JSON's `checks` and must
+  by each display rotation (`YuvVideo.Rotation` 90, 180, -90), at a variable frame rate (`YuvVideo.FrameTimestamps`:
+  the second half's frames twice as long; also from a start time there), and through `Detect` and `DetectAsync` with
+  the frames deinterlaced (FastYuv's `Yadif`, both parities), whose CSVs' SHA-256 go in the JSON's `checks` and must
   equal the native run's. Then the content and adaptive
   detectors and content with stats, best of 3 runs by wall time; one line of JSON on stdout with each case's frames, wall time, the time spent
   reading frames from the file, detection time (wall minus reading), nanoseconds per pixel (of detection), the managed

@@ -21,6 +21,8 @@ internal sealed partial class VideoReader
     int _framesRead;                         // the index after the last frame taken from _frames
     bool _framesEnded;
     YuvFrame _currentFrame;                  // the last frame taken: valid until the next MoveNext
+    byte[][]? _held;                         // deinterlacing: the last three frames taken, copied (frame k in k % 3)
+    readonly bool[] _heldTff = new bool[3];  // each held frame's field order as yadif's auto parity reads it
 
     /// <summary>Whether the frames come from the caller (<see cref="YuvVideo"/>), not a decoder.</summary>
     internal bool FromFrames => _frames is not null;
@@ -40,8 +42,12 @@ internal sealed partial class VideoReader
                 + "ShotDetector.FastYuv package): without FFmpeg there is no other conversion to BGR.");
         }
 
-        if (o.Deinterlace != DeinterlaceMode.Off || o.Yadif is not null)
-            throw new ArgumentException("Deinterlace isn't available for frames from the caller (it is FFmpeg's yadif); pass deinterlaced frames.");
+        if (DeinterlacesFrames(video, o) && o.Yadif is null)
+        {
+            throw new ArgumentException("Deinterlacing frames from the caller needs DetectionOptions.Yadif (Yadif from the "
+                + "ShotDetector.FastYuv package): without FFmpeg there is no yadif filter.");
+        }
+
         if (o.FfmpegResize)
             throw new ArgumentException("FfmpegResize isn't available for frames from the caller (it is ffmpeg's scaler).");
         if (video.PixelFormat is not ("yuv420p" or "yuvj420p"))
@@ -115,7 +121,9 @@ internal sealed partial class VideoReader
         _colours = new Lazy<Colours>(() => ReadColours(stream));
         if (YuvForVideo is null)
             throw new ArgumentException($"The converter doesn't take this video's colours (color_space '{video.ColorSpace}', full range {video.FullRange}).");
-        FieldOrder = FieldOrder.Unknown;
+        FieldOrder = video.FieldOrder;
+        _deinterlace = DeinterlacesFrames(video, o);
+        _yadif = o.Yadif;
         Codec = video.Codec;
         Container = video.Container;
         _framesTimed = video.TimeBase is not null;
@@ -123,7 +131,17 @@ internal sealed partial class VideoReader
         _startPts = video.StartPts;
     }
 
-    /// <summary>Takes the next frame: checks its planes, records its pts and that it comes at the constant rate.</summary>
+    /// <summary>
+    /// Whether frames from the caller are deinterlaced: <see cref="DeinterlaceMode.On"/>, or
+    /// <see cref="DeinterlaceMode.Auto"/> with an interlaced <see cref="YuvVideo.FieldOrder"/>, as a file's stream.
+    /// </summary>
+    internal static bool DeinterlacesFrames(YuvVideo video, DetectionOptions o) => o.Deinterlace == DeinterlaceMode.On
+        || (o.Deinterlace == DeinterlaceMode.Auto && video.FieldOrder is not (FieldOrder.Progressive or FieldOrder.Unknown));
+
+    /// <summary>
+    /// Takes the next frame: checks its planes, records its pts and that it comes at the constant rate. Deinterlacing,
+    /// copies it (yadif reads it again as the next frame's previous, after the caller may have reused its buffers).
+    /// </summary>
     bool TakeFrame()
     {
         if (_framesEnded || !_frames!.MoveNext())
@@ -163,6 +181,23 @@ internal sealed partial class VideoReader
             if (_framePts.Count > 0 && _frameBase == 0)
                 CheckConstantRate(_framePts[0], f.Pts, _framesRead, _timeBase, _framesRate);
             _framePts.Add(f.Pts);
+        }
+
+        if (_deinterlace)
+        {
+            // Packed planes (stride = width), as the converter takes them.
+            _held ??= [new byte[IYuv420Converter.FrameSize(w, h)], new byte[IYuv420Converter.FrameSize(w, h)], new byte[IYuv420Converter.FrameSize(w, h)]];
+            var held = _held[_framesRead % 3];
+            for (int r = 0; r < h; r++)
+                f.Y.Span.Slice(r * f.YStride, w).CopyTo(held.AsSpan(r * w, w));
+            for (int r = 0; r < ch; r++)
+            {
+                f.U.Span.Slice(r * f.UStride, cw).CopyTo(held.AsSpan(w * h + r * cw, cw));
+                f.V.Span.Slice(r * f.VStride, cw).CopyTo(held.AsSpan(w * h + cw * ch + r * cw, cw));
+            }
+
+            // As yadif's auto parity (FrameDecoder's row path): top first unless flagged interlaced bottom first.
+            _heldTff[_framesRead % 3] = !f.Interlaced || f.TopFieldFirst;
         }
 
         _currentFrame = f;
@@ -335,14 +370,19 @@ internal sealed partial class VideoReader
     /// </summary>
     internal bool TakesBeforeStart(double? startSeconds) =>
         _frames is not null && !_framesStarted && !_framesEnded
-        && _framesRead <= (startSeconds is { } s && s > 0 ? StartEstimate(s) : 0);
+        && _framesRead <= (startSeconds is { } s && s > 0 ? StartEstimate(s) : 0) + FramesAhead;
+
+    /// <summary>The frames taken past the one converted: deinterlacing, its next (yadif's), so one step takes one frame.</summary>
+    int FramesAhead => _deinterlace ? 1 : 0;
 
     /// <summary>Takes one of the frames <see cref="TakesBeforeStart"/> wants.</summary>
     internal void TakeBeforeStart() => TakeFrame();
 
     /// <summary>
     /// <see cref="Frames(int, int?, CancellationToken, int)"/> for frames from the caller: the frames before
-    /// <paramref name="startFrame"/> are taken but not converted, nor are those FrameSkip won't analyse.
+    /// <paramref name="startFrame"/> are taken but not converted, nor are those FrameSkip won't analyse. Deinterlaced as
+    /// FrameDecoder's row-wise yadif: output k from frames k-1, k and k+1 (frame 0 its own previous, the last its own
+    /// next), only the rows the conversion reads, at frame k's time.
     /// </summary>
     IEnumerable<byte[]> FramesFromCaller(int startFrame, int? count, CancellationToken cancellationToken)
     {
@@ -367,23 +407,31 @@ internal sealed partial class VideoReader
         for (int k = startFrame; count is null || k < startFrame + count; k++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            while (_framesRead <= k)
+            while (_framesRead <= k + FramesAhead && TakeFrame())
             {
-                if (!TakeFrame())
-                    yield break;
             }
 
-            if (_framesRead != k + 1)
+            if (_framesRead <= k)
+                yield break;
+            if (_framesRead > k + 1 + FramesAhead)
                 throw new InvalidOperationException($"Frame {k} was passed before it was converted.");
             if ((k - startFrame) % (_frameSkip + 1) == 0)
             {
-                var f = _currentFrame;
-                foreach (int r in luma)
-                    f.Y.Span.Slice(r * f.YStride, w).CopyTo(yuv.AsSpan(r * w, w));
-                foreach (int r in chroma)
+                if (_deinterlace)
                 {
-                    f.U.Span.Slice(r * f.UStride, cw).CopyTo(yuv.AsSpan(w * h + r * cw, cw));
-                    f.V.Span.Slice(r * f.VStride, cw).CopyTo(yuv.AsSpan(w * h + cw * ch + r * cw, cw));
+                    var cur = _held![k % 3];
+                    Deinterlace(_held[Math.Max(k - 1, 0) % 3], cur, _framesRead > k + 1 ? _held[(k + 1) % 3] : cur, _heldTff[k % 3], yuv, luma, chroma, w, h);
+                }
+                else
+                {
+                    var f = _currentFrame;
+                    foreach (int r in luma)
+                        f.Y.Span.Slice(r * f.YStride, w).CopyTo(yuv.AsSpan(r * w, w));
+                    foreach (int r in chroma)
+                    {
+                        f.U.Span.Slice(r * f.UStride, cw).CopyTo(yuv.AsSpan(w * h + r * cw, cw));
+                        f.V.Span.Slice(r * f.VStride, cw).CopyTo(yuv.AsSpan(w * h + cw * ch + r * cw, cw));
+                    }
                 }
 
                 if (resizer is not null)
@@ -417,6 +465,34 @@ internal sealed partial class VideoReader
             }
 
             yield return small;
+        }
+    }
+
+    /// <summary>
+    /// yadif (mode 0) on rows <paramref name="luma"/> of the luma plane and <paramref name="chroma"/> of each chroma plane,
+    /// into <paramref name="yuv"/>: as FrameDecoder's row path, the rows of the field yadif keeps copied from
+    /// <paramref name="cur"/>, the others interpolated from the three frames (packed planes, stride = width).
+    /// </summary>
+    unsafe void Deinterlace(byte[] prev, byte[] cur, byte[] next, bool tff, byte[] yuv, int[] luma, int[] chroma, int w, int h)
+    {
+        int cw = (w + 1) / 2, ch = (h + 1) / 2, parity = tff ? 0 : 1; // yadif filters with parity tff ^ 1: these rows are interpolated
+        fixed (byte* p = prev, c = cur, n = next, d = yuv)
+        {
+            Plane(_yadif!, p, c, n, d, w, h, luma, parity);
+            Plane(_yadif!, p + (w * h), c + (w * h), n + (w * h), d + (w * h), cw, ch, chroma, parity);
+            int v = (w * h) + (cw * ch);
+            Plane(_yadif!, p + v, c + v, n + v, d + v, cw, ch, chroma, parity);
+        }
+
+        static void Plane(FrameReader.IRowDeinterlacer yadif, byte* prev, byte* cur, byte* next, byte* dst, int width, int height, int[] rows, int parity)
+        {
+            foreach (int y in rows)
+            {
+                if (((y ^ parity) & 1) != 0)
+                    yadif.FilterRow((nint)dst, (nint)prev, (nint)cur, (nint)next, width, width, width, height, y, 1);
+                else
+                    new ReadOnlySpan<byte>(cur + ((long)y * width), width).CopyTo(new Span<byte>(dst + ((long)y * width), width));
+            }
         }
     }
 }

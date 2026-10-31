@@ -4,7 +4,8 @@ namespace ShotDetector;
 /// A video whose frames the caller decodes (<see cref="ShotDetection.Detect(YuvVideo, IEnumerable{YuvFrame}, DetectionOptions?, CancellationToken)"/>):
 /// what the headers would say. Nothing is probed, so the values must be the ones FFmpeg reports for the same file for
 /// the results to equal <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/>'s: the average
-/// frame rate, the stream's time base and start pts, the first frame's colour tags and the display rotation.
+/// frame rate, the stream's time base and start pts, the first frame's colour tags, the display rotation and the field
+/// order.
 /// </summary>
 public sealed record YuvVideo
 {
@@ -64,6 +65,13 @@ public sealed record YuvVideo
     /// </summary>
     public int Rotation { get; init; }
 
+    /// <summary>
+    /// The stream's field order as FFmpeg reports it (ffprobe's field_order: from the H.264 parser, the MPEG-2 sequence
+    /// header, ...), which <see cref="DeinterlaceMode.Auto"/> goes by and <see cref="DetectedVideo.FieldOrder"/> reports.
+    /// Unknown (the default) and Progressive aren't deinterlaced by Auto.
+    /// </summary>
+    public FrameReader.FieldOrder FieldOrder { get; init; }
+
     /// <summary>The codec's FFmpeg name (h264, ...), reported back in <see cref="DetectedVideo.Codec"/>.</summary>
     public string Codec { get; init; } = "";
 
@@ -87,4 +95,14 @@ public readonly record struct YuvFrame(ReadOnlyMemory<byte> Y, int YStride, Read
 {
     /// <summary>The frame's presentation timestamp in <see cref="YuvVideo.TimeBase"/> (unused when that is null).</summary>
     public long Pts { get; init; }
+
+    /// <summary>
+    /// Whether the frame is flagged interlaced (FFmpeg's AV_FRAME_FLAG_INTERLACED, ffprobe's interlaced_frame). With
+    /// <see cref="TopFieldFirst"/>, the field order yadif takes for the frame when deinterlacing
+    /// (<see cref="DetectionOptions.Deinterlace"/>): top first unless flagged interlaced and not top field first.
+    /// </summary>
+    public bool Interlaced { get; init; }
+
+    /// <summary>Whether the frame's top field comes first (FFmpeg's AV_FRAME_FLAG_TOP_FIELD_FIRST, ffprobe's top_field_first); see <see cref="Interlaced"/>.</summary>
+    public bool TopFieldFirst { get; init; }
 }

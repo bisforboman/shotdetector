@@ -226,6 +226,115 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(result.Stats!.Csv(result.Video.Position), minus.Stats!.Csv(minus.Video.Position));
     }
 
+    // Interlaced H.264 (libx264 MBAFF, as shotdetector-web decodes it with ManagedCodecs) deinterlaced: the frames as
+    // decoded, YuvVideo.FieldOrder as FFmpeg reports the stream's and each frame's flags as FFmpeg sets them (top field
+    // first on one clip, bottom on the other: yadif's parity), held as FrameDecoder's row-wise yadif holds them. Auto
+    // and On; from a start time (the frame before it is the first's previous); every row (no resize); with frame skip
+    // (the skipped frames are still the analysed ones' neighbours); turned after deinterlacing; MPEG-2.
+    [Theory]
+    [InlineData("tff", "auto")]
+    [InlineData("bff", "auto")]
+    [InlineData("tff", "on")]
+    [InlineData("bff", "adaptive")]
+    [InlineData("tff", "hash")]
+    [InlineData("bff", "start")]
+    [InlineData("tff", "skip")]
+    [InlineData("bff", "scale")]
+    [InlineData("tff", "rotated")]
+    [InlineData("mpeg2", "auto")]
+    [InlineData("progressive", "on")]
+    public async Task SameAsTheFileDeinterlaced(string clip, string name)
+    {
+        if (Libs is null || (name == "scale" && RuntimeInformation.ProcessArchitecture != Architecture.X64))
+            return;
+        string path = clip == "progressive" ? clips.ThreeShots : InterlacedClip(clip);
+        if (name == "rotated")
+            path = Rotated(path, 90);
+        var options = new DetectionOptions
+        {
+            Detector = DetectorKind.Content,
+            CollectStats = true,
+            FfmpegDirectory = Libs,
+            Decoder = VideoDecoder.InProcess,
+            Yuv420Converter = new SwscaleYuv420(),
+            Deinterlace = name == "on" ? DeinterlaceMode.On : DeinterlaceMode.Auto,
+            Yadif = new Yadif(),
+        };
+        options = name switch
+        {
+            "adaptive" => options with { Detector = DetectorKind.Adaptive },
+            "hash" => options with { Detector = DetectorKind.Hash },
+            "start" => options with { StartTime = "2.5", EndTime = "5" },
+            "skip" => options with { FrameSkip = 2, CollectStats = false },
+            "scale" => options with { Downscale = 1, Crop = (10, 21, 220, 190) },
+            _ => options,
+        };
+        Assert.True(ShotDetection.Detect(path, options).Video.Deinterlaced);
+        await AssertSame(path, options);
+    }
+
+    [Fact]
+    public void AutoDeinterlacesWhatTheFieldOrderSays()
+    {
+        // Auto goes by YuvVideo.FieldOrder: progressive or unknown isn't deinterlaced, and needs no Yadif then.
+        var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420(), CollectStats = true, Deinterlace = DeinterlaceMode.Auto };
+        foreach (var order in new[] { FrameReader.FieldOrder.Unknown, FrameReader.FieldOrder.Progressive })
+        {
+            var video = Video() with { FieldOrder = order };
+            var result = ShotDetection.Detect(video, Frames(video, 30), options);
+            Assert.Equal((order, false), (result.Video.FieldOrder, result.Video.Deinterlaced));
+        }
+
+        var interlaced = Video() with { FieldOrder = FrameReader.FieldOrder.BottomFirst };
+        var e = Assert.Throws<ArgumentException>(() => ShotDetection.Detect(interlaced, Frames(interlaced, 30), options));
+        Assert.Contains("Yadif", e.Message);
+        var deinterlaced = ShotDetection.Detect(interlaced, Frames(interlaced, 30), options with { Yadif = new Yadif() });
+        Assert.Equal((FrameReader.FieldOrder.BottomFirst, true), (deinterlaced.Video.FieldOrder, deinterlaced.Video.Deinterlaced));
+        var off = ShotDetection.Detect(interlaced, Frames(interlaced, 30), options with { Deinterlace = DeinterlaceMode.Off, Yadif = new Yadif() });
+        Assert.False(off.Video.Deinterlaced);
+        Assert.NotEqual(off.Stats!.Csv(off.Video.Position), deinterlaced.Stats!.Csv(deinterlaced.Video.Position));
+    }
+
+    [Fact]
+    public void EachFramesFlagsSetItsParity()
+    {
+        // yadif's auto parity, per frame: top first unless flagged interlaced and not top first. Frames given in one
+        // buffer the caller reuses give the same result: the reader copies those yadif reads again.
+        var video = Video() with { FieldOrder = FrameReader.FieldOrder.TopFirst };
+        var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420(), CollectStats = true, Downscale = 1, Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
+        string Stats(Func<int, YuvFrame, YuvFrame> flags, bool reused = false)
+        {
+            var frames = Frames(video, 30).Select((f, i) => flags(i, f));
+            if (reused)
+                frames = Reused(frames);
+            var r = ShotDetection.Detect(video, frames, options);
+            return r.Stats!.Csv(r.Video.Position);
+        }
+
+        string top = Stats((_, f) => f with { Interlaced = true, TopFieldFirst = true });
+        Assert.Equal(top, Stats((_, f) => f));
+        Assert.Equal(top, Stats((_, f) => f with { TopFieldFirst = false }));
+        string bottom = Stats((_, f) => f with { Interlaced = true });
+        Assert.NotEqual(top, bottom);
+        Assert.NotEqual(bottom, Stats((i, f) => f with { Interlaced = true, TopFieldFirst = i == 10 }));
+        Assert.Equal(bottom, Stats((_, f) => f with { Interlaced = true }, reused: true));
+
+        static IEnumerable<YuvFrame> Reused(IEnumerable<YuvFrame> frames)
+        {
+            byte[]? y = null, u = null, v = null;
+            foreach (var f in frames)
+            {
+                y ??= new byte[f.Y.Length];
+                u ??= new byte[f.U.Length];
+                v ??= new byte[f.V.Length];
+                f.Y.CopyTo(y);
+                f.U.CopyTo(u);
+                f.V.CopyTo(v);
+                yield return f with { Y = y, U = u, V = v };
+            }
+        }
+    }
+
     [Fact]
     public async Task NeedsAConverter()
     {
@@ -255,7 +364,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420() };
         options = name switch
         {
-            "deinterlace" => options with { Deinterlace = DeinterlaceMode.Auto },
+            "deinterlace" => options with { Deinterlace = DeinterlaceMode.On },
             "ffmpeg-resize" => options with { FfmpegResize = true },
             "tone" => options with { TrimReferenceTone = true },
             _ => options,
@@ -363,6 +472,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(file.Stats?.Csv(file.Video.Position), ours.Stats?.Csv(ours.Video.Position));
         Assert.Equal((file.Video.ProcessedWidth, file.Video.ProcessedHeight, file.Video.FrameRate, file.Video.OpenCvFrameCount, file.Video.Duration),
             (ours.Video.ProcessedWidth, ours.Video.ProcessedHeight, ours.Video.FrameRate, ours.Video.OpenCvFrameCount, ours.Video.Duration));
+        Assert.Equal((file.Video.FieldOrder, file.Video.Deinterlaced), (ours.Video.FieldOrder, ours.Video.Deinterlaced));
 
         // Parallel asked for: both read sequentially, for their own reason.
         static string Why(string warning) => warning.Split(": ")[0];
@@ -494,20 +604,53 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             Codec = info.Codec,
             Rotation = (int)Math.Round(info.Rotation ?? 0) % 360,
             FrameTimestamps = timestamps ? [.. probed.PacketTimestamps!.Select(p => p!.Value).Order()] : null,
+            FieldOrder = info.FieldOrder,
         };
+
+        // Each frame's interlaced and top-field-first flags as FFmpeg's decoder sets them (ffprobe's), in output order.
+        var flags = VideoReader.Run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "frame=interlaced_frame,top_field_first", "-of", "compact=p=0:nk=0", path], default)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => (Interlaced: line.Contains("interlaced_frame=1", StringComparison.Ordinal), TopFieldFirst: line.Contains("top_field_first=1", StringComparison.Ordinal)))
+            .ToList();
         return (video, Frames());
 
         IEnumerable<YuvFrame> Frames()
         {
             using var decoder = new FrameReader.FrameDecoder(path, decoderOptions);
-            while (decoder.Next())
+            for (int i = 0; decoder.Next(); i++)
             {
                 var y = decoder.GetPlane(0, out int ys).ToArray();
                 var u = decoder.GetPlane(1, out int us).ToArray();
                 var v = decoder.GetPlane(2, out int vs).ToArray();
-                yield return new YuvFrame(y, ys, u, us, v, vs) { Pts = decoder.Pts };
+                yield return new YuvFrame(y, ys, u, us, v, vs) { Pts = decoder.Pts, Interlaced = flags[i].Interlaced, TopFieldFirst = flags[i].TopFieldFirst };
             }
         }
+    }
+
+    /// <summary>
+    /// The three-shot clip interlaced: libx264 MBAFF with top-field-first frames ("tff", field order tt) or bottom-first
+    /// ones ("bff", bb), or MPEG-2 ("mpeg2", top first).
+    /// </summary>
+    string InterlacedClip(string name)
+    {
+        string path = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, $"interlaced-{name}.mp4");
+        lock (H264Lock)
+        {
+            if (!File.Exists(path))
+            {
+                string[] codec = name switch
+                {
+                    "tff" => ["-c:v", "libx264", "-flags", "+ildct+ilme", "-top", "1", "-bf", "3"],
+                    "bff" => ["-c:v", "libx264", "-x264-params", "interlaced=1:bff=1", "-bf", "3"],
+                    _ => ["-vf", "setfield=tff", "-c:v", "mpeg2video", "-q:v", "3", "-flags", "+ildct+ilme"],
+                };
+                string partial = path + ".part" + Path.GetExtension(path);
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, .. codec, partial], default);
+                File.Move(partial, path, true);
+            }
+        }
+
+        return path;
     }
 
     /// <summary>ffprobe's seconds become the nearest tick: TimeSpan.FromSeconds(4.56) is 4.5599999.</summary>
