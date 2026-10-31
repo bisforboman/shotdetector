@@ -686,6 +686,8 @@ public static partial class ShotDetection
         Line("PixelFormat", video.PixelFormat);
         Line("ColorSpace", video.ColorSpace);
         Line("FullRange", video.FullRange);
+        if (video.ChromaLocation is { } siting)
+            Line("ChromaLocation", siting); // only when set, so the scores of ranges from before it was there keep their fingerprint
         Line("TimeBase", video.TimeBase is { } tb ? $"{tb.Num}/{tb.Den}" : null);
         Line("StartPts", video.StartPts);
         Line("FrameCount", video.FrameCount);

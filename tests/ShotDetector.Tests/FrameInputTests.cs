@@ -356,7 +356,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     {
         var video = name switch
         {
-            "format" => Video() with { PixelFormat = "yuv422p" },
+            "format" => Video() with { PixelFormat = "yuv444p" },
             "odd" => Video() with { Height = 63 },
             "colour" => Video() with { ColorSpace = "ycgco" },
             _ => Video(),
@@ -372,8 +372,14 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         var frames = Frames(video, 3);
         if (name == "plane")
             frames = frames.Select(f => f with { U = f.U[..^4] });
-        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video, frames, options));
+        var e = Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video, frames, options));
         await Assert.ThrowsAsync<ArgumentException>(() => ShotDetection.DetectAsync(video, FrameSourceAsyncTests.Yielding(frames), options));
+
+        // Refused for what it is, not by a later check that happens to catch it too.
+        if (name == "format")
+            Assert.Contains("must be yuv420p, yuvj420p, yuv422p, yuvj422p or yuv420p10le so far, not yuv444p", e.Message);
+        if (name == "odd")
+            Assert.Contains("height must be even", e.Message);
     }
 
     [Theory]
@@ -449,6 +455,83 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         return path;
     }
 
+    // The formats FastYuv converts besides 8-bit 4:2:0: 10-bit 4:2:0 (H.264 and HEVC, chroma sited left; a copy sited
+    // top-left, whose chroma is interpolated from there), 8-bit 4:2:2 (H.264 yuv422p, MJPEG yuvj422p), through the resize
+    // and without it (Downscale 1), turned, and deinterlaced (10-bit and 4:2:2 MBAFF H.264): the file's results byte
+    // for byte. Made with the ffmpeg executable's encoders; skipped without them.
+    [Theory]
+    [InlineData("h264-10", "content")]
+    [InlineData("h264-10", "adaptive")]
+    [InlineData("h264-10", "scale")]
+    [InlineData("h264-10", "turned")]
+    [InlineData("h264-10-topleft", "content")]
+    [InlineData("hevc-10", "content")]
+    [InlineData("hevc-10", "histogram")]
+    [InlineData("h264-422", "content")]
+    [InlineData("h264-422", "scale")]
+    [InlineData("h264-422", "turned")]
+    [InlineData("mjpeg-422", "content")]
+    [InlineData("mjpeg-422", "histogram")]
+    [InlineData("h264-10-tff", "deinterlace")]
+    [InlineData("h264-422-tff", "deinterlace")]
+    public async Task SameAsTheFileForEachFormat(string clip, string name)
+    {
+        if (Libs is null || FormatClip(clip) is not { } path)
+            return;
+        if (name == "scale" && RuntimeInformation.ProcessArchitecture != Architecture.X64)
+            return;
+        if (name == "turned")
+            path = Rotated(path, 90);
+        var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() };
+        options = name switch
+        {
+            "adaptive" => options with { Detector = DetectorKind.Adaptive },
+            "histogram" => options with { Detector = DetectorKind.Histogram },
+            "scale" => options with { Downscale = 1 },
+            "deinterlace" => options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() },
+            _ => options,
+        };
+        await AssertSame(path, options);
+        var (video, _) = Decoded(path);
+        Assert.Equal(clip.Contains("-10", StringComparison.Ordinal) ? "yuv420p10le" : clip.StartsWith("mjpeg", StringComparison.Ordinal) ? "yuvj422p" : "yuv422p", video.PixelFormat);
+        if (clip == "h264-10-topleft")
+            Assert.Equal("topleft", video.ChromaLocation);
+    }
+
+    /// <summary>The three-shot clip in another pixel format (<see cref="SameAsTheFileForEachFormat"/>); null without the encoder.</summary>
+    string? FormatClip(string name)
+    {
+        string dir = Path.GetDirectoryName(clips.ThreeShots)!, path = Path.Combine(dir, $"format-{name}" + (name.StartsWith("mjpeg", StringComparison.Ordinal) ? ".avi" : ".mp4"));
+        lock (H264Lock)
+        {
+            if (File.Exists(path))
+                return path;
+            string[] args = name switch
+            {
+                "h264-10" => ["-i", clips.ThreeShots, "-pix_fmt", "yuv420p10le", "-c:v", "libx264", "-bf", "2"],
+                "h264-10-topleft" => ["-i", clips.ThreeShots, "-pix_fmt", "yuv420p10le", "-c:v", "libx264", "-chroma_sample_location", "left", "-x264-params", "chromaloc=2"],
+                "hevc-10" => ["-i", clips.ThreeShots, "-pix_fmt", "yuv420p10le", "-c:v", "libx265", "-x265-params", "log-level=error"],
+                "h264-422" => ["-i", clips.ThreeShots, "-pix_fmt", "yuv422p", "-c:v", "libx264"],
+                "mjpeg-422" => ["-i", clips.ThreeShots, "-pix_fmt", "yuvj422p", "-c:v", "mjpeg", "-q:v", "3"],
+                "h264-10-tff" => ["-i", clips.ThreeShots, "-pix_fmt", "yuv420p10le", "-c:v", "libx264", "-flags", "+ildct+ilme", "-top", "1"],
+                _ => ["-i", clips.ThreeShots, "-pix_fmt", "yuv422p", "-c:v", "libx264", "-flags", "+ildct+ilme", "-top", "1"],
+            };
+            string partial = path + ".part" + Path.GetExtension(path);
+            try
+            {
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", .. args, partial], default);
+            }
+            catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+            {
+                return null;
+            }
+
+            File.Move(partial, path, true);
+        }
+
+        return path;
+    }
+
     // A spliced stream (libx264 BT.709 then SMPTE 170M, joined in MPEG-TS): each frame converted with its own colour
     // matrix, as the file path in-process (and OpenCV) converts it, gives the file's stats byte for byte.
     [Theory]
@@ -510,6 +593,62 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         }
 
         return path;
+    }
+
+    [Theory]
+    [InlineData("yuv422p")]
+    [InlineData("yuvj422p")]
+    [InlineData("yuv420p10le")]
+    public void PlanesAreCheckedForTheFormat(string format)
+    {
+        // 4:2:2: chroma planes of the full height; 10-bit: two bytes a sample. Planes of 8-bit 4:2:0's size are refused.
+        var video = Video() with { PixelFormat = format };
+        var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420() };
+        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video, Frames(video, 3), options));
+        Assert.Equal(3, ShotDetection.Detect(video, FramesOf(video, 3), options).FrameCount);
+        if (format == "yuv420p10le")
+            Assert.Equal(3, ShotDetection.Detect(video with { Height = 47 }, FramesOf(video with { Height = 47 }, 3), options).FrameCount);
+        else
+            Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video with { Height = 47 }, FramesOf(video with { Height = 47 }, 3), options));
+    }
+
+    [Fact]
+    public void TenBitChromaIsSitedAsTheFramesSay()
+    {
+        // yuv420p10le's chroma is interpolated from where it sits: the video's siting, or each frame's over it.
+        var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420(), Detector = DetectorKind.Content, CollectStats = true };
+        var video = Video() with { PixelFormat = "yuv420p10le" };
+        string Stats(YuvVideo v, string? frameSiting) =>
+            ShotDetection.Detect(v, FramesOf(v, 30).Select(f => f with { ChromaLocation = frameSiting }), options) is var r ? r.Stats!.Csv(r.Video.Position) : "";
+        string topLeft = Stats(video with { ChromaLocation = "topleft" }, null);
+        Assert.Equal(topLeft, Stats(video with { ChromaLocation = "left" }, "topleft"));
+        Assert.NotEqual(topLeft, Stats(video with { ChromaLocation = "left" }, null));
+        Assert.Equal(Stats(video, null), Stats(video with { ChromaLocation = "center" }, null));
+    }
+
+    /// <summary>Noise frames in <paramref name="video"/>'s format (10-bit samples in 0..1023), tightly packed.</summary>
+    static IEnumerable<YuvFrame> FramesOf(YuvVideo video, int count)
+    {
+        int b = video.PixelFormat == "yuv420p10le" ? 2 : 1, w = video.Width, h = video.Height, cw = (w + 1) / 2;
+        int ch = video.PixelFormat.Contains("422", StringComparison.Ordinal) ? h : (h + 1) / 2;
+        for (int i = 0; i < count; i++)
+        {
+            var random = new Random(i);
+            byte[] Plane(int width, int height)
+            {
+                var plane = new byte[width * height * b];
+                random.NextBytes(plane);
+                if (b == 2)
+                {
+                    for (int j = 1; j < plane.Length; j += 2)
+                        plane[j] &= 3;
+                }
+
+                return plane;
+            }
+
+            yield return new YuvFrame(Plane(w, h), w * b, Plane(cw, ch), cw * b, Plane(cw, ch), cw * b);
+        }
     }
 
     [Theory]
@@ -718,11 +857,13 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         var info = probed.Video!;
         var decoderOptions = DecoderOptions(path);
         string colorSpace, colorRange;
+        string? chromaLocation;
         using (var first = new FrameReader.FrameDecoder(path, decoderOptions))
         {
             Assert.True(first.Next());
             colorSpace = first.ColorSpace ?? info.ColorSpace ?? "";
             colorRange = first.ColorRange ?? info.ColorRange ?? "";
+            chromaLocation = first.ChromaLocation ?? info.ChromaLocation;
         }
 
         var video = new YuvVideo
@@ -733,10 +874,11 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             PixelFormat = info.PixelFormat!,
             ColorSpace = colorSpace,
             FullRange = colorRange == "pc",
+            ChromaLocation = chromaLocation,
             TimeBase = info.TimeBase,
             StartPts = info.StartPts ?? 0,
             FrameCount = info.FrameCount,
-            Duration = info.DurationPts is { } d ? TimeSpan.FromTicks((long)Math.Round(d * 1e7 * info.TimeBase.Num / info.TimeBase.Den / 10) * 10) : null,
+            Duration = info.DurationPts is { } d ? TimeSpan.FromTicks((long)Math.Round(d * 1e7 * info.TimeBase.Num / info.TimeBase.Den / 10) * 10) : probed.Duration,
             Codec = info.Codec,
             Rotation = (int)Math.Round(info.Rotation ?? 0) % 360,
             FrameTimestamps = timestamps ? [.. probed.PacketTimestamps!.Select(p => p!.Value).Order()] : null,
@@ -758,7 +900,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
                 var y = decoder.GetPlane(0, out int ys).ToArray();
                 var u = decoder.GetPlane(1, out int us).ToArray();
                 var v = decoder.GetPlane(2, out int vs).ToArray();
-                yield return new YuvFrame(y, ys, u, us, v, vs) { Width = decoder.Width, Height = decoder.Height, ColorSpace = decoder.ColorSpace, FullRange = decoder.ColorRange is { } range ? range == "pc" : null, Pts = decoder.Pts, Interlaced = flags[i].Interlaced, TopFieldFirst = flags[i].TopFieldFirst };
+                yield return new YuvFrame(y, ys, u, us, v, vs) { Width = decoder.Width, Height = decoder.Height, ColorSpace = decoder.ColorSpace, FullRange = decoder.ColorRange is { } range ? range == "pc" : null, ChromaLocation = decoder.ChromaLocation, Pts = decoder.Pts, Interlaced = flags[i].Interlaced, TopFieldFirst = flags[i].TopFieldFirst };
             }
         }
     }
