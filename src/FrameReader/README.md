@@ -282,6 +282,35 @@ var loudness = Loudness.Measure(audio);
 Console.WriteLine($"{loudness.Integrated:0.0} LUFS, LRA {loudness.Range:0.0} LU, true peak {loudness.TruePeak:0.0} dBTP");
 ```
 
+### Loudness without FFmpeg
+
+`LoudnessMeter` measures samples you decode yourself (a browser, ManagedCodecs), a chunk at a time, touching nothing of
+FFmpeg. It gives the same `LoudnessResult` plus each channel's sample peak, true peak and count of samples at full
+scale:
+
+```csharp
+var meter = new LoudnessMeter(48000, 2);            // weights: FFmpeg's default layout for the count
+foreach (var samples in decoded)                    // interleaved float, full scale 1
+    meter.Add(samples);
+var m = meter.Finish();
+Console.WriteLine($"{m.Loudness.Integrated:0.0} LUFS, {m.Channels[0].FullScale} clipped samples on the left");
+```
+
+Integrated loudness, loudness range and its ends are ebur128's own arithmetic, so they are the same doubles as
+`Loudness.Measure` on the same samples. That covers its running sums, its 0.01 LU histogram (truncated), its gates and
+percentile walk, and the order its x86-64 AVX kernel adds in. The sample peak is equal too. One thing depends on the
+host: ebur128 takes its bins' energies from the libm's `exp2`, whose last bit differs between glibc builds. The meter
+uses correctly rounded energies, so in the rare programme that fills a bin where a host's libm is an ulp off, I differs
+there by about an ulp. Channel weights follow BS.1770-4 as ebur128 does: 0 for the LFE, 1.41 for side and back channels. Pass
+`ChannelWeights.ForLayout(info.ChannelLayout)` when the layout isn't FFmpeg's default for the count.
+
+The true peak is where they differ, on purpose (docs/decisions/2026-10-31-frame-reader-measures.md). The meter follows
+BS.1770-4 Annex 2: 4 times oversampled below 192 kHz, a 16-tap windowed sinc per phase. ebur128 resamples to 192 kHz
+with swresample. On programme audio they agree within 0.1 dB. Where the audio has energy near Nyquist (white noise,
+abrupt high sines, short clips), swresample overshoots and ebur128 reads up to about 0.8 dB higher than an ideal
+reconstruction, while the meter stays within 0.05 dB of it on the test's clips (tests/FrameReader.Tests/LoudnessMeterTests.cs,
+tools/true_peak_reference.py). Its filter's passband ends below Nyquist: at 96 kHz a 29 kHz sine reads 0.13 dB low. Matching ebur128 there would mean porting an LGPL resampler to reproduce an overestimate.
+
 Writing audio: `AudioWriter` encodes interleaved float32 samples to MP3 (LAME), AAC (.m4a, .aac, .mka) or WAV, the
 file `ffmpeg -f f32le -ar R -ac C -i - -c:a ENCODER [-b:a B] OUT` writes, byte for byte with `Bitexact = true` on
 both sides (without it, files carry FFmpeg's usual encoder tags). Read, filter, write:
@@ -429,6 +458,55 @@ foreach (var (samples, time) in decodedPackets) // float, interleaved
 var tones = finder.Finish();
 var waveform = builder.Finish();
 ```
+
+`SilenceFinder` finds silences the way FFmpeg's `silencedetect` does (its defaults: -60 dB, 2 s), in the samples you
+give it, to the sample: it counts the samples under the level one channel after another, as the filter does, so its
+spans are the filter's even where a silence starts or ends on one channel before the other. Spans are in instants
+from the first sample given; add your own start.
+
+```csharp
+var silences = new SilenceFinder(sampleRate, channels, level: -60, duration: TimeSpan.FromSeconds(2));
+foreach (var samples in decodedPackets) // float, interleaved
+    silences.Add(samples);
+foreach (var s in silences.Finish())
+    Console.WriteLine($"silence {start + s.Start(sampleRate)} to {start + s.End(sampleRate)}");
+```
+
+silencedetect compares integer samples (16 and 32-bit PCM) in their own format against the level times the format's
+largest value, truncated; the finder takes floats, as FFmpeg's decoders give AAC, MP3, Opus and float PCM.
+
+`PictureMeter` measures frames as FFmpeg's picture filters do, with nothing of FFmpeg, on planes from any decoder:
+FrameReader's own (`Add(DecodedFrame)`) or one of yours (planes with strides, more than 8 bits as 16-bit little-endian).
+It takes 8 to 16 bits in 4:2:0, 4:2:2 or 4:4:4, from a `PictureFormat` that holds the size, depth, chroma, range,
+rotation and time base. The same planes give the same figures whichever decoder made them:
+
+```csharp
+using var reader = new VideoFrameReader("delivery.mov", new() { Decoder = new() { Autorotate = false } });
+PictureMeter? meter = null;
+while (reader.TryTake(out var frame))
+    using (frame)
+        (meter ??= new PictureMeter(PictureFormat.Of(frame, reader.TimeBase, rotation)!)).Add(frame);
+var m = meter!.Measures;
+var black = m.BlackSpans();   // blackdetect, d=2: from a black frame's pts to the first that isn't
+var crop = m.Crop();          // cropdetect's defaults over the run: crop=1920:800:0:140
+string types = m.Types();     // the decoder's picture types, IPBB...
+```
+
+Per frame it gives:
+- signalstats' YMIN, YAVG, YMAX and BRNG;
+- blackdetect's black frames, with spans for any `d` (`BlackSpans`);
+- cropdetect's crop, per frame (`FrameCrop`) and with its defaults over the run (`Crop`);
+- colour bars (`BarsSpans`), which no FFmpeg filter finds: SMPTE, SMPTE HD and EBU bars at 75% or 100%, in BT.601 or
+  BT.709, by their definition;
+- the picture type.
+
+Each figure comes from the filter's arithmetic at the frame's depth. tests/FrameReader.Tests/PictureMeterTests.cs checks
+it against FFmpeg 8.1's filters at 8, 10 and 12 bits. With a `Rotation`, cropdetect's lines and the bars are read in
+the upright picture, as ffmpeg's autorotate turns it. One difference: a quarter turn of 4:2:2 can't stay 4:2:2, so
+autorotate first converts it to 4:4:4, interpolating chroma, and signalstats' BRNG then counts the interpolated chroma.
+The meter counts the decoded planes, as ffmpeg does with `-noautorotate`. A run split into ranges, each with its own
+meter (`new PictureMeter(format, firstFrame, endFrame)`), joins back into the whole run's measures byte for byte
+(`ToBytes`, `FromBytes`, `PictureMeasures.Join`).
 
 Test media without the ffmpeg executable: `TestMedia.Write(path, options)` makes a synthetic clip from FFmpeg's own
 sources and encoders, in-process, for tests that need real media without committing any. Video sources are

@@ -1,6 +1,6 @@
-// FrameReader.Tests' check that the tone and waveform from samples never touch FFmpeg (issue #494: a browser decodes
+// FrameReader.Tests' check that the tone, waveform and loudness from samples never touch FFmpeg (issue #494: a browser decodes
 // the audio itself): run in a process of its own (the test process has FFmpeg.AutoGen loaded by other tests) with no
-// ffmpeg on PATH and no FFmpeg libraries named, it feeds ReferenceToneFinder and WaveformBuilder generated samples (a
+// ffmpeg on PATH and no FFmpeg libraries named, it feeds ReferenceToneFinder, WaveformBuilder and LoudnessMeter generated samples (a
 // 1 kHz tone with a break, then silence), then fails if FFmpeg.AutoGen or any of FFmpeg's libraries is loaded.
 // Usage: AudioWithoutFfmpeg (prints the segments and points; exit code 0 when nothing of FFmpeg was loaded)
 using FrameReader;
@@ -21,19 +21,23 @@ int reports = 0;
 var progress = new Progress(() => reports++);
 var finder = new ReferenceToneFinder(Rate, Channels, new ReferenceToneOptions { Progress = progress });
 var builder = new WaveformBuilder(Rate, Channels, new WaveformOptions { PixelsPerSecond = 10, Progress = progress });
+var meter = new LoudnessMeter(Rate, Channels);
 for (int at = 0; at < samples.Length; at += Chunk * Channels)
 {
     var chunk = samples.AsSpan(at, Math.Min(Chunk * Channels, samples.Length - at));
     var time = TimeSpan.FromSeconds((double)at / Channels / Rate);
     finder.Add(chunk, time);
     builder.Add(chunk, time);
+    meter.Add(chunk);
 }
 
 var segments = finder.Finish();
 var waveform = builder.Finish();
+var loudness = meter.Finish().Loudness;
 foreach (var s in segments)
     Console.WriteLine($"Tone {s.Start.TotalSeconds:0.00}-{s.End.TotalSeconds:0.00} s at {s.Level:0.0} dBFS");
 Console.WriteLine($"Waveform: {waveform.Length} points, {waveform.Max(0, 0)} peak");
+Console.WriteLine($"Loudness: {loudness.Integrated:0.00} LUFS, true peak {loudness.TruePeak:0.00} dBTP");
 var saved = new MemoryStream();
 waveform.Save(saved);
 
@@ -44,9 +48,10 @@ var libraries = File.Exists("/proc/self/maps")
         .Distinct()
         .ToList()
     : [];
-if (segments.Count != 1 || Math.Abs(segments[0].End.TotalSeconds - 10) > 0.001 || waveform.Length != 120 || reports < 2)
+if (segments.Count != 1 || Math.Abs(segments[0].End.TotalSeconds - 10) > 0.001 || waveform.Length != 120 || reports < 2
+    || Math.Abs(loudness.Integrated + 18.2) > 0.05)
 {
-    Console.Error.WriteLine($"Expected one segment to 10 s, 120 points and progress; got {segments.Count} segments, {waveform.Length} points, {reports} reports.");
+    Console.Error.WriteLine($"Expected one segment to 10 s, 120 points, progress and -18.2 LUFS; got {segments.Count} segments, {waveform.Length} points, {reports} reports, {loudness.Integrated} LUFS.");
     return 1;
 }
 

@@ -12,6 +12,30 @@ namespace ShotDetector;
 public static partial class ShotDetection
 {
     /// <summary>
+    /// The frames to give <see cref="ScoreRange(YuvVideo, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/>
+    /// for the range [<paramref name="firstFrame"/>, <paramref name="endFrame"/>) of <paramref name="video"/>: frames
+    /// <c>From</c> to <c>To</c> - 1, so a host never encodes the margins itself. Without deinterlacing, from the frame
+    /// before the range (the first score's previous frame) to one past its end (the next range's first, its overlap
+    /// frame); deinterlacing (<see cref="DetectionOptions.Deinterlace"/> On, or Auto with an interlaced
+    /// <see cref="YuvVideo.FieldOrder"/>), one more frame on each side, for yadif's neighbours. <c>From</c> is at least 0;
+    /// <c>To</c> can be past the video's last frame, where the frames simply end (the last range's).
+    /// </summary>
+    /// <param name="video">The video's properties, as the ranges are scored with.</param>
+    /// <param name="options">The detection's settings, as the ranges are scored with (deinterlacing is what matters).</param>
+    /// <param name="firstFrame">The range's first frame (0-based).</param>
+    /// <param name="endFrame">One past the range's last frame: the next range's first frame, or the video's frame count.</param>
+    /// <returns>The first frame to give, and one past the last.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="firstFrame"/> is negative or too large, or <paramref name="endFrame"/> isn't after it.</exception>
+    public static (long From, long To) RangeFrames(YuvVideo video, DetectionOptions? options, long firstFrame, long endFrame)
+    {
+        ArgumentNullException.ThrowIfNull(video);
+        CheckFirstFrame(firstFrame);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(endFrame, firstFrame);
+        int margin = VideoReader.DeinterlacesFrames(video, (options ?? new DetectionOptions()).Resolved()) ? 2 : 1;
+        return (Math.Max(0, firstFrame - margin), endFrame + margin);
+    }
+
+    /// <summary>
     /// Scores one range of the frames of <paramref name="video"/>, for <see cref="Merge"/>: each detector's per-frame
     /// score and stats, the expensive half of a detection (conversion, resize, the detectors' metrics), with nothing
     /// decided yet. Several ranges, each scored on its own runtime (a browser Web Worker, no shared memory), merge into
@@ -20,14 +44,18 @@ public static partial class ShotDetection
     /// </summary>
     /// <param name="video">The video's properties, the same for every range (<see cref="Merge"/> refuses ranges of another).</param>
     /// <param name="frames">
-    /// The range's frames in presentation order, starting one frame early: frame <paramref name="firstFrame"/> - 1 (the
+    /// The range's frames in presentation order (<see cref="RangeFrames"/> says which), starting one frame early: frame <paramref name="firstFrame"/> - 1 (the
     /// previous frame, which each score compares with), unless <paramref name="firstFrame"/> is 0; then every frame to one
     /// frame past the range's end, the first frame of the next range (its overlap frame), or to the video's end for the
     /// last range. The range ends where the frames stop: <see cref="Merge"/> takes the frames from the next range's start
     /// on as overlap. They must be exactly the frames a sequential decode of the video gives at those positions. A real
     /// decoder starts at a keyframe, so pick each range's start there: give the keyframe as the first frame (and pass
     /// <paramref name="firstFrame"/> one past it), or decode from an earlier keyframe and drop the frames before
-    /// <paramref name="firstFrame"/> - 1.
+    /// <paramref name="firstFrame"/> - 1. Deinterlacing (<see cref="DetectionOptions.Deinterlace"/> On, or Auto with an
+    /// interlaced <see cref="YuvVideo.FieldOrder"/>), one more frame on each side, as yadif reads each frame's neighbours:
+    /// from frame <paramref name="firstFrame"/> - 2 (or 0), and to two frames past the range's end (or the video's end).
+    /// A range's last frame is deinterlaced as if it were the video's last, so <see cref="Merge"/> takes it only from the
+    /// range that ends with the video, and the frame before it is the last overlap frame compared.
     /// </param>
     /// <param name="firstFrame">The 0-based index in the video of the range's first frame.</param>
     /// <param name="options">The detection's settings, the same for every range and for <see cref="Merge"/>; see the remarks for which apply.</param>
@@ -42,9 +70,8 @@ public static partial class ShotDetection
     /// its refusals, except those a range can't honour on its own, which are refused too (an <see cref="ArgumentException"/>):
     /// the time range (<see cref="DetectionOptions.StartTime"/>, <see cref="DetectionOptions.EndTime"/>,
     /// <see cref="DetectionOptions.RangeDuration"/> and their typed forms), <see cref="DetectionOptions.FrameSkip"/> (its
-    /// phase runs across the ranges), deinterlacing (<see cref="DetectionOptions.Deinterlace"/> On, or Auto with an
-    /// interlaced <see cref="YuvVideo.FieldOrder"/>: yadif reads the frames on either side of a range) and
-    /// <see cref="DetectionMode.Parallel"/> (the host does the chunking).
+    /// phase runs across the ranges) and <see cref="DetectionMode.Parallel"/> (the host does the chunking). Deinterlacing
+    /// is taken, with the frames on either side of the range (see <paramref name="frames"/>).
     /// <see cref="DetectionOptions.Progress"/> is told the range's frames (<see cref="DetectionProgress.FramesProcessed"/>
     /// counts those from <paramref name="firstFrame"/> on; <see cref="DetectionProgress.ExpectedFrames"/> is 0, as the range
     /// ends where the frames stop; with <see cref="DetectionOptions.ProgressStep"/> set, only the first report and the last), the last report once they have.
@@ -263,11 +290,15 @@ public static partial class ShotDetection
     {
         cancellationToken.ThrowIfCancellationRequested();
         var o = (options ?? new DetectionOptions()).Resolved();
-        CheckOptions(o, null);
         CheckRangeOptions(video, o);
+        CheckOptions(o, false);
         var before = earlier is null ? null : Earlier(video, o, earlier, firstFrame);
         int from = Math.Max(0, firstFrame - 1);
-        var reader = new VideoReader(video, feed, o, from);
+
+        // Deinterlacing, the frames start one earlier still: yadif's previous frame for the frame before the range.
+        bool deinterlaced = VideoReader.DeinterlacesFrames(video, o);
+        int given = deinterlaced ? Math.Max(0, firstFrame - 2) : from;
+        var reader = new VideoReader(video, feed, o, given);
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, reader.Fps);
         var settings = Settings(o);
         var stats = o.CollectStats ? new Stats() : null;
@@ -281,6 +312,12 @@ public static partial class ShotDetection
         o.Progress?.Report(Progress(0, 0));
         long lastReport = Environment.TickCount64;
         int k = from;
+        while (reader.TakesBeforeFrame(from))
+        {
+            yield return null;
+            reader.TakeBeforeStart();
+        }
+
         yield return null; // the first frame is taken next
         foreach (var frame in reader.Frames(from, null, cancellationToken))
         {
@@ -294,9 +331,13 @@ public static partial class ShotDetection
 
             if (k >= firstFrame)
             {
-                long? pts = reader.FramesTimed ? reader.FramePts[k - from] : null;
+                long? pts = reader.FramesTimed ? reader.FramePts[k - given] : null;
                 if (before is { } joined && k < joined.Scores.Frames)
                     CheckOverlap(joined, k, metrics, firstFrame, pts);
+
+                // Deinterlacing, the range's last frame is deinterlaced as the video's last (its own next), which it may
+                // not be; it is scored once the frames have ended, so OnShot is told the shots it decides at the end only,
+                // as a stopped range's last shots, which a range continuing from it tells again.
                 live?.Add(k, metrics, firstFrame, pts);
             }
 
@@ -314,7 +355,7 @@ public static partial class ShotDetection
         {
             throw new ShotDetectionException(ShotDetectionError.InvalidInput,
                 string.Create(CultureInfo.InvariantCulture,
-                    $"The range from frame {firstFrame} was given {k - from} frames: it needs frame {firstFrame - 1} (the previous frame, which the scores compare with) and at least frame {firstFrame}."));
+                    $"The range from frame {firstFrame} was given {k - given} frames: it needs frame {firstFrame - 1} (the previous frame, which the scores compare with){(deinterlaced && firstFrame > 1 ? $", frame {firstFrame - 2} before it (deinterlacing: yadif's previous frame for it)" : "")} and at least frame {firstFrame}."));
         }
 
         live?.End();
@@ -323,7 +364,7 @@ public static partial class ShotDetection
         yield return new RangeScores(Fingerprint(video, o),
             firstFrame,
             scored,
-            reader.FramesTimed ? [.. reader.FramePts] : [],
+            reader.FramesTimed ? [.. reader.FramePts.Skip(from - given)] : [],
             [.. metrics.Select(m => m.ToArray())],
             stats?.Entries(firstFrame, int.MaxValue).ToArray(),
             []);
@@ -332,10 +373,10 @@ public static partial class ShotDetection
     /// <summary>The options a range can't honour on its own (an <see cref="ArgumentException"/>), for <see cref="ScoreRange(YuvVideo, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/> and <see cref="Merge"/>.</summary>
     static void CheckRangeOptions(YuvVideo video, DetectionOptions o)
     {
-        if (VideoReader.DeinterlacesFrames(video, o))
-            throw new ArgumentException("Deinterlacing isn't available for ranges: yadif reads the frames on either side of each; run Detect, or Deinterlace Off.");
         if (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null)
             throw new ArgumentException("A time range (StartTime, EndTime, Duration) isn't available for ranges: score the whole video, from frame 0, in ranges.");
+        if (o.TrimReferenceTone)
+            throw new ArgumentException("TrimReferenceTone isn't available for ranges: it sets a time range; score the whole video, and trim with Detect.");
         if (o.FrameSkip != 0)
             throw new ArgumentException("FrameSkip isn't available for ranges: which frames it analyses runs across them.");
         if (o.Mode == DetectionMode.Parallel)
@@ -393,10 +434,10 @@ public static partial class ShotDetection
             if (list.Count == 0)
                 throw new ArgumentException("Merge needs at least one range.", nameof(ranges));
             var o = (options ?? new DetectionOptions()).Resolved();
-            CheckOptions(o, null);
             CheckRangeOptions(video, o);
+            CheckOptions(o, false);
             CheckFingerprints(video, o, list, nameof(ranges), "this merge's");
-            var (pts, scores) = Joined(list);
+            var (pts, scores) = Joined(VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list);
             if (pts.Length > 0)
             {
                 // The sequential run's check of every frame, from frame 0's pts; at a range's first frames, says which.
@@ -487,7 +528,7 @@ public static partial class ShotDetection
         if (earlier.Count == 0)
             return firstFrame == 0 ? null : throw InvalidRanges($"A range from frame {firstFrame} continues from the earlier ranges' scores, from frame 0: none were given.");
         CheckFingerprints(video, o, earlier, nameof(earlier), "this range's");
-        var joined = Joined(earlier);
+        var joined = Joined(VideoReader.DeinterlacesFrames(video, o) ? [.. earlier.Select(WithoutLastFrame)] : earlier);
         int start = earlier[^1].FirstFrame, end = joined.Scores.Frames;
         if (firstFrame <= start)
             throw InvalidRanges($"This range starts at frame {firstFrame}, not after the last earlier range's start, frame {start}.");
@@ -499,6 +540,35 @@ public static partial class ShotDetection
     }
 
     static ShotDetectionException InvalidRanges(string message) => new(ShotDetectionError.InvalidInput, message);
+
+    /// <summary>
+    /// Deinterlaced ranges' final frames for <see cref="Merge"/>: each range's without its last frame
+    /// (<see cref="WithoutLastFrame"/>), but where that frame is the video's last (the last range's).
+    /// </summary>
+    static List<RangeScores> FinalFrames(List<RangeScores> list)
+    {
+        long end = (long)list[^1].FirstFrame + list[^1].FrameCount;
+        return [.. list.Select(r => r.FirstFrame + r.FrameCount >= end ? r : WithoutLastFrame(r))];
+    }
+
+    /// <summary>
+    /// A deinterlaced range's scores without its last frame's: that frame was deinterlaced as the video's last (its own
+    /// next frame for yadif), which only the video's last range's is. The frame before it is final, so a range given one
+    /// frame past its overlap frame still has that frame to compare.
+    /// </summary>
+    static RangeScores WithoutLastFrame(RangeScores r)
+    {
+        if (r.FrameCount == 0)
+            return r;
+        int last = r.FirstFrame + r.FrameCount - 1;
+        return new RangeScores(r.Fingerprint,
+            r.FirstFrame,
+            r.FrameCount - 1,
+            r.Pts.Length > 0 ? r.Pts[..^1] : r.Pts,
+            [.. r.Metrics.Select(m => m[..^1])],
+            r.Stats?.Where(e => e.Frame != last).ToArray(),
+            [.. r.Warnings]);
+    }
 
     /// <summary>
     /// Frame <paramref name="k"/> of a range that continues from earlier ranges is one of theirs too: it must be the same
@@ -641,18 +711,18 @@ public static partial class ShotDetection
         nameof(DetectionOptions.AlwaysBt601), nameof(DetectionOptions.Yuv420Converter), nameof(DetectionOptions.Detectors),
         nameof(DetectionOptions.FilterMode), nameof(DetectionOptions.AddLastScene), nameof(DetectionOptions.Downscale),
         nameof(DetectionOptions.DropShortScenes), nameof(DetectionOptions.MergeLastScene), nameof(DetectionOptions.FrameRate),
-        nameof(DetectionOptions.CollectStats),
+        nameof(DetectionOptions.CollectStats), nameof(DetectionOptions.Deinterlace), nameof(DetectionOptions.Yadif),
     ];
 
     /// <summary>
-    /// The options left out of the fingerprint: refused for ranges (the time range, frame skip, deinterlacing, the tone,
+    /// The options left out of the fingerprint: refused for ranges (the time range, frame skip, the tone,
     /// ffmpeg's resize), callbacks, and what only decoding reads (frames from the caller ignore it).
     /// </summary>
     internal static readonly string[] NotFingerprinted =
     [
         nameof(DetectionOptions.StartTime), nameof(DetectionOptions.EndTime), nameof(DetectionOptions.RangeDuration),
         nameof(DetectionOptions.Start), nameof(DetectionOptions.End), nameof(DetectionOptions.Duration),
-        nameof(DetectionOptions.FrameSkip), nameof(DetectionOptions.Deinterlace), nameof(DetectionOptions.Yadif),
+        nameof(DetectionOptions.FrameSkip),
         nameof(DetectionOptions.FfmpegResize), nameof(DetectionOptions.TrimReferenceTone), nameof(DetectionOptions.ReferenceTone),
         nameof(DetectionOptions.Progress), nameof(DetectionOptions.Warnings), nameof(DetectionOptions.OnShot),
         nameof(DetectionOptions.ProgressStep), nameof(DetectionOptions.OnProbe), nameof(DetectionOptions.OnFrameTimestamps),
@@ -686,6 +756,13 @@ public static partial class ShotDetection
         Line("PixelFormat", video.PixelFormat);
         Line("ColorSpace", video.ColorSpace);
         Line("FullRange", video.FullRange);
+        if (VideoReader.DeinterlacesFrames(video, o))
+        {
+            // Only when deinterlacing (ranges weren't, before): the other ranges' fingerprints stay as they were.
+            Line(nameof(o.Deinterlace), "frames");
+            Line(nameof(o.Yadif), o.Yadif?.GetType().FullName);
+        }
+
         if (video.ChromaLocation is { } siting)
             Line("ChromaLocation", siting); // only when set, so the scores of ranges from before it was there keep their fingerprint
         Line("TimeBase", video.TimeBase is { } tb ? $"{tb.Num}/{tb.Den}" : null);

@@ -47,6 +47,86 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         await AssertSame(clips.ThreeShots, options);
     }
 
+    // Reference tone (issue #629): bars with 1 kHz tone for 6 s before the programme ("lead": the trim sets the start) or
+    // after it ("trail": the end, from YuvVideo.Duration). The host finds the tone in audio it decoded itself (here the
+    // ffmpeg executable's f32le, fed to FrameReader's ReferenceToneFinder in chunks of its own size): the file path's
+    // segments, and with them in YuvVideo.ReferenceTone the file path's trimmed result.
+    [Theory]
+    [InlineData("lead", "content")]
+    [InlineData("trail", "content")]
+    [InlineData("lead", "adaptive")]
+    public async Task SameAsTheFileTrimmedToTone(string where, string detector)
+    {
+        if (Libs is null)
+            return;
+        string clip = ToneClip(where);
+        var options = new DetectionOptions
+        {
+            Detector = detector == "content" ? DetectorKind.Content : DetectorKind.Adaptive,
+            CollectStats = true,
+            FfmpegDirectory = Libs,
+            Decoder = VideoDecoder.InProcess,
+            Yuv420Converter = new SwscaleYuv420(),
+            TrimReferenceTone = true,
+        };
+        var expected = ShotDetection.FindReferenceTone(clip, options);
+        Assert.Single(expected);
+
+        var finder = new FrameReader.ReferenceToneFinder(48000, 2, options.ReferenceTone);
+        var psi = new ProcessStartInfo(Path.Combine(Libs, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg")) { RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (string a in new[] { "-v", "error", "-i", clip, "-map", "0:a", "-f", "f32le", "-" })
+            psi.ArgumentList.Add(a);
+        using (var p = Process.Start(psi)!)
+        {
+            var stderr = p.StandardError.ReadToEndAsync();
+            var buffer = new byte[4000 * 2 * sizeof(float)];
+            long instants = 0;
+            int filled;
+            while ((filled = await p.StandardOutput.BaseStream.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false)) > 0)
+            {
+                var samples = MemoryMarshal.Cast<byte, float>(buffer.AsSpan(0, filled));
+                finder.Add(samples, TimeSpan.FromSeconds(instants / 48000.0));
+                instants += samples.Length / 2;
+            }
+
+            await p.WaitForExitAsync();
+            Assert.True(p.ExitCode == 0, await stderr);
+        }
+
+        var tone = finder.Finish();
+        Assert.Equal(expected, tone);
+        await AssertSame(clip, options, tone: tone);
+        var trimmed = ShotDetection.Detect(clip, options);
+        Assert.Equal(tone, trimmed.ReferenceTone);
+        Assert.True(where == "lead" ? trimmed.Shots[0].Start.FrameNum == 150 : trimmed.Shots[^1].End.FrameNum == 100);
+    }
+
+    /// <summary>The three-part clip with stereo AAC: 6 s of bars and -18 dBFS tone before (lead) or after (trail) 4 s of programme.</summary>
+    string ToneClip(string where)
+    {
+        string path = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, $"tone-{where}.mp4");
+        if (File.Exists(path))
+            return path;
+        const string Bars = "-f lavfi -i smptebars=s=320x240:r=25:d=6 -f lavfi -i sine=f=1000:r=48000:d=6";
+        const string Programme = "-f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i anoisesrc=r=48000:a=0.1:d=2 "
+            + "-f lavfi -i mandelbrot=s=320x240:r=25 -f lavfi -i anoisesrc=r=48000:a=0.1:c=pink:d=2";
+        string inputs = where == "lead" ? Bars + " " + Programme : Programme + " " + Bars;
+        string concat = where == "lead"
+            ? "[4]trim=duration=2,setpts=PTS-STARTPTS[m];[0:v][1:a][2:v][3:a][m][5:a]concat=n=3:v=1:a=1[v][a]"
+            : "[2]trim=duration=2,setpts=PTS-STARTPTS[m];[0:v][1:a][m][3:a][4:v][5:a]concat=n=3:v=1:a=1[v][a]";
+        var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg")) { RedirectStandardError = true };
+        foreach (string a in $"-v error -y {inputs} -filter_complex {concat} -map [v] -map [a] -ac 2 -c:v mpeg4 -q:v 2 -c:a aac".Split(' '))
+            psi.ArgumentList.Add(a);
+        string temporary = path + ".part.mp4";
+        psi.ArgumentList.Add(temporary);
+        using var p = Process.Start(psi)!;
+        string stderr = p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        Assert.True(p.ExitCode == 0, stderr);
+        File.Move(temporary, path, overwrite: true);
+        return path;
+    }
+
     // H.264 with B-frames at 29.97 fps in mp4 (an edit list, decode order unlike presentation order, timestamps whose
     // microseconds round): the showcase's input. The same stream in MPEG-TS starts at 1.4 s (StartPts). Made with the
     // ffmpeg executable's libx264; skipped without it.
@@ -380,6 +460,8 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             Assert.Contains("must be yuv420p, yuvj420p, yuv422p, yuvj422p or yuv420p10le so far, not yuv444p", e.Message);
         if (name == "odd")
             Assert.Contains("8-bit of an odd height, at an even width", e.Message);
+        if (name == "tone")
+            Assert.Contains("needs YuvVideo.ReferenceTone", e.Message);
     }
 
     [Theory]
@@ -736,11 +818,12 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     }
 
     // The frames of a file, as a decoder gives them, and the file's result for them.
-    static async Task AssertSame(string path, DetectionOptions options, bool timestamps = false)
+    static async Task AssertSame(string path, DetectionOptions options, bool timestamps = false, IReadOnlyList<FrameReader.ToneSegment>? tone = null)
     {
         var file = ShotDetection.Detect(path, options);
         Assert.True(file.Video.DecodedInProcess);
         var (video, frames) = Decoded(path, timestamps);
+        video = video with { ReferenceTone = tone };
         var ours = ShotDetection.Detect(video, frames, options);
 
         // The same frames from an asynchronous source (DetectAsync) give the same result.
@@ -754,6 +837,8 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             (awaited.Video.ProcessedWidth, awaited.Video.ProcessedHeight, awaited.Video.FrameRate, awaited.Video.OpenCvFrameCount, awaited.Video.Duration));
         Assert.Equal(file.FrameCount, ours.FrameCount);
         Assert.Equal(file.MinSceneLengthFrames, ours.MinSceneLengthFrames);
+        Assert.Equal(file.ReferenceTone, ours.ReferenceTone);
+        Assert.Equal(ours.ReferenceTone, awaited.ReferenceTone);
         Assert.Equal(file.Cuts, ours.Cuts);
         Assert.Equal(file.Shots, ours.Shots);
         Assert.Equal(Shots.Csv(file.Shots, cuts: file.Cuts), Shots.Csv(ours.Shots, cuts: ours.Cuts));
@@ -833,6 +918,68 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.True(expected.Shots.Count > 1);
     }
 
+    // Deinterlaced: an interlaced file split at its keyframes, each range decoded on a decoder of its own from its keyframe
+    // (now two frames before the range's first: yadif's previous frame for the frame before it) to two frames past its
+    // end, as RangeFrames says, merges into the sequential deinterlaced frame-source result, and the file's. H.264 MBAFF
+    // top and bottom field first, MPEG-2, 10-bit and 4:2:2 MBAFF.
+    [Theory]
+    [InlineData("tff", DetectorKind.Content)]
+    [InlineData("tff", DetectorKind.Adaptive)]
+    [InlineData("bff", DetectorKind.Histogram)]
+    [InlineData("mpeg2", DetectorKind.Content)]
+    [InlineData("mpeg2", DetectorKind.Hash)]
+    [InlineData("h264-10-tff", DetectorKind.Content)]
+    [InlineData("h264-422-tff", DetectorKind.Content)]
+    public void DeinterlacedRangesFromKeyframesMergeIntoTheSequentialResult(string clip, DetectorKind detector)
+    {
+        if (Libs is null)
+            return;
+        string? file = clip.StartsWith("h264", StringComparison.Ordinal) ? FormatClip(clip) : InterlacedClip(clip);
+        if (file is not { } path)
+            return;
+        var options = new DetectionOptions { Detector = detector, CollectStats = true, Yuv420Converter = new SwscaleYuv420(), Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() };
+        var fromFile = ShotDetection.Detect(path, options with { FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Deinterlace = DeinterlaceMode.On });
+        Assert.True(fromFile.Video.Deinterlaced);
+        var (video, frames) = Decoded(path);
+        if (video.FieldOrder is FrameReader.FieldOrder.Progressive or FrameReader.FieldOrder.Unknown)
+            options = options with { Deinterlace = DeinterlaceMode.On };
+        var sequential = frames.ToList();
+        var flags = sequential.ToDictionary(f => f.Pts);
+        var pts = sequential.Select(f => f.Pts).ToList();
+        var expected = ShotDetection.Detect(video, sequential, options);
+        Assert.True(expected.Video.Deinterlaced);
+
+        List<long> keyframes;
+        using (var keys = new FrameReader.FrameDecoder(path, DecoderOptions(path) with { KeyframesOnly = true }))
+        {
+            keyframes = [];
+            while (keys.Next())
+                keyframes.Add(keys.Pts);
+        }
+
+        // Two or three ranges, each starting two frames after a keyframe nearest a third and two thirds of the way.
+        var inner = keyframes.Select(p => pts.IndexOf(p)).Where(k => k > 0 && k < pts.Count - 4).ToList();
+        Assert.NotEmpty(inner);
+        int[] starts = [0, .. new[] { pts.Count / 3, 2 * pts.Count / 3 }.Select(t => inner.MinBy(k => Math.Abs(k - t)) + 2).Distinct()];
+        var ranges = new List<RangeScores>();
+        for (int i = 0; i < starts.Length; i++)
+        {
+            int first = starts[i], end = i + 1 < starts.Length ? starts[i + 1] : pts.Count;
+            var (from, to) = ShotDetection.RangeFrames(video, options, first, end);
+            Assert.Equal(Math.Max(0, first - 2), from);
+            var given = first == 0 ? sequential : Decoded(path, from: pts[(int)from], flags);
+            ranges.Add(RangeScores.FromBytes(ShotDetection.ScoreRange(video, given.Take((int)(Math.Min(pts.Count, to) - from)), first, options).ToBytes()));
+        }
+
+        var merged = ShotDetection.Merge(video, ranges, options);
+        Assert.Equal(expected.FrameCount, merged.FrameCount);
+        Assert.Equal(expected.Cuts, merged.Cuts);
+        Assert.Equal(Shots.Csv(expected.Shots, cuts: expected.Cuts), Shots.Csv(merged.Shots, cuts: merged.Cuts));
+        Assert.Equal(expected.Stats!.Csv(expected.Video.Position), merged.Stats!.Csv(merged.Video.Position));
+        Assert.Equal(Shots.Csv(fromFile.Shots, cuts: fromFile.Cuts), Shots.Csv(merged.Shots, cuts: merged.Cuts));
+        Assert.Equal(fromFile.Stats!.Csv(fromFile.Video.Position), merged.Stats!.Csv(merged.Video.Position));
+    }
+
     /// <summary>The decoder options the file path decodes with: no autorotation, its IDCT.</summary>
     static FrameReader.FrameDecoderOptions DecoderOptions(string path)
     {
@@ -844,8 +991,11 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         };
     }
 
-    /// <summary>The file's frames from the keyframe at <paramref name="from"/> on, decoded after a seek to it.</summary>
-    static IEnumerable<YuvFrame> Decoded(string path, long from)
+    /// <summary>
+    /// The file's frames from the keyframe at <paramref name="from"/> on, decoded after a seek to it, with each frame's
+    /// interlacing flags by its pts from <paramref name="flags"/> (a sequential decode's), when given.
+    /// </summary>
+    static IEnumerable<YuvFrame> Decoded(string path, long from, IReadOnlyDictionary<long, YuvFrame>? flags = null)
     {
         using var decoder = new FrameReader.FrameDecoder(path, DecoderOptions(path));
         decoder.Seek(from);
@@ -856,7 +1006,8 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             var y = decoder.GetPlane(0, out int ys).ToArray();
             var u = decoder.GetPlane(1, out int us).ToArray();
             var v = decoder.GetPlane(2, out int vs).ToArray();
-            yield return new YuvFrame(y, ys, u, us, v, vs) { Pts = decoder.Pts };
+            var frame = new YuvFrame(y, ys, u, us, v, vs) { Width = decoder.Width, Height = decoder.Height, ColorSpace = decoder.ColorSpace, ChromaLocation = decoder.ChromaLocation, Pts = decoder.Pts };
+            yield return flags?.GetValueOrDefault(decoder.Pts) is { } f ? frame with { Interlaced = f.Interlaced, TopFieldFirst = f.TopFieldFirst } : frame;
         }
     }
 

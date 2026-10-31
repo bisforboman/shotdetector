@@ -156,6 +156,15 @@ there is no file to seek, so the host does what `ScoreChunked` does and ShotDete
   Detect does per frame, which plays the part of the file path's check against the probe's positions. With every
   frame's timestamp given (`YuvVideo.FrameTimestamps`, a variable-rate video), each frame must be at its own entry
   instead (2026-10-30, docs/decisions/2026-10-30-frame-source-vfr.md).
+- **Deinterlaced ranges** (2026-10-31, #628, docs/decisions/2026-10-31-deinterlaced-ranges.md): yadif reads each
+  frame's neighbours, so a range is given one more frame on each side: from `firstFrame - 2` (yadif's previous frame for
+  the frame the first score compares with) to two frames past its end. Its last frame is deinterlaced as the video's
+  last (its own next), so Merge (and a range continuing from earlier ones) drops each range's last frame but the
+  video's, and compares the overlap up to the frame before it. OnShot needs nothing more: the last frame is scored once
+  the frames have ended, so the shots it decides are told as a stopped range's last ones, which a resumed range tells
+  again. Deinterlacing is in the fingerprint only when it deinterlaces, so earlier ranges' fingerprints are unchanged.
+- **Which frames** (docs/decisions/2026-10-31-range-frames.md): `ShotDetection.RangeFrames(video, options, firstFrame,
+  endFrame)` gives a range's frames, `From` to `To` - 1, with either margin, so a host doesn't encode them.
 - **What can't be split** is refused rather than read sequentially: a time range, frame skip and
   `DetectionMode.Parallel`. Every detector works, with stats too (threshold's dedupe by position stays in Decide).
 - **Shots as they come** (`DetectionOptions.OnShot`, 2026-10-30, docs/decisions/2026-10-30-score-range-on-shot.md): a

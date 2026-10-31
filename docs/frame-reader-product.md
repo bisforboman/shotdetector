@@ -65,7 +65,9 @@ so the trigger isn't met. 2.15.1: 0 of 1 (the raw-stream/FLV seeks), joined with
 look-ahead), 0 of 2 with 2.15.1's window, still fewer than 3: the window joins the next release's; not met. 2.17.0: 0 of 1 (MPEG-TS
 frame skipping), 0 of 3 with the joined window, after 2.15.0's 0 of 4: met, the first time by features; the user's
 choice: don't split, keep counting (docs/decisions/2026-10-30-framereader-stays-by-features.md). 2.17.1: 0 of 0
-(the macOS libraries built on macos-15, no FrameReader feature), so the window joins the next release's.
+(the macOS libraries built on macos-15, no FrameReader feature), so the window joins the next release's. 2.18.0: 1 of 2 needing both
+(EBU R128 loudness through ebur128, with `shotdetect --loudness` in the same PR, issue #636; `LoudnessMeter` without FFmpeg,
+issue #646, alone), recorded as information since 2026-10-31.
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)

@@ -91,6 +91,15 @@ public sealed record YuvVideo
 
     /// <summary>The container's FFmpeg name (mov,mp4,m4a,3gp,3g2,mj2, ...), reported back in <see cref="DetectedVideo.Container"/>.</summary>
     public string Container { get; init; } = "";
+
+    /// <summary>
+    /// The reference tone in the video's audio, as the caller found it (FrameReader's <see cref="FrameReader.ReferenceToneFinder"/>
+    /// on the samples it decoded, with <see cref="DetectionOptions.ReferenceTone"/>'s options: the segments
+    /// <see cref="ShotDetection.FindReferenceTone"/> gives for the file), for <see cref="DetectionOptions.TrimReferenceTone"/>,
+    /// which needs it here and trims by it as the file path does; reported back in <see cref="DetectionResult.ReferenceTone"/>.
+    /// Null (the default): not searched. Ignored without the trim.
+    /// </summary>
+    public IReadOnlyList<FrameReader.ToneSegment>? ReferenceTone { get; init; }
 }
 
 /// <summary>

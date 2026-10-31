@@ -25,6 +25,12 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (!Streaming && restart is null)'; Replace = 'if (!Streaming)'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'SitingChangeNotFollowed = true;'; Replace = ';'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
 
+        # Reference tone on frames from the caller (#629): trimmed by YuvVideo.ReferenceTone as the file path trims by the
+        # tone it finds; refused without it, and for ranges (a time range)
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'tone = !video.FromFrames'; Replace = 'tone = video.FromFrames'; Tests = 'FrameInputTests' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'video.GivenTone ?? throw'; Replace = 'video.GivenTone ?? Array.Empty<FrameReader.ToneSegment>() ?? throw'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.TrimReferenceTone)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }
+
         # Timestamps that start over (two encodes joined): known before the first frame (a file's packets, MPEG-PS's
         # pass; MPEG-PS's arriving ones may), the shots are told at the end, as the sorted cuts make them
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ' && !video.TimestampsStartOver;'; Replace = ';'; Tests = 'TimestampResetTests' }
@@ -311,6 +317,13 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'int BytesPerSample => TenBit ? 2 : 1;'; Replace = 'int BytesPerSample => 1;'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'int ChromaHeight => Yuv422 ? _codedSize.H : (_codedSize.H + 1) / 2;'; Replace = 'int ChromaHeight => (_codedSize.H + 1) / 2;'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line("ChromaLocation", siting);'; Replace = ';'; Tests = 'FrameRangeTests.TheFingerprintCoversEveryOption' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'int given = deinterlaced ? Math.Max(0, firstFrame - 2) : from;'; Replace = 'int given = from;'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Joined(VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list)'; Replace = 'Joined(list)'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'r.FirstFrame + r.FrameCount >= end ? r : WithoutLastFrame(r)'; Replace = 'WithoutLastFrame(r)'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Joined(VideoReader.DeinterlacesFrames(video, o) ? [.. earlier.Select(WithoutLastFrame)] : earlier)'; Replace = 'Joined(earlier)'; Tests = 'FrameRangeTests.ADeinterlacedRangeTellsTheShotsDetectTells' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line(nameof(o.Deinterlace), "frames");'; Replace = ';'; Tests = 'FrameRangeTests.TheFingerprintCoversEveryOption' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'int margin = VideoReader.DeinterlacesFrames(video, (options ?? new DetectionOptions()).Resolved()) ? 2 : 1;'; Replace = 'int margin = 1;'; Tests = 'FrameRangeTests.RangeFramesGiveTheFramesEachRangeNeeds' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_frames is not null && !_framesStarted && !_framesEnded && _framesRead < frame + FramesAhead;'; Replace = 'false;'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (stride < width || plane.Length < (long)stride * (height - 1) + width)'; Replace = 'if (stride < width)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (!(Math.Abs(from - expected) <= 0.5 / rate))'; Replace = 'if (false)'; Tests = 'FrameInputTests.FramesMustComeAtTheFrameRate' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_startPts = video.StartPts;'; Replace = '_startPts = 0;'; Tests = 'FrameInputTests.FramesAreAtTheirPtsFromTheStreamsStart' }
@@ -532,12 +545,45 @@
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'return taken.Reference(Pts, time);'; Replace = 'return taken.Reference();'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'long point = Demuxer.SeekPoint(_fmt, timestamp);'; Replace = 'long point = Demuxer.SeekPoint(_fmt, timestamp); SeekMicroseconds(point);'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
 
+        # LoudnessMeter: ebur128's arithmetic without FFmpeg. Each block in a 0.01 LU bin, truncated; the relative gate's
+        # bin; the 95th percentile's rank rounded; the bins' energies correctly rounded (Math.Pow and glibc are off by an ulp);
+        # the LFE weighted 0; true peak 4 times oversampled below 192 kHz (Annex 2). Not guarded by a test: the AVX kernel's
+        # order of one sum, which the histogram hides unless a block sits within about 1e-13 LU of a bin's edge
+        @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'Math.Clamp((int)((loudness - AbsoluteGate) * Grain), 0, HistogramSize - 1)'; Replace = 'Math.Clamp((int)Math.Round((loudness - AbsoluteGate) * Grain), 0, HistogramSize - 1)'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'return Bin(Lufs(mean) + below);'; Replace = 'return Bin(Lufs(mean) + below + 0.005);'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'wanted = (ulong)((95 * powers * 0.01) + 0.5);'; Replace = 'wanted = (ulong)(95 * powers * 0.01);'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'static double Energy(int bin) => Exp2(Log2Of10'; Replace = 'static double Energy(int bin) => Math.Pow(2, Log2Of10'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ChannelWeights.cs'; Find = 'weights.Add(c is Lfe or Lfe2 ? 0 :'; Replace = 'weights.Add(c is Lfe2 ? 0 :'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/TruePeakMeter.cs'; Find = '_factor = sampleRate < 192000 ? 4 : 1;'; Replace = '_factor = sampleRate < 96000 ? 4 : sampleRate < 192000 ? 2 : 1;'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
+
         # --loudness: integrated loudness judged on both sides of the target, true peak against its maximum, exit 3 out
         # of range; FrameReader's figures from the filter's own results, which have the last partial 100 ms block's peaks
         @{ File = 'src/ShotDetector.Cli/LoudnessVerdict.cs'; Find = 'Math.Abs(Result.Integrated - Target) <= Tolerance;'; Replace = 'Result.Integrated - Target <= Tolerance;'; Tests = 'CliTests.Loudness' }
         @{ File = 'src/ShotDetector.Cli/LoudnessVerdict.cs'; Find = 'public bool TruePeakPass => Result.TruePeak <= TruePeakMax;'; Replace = 'public bool TruePeakPass => true;'; Tests = 'CliTests.Loudness' }
         @{ File = 'src/ShotDetector.Cli/Program.cs'; Find = 'return verdict.Pass ? 0 : 3;'; Replace = 'return 0;'; Tests = 'CliTests.Loudness' }
         @{ File = 'src/FrameReader/Loudness.cs'; Find = 'Get("sample_peak"), Get("true_peak")'; Replace = 'Get("sample_peak") - 0.05, Get("true_peak")'; Tests = 'LoudnessTests'; Project = 'tests/FrameReader.Tests' }
+
+        # PictureMeter: FFmpeg's picture filters at any depth without FFmpeg. blackdetect's pixel_black_th_i truncated (37,
+        # full range 25, 151 at 10 bits); signalstats' broadcast range scaled by 2^(depth - 8), BRNG counting a luma pixel
+        # once (its chroma sample, at its own subsampling, adds only luma in range); EBU 100/0/75/0 bars (100% white);
+        # cropdetect's bottom line past max(y2, y1), x and y rounded up to even, its first two frames skipped; blackdetect's
+        # span at the end ending at the last frame's pts
+        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = '_black = (uint)(format.FullRange ? PixelBlack * max : (16 * _factor) + (PixelBlack * (235 - 16) * _factor));'; Replace = '_black = (uint)Math.Round(format.FullRange ? PixelBlack * max : (16 * _factor) + (PixelBlack * (235 - 16) * _factor));'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'int under = 16 * _factor, over = 235 * _factor;'; Replace = 'int under = 16, over = 235;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'ChromaSubsampling.Yuv422 => (1, 0),'; Replace = 'ChromaSubsampling.Yuv422 => (1, 1),'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'if (q >= under && q <= over)'; Replace = 'if (true)'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'is var i and >= 0 ? i : Nearest(_white, y[c], u[c], v[c]);'; Replace = 'is var i and >= 0 ? i : (sbyte)-1;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'if (bottom > Math.Max(_y2, _y1))'; Replace = 'if (bottom > _y2)'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'int x = (_x1 + 1) & ~1, y = (_y1 + 1) & ~1;'; Replace = 'int x = _x1 & ~1, y = _y1 & ~1;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'const int skip = 2;'; Replace = 'const int skip = 0;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = '? new FrameSpan(FirstFrame + start, FirstFrame + last, _pts[start], _pts[last])'; Replace = '? new FrameSpan(FirstFrame + start, FirstFrame + last, _pts[start], (2 * _pts[last]) - _pts[Math.Max(last - 1, 0)])'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+
+        # SilenceFinder: silencedetect's counting, sample by sample: strictly under the level as a float, the duration
+        # rounded to the nearest instant, a count of every channel's samples in turn (not of instants), the start's arithmetic
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = 's < noise && s > -noise'; Replace = 's <= noise && s >= -noise'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '+ 500000) / 1000000'; Replace = ') / 1000000'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '_notify = _instants * channels;'; Replace = '_notify = (_instants * channels) - channels + 1;'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '(_position / _channels) + 1 - _instants'; Replace = '(_position / _channels) - _instants'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
 
         # --save-shotchanges: Subtitle Edit reads a plain list as seconds only when it has a '.', so whole seconds keep theirs
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'result.Cuts.Select(c => c.SecondsText())'; Replace = 'result.Cuts.Select(c => c.Seconds.ToString(CultureInfo.InvariantCulture))'; Tests = 'ShotChangesTests' }
@@ -550,5 +596,12 @@
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'Math.Ceiling(Math.Round(cut, 3, MidpointRounding.AwayFromZero))'; Replace = 'Math.Ceiling(cut)'; Tests = 'YouTubeChaptersTests' }
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (!(minLength >= 10))'; Replace = 'if (minLength < 5)'; Tests = 'YouTubeChaptersTests' }
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (!(minLength > 0))'; Replace = 'if (minLength < 0)'; Tests = 'YouTubeChaptersTests' }
+
+        # --contact-sheet: save-images' own frames (its options but the size and format), our PNG decoder's row filters,
+        # and the PDF's page breaks
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = 'FileName = "$SCENE_NUMBER-$IMAGE_NUMBER",'; Replace = 'FileName = "$SCENE_NUMBER-$IMAGE_NUMBER", FrameMargin = 0,'; Tests = 'ContactSheetTests' }
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = '4 => Paeth(a, b, c),'; Replace = '4 => a,'; Tests = 'ContactSheetTests' }
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = '3 => (a + b) / 2,'; Replace = '3 => (a + b + 1) / 2,'; Tests = 'ContactSheetTests' }
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = 'if (pages[^1].Count > 0 && used + heights[r] > room)'; Replace = 'if (pages[^1].Count > 0 && used + heights[r] > room * 10)'; Tests = 'ContactSheetTests' }
     )
 }

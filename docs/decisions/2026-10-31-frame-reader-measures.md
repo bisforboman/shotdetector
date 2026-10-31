@@ -48,3 +48,29 @@ Exactness is the repository's rule wherever it costs only arithmetic. ebur128's 
 can match FFmpeg to the digit. True peak is the one place where matching FFmpeg would mean copying an LGPL resampler
 to reproduce an overestimate, so it follows the standard and the difference is written down. The rest keeps the move
 additive: one FrameReader minor release per slice set, no ShotDetector break, no native change.
+
+## What "equal" is held to (slice 1, 2026-10-31)
+
+Found while building `LoudnessMeter`, with no new question for the owner:
+
+- **ebur128's two kernels.** On x86-64 with AVX, ebur128 filters two or more channels with
+  `ff_ebur128_filter_channels_avx`, which adds one term of the biquad in another order than the C kernel
+  (`b1·x + (y2 − a1·y0)` against `(b1·x + y2) − a1·y0`). The C kernel serves mono, and every channel count on ARM
+  (FFmpeg builds with `-std=c11`, so GCC doesn't contract to FMA there). The meter follows x86-64, the repository's
+  reference: the C order for mono, the AVX order from two channels. The difference stays in the last bits of the block
+  powers. The histogram hides it unless a block's loudness sits within about 1e-13 LU of a bin's edge, so no test can
+  tell the two orders apart, and the mutation list says so.
+- **The bins' energies depend on the host.** ebur128 computes them with `ff_exp10`, the exp2 of whatever libm the
+  process loads, and glibc's builds differ in the last bit. The generic x86-64 build (Ubuntu 24.04, glibc 2.39 to
+  2.44 alike) is one ulp off correct rounding in 11 of the 8001 bins. Ubuntu 26.04's runners, presumably on its
+  x86-64-v3 build compiled with FMA, round the first of those correctly (CI's first run of #655 failed on it, bin 67:
+  1.3680437930569386e-07 against 1.3680437930569383e-07). .NET's `Math.Pow(2, x)` is off in 7. No table matches
+  every host, so the meter takes 2^x correctly rounded (double-double, the same on every platform, wasm included) and
+  copies no libm's errors. Tests hold 13 hard bins to mpmath's values and every bin within one ulp of the host's libm.
+  So I and LRA are ebur128's doubles when the bins a programme fills have the same energy on its host. A different
+  energy in a filled bin moves I by about an ulp. None of the clips here, on this machine or on CI's runner, fill such
+  a bin: an even rarer case than the AVX kernel's.
+- **What the tests hold.** Integrated loudness, range, its ends and sample peak are compared with
+  `AudioFilter(ebur128)` with `Assert.Equal` on doubles, on 14 generated clips (mono to 7.1, 32 to 96 kHz, a clip
+  shorter than a block, a partial last block, silence). True peak is held within 0.05 dB of tools/true_peak_reference.py's
+  ideal reconstruction, and within 0.1 dB of ebur128 where the clip has no energy near Nyquist.

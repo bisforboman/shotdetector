@@ -6,6 +6,46 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.24.0 – 2026-10-31
+
+Loudness checks, YouTube chapters and Subtitle Edit shot changes, and frame sources in more formats.
+
+### New
+
+- Frame sources: `YuvFrame.ColorSpace` and `FullRange` give a frame's own colour tags (null, the default, means the
+  video's). Each frame is converted with its own, as `Detect(path)` in-process and OpenCV convert them, so a spliced
+  stream whose colour matrix or range changes midway gives the file's stats byte for byte. Before, every frame was
+  converted with `YuvVideo`'s tags. A frame whose colours FastYuv doesn't take is refused with `InvalidInput`
+  (issue #626).
+- Frame sources: 10-bit 4:2:0 (`yuv420p10le`: HEVC Main 10, 10-bit H.264) and 8-bit 4:2:2 (`yuv422p`, `yuvj422p`)
+  frames, through FastYuv's converters, with the same results as `Detect(path)`, deinterlaced too. Before, these
+  formats were refused. 10-bit samples come in the same `YuvFrame` byte planes (16-bit little-endian, strides in
+  bytes). Their chroma is interpolated from `YuvVideo.ChromaLocation`, or from a frame's own
+  `YuvFrame.ChromaLocation`, as the file path follows each frame's siting (issue #627,
+  docs/decisions/2026-10-31-frame-source-formats.md).
+- Frame sources: `YuvFrame.Width` and `Height` say a frame's size (0, the default: the video's). A frame of another size
+  than `YuvVideo`'s (a stream whose resolution changes midway) is refused with `ShotDetectionException`
+  (`InvalidInput`) by `Detect`, `DetectAsync` and `ScoreRange`, where it used to be read at the video's size and give
+  other results without a word (`Detect(path)` scales it to the stream's size, which the frame source can't yet;
+  issue #625, docs/decisions/2026-10-31-frame-source-size-change.md).
+- `shotdetect --loudness`: integrated loudness, loudness range, true and sample peak (EBU R128 / ITU-R BS.1770, FFmpeg's
+  own `ebur128`), judged against `--loudness-target` (-23 LUFS), `--loudness-tolerance` (0.5 LU) and `--true-peak-max`
+  (-1 dBTP), exit code 3 when out of range; `--loudness-json` for pipelines (issue #636).
+- `shotdetect --save-shotchanges <file>` and `Timeline.ShotChanges`: the cuts for Subtitle Edit, each cut's time in
+  seconds a line, the format of SE's `.shotchanges` files, which its Import shot changes reads as seconds (issue #633).
+- `shotdetect --save-youtube-chapters <file>` and `Timeline.YouTubeChapters`: chapters for a YouTube video's
+  description, a line each (`0:00 Chapter 1`), meeting YouTube's rules (first at 0:00, at least three, each at least
+  10 s): shots merge until a chapter has run `--chapter-min-length` seconds (10 by default), each cut's time rounded up
+  to the second (issue #648). `Timeline.ChapterStarts` gives the same chapter points with any minimum length, for
+  other players' chapters.
+
+### Fixed
+
+- The ffmpeg executable before FFmpeg 7.1 (Ubuntu 24.04's 6.1, for one) failed on every video whose stream names its
+  chroma location ("Error applying option 'in_chroma_loc' to filter 'scale'"), though the docs said any version works.
+  8-bit 4:2:0 video now reads with it, with the same results; other formats (10-bit, 4:2:2, ...) stop with a
+  message asking for FFmpeg 7.1 or newer (`ShotDetectionError.FfmpegNotFound`). FFmpeg 7.1 and newer are unchanged.
+
 ## 3.23.0 – 2026-10-31
 
 Frames from the caller as a file's: display rotation, variable frame rate and deinterlacing.

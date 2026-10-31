@@ -135,6 +135,156 @@ public class FrameRangeTests
         [0, 99], // the last range one frame long
     ];
 
+    /// <summary><see cref="Frames"/> flagged interlaced, the field order changing every 7 frames (each frame's own, as yadif takes it).</summary>
+    static List<YuvFrame> Interlaced(YuvVideo video, int count = Count) =>
+        [.. Frames(video, count).Select((f, i) => f with { Interlaced = true, TopFieldFirst = i / 7 % 2 == 0 })];
+
+    /// <summary>The frames <see cref="ShotDetection.RangeFrames"/> says to give ScoreRange for [<paramref name="first"/>, <paramref name="end"/>).</summary>
+    static IEnumerable<YuvFrame> Given(YuvVideo video, DetectionOptions options, IReadOnlyList<YuvFrame> all, int first, int end)
+    {
+        var (from, to) = ShotDetection.RangeFrames(video, options, first, end);
+        return all.Skip((int)from).Take((int)Math.Min(all.Count, to) - (int)from);
+    }
+
+    // RangeFrames: one frame on each side, two when deinterlacing (On, or Auto on an interlaced field order), never before
+    // frame 0; the ranges given those frames merge into Detect's result exactly, deinterlaced or not.
+    [Theory]
+    [InlineData("content", false)]
+    [InlineData("adaptive", true)]
+    [InlineData("deinterlaced", true)]
+    [InlineData("auto", true)]
+    [InlineData("auto-progressive", true)]
+    public void RangeFramesGiveTheFramesEachRangeNeeds(string name, bool stats)
+    {
+        var video = Video();
+        var options = Options(name is "content" ? "content" : "adaptive", stats);
+        options = name switch
+        {
+            "deinterlaced" => options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() },
+            "auto" => options with { Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() },
+            "auto-progressive" => options with { Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() },
+            _ => options,
+        };
+        if (name == "auto")
+            video = video with { FieldOrder = FrameReader.FieldOrder.BottomFirst };
+        if (name == "auto-progressive")
+            video = video with { FieldOrder = FrameReader.FieldOrder.Progressive };
+        int margin = name is "deinterlaced" or "auto" ? 2 : 1;
+        Assert.Equal((0L, 50L + margin), ShotDetection.RangeFrames(video, options, 0, 50));
+        Assert.Equal((50L - margin, 100L + margin), ShotDetection.RangeFrames(video, options, 50, 100));
+        Assert.Equal((0L, 3L + margin), ShotDetection.RangeFrames(video, options, 1, 3));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ShotDetection.RangeFrames(video, options, 5, 5));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ShotDetection.RangeFrames(video, options, -1, 5));
+
+        var all = Interlaced(video);
+        var expected = ShotDetection.Detect(video, all, options);
+        Assert.Equal(margin == 2, expected.Video.Deinterlaced);
+        foreach (var starts in Splits.Append([0, 1, 2]).Append([0, 2, 50]))
+        {
+            var ranges = new List<RangeScores>();
+            for (int i = 0; i < starts.Length; i++)
+            {
+                int end = i + 1 < starts.Length ? starts[i + 1] : all.Count;
+                ranges.Add(RangeScores.FromBytes(ShotDetection.ScoreRange(video, Given(video, options, all, starts[i], end), starts[i], options).ToBytes()));
+            }
+
+            AssertSame(expected, ShotDetection.Merge(video, ranges, options));
+        }
+    }
+
+    // Deinterlaced, each range given yadif's neighbours (two frames before its first, two past its end): the ranges merge
+    // into the sequential deinterlaced result exactly, with every split, whether deinterlacing is On or Auto (an interlaced
+    // field order). One frame fewer past the end leaves the overlap frame without its final score: refused.
+    [Theory]
+    [InlineData("adaptive", true)]
+    [InlineData("content", false)]
+    [InlineData("histogram", true)]
+    [InlineData("hash", false)]
+    [InlineData("several", true)]
+    [InlineData("untimed", true)]
+    [InlineData("scale", true)]
+    [InlineData("auto", true)]
+    public void DeinterlacedRangesMergeIntoTheSequentialResult(string detector, bool stats)
+    {
+        var video = Video(timed: detector != "untimed");
+        var options = Options(detector, stats) with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
+        if (detector == "auto")
+            (video, options) = (video with { FieldOrder = FrameReader.FieldOrder.TopFirst }, options with { Deinterlace = DeinterlaceMode.Auto });
+        var all = Interlaced(video);
+        var expected = ShotDetection.Detect(video, all, options);
+        Assert.True(expected.Video.Deinterlaced);
+        Assert.NotEqual(ShotDetection.Detect(video, all, options with { Deinterlace = DeinterlaceMode.Off }).Stats?.Csv(expected.Video.Position) ?? "x",
+            expected.Stats?.Csv(expected.Video.Position) ?? "");
+        foreach (var starts in Splits.Append([0, 1, 2]).Append([0, 2, 50]))
+        {
+            var ranges = new List<RangeScores>();
+            for (int i = 0; i < starts.Length; i++)
+            {
+                int end = i + 1 < starts.Length ? starts[i + 1] : all.Count;
+                ranges.Add(RangeScores.FromBytes(ShotDetection.ScoreRange(video, Given(video, options, all, starts[i], end), starts[i], options).ToBytes()));
+            }
+
+            AssertSame(expected, ShotDetection.Merge(video, ranges, options));
+        }
+
+        // Given only one frame past the end, the overlap frame has no final score; given the frame before only (not
+        // yadif's previous for it), the frames are numbered one off, which the merge's checks refuse.
+        var short1 = ShotDetection.ScoreRange(video, Given(video, options, all, 0, 50).SkipLast(1), 0, options);
+        var rest = ShotDetection.ScoreRange(video, Given(video, options, all, 50, Count), 50, options);
+        Assert.Contains("without range 1's first frame", Assert.Throws<ShotDetectionException>(() => ShotDetection.Merge(video, [short1, rest], options)).Message);
+        var first = ShotDetection.ScoreRange(video, Given(video, options, all, 0, 50), 0, options);
+        var late = ShotDetection.ScoreRange(video, RangeFrames(all, 50, Count), 50, options);
+        Assert.Throws<ShotDetectionException>(() => ShotDetection.Merge(video, [first, late], options));
+
+        // Scored deinterlaced, merged without: refused.
+        Assert.Throws<ShotDetectionException>(() => ShotDetection.Merge(video, [first, rest], options with { Deinterlace = DeinterlaceMode.Off }));
+    }
+
+    // Deinterlaced, a range from frame 0 tells the shots Detect tells, and runs that stop and continue from the earlier
+    // ranges' scores tell the whole video's: a stopped run's last frame isn't final, so the next starts two frames
+    // before where it stopped (its frames from four before), and the merge is the sequential result.
+    [Theory]
+    [InlineData("content", false)]
+    [InlineData("adaptive", true)]
+    [InlineData("several", true)]
+    public async Task ADeinterlacedRangeTellsTheShotsDetectTells(string detector, bool stats)
+    {
+        var video = Video();
+        var all = Interlaced(video);
+        var options = Options(detector, stats) with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
+        var whole = new Pulled();
+        var expected = ShotDetection.Detect(video, whole.Counted(all), options with { OnShot = whole });
+        var detected = new Pulled();
+        await ShotDetection.DetectAsync(video, FrameSourceAsyncTests.Yielding(detected.Counted(all)), options with { OnShot = detected });
+        Assert.Equal(whole.Told, detected.Told);
+        var told = new Pulled();
+        ShotDetection.ScoreRange(video, told.Counted(all), 0, options with { OnShot = told });
+        Assert.Equal(whole.Told, told.Told);
+
+        foreach (int[] stops in new[] { new[] { 50 }, [35], [71], [30, 33, 60], [4, 7] })
+        {
+            var ranges = new List<RangeScores>();
+            var resumed = new List<(Shot Shot, int Frame)>();
+            int first = 0;
+            for (int i = 0; i <= stops.Length; i++)
+            {
+                int end = i < stops.Length ? stops[i] : Count, from = Math.Max(0, first - 2);
+                var run = new Pulled();
+                var earlier = ranges.Select(r => RangeScores.FromBytes(r.ToBytes()));
+                var frames = run.Counted(all.Skip(from).Take(end - from));
+                var scores = i % 2 == 0
+                    ? ShotDetection.ScoreRange(video, earlier, frames, first, options with { OnShot = run })
+                    : await ShotDetection.ScoreRangeAsync(video, earlier, FrameSourceAsyncTests.Yielding(frames), first, options with { OnShot = run });
+                resumed.AddRange(run.Told.Where(t => t.Pulled >= 0 || i == stops.Length).Select(t => (t.Shot, t.Pulled < 0 ? -1 : from + t.Pulled)));
+                ranges.Add(scores);
+                first = end - 2;
+            }
+
+            Assert.Equal(whole.Told, resumed);
+            AssertSame(expected, ShotDetection.Merge(video, ranges, options));
+        }
+    }
+
     [Theory]
     [MemberData(nameof(Detectors))]
     public void RangesMergeIntoTheSequentialResult(string detector, bool stats)
@@ -507,11 +657,15 @@ public class FrameRangeTests
 
         Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Yuv420Converter = null }));
 
-        // Deinterlacing reads the frames on either side of a range's: refused when it would deinterlace.
-        Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() }));
+        // The tone trim sets a time range: refused for ranges, even with the tone given.
+        var toned = video with { ReferenceTone = [] };
+        Assert.Contains("isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(toned, all, 0, options with { TrimReferenceTone = true })).Message);
+        Assert.Contains("isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.Merge(toned, [ShotDetection.ScoreRange(toned, all, 0, options)], options with { TrimReferenceTone = true })).Message);
+
+        // Deinterlacing needs yadif; ranges scored without it don't merge with it (their fingerprints differ).
+        Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Deinterlace = DeinterlaceMode.On }));
         var interlaced = video with { FieldOrder = FrameReader.FieldOrder.TopFirst };
-        Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(interlaced, all, 0, options with { Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() }));
-        Assert.Throws<ArgumentException>(() => ShotDetection.Merge(interlaced, [ShotDetection.ScoreRange(interlaced, all, 0, options)], options with { Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() }));
+        Assert.Throws<ShotDetectionException>(() => ShotDetection.Merge(interlaced, [ShotDetection.ScoreRange(interlaced, all, 0, options)], options with { Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() }));
         Assert.Equal(ShotDetection.Merge(video, [ShotDetection.ScoreRange(video, all, 0, options)], options).Shots,
             ShotDetection.Merge(video, [ShotDetection.ScoreRange(video, all, 0, options with { Deinterlace = DeinterlaceMode.Auto })], options with { Deinterlace = DeinterlaceMode.Auto }).Shots);
         Assert.Throws<ArgumentOutOfRangeException>(() => ShotDetection.ScoreRange(video, all, -1, options));
@@ -596,12 +750,21 @@ public class FrameRangeTests
         // Each fingerprinted one is written (the typed times inside their strings), every YuvVideo property and every
         // detector setting too.
         string text = ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());
-        foreach (string name in ShotDetection.Fingerprinted.Except(["MinSceneDuration", "MinOutDuration"]))
+        foreach (string name in ShotDetection.Fingerprinted.Except(["MinSceneDuration", "MinOutDuration", "Deinterlace", "Yadif"]))
             Assert.Contains("\n" + name + "=", "\n" + text);
+
+        // Deinterlacing only when it deinterlaces: the ranges scored before it was taken keep their fingerprint.
+        string deinterlaced = ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)], Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() }.Resolved());
+        Assert.Contains("\nDeinterlace=", "\n" + deinterlaced);
+        Assert.Contains("\nYadif=ShotDetector.FastYuv.Yadif\n", "\n" + deinterlaced);
+        Assert.DoesNotContain("\nDeinterlace=", "\n" + text);
+        Assert.Equal(text, ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)], Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() }.Resolved()));
 
         // ChromaLocation only when set: the ranges scored before it existed keep their fingerprint.
         string sited = ShotDetection.Fingerprint(Video() with { ChromaLocation = "left" }, new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());
-        foreach (var p in typeof(YuvVideo).GetProperties().Where(p => p.Name != "EqualityContract"))
+
+        // ReferenceTone isn't: ranges refuse the trim, so the tone changes no range's scores.
+        foreach (var p in typeof(YuvVideo).GetProperties().Where(p => p.Name is not ("EqualityContract" or "ReferenceTone")))
             Assert.Contains("\n" + p.Name + "=", "\n" + sited);
         Assert.DoesNotContain("\nChromaLocation=", "\n" + text);
         foreach (var p in typeof(DetectorSettings).GetProperties().Where(p => p.Name is not ("EqualityContract" or "MinSceneDuration" or "MinOutDuration")))
