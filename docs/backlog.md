@@ -39,10 +39,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
   - Status: Open
 
-- Frame sources: LoadScenes for frames from the caller (#647)
-  - Why: `ShotDetection.LoadScenes` takes only a video path; frames from the caller (`YuvVideo` + `YuvFrame`s) have no equivalent. shotdetector-web#90 (correcting cuts on the page) needs the exports from an edited cut list for a video read in the browser; done when they equal `LoadScenes(path)`'s byte for byte (docs/frame-source-parity.md lists the gap)
-  - Status: Open, after #628, frame-source session
-
 - VideoFrameReader Yuv420p: last chroma row zero at odd heights (#656); fix and test against ffmpeg -f rawvideo
   - Why: VideoFrameReader with FrameFormat.Yuv420p leaves the last chroma row as zeros at odd heights (321x241: U/V row 120), likely swscale's unscaled copy in Convert(); found by the #646 session, near #630
   - Status: Open, after #647, frame-source session

@@ -315,6 +315,8 @@
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line(nameof(o.Deinterlace), "frames");'; Replace = ';'; Tests = 'FrameRangeTests.TheFingerprintCoversEveryOption' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'int margin = VideoReader.DeinterlacesFrames(video, (options ?? new DetectionOptions()).Resolved()) ? 2 : 1;'; Replace = 'int margin = 1;'; Tests = 'FrameRangeTests.RangeFramesGiveTheFramesEachRangeNeeds' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_frames is not null && !_framesStarted && !_framesEnded && _framesRead < frame + FramesAhead;'; Replace = 'false;'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (converts)'; Replace = 'if (true)'; Tests = 'FrameRangeTests.LoadScenesTakesTheVideosPropertiesAndAListAsText' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (converts && YuvForVideo is null)'; Replace = 'if (YuvForVideo is null)'; Tests = 'FrameRangeTests.LoadScenesTakesTheVideosPropertiesAndAListAsText' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (stride < width || plane.Length < (long)stride * (height - 1) + width)'; Replace = 'if (stride < width)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (!(Math.Abs(from - expected) <= 0.5 / rate))'; Replace = 'if (false)'; Tests = 'FrameInputTests.FramesMustComeAtTheFrameRate' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_startPts = video.StartPts;'; Replace = '_startPts = 0;'; Tests = 'FrameInputTests.FramesAreAtTheirPtsFromTheStreamsStart' }

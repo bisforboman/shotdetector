@@ -849,8 +849,41 @@ public static partial class ShotDetection
     {
         var o = (options ?? new DetectionOptions()).Resolved();
         var video = new VideoReader(videoPath, o, cancellationToken);
-        var fps = video.Fps;
         using var reader = new StreamReader(sceneListCsv);
+        return Loaded(video, videoPath, reader, column, o);
+    }
+
+    /// <summary>
+    /// load-scenes for frames the caller decodes: <see cref="LoadScenes(string, string, string, DetectionOptions?, CancellationToken)"/>
+    /// with the video's properties from <paramref name="video"/> instead of a probe, and the scene list as text (e.g. a
+    /// <see cref="StringReader"/> over <see cref="Shots.Csv"/>'s output, a list edited in a browser). No frame is given
+    /// or converted, so no converter is needed. The result is a file's for the same list (shots, cuts, positions and the
+    /// exports made from them, byte for byte) when <paramref name="video"/> has the file's values, its positions from
+    /// <see cref="YuvVideo.FrameTimestamps"/> as a file's are from its packets (without them, frame n is at n / rate, as
+    /// for Detect on frames); it has no <see cref="DetectionResult.VideoPath"/>, so the exports that cut the file aren't
+    /// available.
+    /// </summary>
+    /// <param name="video">The video's properties, as for <see cref="Detect(YuvVideo, IEnumerable{YuvFrame}, DetectionOptions?, CancellationToken)"/>.</param>
+    /// <param name="sceneList">A scene list CSV's text, read to its end (not disposed).</param>
+    /// <param name="column">The column with each shot's start.</param>
+    /// <param name="options">Uses the time range, MinSceneLength, DropShortScenes, MergeLastScene, Compatibility and FrameRate.</param>
+    /// <returns>The shots of the list, as a detection's result.</returns>
+    /// <exception cref="ArgumentException">The list has no column <paramref name="column"/>, or the video's properties are invalid.</exception>
+    public static DetectionResult LoadScenes(YuvVideo video,
+        TextReader sceneList,
+        string column = "Start Frame",
+        DetectionOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(video);
+        ArgumentNullException.ThrowIfNull(sceneList);
+        var o = (options ?? new DetectionOptions()).Resolved();
+        return Loaded(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o, converts: false), null, sceneList, column, o);
+    }
+
+    /// <summary>The shots of a scene list for <paramref name="video"/>: both LoadScenes' work once the video is known.</summary>
+    static DetectionResult Loaded(VideoReader video, string? videoPath, TextReader reader, string column, DetectionOptions o)
+    {
+        var fps = video.Fps;
         var header = CsvRow(reader.ReadLine());
         if (!header.Contains(column))
             header = CsvRow(reader.ReadLine()); // past scenedetect's "Timecode List:" row
