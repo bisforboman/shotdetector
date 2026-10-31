@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using FFmpeg.AutoGen;
 
 namespace FrameReader;
@@ -823,10 +824,13 @@ public sealed unsafe class VideoFrameReader : IDisposable
             ffmpeg.av_frame_unref(_out);
             (_out->format, _out->width, _out->height) = ((int)_format, width, height);
 
-            // Aligned rows, as the scale filter's output buffers have: swscale takes other code paths into an unaligned
-            // buffer (packed rows), which at an odd width or height left the last chroma row unwritten and rounded the
-            // last BGR column differently (issue #656). Packed after converting, as rawvideo writes them.
+            // As the scale filter's output buffers are (issue #656): aligned rows, where swscale takes other code paths into
+            // an unaligned buffer (packed rows) that left an odd width's last RGB column unwritten on x64; and zeroed, as
+            // libavfilter's frame pool allocates them (av_buffer_allocz), since on ARM swscale never writes that column, so
+            // ffmpeg's bytes there are 0 (ours were the buffer's old contents). Packed after converting, as rawvideo writes them.
             Check(ffmpeg.av_frame_get_buffer(_out, 0), "frame buffer");
+            for (uint i = 0; i < 8 && _out->buf[i] != null; i++)
+                NativeMemory.Clear(_out->buf[i]->data, (nuint)_out->buf[i]->size);
         }
 
         // As the scale filter does: the input read as progressive (its interl=0), and the output's tags those the link
