@@ -63,6 +63,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: since #625 a stream whose resolution changes midway is refused through the frame source (`YuvFrame.Width`/`Height`), where Detect(path) scales such frames (bicubic, as OpenCV) and gives a result; FastYuv already has the bicubic filter set-up and the MMXEXT vertical scaler and output from its 10-bit port. Worth it once a frame-source caller meets resolution changes (adaptive streams, splices)
   - Status: Maybe (the owner chose refusing first, docs/decisions/2026-10-31-frame-source-size-change.md)
 
+- Frame sources: timestamps that start over (two encodes joined)
+  - Why: Detect(path) takes such a stream (frames labelled by their packets, shots told at the end: TimestampResetTests), but the frame source refuses it: YuvVideo.FrameTimestamps must rise, and without them the frames must come at the constant rate from frame 0's pts. Found checking #627 on the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv (docs/frame-source-parity.md). A caller can leave TimeBase null, at the cost of times that can differ from the file's
+  - Status: Maybe (until a frame-source caller meets one)
+
 - MPEG-PS chunking: long DVD/VOB rips on several cores
   - Why: Files whose packets lack timestamps (MPEG-PS) never run in chunks (`NotChunkable`: "packets without timestamps"), because chunk bounds need every frame's time up front, the pass #546 removed in-process. Long rips can't use more than one decoder. Measure the pass's cost against what chunking gains (1.3-1.5x on 4 CPUs elsewhere) before deciding whether to bring the pass back for long files
   - Status: Maybe
