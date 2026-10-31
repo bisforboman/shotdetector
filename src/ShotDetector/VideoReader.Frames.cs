@@ -51,12 +51,12 @@ internal sealed partial class VideoReader
 
         if (o.FfmpegResize)
             throw new ArgumentException("FfmpegResize isn't available for frames from the caller (it is ffmpeg's scaler).");
-        if (video.PixelFormat is not ("yuv420p" or "yuvj420p"))
-            throw new ArgumentException($"Frames from the caller must be yuv420p or yuvj420p so far, not {video.PixelFormat}.");
+        if (video.PixelFormat is not ("yuv420p" or "yuvj420p" or "yuv422p" or "yuvj422p" or "yuv420p10le"))
+            throw new ArgumentException($"Frames from the caller must be yuv420p, yuvj420p, yuv422p, yuvj422p or yuv420p10le so far, not {video.PixelFormat}.");
         if (video.Width < 1 || video.Height < 1 || (long)video.Width * video.Height > FrameReader.FrameDecoderOptions.DefaultMaxPixels)
             throw new ArgumentException($"The frames' size ({video.Width}x{video.Height}) must be positive and at most 8192 x 8192 pixels.");
-        if (video.Height % 2 != 0)
-            throw new ArgumentException($"The frames' height must be even ({video.Height}): the converter reproduces swscale's yuv420p conversion, which needs it.");
+        if (video.Height % 2 != 0 && video.PixelFormat != "yuv420p10le")
+            throw new ArgumentException($"The frames' height must be even ({video.Height}): the converter reproduces swscale's unscaled {video.PixelFormat} conversion, which needs it.");
         if (video.FrameRate.Num <= 0 || video.FrameRate.Den <= 0)
             throw new ArgumentException("YuvVideo.FrameRate must be positive.");
         if (video.TimeBase is { } t && (t.Num <= 0 || t.Den <= 0))
@@ -118,10 +118,16 @@ internal sealed partial class VideoReader
         {
             ["color_space"] = video.ColorSpace,
             ["color_range"] = video.FullRange ? "pc" : "",
+            ["chroma_location"] = video.ChromaLocation ?? "",
         };
         _colours = new Lazy<Colours>(() => ReadColours(stream));
         if (YuvForVideo is null)
-            throw new ArgumentException($"The converter doesn't take this video's colours (color_space '{video.ColorSpace}', full range {video.FullRange}).");
+        {
+            throw new ArgumentException(video.PixelFormat == "yuv420p10le"
+                ? $"The converter doesn't take this video's colours or size (color_space '{video.ColorSpace}', full range {video.FullRange}, chroma location '{video.ChromaLocation}', {video.Width}x{video.Height}; FastYuv's 10-bit converter needs an even width)."
+                : $"The converter doesn't take this video's colours (color_space '{video.ColorSpace}', full range {video.FullRange}).");
+        }
+
         FieldOrder = video.FieldOrder;
         _deinterlace = DeinterlacesFrames(video, o);
         _yadif = o.Yadif;
@@ -152,7 +158,7 @@ internal sealed partial class VideoReader
         }
 
         var f = _frames.Current;
-        int w = _codedSize.W, h = _codedSize.H, cw = (w + 1) / 2, ch = (h + 1) / 2;
+        int w = _codedSize.W, h = _codedSize.H, cw = (w + 1) / 2, ch = ChromaHeight, b = BytesPerSample;
         if ((f.Width == 0 ? w : f.Width, f.Height == 0 ? h : f.Height) != (w, h))
         {
             // A resolution change: the file path scales the frame to the stream's size (bicubic, as OpenCV), which the
@@ -161,9 +167,9 @@ internal sealed partial class VideoReader
                 $"Frame {_framesRead} is {(f.Width == 0 ? w : f.Width)}x{(f.Height == 0 ? h : f.Height)}, not the video's {w}x{h}: frames of another size (a resolution change midway) aren't supported for frames from the caller yet."));
         }
 
-        CheckPlane(f.Y, f.YStride, w, h, "Y");
-        CheckPlane(f.U, f.UStride, cw, ch, "U");
-        CheckPlane(f.V, f.VStride, cw, ch, "V");
+        CheckPlane(f.Y, f.YStride, w * b, h, "Y");
+        CheckPlane(f.U, f.UStride, cw * b, ch, "U");
+        CheckPlane(f.V, f.VStride, cw * b, ch, "V");
         if (_frameTimestamps is { } entries)
         {
             // At its entry: the first frame given at its own (frame 0's, or a range's first frame's), each next one at a
@@ -195,14 +201,14 @@ internal sealed partial class VideoReader
         if (_deinterlace)
         {
             // Packed planes (stride = width), as the converter takes them.
-            _held ??= [new byte[IYuv420Converter.FrameSize(w, h)], new byte[IYuv420Converter.FrameSize(w, h)], new byte[IYuv420Converter.FrameSize(w, h)]];
+            _held ??= [new byte[PackedFrameSize], new byte[PackedFrameSize], new byte[PackedFrameSize]];
             var held = _held[_framesRead % 3];
             for (int r = 0; r < h; r++)
-                f.Y.Span.Slice(r * f.YStride, w).CopyTo(held.AsSpan(r * w, w));
+                f.Y.Span.Slice(r * f.YStride, w * b).CopyTo(held.AsSpan(r * w * b, w * b));
             for (int r = 0; r < ch; r++)
             {
-                f.U.Span.Slice(r * f.UStride, cw).CopyTo(held.AsSpan(w * h + r * cw, cw));
-                f.V.Span.Slice(r * f.VStride, cw).CopyTo(held.AsSpan(w * h + cw * ch + r * cw, cw));
+                f.U.Span.Slice(r * f.UStride, cw * b).CopyTo(held.AsSpan((w * h + r * cw) * b, cw * b));
+                f.V.Span.Slice(r * f.VStride, cw * b).CopyTo(held.AsSpan((w * h + cw * ch + r * cw) * b, cw * b));
             }
 
             // As yadif's auto parity (FrameDecoder's row path): top first unless flagged interlaced bottom first.
@@ -219,13 +225,22 @@ internal sealed partial class VideoReader
             if (stride < width || plane.Length < (long)stride * (height - 1) + width)
             {
                 throw new ArgumentException(string.Create(CultureInfo.InvariantCulture,
-                    $"Frame {_framesRead}'s {name} plane ({plane.Length} bytes, stride {stride}) is smaller than {width} x {height}."));
+                    $"Frame {_framesRead}'s {name} plane ({plane.Length} bytes, stride {stride}) is smaller than {width} bytes x {height} rows."));
             }
         }
     }
 
     /// <summary>A frame's own colour tags, as the decoder's are named (null: the video's).</summary>
-    static FrameColourTags TagsOf(YuvFrame f) => new(f.ColorSpace, f.FullRange is { } full ? (full ? "pc" : "tv") : null, null);
+    static FrameColourTags TagsOf(YuvFrame f) => new(f.ColorSpace, f.FullRange is { } full ? (full ? "pc" : "tv") : null, f.ChromaLocation);
+
+    /// <summary>Bytes per sample of the frames' planes: 2 for yuv420p10le (16-bit little-endian), else 1.</summary>
+    int BytesPerSample => TenBit ? 2 : 1;
+
+    /// <summary>Rows of each chroma plane: the frame's height for 4:2:2, half of it (rounded up) for 4:2:0.</summary>
+    int ChromaHeight => Yuv422 ? _codedSize.H : (_codedSize.H + 1) / 2;
+
+    /// <summary>Bytes of a frame with packed planes (stride = width), Y then U then V, as the converters take it.</summary>
+    int PackedFrameSize => ((_codedSize.W * _codedSize.H) + (2 * ((_codedSize.W + 1) / 2) * ChromaHeight)) * BytesPerSample;
 
     /// <summary>
     /// Frame <paramref name="frame"/> (at <paramref name="pts"/>) at frame / rate after frame 0 (at <paramref name="firstPts"/>),
@@ -404,8 +419,8 @@ internal sealed partial class VideoReader
             yield break;
         bool resize = (Width, Height) != (CropRegion.Width, CropRegion.Height);
         var resizer = resize ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
-        int w = _codedSize.W, h = _codedSize.H, cw = (w + 1) / 2, ch = (h + 1) / 2;
-        var yuv = new byte[IYuv420Converter.FrameSize(w, h)];
+        int w = _codedSize.W, h = _codedSize.H, cw = (w + 1) / 2, ch = ChromaHeight, b = BytesPerSample;
+        var yuv = new byte[PackedFrameSize];
         var small = new byte[Width * Height * 3];
 
         // Each frame converted with its own colour tags (the video's unless it says otherwise), as the file path
@@ -433,23 +448,23 @@ internal sealed partial class VideoReader
             {
                 var tags = _deinterlace ? _heldTags[k % 3] : TagsOf(_currentFrame);
                 var conversion = conversions.For(tags) ?? throw new ShotDetectionException(ShotDetectionError.InvalidInput, string.Create(CultureInfo.InvariantCulture,
-                    $"Frame {k}'s colours (color_space '{tags.ColorSpace}', color_range '{tags.ColorRange}') aren't ones the converter takes (the file path converts such a frame with FFmpeg)."));
+                    $"Frame {k}'s colours (color_space '{tags.ColorSpace}', color_range '{tags.ColorRange}', chroma location '{tags.ChromaLocation}') aren't ones the converter takes (the file path converts such a frame with FFmpeg)."));
                 var convert = conversion.Yuv;
                 int[] luma = conversion.Rows?.Luma ?? allLuma, chroma = conversion.Rows?.Chroma ?? allChroma;
                 if (_deinterlace)
                 {
                     var cur = _held![k % 3];
-                    Deinterlace(_held[Math.Max(k - 1, 0) % 3], cur, _framesRead > k + 1 ? _held[(k + 1) % 3] : cur, _heldTff[k % 3], yuv, luma, chroma, w, h);
+                    Deinterlace(_held[Math.Max(k - 1, 0) % 3], cur, _framesRead > k + 1 ? _held[(k + 1) % 3] : cur, _heldTff[k % 3], yuv, luma, chroma, w, h, ch, b);
                 }
                 else
                 {
                     var f = _currentFrame;
                     foreach (int r in luma)
-                        f.Y.Span.Slice(r * f.YStride, w).CopyTo(yuv.AsSpan(r * w, w));
+                        f.Y.Span.Slice(r * f.YStride, w * b).CopyTo(yuv.AsSpan(r * w * b, w * b));
                     foreach (int r in chroma)
                     {
-                        f.U.Span.Slice(r * f.UStride, cw).CopyTo(yuv.AsSpan(w * h + r * cw, cw));
-                        f.V.Span.Slice(r * f.VStride, cw).CopyTo(yuv.AsSpan(w * h + cw * ch + r * cw, cw));
+                        f.U.Span.Slice(r * f.UStride, cw * b).CopyTo(yuv.AsSpan((w * h + r * cw) * b, cw * b));
+                        f.V.Span.Slice(r * f.VStride, cw * b).CopyTo(yuv.AsSpan((w * h + cw * ch + r * cw) * b, cw * b));
                     }
                 }
 
@@ -492,25 +507,27 @@ internal sealed partial class VideoReader
     /// into <paramref name="yuv"/>: as FrameDecoder's row path, the rows of the field yadif keeps copied from
     /// <paramref name="cur"/>, the others interpolated from the three frames (packed planes, stride = width).
     /// </summary>
-    unsafe void Deinterlace(byte[] prev, byte[] cur, byte[] next, bool tff, byte[] yuv, int[] luma, int[] chroma, int w, int h)
+    unsafe void Deinterlace(byte[] prev, byte[] cur, byte[] next, bool tff, byte[] yuv, int[] luma, int[] chroma, int w, int h, int ch, int b)
     {
-        int cw = (w + 1) / 2, ch = (h + 1) / 2, parity = tff ? 0 : 1; // yadif filters with parity tff ^ 1: these rows are interpolated
+        int cw = (w + 1) / 2, parity = tff ? 0 : 1; // yadif filters with parity tff ^ 1: these rows are interpolated
         fixed (byte* p = prev, c = cur, n = next, d = yuv)
         {
-            Plane(_yadif!, p, c, n, d, w, h, luma, parity);
-            Plane(_yadif!, p + (w * h), c + (w * h), n + (w * h), d + (w * h), cw, ch, chroma, parity);
-            int v = (w * h) + (cw * ch);
-            Plane(_yadif!, p + v, c + v, n + v, d + v, cw, ch, chroma, parity);
+            Plane(_yadif!, p, c, n, d, w, h, luma, parity, b);
+            int u = w * h * b;
+            Plane(_yadif!, p + u, c + u, n + u, d + u, cw, ch, chroma, parity, b);
+            int v = ((w * h) + (cw * ch)) * b;
+            Plane(_yadif!, p + v, c + v, n + v, d + v, cw, ch, chroma, parity, b);
         }
 
-        static void Plane(FrameReader.IRowDeinterlacer yadif, byte* prev, byte* cur, byte* next, byte* dst, int width, int height, int[] rows, int parity)
+        static void Plane(FrameReader.IRowDeinterlacer yadif, byte* prev, byte* cur, byte* next, byte* dst, int width, int height, int[] rows, int parity, int b)
         {
+            int stride = width * b;
             foreach (int y in rows)
             {
                 if (((y ^ parity) & 1) != 0)
-                    yadif.FilterRow((nint)dst, (nint)prev, (nint)cur, (nint)next, width, width, width, height, y, 1);
+                    yadif.FilterRow((nint)dst, (nint)prev, (nint)cur, (nint)next, stride, stride, width, height, y, b);
                 else
-                    new ReadOnlySpan<byte>(cur + ((long)y * width), width).CopyTo(new Span<byte>(dst + ((long)y * width), width));
+                    new ReadOnlySpan<byte>(cur + ((long)y * stride), stride).CopyTo(new Span<byte>(dst + ((long)y * stride), stride));
             }
         }
     }

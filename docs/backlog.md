@@ -35,6 +35,22 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
   - Status: Open
 
+- Frame sources: LoadScenes for frames from the caller (#647)
+  - Why: `ShotDetection.LoadScenes` takes only a video path; frames from the caller (`YuvVideo` + `YuvFrame`s) have no equivalent. shotdetector-web#90 (correcting cuts on the page) needs the exports from an edited cut list for a video read in the browser; done when they equal `LoadScenes(path)`'s byte for byte (docs/frame-source-parity.md lists the gap)
+  - Status: Open, after #628, frame-source session
+
+- FrameReader: managed picture and loudness measures (#646)
+  - Why: The owner chose (2026-10-31) to move shotdetector-web's managed measures (signalstats, blackdetect, cropdetect and colour-bar equivalents; a BS.1770-4 loudness meter; silences and peaks) into FrameReader, so the page's QC report (shotdetector-web#94) and the delivery-QC command (#636) share one implementation checked against FFmpeg once; FrameReader's own `Loudness` (#642) runs on FFmpeg's ebur128, which the browser can't use
+  - Status: Scoping (owner's choices due)
+
+- Timeline: YouTube chapters export (#648)
+  - Why: A chapters export beside Edl, Fcpx, Otio, Qp and ShotChanges, for the CLI and shotdetector-web's page (shotdetector-web#84's chapters part); YouTube's rules (first chapter at 0:00, at least three, each at least 10 s) to verify before building, and how shots merge into chapters that meet them to decide
+  - Status: Open, after #645, one CLI session, #648 first
+
+- CLI: exact contact sheet next to --save-images (#649)
+  - Why: A grid of each shot's frames with its number, timecode and length, as PNG or PDF, built from `--save-images`' exact frames (the page's version, shotdetector-web#93, stays there with the browser's stills); format, layout and what it shares with `--save-html` to scope
+  - Status: Open, after #645, one CLI session, #648 first
+
 ## Waiting
 
 - Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)
@@ -62,6 +78,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 - Frame sources: scale a frame of another size to the video's, as the file path does (port swscale's scaled 8-bit yuv420p to BGR path, x86's, to FastYuv)
   - Why: since #625 a stream whose resolution changes midway is refused through the frame source (`YuvFrame.Width`/`Height`), where Detect(path) scales such frames (bicubic, as OpenCV) and gives a result; FastYuv already has the bicubic filter set-up and the MMXEXT vertical scaler and output from its 10-bit port. Worth it once a frame-source caller meets resolution changes (adaptive streams, splices)
   - Status: Maybe (the owner chose refusing first, docs/decisions/2026-10-31-frame-source-size-change.md)
+
+- Frame sources: timestamps that start over (two encodes joined)
+  - Why: Detect(path) takes such a stream (frames labelled by their packets, shots told at the end: TimestampResetTests), but the frame source refuses it: YuvVideo.FrameTimestamps must rise, and without them the frames must come at the constant rate from frame 0's pts. Found checking #627 on the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv (docs/frame-source-parity.md). A caller can leave TimeBase null, at the cost of times that can differ from the file's
+  - Status: Maybe (until a frame-source caller meets one)
 
 - MPEG-PS chunking: long DVD/VOB rips on several cores
   - Why: Files whose packets lack timestamps (MPEG-PS) never run in chunks (`NotChunkable`: "packets without timestamps"), because chunk bounds need every frame's time up front, the pass #546 removed in-process. Long rips can't use more than one decoder. Measure the pass's cost against what chunking gains (1.3-1.5x on 4 CPUs elsewhere) before deciding whether to bring the pass back for long files

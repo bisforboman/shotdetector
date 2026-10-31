@@ -12,7 +12,7 @@ public sealed record YuvVideo
     /// <summary>Width of the decoded frames in pixels (all frames have this size), as decoded: before <see cref="Rotation"/>.</summary>
     public required int Width { get; init; }
 
-    /// <summary>Height of the decoded frames in pixels; even (swscale's yuv420p conversion, which the converter reproduces, needs that).</summary>
+    /// <summary>Height of the decoded frames in pixels; even for the 8-bit formats (swscale's unscaled conversion, which the converter reproduces, needs that).</summary>
     public required int Height { get; init; }
 
     /// <summary>
@@ -22,14 +22,24 @@ public sealed record YuvVideo
     /// </summary>
     public required Fps FrameRate { get; init; }
 
-    /// <summary>FFmpeg's name of the frames' pixel format: yuv420p (the default) or yuvj420p (full range), so far.</summary>
+    /// <summary>
+    /// FFmpeg's name of the frames' pixel format: yuv420p (the default), yuvj420p (full range), yuv422p, yuvj422p or
+    /// yuv420p10le (10-bit 4:2:0, 16-bit little-endian samples: see <see cref="YuvFrame"/>), so far.
+    /// </summary>
     public string PixelFormat { get; init; } = "yuv420p";
 
     /// <summary>ffprobe's color_space of the first frame ("bt709", "smpte170m", "unknown", ...); empty: unknown.</summary>
     public string ColorSpace { get; init; } = "";
 
-    /// <summary>Whether the samples are full range (color_range "pc"); yuvj420p is always.</summary>
+    /// <summary>Whether the samples are full range (color_range "pc"); yuvj420p and yuvj422p are always.</summary>
     public bool FullRange { get; init; }
+
+    /// <summary>
+    /// ffprobe's chroma_location of the first frame ("left", "center", "topleft", ...); null (the default), empty or
+    /// "unspecified": unspecified, which swscale takes as center. Used for yuv420p10le only, as by the file path: swscale
+    /// interpolates that format's chroma from where its samples sit (h264 and HEVC 4:2:0 are usually "left").
+    /// </summary>
+    public string? ChromaLocation { get; init; }
 
     /// <summary>
     /// The time base of <see cref="YuvFrame.Pts"/> (the stream's, e.g. 1/12800). Null: frames carry no timestamps, and
@@ -80,9 +90,11 @@ public sealed record YuvVideo
 }
 
 /// <summary>
-/// One decoded 8-bit 4:2:0 frame (<see cref="ShotDetection.Detect(YuvVideo, IEnumerable{YuvFrame}, DetectionOptions?, CancellationToken)"/>):
-/// its three planes, each row <c>Stride</c> bytes after the one before. The luma plane has the video's width and height,
-/// the chroma planes half of each (rounded up). A frame of another size (<see cref="Width"/>, <see cref="Height"/>) is
+/// One decoded frame (<see cref="ShotDetection.Detect(YuvVideo, IEnumerable{YuvFrame}, DetectionOptions?, CancellationToken)"/>)
+/// in <see cref="YuvVideo.PixelFormat"/>: its three planes, each row <c>Stride</c> bytes after the one before. The luma
+/// plane has the video's width and height; the chroma planes half its width (rounded up) and, for 4:2:0, half its height
+/// (rounded up), for 4:2:2 all of it. yuv420p10le's samples are 16-bit little-endian (2 bytes each, the strides still in
+/// bytes), as FFmpeg's planes and WebCodecs' I420P10 copies are laid out. A frame of another size (<see cref="Width"/>, <see cref="Height"/>) is
 /// refused so far. The planes are read before the enumeration moves on, so a decoder can
 /// reuse its buffers for the next frame.
 /// </summary>
@@ -115,6 +127,13 @@ public readonly record struct YuvFrame(ReadOnlyMemory<byte> Y, int YStride, Read
     /// converts it with FFmpeg.
     /// </summary>
     public string? ColorSpace { get; init; }
+
+    /// <summary>
+    /// The frame's chroma_location as ffprobe names it ("left", "topleft", ...); null (the default), empty or
+    /// "unspecified": <see cref="YuvVideo.ChromaLocation"/>. Followed per frame for yuv420p10le, as the file path
+    /// in-process follows each frame's siting; unused for the other formats. See <see cref="ColorSpace"/>.
+    /// </summary>
+    public string? ChromaLocation { get; init; }
 
     /// <summary>
     /// Whether the frame's samples are full range (its color_range "pc"; false: "tv"); null (the default):
