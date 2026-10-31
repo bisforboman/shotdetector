@@ -620,10 +620,9 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420() };
         Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video, Frames(video, 3), options));
         Assert.Equal(3, ShotDetection.Detect(video, FramesOf(video, 3), options).FrameCount);
-        if (format == "yuv420p10le")
-            Assert.Equal(3, ShotDetection.Detect(video with { Height = 47 }, FramesOf(video with { Height = 47 }, 3), options).FrameCount);
-        else
-            Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video with { Height = 47 }, FramesOf(video with { Height = 47 }, 3), options));
+
+        // An odd height: taken for every format (swscale scales those; 8-bit since #630).
+        Assert.Equal(3, ShotDetection.Detect(video with { Height = 47 }, FramesOf(video with { Height = 47 }, 3), options).FrameCount);
     }
 
     [Fact]
