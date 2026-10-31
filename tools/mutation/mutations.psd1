@@ -158,7 +158,7 @@
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '_codedSize.W, _codedSize.H, Turn, CropRegion.X'; Replace = '_codedSize.W, _codedSize.H, 0, CropRegion.X'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }
         # ... a frame at a time (each chroma row filtered once): taken when the converter has it, packed rows x columns,
         # the crop's rows, runs of rows in parallel for chunked outputs
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'c10 as IYuv420P10FrameConverter'; Replace = 'null'; Tests = 'FastYuvTests.PipelinesConvertTenBitAFrameAtATime' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'c10 is IYuv420P10FrameConverter f ? f.FrameToBgr : null'; Replace = 'null'; Tests = 'FastYuvTests.PipelinesConvertTenBitAFrameAtATime' }
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'packed ? j * 3 : x * 3;'; Replace = 'packed ? 0 : x * 3;'; Tests = 'FastYuvTests.TenBitFrameAtATimeEqualsRowByRow' }
         @{ File = 'src/ShotDetector/CvResize.cs'; Find = '_frameRows = SourceRows.Select(r => r + cropY).ToArray();'; Replace = '_frameRows = SourceRows.ToArray();'; Tests = 'FastYuvTests.TenBitFrameAtATimeEqualsRowByRow' }
         @{ File = 'src/ShotDetector/CvResize.cs'; Find = 'bgr.AsSpan(first * n, (end - first) * n)'; Replace = 'bgr.AsSpan(0, (end - first) * n)'; Tests = 'FastYuvTests.TenBitFrameAtATimeEqualsRowByRow' }
@@ -308,12 +308,11 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (DeinterlacesFrames(video, o) && o.Yadif is null)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (o.FfmpegResize)'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.PixelFormat is not ("yuv420p" or "yuvj420p" or "yuv422p" or "yuvj422p" or "yuv420p10le"))'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
-        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.Height % 2 != 0 && video.PixelFormat != "yuv420p10le")'; Replace = 'if (false)'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if ((f.Width == 0 ? w : f.Width, f.Height == 0 ? h : f.Height) != (w, h))'; Replace = 'if (false)'; Tests = 'FrameInputTests.AFrameOfAnotherSizeIsRefused' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'new(f.ColorSpace, f.FullRange is { } full ? (full ? "pc" : "tv") : null, f.ChromaLocation)'; Replace = 'new(null, null, f.ChromaLocation)'; Tests = 'FrameInputTests.EachFrameIsConvertedWithItsOwnColours' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '["chroma_location"] = video.ChromaLocation ?? "",'; Replace = '["chroma_location"] = "",'; Tests = 'FrameInputTests.TenBitChromaIsSitedAsTheFramesSay' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = ': null, f.ChromaLocation);'; Replace = ': null, null);'; Tests = 'FrameInputTests.TenBitChromaIsSitedAsTheFramesSay' }
-        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'if (video.Height % 2 != 0 && video.PixelFormat != "yuv420p10le")'; Replace = 'if (video.Height % 2 != 0)'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (!TenBit && _codedSize.H % 2 != 0)'; Replace = 'if (_codedSize.H % 2 != 0)'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'int BytesPerSample => TenBit ? 2 : 1;'; Replace = 'int BytesPerSample => 1;'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'int ChromaHeight => Yuv422 ? _codedSize.H : (_codedSize.H + 1) / 2;'; Replace = 'int ChromaHeight => (_codedSize.H + 1) / 2;'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line("ChromaLocation", siting);'; Replace = ';'; Tests = 'FrameRangeTests.TheFingerprintCoversEveryOption' }
