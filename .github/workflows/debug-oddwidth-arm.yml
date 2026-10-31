@@ -1,0 +1,49 @@
+name: debug odd width on ARM
+on:
+  push:
+    branches: ['debug/**']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  arm:
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+      - name: BtbN static (the CI reference executable)
+        id: static
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          platform: linuxarm64
+          add-to-path: 'false'
+      - name: BtbN shared (libraries and executable of one build)
+        id: shared
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          platform: linuxarm64
+          build: gpl-shared
+          add-to-path: 'false'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-linux-arm64
+          path: native/linux-arm64
+          run-id: 41242045540
+          github-token: ${{ github.token }}
+      - name: Build
+        run: dotnet build tests/FrameReader.Tests -v q
+      - name: Experiment
+        run: |
+          ls "${{ steps.shared.outputs.bin }}" | head -30
+          run() { echo "=== $1"; dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~DebugOddWidth|FullyQualifiedName~OddSizesAreFfmpegs" --logger "console;verbosity=detailed" 2>&1 | grep -E "DEBUG|Passed!|Failed!|first difference" ; }
+          for a in 0 1 16 32 64; do
+            SHOTDETECTOR_FFMPEG_LIBS="${{ steps.shared.outputs.bin }}" VFR_ALIGN=$a run "BtbN shared libs + its ffmpeg, align $a"
+          done
+          cp "${{ steps.static.outputs.bin }}/ffmpeg" "${{ steps.static.outputs.bin }}/ffprobe" native/linux-arm64/
+          for a in 0 1 16 32 64; do
+            SHOTDETECTOR_FFMPEG_LIBS="$PWD/native/linux-arm64" VFR_ALIGN=$a run "our native libs + BtbN static ffmpeg, align $a"
+          done
+          SHOTDETECTOR_FFMPEG_LIBS="$PWD/native/linux-arm64" DEBUG_FFMPEG="${{ steps.shared.outputs.bin }}/ffmpeg" VFR_ALIGN=0 run "our native libs + BtbN shared ffmpeg as reference"
