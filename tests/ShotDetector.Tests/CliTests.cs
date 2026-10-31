@@ -119,4 +119,28 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
             Directory.Delete(dir, true);
         }
     }
+
+    // --save-youtube-chapters writes Timeline.YouTubeChapters; fewer than three chapters is an error, with no file.
+    [Fact]
+    public void SaveYouTubeChaptersWritesALineAChapter()
+    {
+        string dir = Directory.CreateTempSubdirectory("shotdetect-chapters-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "chapters.txt");
+            var (exitCode, _, err) = Run("-i", YouTubeChaptersTests.LongClip(dir), "-d", "content", "-q", "--save-youtube-chapters", path);
+            Assert.True(exitCode == 0, err);
+            Assert.Equal("0:00 Chapter 1\n0:12 Chapter 2\n0:24 Chapter 3\n", File.ReadAllText(path));
+
+            string few = Path.Combine(dir, "few.txt");
+            (exitCode, _, err) = Run("-i", clips.ThreeShots, "-d", "content", "-q", "--save-youtube-chapters", few, "--chapter-min-length", "10");
+            Assert.Equal(1, exitCode);
+            Assert.Contains("at least three chapters", err, StringComparison.Ordinal);
+            Assert.False(File.Exists(few));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
