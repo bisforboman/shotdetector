@@ -736,6 +736,25 @@ public class FrameRangeTests
     }
 
     [Fact]
+    public void LoadScenesTakesTheVideosPropertiesAndAListAsText()
+    {
+        // No converter, no frames: the list's starts sorted, the first no cut, positions from FrameTimestamps (frame 3
+        // is off the constant-rate grid, at pts 54 rather than 52), a list without the column refused.
+        var video = Video() with { FrameTimestamps = [.. Enumerable.Range(0, Count).Select(i => 40L + (i * 4) + (i == 3 ? 2 : 0))] };
+        string text = "Scene Number,Start Frame\n1,1\n2,31\n3,4\n";
+        var r = ShotDetection.LoadScenes(video, new StringReader(text));
+        Assert.Equal([3L, 30L], r.Cuts.Select(c => c.FrameNum));
+        Assert.Equal([(0L, 3L), (3L, 30L), (30L, 100L)], r.Shots.Select(s => (s.Start.FrameNum, s.End.FrameNum)));
+        Assert.Equal(Count, r.FrameCount);
+        Assert.Equal(0.14, r.Video.Position(3).Seconds, 6);
+        Assert.Null(r.VideoPath);
+        Assert.Throws<ArgumentException>(() => ShotDetection.LoadScenes(video, new StringReader(text), "Start Timecode"));
+
+        // Formats and sizes a converter wouldn't take are fine: nothing is converted.
+        Assert.Equal(2, ShotDetection.LoadScenes(Video() with { PixelFormat = "yuv444p", Height = 47 }, new StringReader(text)).Cuts.Count);
+    }
+
+    [Fact]
     public void TheFingerprintCoversEveryOption()
     {
         // Every option is either in the fingerprint or left out on purpose: a new one must be put in one of them.
