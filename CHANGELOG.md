@@ -6,6 +6,30 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.23.0 – 2026-10-31
+
+Frames from the caller as a file's: display rotation, variable frame rate and deinterlacing.
+
+### New
+
+- Frames from the caller (`ShotDetection.Detect(YuvVideo, IEnumerable<YuvFrame>, ...)`, `DetectAsync`) can be
+  deinterlaced: `Deinterlace = On` or `Auto` with `Yadif` (ShotDetector.FastYuv's) gives a file's deinterlaced result.
+  `YuvVideo.FieldOrder` is the stream's field order (ffprobe's `field_order`), which `Auto` goes by and
+  `DetectedVideo.FieldOrder` reports; `YuvFrame.Interlaced` and `YuvFrame.TopFieldFirst` are each frame's flags
+  (ffprobe's `interlaced_frame` and `top_field_first`), which set yadif's parity. Without `Yadif` it is an
+  `ArgumentException` when it would deinterlace; `Auto` on a progressive or unknown field order runs as before. Ranges
+  (`ScoreRange`, `Merge`) refuse deinterlacing (issue #614).
+- Frames from the caller (`ShotDetection.Detect(YuvVideo, IEnumerable<YuvFrame>, ...)`, `DetectAsync`, `ScoreRange`,
+  `Merge`) take a display rotation: `YuvVideo.Rotation` (degrees counterclockwise, any quarter turn, as
+  `DetectedVideo.Rotation` reports a file's). The frames stay as decoded and are turned upright after converting, as a
+  rotated file's, so a phone's MP4 gives `Detect(path)`'s result, size and `Rotation` (issue #608).
+- Frames from the caller at a variable frame rate: with every frame's timestamp given up front (`YuvVideo.FrameTimestamps`,
+  a file's packets' pts in presentation order), `ShotDetection.Detect(YuvVideo, IEnumerable<YuvFrame>, ...)`,
+  `DetectAsync`, `ScoreRange` and `Merge` take frames at any rate, as `Detect(path)` takes a variable-rate file, in
+  place of the constant-rate check: each frame must be at its entry (a range's too, which identifies its frames),
+  `StartTime` finds its frame from them as the file path does, and a frame the decoder dropped is taken as a file's run
+  takes it. Without them, the constant rate is still required (issue #609).
+
 ## 3.22.0 – 2026-10-30
 
 Frame-source detection without FFmpeg's code, and live shots from ranges.

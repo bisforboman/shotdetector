@@ -7,6 +7,15 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.17.1 – 2026-10-31
+
+The macOS libraries built on macOS 15, still for macOS 14.
+
+### Fixed
+
+- `FrameReader.Native.osx-arm64` is built on macOS 15, as GitHub retires its macOS 14 build machines on 2026-11-02
+  (their brownouts already cancel builds). Its FFmpeg libraries still load on macOS 14 and newer; CI checks that.
+
 ## 2.17.0 – 2026-10-30
 
 Forward reads at steps on MPEG-TS skip the frames nothing references too.

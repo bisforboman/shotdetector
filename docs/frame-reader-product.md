@@ -59,7 +59,8 @@ skipping unreferenced frames, the last-frame and 4:2:2 fixes, the MPEG-PS/AVI se
 so the trigger isn't met. 2.15.1: 0 of 1 (the raw-stream/FLV seeks), joined with the next window. 2.16.0: 0 of 1 (the forward-read
 look-ahead), 0 of 2 with 2.15.1's window, still fewer than 3: the window joins the next release's; not met. 2.17.0: 0 of 1 (MPEG-TS
 frame skipping), 0 of 3 with the joined window, after 2.15.0's 0 of 4: met, the first time by features; the user's
-choice: don't split, keep counting (docs/decisions/2026-10-30-framereader-stays-by-features.md).
+choice: don't split, keep counting (docs/decisions/2026-10-30-framereader-stays-by-features.md). 2.17.1: 0 of 0
+(the macOS libraries built on macos-15, no FrameReader feature), so the window joins the next release's.
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
