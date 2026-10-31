@@ -54,9 +54,14 @@ public sealed class ChannelWeights
         return new ChannelWeights(Enumerable.Repeat(1.0, channels).ToArray());
     }
 
-    /// <summary>ebur128's weights for one of FFmpeg's named layouts, such as <see cref="StreamInfo.ChannelLayout"/> gives.</summary>
-    /// <param name="layout">FFmpeg's name: mono, stereo, 5.1, 5.1(side), 7.1, 5.1.4, ...</param>
-    /// <returns>The weights; null for a name FFmpeg's list of standard layouts doesn't have.</returns>
+    /// <summary>
+    /// ebur128's weights for a layout as FFmpeg describes it (<see cref="StreamInfo.ChannelLayout"/>): one of its named
+    /// layouts (stereo, 5.1(side), 7.1, 5.1.4, ...), any other layout's channels by name in the samples' order
+    /// (<c>5 channels (FL+FR+LFE+BL+BR)</c>, as it describes them, or the names alone; a channel's <c>@label</c> is
+    /// ignored), or <c>N channels</c> for channels without positions (each weighted 1, as ebur128 weighs them).
+    /// </summary>
+    /// <param name="layout">FFmpeg's description of the layout.</param>
+    /// <returns>The weights; null for a name FFmpeg's standard layouts don't have, or a channel name it doesn't know.</returns>
     public static ChannelWeights? ForLayout(string layout)
     {
         ArgumentNullException.ThrowIfNull(layout);
@@ -66,8 +71,50 @@ public sealed class ChannelWeights
                 return FromMask(mask);
         }
 
-        return null;
+        // av_channel_layout_describe's other forms: "3 channels" (unspecified order), "5 channels (FL+FR+LFE+BL+BR)"
+        // (each channel by name); the names alone too.
+        string names = layout.Trim();
+        int count = -1;
+        int space = names.IndexOf(" channels", StringComparison.Ordinal);
+        if (space > 0 && int.TryParse(names[..space], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int n))
+        {
+            string rest = names[(space + " channels".Length)..];
+            if (rest.Length == 0)
+                return n > 0 ? new ChannelWeights(Enumerable.Repeat(1.0, n).ToArray()) : null;
+            if (!rest.StartsWith(" (", StringComparison.Ordinal) || !rest.EndsWith(')'))
+                return null;
+            (count, names) = (n, rest[2..^1]);
+        }
+
+        var weights = new List<double>();
+        foreach (string part in names.Split('+'))
+        {
+            string channel = part.Split('@')[0];
+            int id = Array.IndexOf(ChannelNames, channel);
+            if (channel.Length == 0 || id < 0)
+                return null;
+            weights.Add(Weight(id));
+        }
+
+        return count < 0 || count == weights.Count ? new ChannelWeights([.. weights]) : null;
     }
+
+    // FFmpeg's channel names by AVChannel number (libavutil/channel_layout.c's channel_names; null where none).
+    static readonly string?[] ChannelNames = BuildNames();
+
+    static string?[] BuildNames()
+    {
+        var names = new string?[63];
+        string[] first = ["FL", "FR", "FC", "LFE", "BL", "BR", "FLC", "FRC", "BC", "SL", "SR", "TC", "TFL", "TFC", "TFR", "TBL", "TBC", "TBR"];
+        first.CopyTo(names, 0);
+        string[] later = ["DL", "DR", "WL", "WR", "SDL", "SDR", "LFE2", "TSL", "TSR", "BFC", "BFL", "BFR", "SSL", "SSR", "TTL", "TTR"];
+        later.CopyTo(names, 29);
+        (names[61], names[62]) = ("BIL", "BIR");
+        return names;
+    }
+
+    // ebur128's weight of a channel: 0 for the LFEs, 1.41 for those in its BACK_MASK, 1 for the rest.
+    static double Weight(int channel) => channel is Lfe or Lfe2 ? 0 : (BackMask & (1UL << channel)) != 0 ? 1.41 : 1;
 
     static ChannelWeights FromMask(ulong mask)
     {
@@ -76,7 +123,7 @@ public sealed class ChannelWeights
         {
             if ((mask & (1UL << c)) == 0)
                 continue;
-            weights.Add(c is Lfe or Lfe2 ? 0 : (BackMask & (1UL << c)) != 0 ? 1.41 : 1);
+            weights.Add(Weight(c));
         }
 
         return new ChannelWeights([.. weights]);

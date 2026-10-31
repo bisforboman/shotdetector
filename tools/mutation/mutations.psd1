@@ -544,7 +544,8 @@
         @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'return Bin(Lufs(mean) + below);'; Replace = 'return Bin(Lufs(mean) + below + 0.005);'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'wanted = (ulong)((95 * powers * 0.01) + 0.5);'; Replace = 'wanted = (ulong)(95 * powers * 0.01);'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'static double Energy(int bin) => Exp2(Log2Of10'; Replace = 'static double Energy(int bin) => Math.Pow(2, Log2Of10'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ChannelWeights.cs'; Find = 'weights.Add(c is Lfe or Lfe2 ? 0 :'; Replace = 'weights.Add(c is Lfe2 ? 0 :'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ChannelWeights.cs'; Find = 'channel is Lfe or Lfe2 ? 0 :'; Replace = 'channel is Lfe2 ? 0 :'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/ChannelWeights.cs'; Find = 'return count < 0 || count == weights.Count ?'; Replace = 'return true ?'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/TruePeakMeter.cs'; Find = '_factor = sampleRate < 192000 ? 4 : 1;'; Replace = '_factor = sampleRate < 96000 ? 4 : sampleRate < 192000 ? 2 : 1;'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
 
         # --loudness: integrated loudness judged on both sides of the target, true peak against its maximum, exit 3 out
