@@ -35,24 +35,12 @@ internal sealed partial class VideoReader
     /// first frame (<see cref="ShotDetection.ScoreRange(YuvVideo, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/>),
     /// whose frames aren't checked for the constant rate here (that needs frame 0's pts: <see cref="ShotDetection.Merge"/> checks them);
     /// with <see cref="YuvVideo.FrameTimestamps"/>, its first frame must be at that frame's entry.</param>
-    internal VideoReader(YuvVideo video, IEnumerator<YuvFrame> frames, DetectionOptions o, int frameBase = 0)
+    /// <param name="converts">False: no frame will be converted (<see cref="ShotDetection.LoadScenes(YuvVideo, TextReader, string, DetectionOptions?)"/>),
+    /// so what only converting needs (the converter, yadif, the pixel format, an even height, colours it takes) isn't asked for.</param>
+    internal VideoReader(YuvVideo video, IEnumerator<YuvFrame> frames, DetectionOptions o, int frameBase = 0, bool converts = true)
     {
-        if (o.Yuv420Converter is null)
-        {
-            throw new ArgumentException("Frames from the caller need DetectionOptions.Yuv420Converter (SwscaleYuv420 from the "
-                + "ShotDetector.FastYuv package): without FFmpeg there is no other conversion to BGR.");
-        }
-
-        if (DeinterlacesFrames(video, o) && o.Yadif is null)
-        {
-            throw new ArgumentException("Deinterlacing frames from the caller needs DetectionOptions.Yadif (Yadif from the "
-                + "ShotDetector.FastYuv package): without FFmpeg there is no yadif filter.");
-        }
-
-        if (o.FfmpegResize)
-            throw new ArgumentException("FfmpegResize isn't available for frames from the caller (it is ffmpeg's scaler).");
-        if (video.PixelFormat is not ("yuv420p" or "yuvj420p" or "yuv422p" or "yuvj422p" or "yuv420p10le"))
-            throw new ArgumentException($"Frames from the caller must be yuv420p, yuvj420p, yuv422p, yuvj422p or yuv420p10le so far, not {video.PixelFormat}.");
+        if (converts)
+            CheckConversion(video, o);
         if (video.Width < 1 || video.Height < 1 || (long)video.Width * video.Height > FrameReader.FrameDecoderOptions.DefaultMaxPixels)
             throw new ArgumentException($"The frames' size ({video.Width}x{video.Height}) must be positive and at most 8192 x 8192 pixels.");
         if (video.FrameRate.Num <= 0 || video.FrameRate.Den <= 0)
@@ -120,7 +108,7 @@ internal sealed partial class VideoReader
             ["chroma_location"] = video.ChromaLocation ?? "",
         };
         _colours = new Lazy<Colours>(() => ReadColours(stream));
-        if (YuvForVideo is null)
+        if (converts && YuvForVideo is null)
         {
             throw new ArgumentException(video.PixelFormat == "yuv420p10le" || video.Height % 2 != 0
                 ? $"The converter doesn't take this video's colours or size (color_space '{video.ColorSpace}', full range {video.FullRange}, chroma location '{video.ChromaLocation}', {video.Width}x{video.Height}; FastYuv converts 10-bit, and 8-bit of an odd height, at an even width)."
@@ -135,6 +123,29 @@ internal sealed partial class VideoReader
         _framesTimed = video.TimeBase is not null;
         _timeBase = video.TimeBase is { } tb ? tb.Num / (double)tb.Den : 0;
         _startPts = video.StartPts;
+    }
+
+    /// <summary>What converting frames from the caller needs: the converter, yadif when deinterlacing, a format and height it takes.</summary>
+    static void CheckConversion(YuvVideo video, DetectionOptions o)
+    {
+        if (o.Yuv420Converter is null)
+        {
+            throw new ArgumentException("Frames from the caller need DetectionOptions.Yuv420Converter (SwscaleYuv420 from the "
+                + "ShotDetector.FastYuv package): without FFmpeg there is no other conversion to BGR.");
+        }
+
+        if (DeinterlacesFrames(video, o) && o.Yadif is null)
+        {
+            throw new ArgumentException("Deinterlacing frames from the caller needs DetectionOptions.Yadif (Yadif from the "
+                + "ShotDetector.FastYuv package): without FFmpeg there is no yadif filter.");
+        }
+
+        if (o.FfmpegResize)
+            throw new ArgumentException("FfmpegResize isn't available for frames from the caller (it is ffmpeg's scaler).");
+        if (video.PixelFormat is not ("yuv420p" or "yuvj420p" or "yuv422p" or "yuvj422p" or "yuv420p10le"))
+            throw new ArgumentException($"Frames from the caller must be yuv420p, yuvj420p, yuv422p, yuvj422p or yuv420p10le so far, not {video.PixelFormat}.");
+        if (video.Height % 2 != 0 && video.PixelFormat != "yuv420p10le")
+            throw new ArgumentException($"The frames' height must be even ({video.Height}): the converter reproduces swscale's unscaled {video.PixelFormat} conversion, which needs it.");
     }
 
     /// <summary>

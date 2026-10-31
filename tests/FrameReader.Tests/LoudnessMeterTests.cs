@@ -158,6 +158,67 @@ public class LoudnessMeterTests
         Assert.True(counted.Finish().Loudness.Integrated > -10);
     }
 
+    // Layouts as FFmpeg describes them (StreamInfo.ChannelLayout): named, "N channels (names)" or the names alone in the
+    // samples' order (a label after '@' ignored), or "N channels" without positions; null for what FFmpeg wouldn't write.
+    [Fact]
+    public void WeightsFromChannelNames()
+    {
+        Assert.Equal([1, 1, 0, 1.41, 1.41], ChannelWeights.ForLayout("FL+FR+LFE+BL+BR")!.Weights);
+        Assert.Equal([0, 1, 1.41, 1], ChannelWeights.ForLayout("LFE+FC+SL+TFL")!.Weights);
+        Assert.Equal([1, 1, 0, 0], ChannelWeights.ForLayout("FL@left+FR+LFE+LFE2")!.Weights);
+        Assert.Equal([1.41, 1.41, 1, 1], ChannelWeights.ForLayout("SDL+SDR+SSL+SSR")!.Weights);
+        Assert.Equal([1, 1, 1], ChannelWeights.ForLayout("3 channels")!.Weights);
+        Assert.Equal([1, 1, 0, 1.41, 1.41], ChannelWeights.ForLayout("5 channels (FL+FR+LFE+BL+BR)")!.Weights);
+        Assert.Null(ChannelWeights.ForLayout("4 channels (FL+FR+LFE+BL+BR)"));
+        Assert.Equal(ChannelWeights.ForLayout("5.1(side)")!.Weights, ChannelWeights.ForLayout("FL+FR+FC+LFE+SL+SR")!.Weights);
+        Assert.Null(ChannelWeights.ForLayout("FL+FR+USR3"));
+        Assert.Null(ChannelWeights.ForLayout("FL++FR"));
+        Assert.Null(ChannelWeights.ForLayout("0 channels"));
+    }
+
+    // A layout that isn't FFmpeg's default for its count (5 channels with an LFE, where the default 5.0 has none): with
+    // the weights its description gives, ebur128's figures to the double; with the default, not.
+    [Fact]
+    public void LayoutsFromTheProbeAreEbur128s()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-meter-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "lfe5.wav");
+            Ffmpeg("-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "aevalsrc=0.2*sin(300*2*PI*t)|0.2*sin(310*2*PI*t)|0.9*sin(40*2*PI*t)|0.25*sin(500*2*PI*t)|0.25*sin(510*2*PI*t):s=48000:d=4:c=FL+FR+LFE+BL+BR",
+                "-c:a",
+                "pcm_f32le",
+                path);
+            string layout = MediaProbe.Probe(path).Streams.Single(s => s.ChannelLayout is not null).ChannelLayout!;
+            Assert.Equal("5 channels (FL+FR+LFE+BL+BR)", layout);
+            using var audio = new AudioReader(path);
+            using var filter = new AudioFilter(audio, Loudness.Graph);
+            var described = new LoudnessMeter(48000, 5, ChannelWeights.ForLayout(layout));
+            var byCount = new LoudnessMeter(48000, 5);
+            while (filter.TryRead(out var chunk))
+            {
+                described.Add(chunk.Samples);
+                byCount.Add(chunk.Samples);
+            }
+
+            double integrated = filter.Result("ebur128", "integrated")!.Value;
+            Assert.Equal(integrated, described.Finish().Loudness.Integrated);
+            Assert.NotEqual(integrated, byCount.Finish().Loudness.Integrated);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void ArgumentsAndOrder()
     {

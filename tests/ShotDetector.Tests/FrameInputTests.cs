@@ -980,6 +980,75 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(fromFile.Stats!.Csv(fromFile.Video.Position), merged.Stats!.Csv(merged.Video.Position));
     }
 
+    // load-scenes from an edited list (a cut removed, two added, one of them out of order), for frames from the caller:
+    // the video's properties as the frame source gives them (every frame's timestamp too, as a file's from its packets)
+    // and the list as text give LoadScenes(path)'s shots, cuts, positions, CSV and timeline exports byte for byte, by
+    // frame number and by timecode, with a time range, and with short shots dropped or the last one merged.
+    [Theory]
+    [InlineData("mpeg4", "Start Frame", "")]
+    [InlineData("mpeg4", "Start Timecode", "")]
+    [InlineData("mpeg4", "Start Frame", "start")]
+    [InlineData("mpeg4", "Start Frame", "drop")]
+    [InlineData("h264", "Start Frame", "")]
+    [InlineData("h264", "Start Time (seconds)", "end")]
+    [InlineData("h264", "Start Frame", "merge")]
+    public void LoadScenesFromTextIsTheFiles(string clip, string column, string name)
+    {
+        string? file = clip == "h264" ? H264Clip() : clips.ThreeShots;
+        if (Libs is null || file is not { } path)
+            return;
+        var detect = new DetectionOptions { Detector = DetectorKind.Content, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess };
+        var detected = ShotDetection.Detect(path, detect);
+        Assert.True(detected.Cuts.Count >= 2);
+        var fps = detected.Video.FrameRate;
+
+        // The list edited: the first cut gone, cuts at frames 20 and 7 (out of order, as a hand-edited list can be).
+        var starts = new List<long> { 0, 20, 7 };
+        starts.AddRange(detected.Cuts.Skip(1).Select(c => c.FrameNum));
+        var edited = starts.Order().Select((f, i) => new Shot(i + 1, FrameTime.Frame(f, fps), FrameTime.Frame(i + 1 < starts.Count ? starts.Order().ElementAt(i + 1) : detected.FrameCount, fps))).ToList();
+        string text = Shots.Csv(edited);
+        var lines = text.Split('\n').ToList();
+        (lines[3], lines[4]) = (lines[4], lines[3]); // two shots' rows swapped: LoadScenes sorts
+        text = string.Join('\n', lines);
+
+        var options = new DetectionOptions { MinSceneLength = "10", FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess };
+        options = name switch
+        {
+            "start" => options with { StartTime = "1.5" },
+            "end" => options with { StartTime = "15", EndTime = "4s" },
+            "drop" => options with { DropShortScenes = true },
+            "merge" => options with { MergeLastScene = true, MinSceneLength = "3s" },
+            _ => options,
+        };
+        string csv = Path.Combine(Path.GetTempPath(), $"shotdetector-{Guid.NewGuid():N}.csv");
+        DetectionResult fromFile;
+        try
+        {
+            File.WriteAllText(csv, text);
+            fromFile = ShotDetection.LoadScenes(path, csv, column, options);
+        }
+        finally
+        {
+            File.Delete(csv);
+        }
+
+        var (video, _) = Decoded(path, timestamps: true);
+        var ours = ShotDetection.LoadScenes(video, new StringReader(text), column, options with { FfmpegDirectory = null, Decoder = VideoDecoder.Auto });
+        Assert.Null(ours.VideoPath);
+        Assert.Equal(fromFile.FrameCount, ours.FrameCount);
+        Assert.Equal(fromFile.MinSceneLengthFrames, ours.MinSceneLengthFrames);
+        Assert.Equal(fromFile.Cuts, ours.Cuts);
+        Assert.Equal(fromFile.Shots, ours.Shots);
+        Assert.Equal(Shots.Csv(fromFile.Shots, cuts: fromFile.Cuts), Shots.Csv(ours.Shots, cuts: ours.Cuts));
+        Assert.Equal(Timeline.Edl(fromFile, title: "edited"), Timeline.Edl(ours, title: "edited"));
+        Assert.Equal(Timeline.Qp(fromFile), Timeline.Qp(ours));
+        Assert.Equal(Timeline.Keyframes(fromFile), Timeline.Keyframes(ours));
+        Assert.Equal(Timeline.ShotChanges(fromFile), Timeline.ShotChanges(ours));
+        for (int k = 0; k <= fromFile.FrameCount; k++)
+            Assert.Equal(fromFile.Video.Position(k), ours.Video.Position(k));
+        Assert.True(ours.Shots.Count > 1);
+    }
+
     /// <summary>The decoder options the file path decodes with: no autorotation, its IDCT.</summary>
     static FrameReader.FrameDecoderOptions DecoderOptions(string path)
     {
