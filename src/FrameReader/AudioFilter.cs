@@ -46,6 +46,37 @@ public sealed unsafe class AudioFilter : IDisposable
     /// </summary>
     public IReadOnlyDictionary<string, string> Metadata => _metadata;
 
+    /// <summary>
+    /// A result an analysis filter keeps as a read-only option (ebur128's <c>integrated</c>, <c>range</c>,
+    /// <c>lra_low</c>, <c>lra_high</c>, <c>sample_peak</c>, <c>true_peak</c>), at full precision, as it stands after the
+    /// chunks read so far: after <see cref="TryRead"/> returned false, the whole input's (what ffmpeg's log prints at
+    /// the end). Unlike <see cref="Metadata"/>, which ebur128 attaches only when a 100 ms block completes, this includes
+    /// the samples after the last whole block.
+    /// </summary>
+    /// <param name="filter">The filter: an instance name in the graph, or a filter's name (<c>ebur128</c>: the first of them).</param>
+    /// <param name="option">The option's name.</param>
+    /// <returns>The value; null before the first chunk, or when the graph has no such filter or the filter no such option.</returns>
+    public double? Result(string filter, string option)
+    {
+        if (_graph == null)
+            return null;
+        AVFilterContext* found = null;
+        for (uint i = 0; i < _graph->nb_filters && found == null; i++)
+        {
+            if (Marshal.PtrToStringAnsi((nint)_graph->filters[i]->name) == filter)
+                found = _graph->filters[i];
+        }
+
+        for (uint i = 0; i < _graph->nb_filters && found == null; i++)
+        {
+            if (Marshal.PtrToStringAnsi((nint)_graph->filters[i]->filter->name) == filter)
+                found = _graph->filters[i];
+        }
+
+        double value;
+        return found != null && ffmpeg.av_opt_get_double(found, option, ffmpeg.AV_OPT_SEARCH_CHILDREN, &value) >= 0 ? value : null;
+    }
+
     /// <summary>The next filtered chunk; false at the end.</summary>
     /// <param name="chunk">The samples, float32 interleaved, valid until the next call.</param>
     /// <exception cref="FrameReaderException">Decoding failed, the graph doesn't parse, or a filter isn't in these libraries.</exception>
