@@ -258,6 +258,64 @@ public static class Timeline
     /// <param name="result">The detection result.</param>
     public static string ShotChanges(DetectionResult result) => string.Join('\n', result.Cuts.Select(c => c.SecondsText()));
 
+    /// <summary>
+    /// YouTube's video chapters, for the video's description: a line per chapter, its start in whole seconds ("m:ss",
+    /// "h:mm:ss" from an hour on) and a title, "Chapter 1", "Chapter 2"... for the user to rename. YouTube's rules: the
+    /// first chapter at 0:00, at least three chapters, each at least 10 s long, the last one too. Shots merge into
+    /// chapters greedily: a cut starts a new chapter only when the current one has run at least
+    /// <paramref name="minLength"/> seconds by the written times; a last chapter shorter than that joins the one before.
+    /// Each cut's time is rounded up to a second, so a chapter starts in its first shot, never on the previous one's last
+    /// frames. Times are the cut frames' presentation times from the video's start; the last chapter ends where the
+    /// last shot does. Not a scenedetect output (docs/decisions/2026-10-31-youtube-chapters.md).
+    /// </summary>
+    /// <param name="result">The detection result.</param>
+    /// <param name="minLength">Each chapter's least length in seconds: 10 (YouTube's) or more.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="minLength"/> is under 10.</exception>
+    /// <exception cref="InvalidOperationException">The shots make fewer than three chapters.</exception>
+    public static string YouTubeChapters(DetectionResult result, double minLength = 10)
+    {
+        var shots = result.Shots;
+        double end = shots.Count > 0 ? shots[^1].End.Seconds : 0;
+        var starts = ChapterStarts(result.Cuts.Select(c => c.Seconds), end, minLength);
+        if (starts.Count < 3)
+        {
+            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
+                $"YouTube needs at least three chapters of {minLength:0.###} s or more; these shots make {starts.Count}."));
+        }
+
+        var sb = new StringBuilder();
+        for (int i = 0; i < starts.Count; i++)
+            sb.Append(CultureInfo.InvariantCulture, $"{ChapterTime(starts[i])} Chapter {i + 1}\n");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// The chapters' starts in whole seconds: 0, then each cut rounded up (from its milliseconds, so a float a hair over
+    /// a whole second stays on it) that is at least <paramref name="minLength"/> after the chapter before; the last start
+    /// dropped while its chapter would end under <paramref name="minLength"/> before <paramref name="end"/>.
+    /// </summary>
+    internal static List<long> ChapterStarts(IEnumerable<double> cutSeconds, double end, double minLength)
+    {
+        if (!(minLength >= 10))
+            throw new ArgumentOutOfRangeException(nameof(minLength), minLength, "YouTube's chapters are 10 s or longer.");
+        var starts = new List<long> { 0 };
+        foreach (double cut in cutSeconds)
+        {
+            long t = (long)Math.Ceiling(Math.Round(cut, 3, MidpointRounding.AwayFromZero));
+            if (t - starts[^1] >= minLength)
+                starts.Add(t);
+        }
+
+        while (starts.Count > 1 && end - starts[^1] < minLength)
+            starts.RemoveAt(starts.Count - 1);
+        return starts;
+    }
+
+    /// <summary>A chapter's timestamp as YouTube shows them: "m:ss", or "h:mm:ss" from an hour on.</summary>
+    internal static string ChapterTime(long seconds) => seconds >= 3600
+        ? string.Create(CultureInfo.InvariantCulture, $"{seconds / 3600}:{seconds / 60 % 60:00}:{seconds % 60:00}")
+        : string.Create(CultureInfo.InvariantCulture, $"{seconds / 60}:{seconds % 60:00}");
+
     /// <summary>scenedetect's name templates: $VIDEO_NAME is the video's name.</summary>
     static string Template(string text, DetectionResult result) => text.Replace("$VIDEO_NAME", VideoName(result));
 

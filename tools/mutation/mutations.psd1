@@ -526,5 +526,13 @@
 
         # --save-shotchanges: Subtitle Edit reads a plain list as seconds only when it has a '.', so whole seconds keep theirs
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'result.Cuts.Select(c => c.SecondsText())'; Replace = 'result.Cuts.Select(c => c.Seconds.ToString(CultureInfo.InvariantCulture))'; Tests = 'ShotChangesTests' }
+
+        # --save-youtube-chapters: YouTube's rules (each chapter 10 s or more, the last one too, at least three) and the
+        # cut times rounded up from their milliseconds
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (t - starts[^1] >= minLength)'; Replace = 'if (t - starts[^1] > minLength)'; Tests = 'YouTubeChaptersTests' }
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'while (starts.Count > 1 && end - starts[^1] < minLength)'; Replace = 'while (starts.Count > 1 && end - starts[^1] < 0)'; Tests = 'YouTubeChaptersTests' }
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (starts.Count < 3)'; Replace = 'if (starts.Count < 1)'; Tests = 'YouTubeChaptersTests' }
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'Math.Ceiling(Math.Round(cut, 3, MidpointRounding.AwayFromZero))'; Replace = 'Math.Ceiling(cut)'; Tests = 'YouTubeChaptersTests' }
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (!(minLength >= 10))'; Replace = 'if (minLength < 10)'; Tests = 'YouTubeChaptersTests' }
     )
 }
