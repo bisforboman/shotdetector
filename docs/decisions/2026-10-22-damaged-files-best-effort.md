@@ -63,3 +63,5 @@ thread only after a corrupt frame needs FrameDecoder to report corrupt frames an
 document and stay best effort; B, one thread for MPEG-1/2; C, one thread only once damaged), the owner chose **A**
 (2026-10-27): the README's claim that one thread gives repeatable results, identical through the executable, is
 corrected; nothing else changes.
+
+The duplicate-pts frame on corrupt.ts: [2026-10-28-damaged-frame-pts.md](2026-10-28-damaged-frame-pts.md).

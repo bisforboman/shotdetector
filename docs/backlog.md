@@ -15,11 +15,35 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
+- A deterministic default for interlaced 9-16-bit video
+  - Why: FFmpeg 8.1's x86 SIMD yadif gives a slightly different picture on every run at 9 to 16 bits (its C code doesn't; docs/decisions/2026-10-08-row-wise-yadif-in-fastyuv-9-16-bits.md), so the MIT default path's stats on interlaced 10-bit (AVC-Intra, ProRes) vary from run to run, and so does the "lossless yadif copy" CI compares against; only FastYuv's LGPL `Yadif` is deterministic. Found in the 2026-10-31 decision review. First: a minimal reproduction for an FFmpeg report (the owner's to file, as the x264 one), then the options for the default (yadif with SIMD off for 9-16 bits only, if FFmpeg offers it per filter; bwdif differs from scenedetect's copy) put to the owner
+  - Status: Open
+
+- The executable's HLS warning with FFmpeg 9
+  - Why: `VideoReader.ExecutableHlsWarning` says ffmpeg fetches https segments without checking certificates, whatever the executable's version; docs/decisions/2026-10-16-https-certificates-and-tls.md noted tls_verify's default is 0 "until libavformat 63", and CI's executable is FFmpeg 9.0 now. Check FFmpeg 9 against a self-signed segment server; if it checks them, warn only for libavformat 62 and older, and record it. Found in the 2026-10-31 decision review
+  - Status: Open
+
+- arch-diff: require 8-bit odd widths
+  - Why: docs/decisions/2026-10-18-fastyuv-422.md left sintel_oddwidth.mkv reported, not required, "until its first ARM table is read" (tools/arch-summary.py, ci.yml's `--informational`); the same decision found 8-bit odd widths take the SSSE3 path FastYuv reproduces. Read a run's table: at 100 %, make it required; else record why not. Found in the 2026-10-31 decision review
+  - Status: Open
+
+- compare.py's `--always-bt601` silently turns off in-process decoding
+  - Why: `_alwaysBt601` makes VideoReader use the executable (VideoReader.InProcess.cs), and compare.py passes it on every Windows run, so a local `--decoder inprocess` comparison on Windows checks the executable instead. Refuse the combination with a clear error, or say so in compare.py's report. Found in the 2026-10-31 decision review
+  - Status: Open
+
+- Sequential runs with twice the decoder threads: measure again
+  - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
+  - Status: Open
+
 ## Waiting
 
-- At the next FrameReader release, count the FrameReader features that needed ShotDetector too (docs/frame-reader-product.md, "When to reconsider"; features, not commits, since 2026-10-28)
-  - Why: 2.8.0 counted 1 of 21, under 1 in 20 for the first time; the trigger needs two releases in a row over at least 20 counted commits, and then means asking the owner, not splitting. 2.9.0 counted 0 of 6 and 2.10.0 0 of 4 (0 of 10 joined), too few: the window joins the next release's
-  - Status: Waiting (on the next FrameReader release; at 2.17.0 the trigger was met, the first time by features, and the owner chose not to split and to keep counting, docs/decisions/2026-10-30-framereader-stays-by-features.md)
+- Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)
+  - Why: The feature count (docs/frame-reader-product.md, "When to reconsider") was met four times by 2.17.0, each answered "don't split" for reasons it doesn't measure; since docs/decisions/2026-10-31-split-trigger-criteria.md each FrameReader release records the count as information only
+  - Status: Waiting (on an outside event; none so far: shotdetector-web uses FrameReader's FFmpeg-free tone and waveform code, #494, without asking for a package)
+
+- Optional: the owner times the sequential conversion thread on the 16-thread Ryzen
+  - Why: docs/decisions/2026-10-22-decode-split.md made the conversion thread the default for sequential HD from 4-vCPU measurements, "unless [the desktop check] shows a slowdown"; the 2026-10-17 conversion-worker trial there was 1.04-1.07x slower. The commands are in that PR's body. Work on the owner's computer is theirs to start
+  - Status: Waiting (on the owner)
 
 - Move to FFmpeg 9's libraries (FFmpeg.AutoGen 9, Native packages on 9.0.x) when opencv-python's Linux wheels bundle FFmpeg 9
   - Why: scenedetect's frames come from OpenCV's FFmpeg; moving earlier risks bytes OpenCV doesn't give, and drops system FFmpeg 8 in-process
@@ -73,6 +97,14 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - The last x86-only SIMD paths as Vector128: `Hsv.Convert` (AVX2/NEON only), `CvResize.HResize` (SSE2 only), `HashDetector` (scalar everywhere)
   - Why: On browser-wasm these run scalar (wasm profile, 2026-10-25). The ceiling is small: a few hundred ms of a 4.5 s Sintel run in the browser (decoding is ~80 %), nothing natively, where the existing x86/ARM paths stay. Worth doing only alongside other wasm work, with byte-identical results and no native slowdown
+  - Status: Maybe
+
+- Frame sources: optional per-frame colour tags on `YuvFrame`
+  - Why: `Detect(YuvVideo, frames)` takes the colour matrix and range once, on `YuvVideo` (docs/decisions/2026-10-24-per-frame-tags-fastyuv.md, "by design"), while `Detect(path)` follows each frame's tags since 2026-10-24/27; a spliced source whose matrix or range changes midway is the case where the two differ on x86. `YuvFrame` has carried per-frame field flags since docs/decisions/2026-10-30-frame-source-deinterlace.md, so nullable `ColorSpace`/`ColorRange` (null: the video's) would follow the same shape. Found in the 2026-10-31 decision review
+  - Status: Maybe
+
+- The CLI as a dotnet tool with FastYuv beside it
+  - Why: The `shotdetect` binaries leave FastYuv (LGPL) out, so on ARM (Apple silicon too) they give ARM's default results, not x86's (docs/decisions/2026-10-17-arm-results.md). The CLI already ships LGPL FFmpeg libraries as separate, replaceable files; FastYuv as its own DLL beside the dotnet tool (not inside a Native AOT binary) could follow the same LGPL terms (docs/decisions/2026-10-01-cli-and-licensing.md). A licensing question for the owner before any work. Found in the 2026-10-31 decision review
   - Status: Maybe
 
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and

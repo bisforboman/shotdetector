@@ -6,3 +6,7 @@ commits over two days, and the count left out tests: DecodedFrame (#349, FrameRe
 tested in ShotDetector.Tests, yet counted as FrameReader-only; the window before (2.5.0) was 2 of 4. Asked: **not now,
 and tighten the trigger** (at least 20 counted commits, with the windows joining until then; tests count on both sides),
 over a split design doc for review or splitting now.
+
+Since 2026-10-28 ([2026-10-28-split-count-features.md](2026-10-28-split-count-features.md)) the count is of features,
+and since 2026-10-31 ([2026-10-31-split-trigger-criteria.md](2026-10-31-split-trigger-criteria.md)) it no longer
+triggers the question.

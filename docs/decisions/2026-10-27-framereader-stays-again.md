@@ -15,3 +15,6 @@ the second time in a row: 0 of 25 counted commits since 2.11.0 touch both produc
 **1** (the owner, 2026-10-27). Nothing from the earlier decision's "What would change the answer" has happened: no
 FrameReader issues or pull requests from outside, no need for its own release pace, no browser consumer wanting an
 FFmpeg-free FrameReader on its own.
+
+Since 2026-10-31 ([2026-10-31-split-trigger-criteria.md](2026-10-31-split-trigger-criteria.md)) the question comes back
+on named conditions, not a count.

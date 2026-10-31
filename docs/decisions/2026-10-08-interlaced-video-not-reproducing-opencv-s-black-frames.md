@@ -6,3 +6,6 @@ black image (min 0, max 97, mean 0.0) for every frame; ffmpeg decodes the same f
 pixel-identical. Reproducing it would mean analysing black frames, so ShotDetector reads the real ones: a documented
 difference (README), compared informationally in CI with deinterlacing off and exactly with Auto against a lossless
 yadif copy. Decided during unattended work (the user was away), as the only sensible behaviour; open to revisit.
+
+Confirmed by the owner on 2026-10-31
+([2026-10-31-interlaced-real-frames-confirmed.md](2026-10-31-interlaced-real-frames-confirmed.md)).

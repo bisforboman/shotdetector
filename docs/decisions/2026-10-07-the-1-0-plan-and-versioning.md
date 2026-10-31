@@ -17,3 +17,8 @@ as breaking afterwards?
 
 **After a quiet 0.7. The default follows the latest scenedetect in a minor. API and default results are
 breaking**, except changes that come from following scenedetect. README "Versions" has the policy.
+
+Since 2026-10-08 ([2026-10-08-1-0-without-a-quiet-period.md](2026-10-08-1-0-without-a-quiet-period.md)) 1.0 came without
+the quiet period. Since 2026-10-31
+([2026-10-31-retiring-scenedetect-modes.md](2026-10-31-retiring-scenedetect-modes.md)) the policy also says when an
+older `PySceneDetectVersion` goes.

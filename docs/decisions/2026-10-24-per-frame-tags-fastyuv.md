@@ -52,3 +52,8 @@ Not in scope: **C** (the executable path's FastYuv from showinfo's per-frame col
 default path on a siting change: ffmpeg's scale never follows a frame's siting, only a restart at the change would) stay
 parked in the Maybe row. The frame-source API (`ShotDetection.Detect(YuvVideo, IEnumerable<YuvFrame>)`) carries the
 colour tags once, on `YuvVideo`, and `YuvFrame` has none, so per-frame tags don't apply there, by design.
+
+Since 2026-10-27 ([2026-10-27-per-frame-tags-executable.md](2026-10-27-per-frame-tags-executable.md)) C and D are built,
+and the executable path is compared exactly. `YuvFrame` has carried per-frame field flags since 2026-10-30
+([2026-10-30-frame-source-deinterlace.md](2026-10-30-frame-source-deinterlace.md)); per-frame colour tags there are a
+Maybe row.

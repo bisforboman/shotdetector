@@ -16,3 +16,9 @@ How should FFmpeg's shared libraries ship, so in-process decoding works without 
 
 **Our own minimal build, one package per platform, bundled with the CLI, all five platforms.** No AV1 software
 decoder (dav1d is an external library), as in OpenCV on Linux; Auto falls back to the executable for it.
+
+Since 0.10.0 (2026-10-08, CHANGELOG.md) our build links dav1d (BSD-2-Clause) and decodes AV1 in-process; no decision
+file records that change. Since 2.1.0 the packages are FrameReader.Native.<rid>
+([2026-10-13-framereader-as-its-own-product.md](2026-10-13-framereader-as-its-own-product.md)), and the
+ShotDetector.Native aliases ended with 2.x
+([2026-10-14-3-0-the-exception-base-the-aliases-and-upper-bounds.md](2026-10-14-3-0-the-exception-base-the-aliases-and-upper-bounds.md)).

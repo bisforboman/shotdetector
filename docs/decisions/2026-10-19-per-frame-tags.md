@@ -40,3 +40,7 @@ path.
 
 **1** (the owner, 2026-10-19): the pipe fixed in #432; the per-frame row stays in Maybe. Not seen in a real file: only
 built clips show it (spliced broadcast streams, `-c copy` concatenations and stream discontinuities could).
+
+Since 2026-10-24 ([2026-10-24-per-frame-tags-fastyuv.md](2026-10-24-per-frame-tags-fastyuv.md)) and 2026-10-27
+([2026-10-27-per-frame-tags-executable.md](2026-10-27-per-frame-tags-executable.md)) per-frame tags are followed on
+every path; the Maybe row is done.

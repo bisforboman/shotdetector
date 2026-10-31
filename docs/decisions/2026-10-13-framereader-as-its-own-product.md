@@ -6,3 +6,8 @@ ships as ShotDetector.Native. Asked: **its own product in the same repository** 
 packages, CI by what a change touches; cross-cutting changes stay one PR), over a separate repository or keeping
 the lockstep; **after 2.1.0**; the native packages as **FrameReader.Native.<rid>** with ShotDetector.Native.<rid>
 kept as aliases; changelog fragments in **a folder per package**. Plan: docs/frame-reader-product.md.
+
+Since 3.0
+([2026-10-14-3-0-the-exception-base-the-aliases-and-upper-bounds.md](2026-10-14-3-0-the-exception-base-the-aliases-and-upper-bounds.md))
+the ShotDetector.Native aliases aren't published. The split trigger:
+[2026-10-31-split-trigger-criteria.md](2026-10-31-split-trigger-criteria.md).

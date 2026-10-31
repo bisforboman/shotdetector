@@ -15,3 +15,6 @@ The user wants the project to keep moving overnight. What of the StyleBro reposi
 
 **All four.** And the backlog's order: robustness on real videos, then performance, then the road to 1.0, with
 0.4.0 released first.
+
+Since 2026-10-14 ([2026-10-14-decisions-one-file-each.md](2026-10-14-decisions-one-file-each.md)) `docs/decisions.md` is
+this folder, one file per decision.

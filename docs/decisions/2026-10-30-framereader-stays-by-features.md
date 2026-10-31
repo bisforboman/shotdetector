@@ -17,3 +17,6 @@ feature, MPEG-TS frame skipping (#610), which didn't need ShotDetector; joined w
 has happened: no FrameReader issues or pull requests from outside, no need for its own release pace, no browser
 consumer wanting an FFmpeg-free FrameReader on its own (#597 made ShotDetector's frame-source paths FFmpeg-free, not
 FrameReader).
+
+Since 2026-10-31 ([2026-10-31-split-trigger-criteria.md](2026-10-31-split-trigger-criteria.md)) the question comes back
+on named conditions, not a count.

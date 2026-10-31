@@ -17,7 +17,7 @@ on:
         default: ''
       runners:
         description: A JSON list of runner labels
-        default: '["ubuntu-26.04-arm", "macos-latest"]'
+        default: '["ubuntu-26.04-arm", "macos-15"]'
       rounds:
         description: Base/branch rounds, interleaved
         default: '4'

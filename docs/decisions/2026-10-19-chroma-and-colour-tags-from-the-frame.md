@@ -25,3 +25,7 @@ colour tags?
 **(a)**. Known gap: the first frame's tags are applied to the whole video, where OpenCV converts every frame with its
 own; a video whose tags change midway would still differ on the executable path and with FastYuv. That stays a Maybe in
 docs/backlog.md ("FastYuv: convert with each frame's chroma location, not the stream's").
+
+Per-frame tags followed: [2026-10-19-per-frame-tags.md](2026-10-19-per-frame-tags.md),
+[2026-10-24-per-frame-tags-fastyuv.md](2026-10-24-per-frame-tags-fastyuv.md) and, for the executable, 2026-10-27
+([2026-10-27-per-frame-tags-executable.md](2026-10-27-per-frame-tags-executable.md)); the backlog row is done.

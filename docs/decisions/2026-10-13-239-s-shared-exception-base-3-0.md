@@ -5,3 +5,7 @@ InvalidOperationException), but a new MediaException : InvalidOperationException
 (an inserted base; FrameReaderException only gains ancestors), its one behaviour change being that catch
 (InvalidOperationException) also catches FrameReader's failures. Asked whether to do that in 2.x: **keep it for
 3.0**, over the base now or with a shared Reason too.
+
+Done in 3.0
+([2026-10-14-3-0-the-exception-base-the-aliases-and-upper-bounds.md](2026-10-14-3-0-the-exception-base-the-aliases-and-upper-bounds.md)):
+`MediaException` in FrameReader.

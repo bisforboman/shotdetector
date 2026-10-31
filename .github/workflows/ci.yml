@@ -308,8 +308,8 @@ jobs:
           - { rid: linux-x64, os: ubuntu-26.04 }
           - { rid: linux-arm64, os: ubuntu-26.04-arm }
           - { rid: linux-musl-x64, os: ubuntu-26.04, container: 'mcr.microsoft.com/dotnet/sdk:10.0-alpine@sha256:230c3fbae0ceedc70bca04eed2bfb5694e8b248cadbb81010f41b7a993601f55' }
-          - { rid: win-x64, os: windows-latest }
-          - { rid: osx-arm64, os: macos-latest }
+          - { rid: win-x64, os: windows-2025 }   # pinned like Ubuntu (docs/decisions/2026-10-31-pinned-windows-and-macos-runners.md)
+          - { rid: osx-arm64, os: macos-15 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     container: ${{ matrix.container }}
@@ -366,6 +366,15 @@ jobs:
           # --version: the release's version without the "+commit", and nothing else.
           version=$(./out/shotdetect --version | tr -d '\r') && echo "$version"
           echo "$version" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?'
+
+      # The binary loads on macOS 14, as the bundled libraries (native.yml's MACOSX_DEPLOYMENT_TARGET): an image move
+      # can't raise it unannounced.
+      - name: Oldest macOS
+        if: needs.changes.outputs.docs_only != 'true' && startsWith(matrix.rid, 'osx-')
+        run: |
+          minos=$(otool -l out/shotdetect | awk '/LC_BUILD_VERSION/ { b = 1 } b && $1 == "minos" { print $2; exit }')
+          echo "minos $minos"
+          [ "${minos%%.*}" -le 14 ] || { echo "::error::shotdetect needs macOS $minos, newer than its libraries' 14.0"; exit 1; }
 
       - name: Archive
         if: needs.changes.outputs.docs_only != 'true'

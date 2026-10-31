@@ -6,3 +6,6 @@ machines (the cause turned out to be side data piling up on the output frame). T
 it lives in ShotDetector.FastYuv behind `IYadif`, like the yuv420p converter. FFmpeg 8.1's x86 SIMD yadif is
 nondeterministic for 9 to 16 bits (a different output on every run of the same command); 8-bit SIMD equals the C
 code. The port follows the C code, so 10-bit results are deterministic and equal `ffmpeg -cpuflags 0 -vf yadif`.
+
+Since 2.0 (CHANGELOG.md) `IYadif` is FrameReader's `IRowDeinterlacer`. FFmpeg's 10-bit yadif, the default path's, still
+varies from run to run on x86: README says so, and a backlog row tracks a deterministic default.

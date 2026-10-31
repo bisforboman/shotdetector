@@ -36,8 +36,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: windows-latest, rid: win-x64 }
-          - { os: macos-latest, rid: osx-arm64 }
+          - { os: windows-2025, rid: win-x64 }   # pinned like Ubuntu (docs/decisions/2026-10-31-pinned-windows-and-macos-runners.md)
+          - { os: macos-15, rid: osx-arm64 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

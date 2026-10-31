@@ -9,3 +9,5 @@ stream checks, then answered the API review:
 - Stats.Set: **internal (recommended)** over public.
 - Breaking-change guard: **SDK package validation (recommended)** over PublicApiAnalyzers or both. The baseline is
   empty until 1.0 is on nuget.org, then the last stable version (`ApiBaselineVersion`).
+
+Since 2.0 ([2026-10-13-what-2-0-holds.md](2026-10-13-what-2-0-holds.md)) `VideoReader` is internal.
