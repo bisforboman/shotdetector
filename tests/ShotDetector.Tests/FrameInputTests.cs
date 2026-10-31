@@ -459,9 +459,10 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     {
         if (Libs is null || TagsChange() is not { } path)
             return;
-        var (video, _) = Decoded(path);
-        Assert.Equal("bt709", video.ColorSpace);
         await AssertSame(path, new DetectionOptions { Detector = detector, CollectStats = true, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420() });
+        var (video, frames) = Decoded(path);
+        Assert.Equal("bt709", video.ColorSpace);
+        Assert.Equal("smpte170m", frames.Last().ColorSpace);
     }
 
     [Fact]
