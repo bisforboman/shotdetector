@@ -56,9 +56,9 @@ with its own versions (since 1.5.0; ShotDetector's package carried FrameReader.d
 
 - **PR pipeline**: `main` is protected; work on a branch, push, `gh pr create`, and turn auto-merge on at once (the owner's preference, 2026-10-18; drafts excepted, and a PR the owner must decide on says so in its body and waits for the answer).
   Branch protection requires `build`, `CI passed`, `Real world passed` and `mutation`; the two "passed" jobs are gates
-  that need every other job in their workflow (passed or skipped: light PRs skip the heavy ones, and a skipped matrix
-  job never reports its per-matrix names). A new job in ci.yml or realworld.yml goes in its gate's `needs`. Don't push
-  to main directly.
+  that need every other job in their workflow (passed or skipped: light PRs skip the heavy ones, PRs skip real
+  world's, and a skipped matrix job never reports its per-matrix names). A new job in ci.yml or realworld.yml goes in
+  its gate's `needs`. Don't push to main directly.
 - **Files an open PR changes**: before editing a file, check the open PRs (`gh pr list`, or the GitHub tools' PR files) for one that changes it; if one does, wait for it to merge and branch from main after it, rather than editing the same lines in parallel (2026-10-18: none of 34 PRs in a week needed a conflict resolved by hand, this way).
 - **Worktrees**: `git worktree add .claude/worktrees/<name> -b <branch> origin/main` (ignored). Sessions working at
   the same time each use their own worktree, never one checkout, so a commit can't land on another's branch.
@@ -81,7 +81,7 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
 - **Decisions**: when a design question needs the user, ask with the multiple-choice prompt and record the
   question, choices and answer as a new file, `docs/decisions/YYYY-MM-DD-what.md` (its README).
 - Every behaviour that reproduces a scenedetect quirk gets a unit test and a line in `tools/mutation/mutations.psd1`
-  (the mutation job breaks the guard and needs a test to fail).
+  (the mutation job breaks the guard and needs a test to fail; on a PR it runs the entries the PR's files concern).
 - Before pushing: `dotnet test ShotDetector.slnx` (needs ffmpeg on PATH; ~3 min, the video tests make clips),
   and for detector changes `python tools/compare.py samples/*.mp4 ... --detector all --stats` (`tools/make-samples.ps1`
   creates `samples/`; `pip install scenedetect==0.7.2 opencv-python-headless`; `--compat 0.7.1` with 0.7.1 installed
@@ -133,7 +133,7 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   `tools/make-samples.ps1`: synthetic + Blender trailers + VFR/rotation/colour variants. `tools/realworld.py`:
   whole Blender films and codec clips, pinned by SHA-256. `tools/mutation/`: guard mutations.
 - `.github/workflows`: `ci.yml` (build/test, AOT matrix incl. Alpine, parity matrix, `arch`/`arch-diff`: x64 against ARM on every sample; `wasm-trim`: benchmarks/wasm published trimmed has no FFmpeg.AutoGen, so frame-source apps don't ship it, tools/trim_path.py says what reached it; `parity-os.yml`: the main comparison on Windows and macOS, informational, nightly), `compare.yml` (on demand: a branch's microbenchmarks against a base on chosen runners), `mutation.yml`,
-  `realworld.yml` (also nightly 02:17 UTC), `benchmark.yml` (weekly + on demand; `tools/bench.py`; runs on main also commit their numbers as JSON to the `bench-data` branch, `tools/bench_record.py`, schema in benchmarks/bench-data.md; on x64 also the frame-source path on browser-wasm AOT under Node against the same code natively, benchmarks/wasm, failing when their CSVs differ), `upstream.yml` (Mondays: an issue when PyPI has a newer scenedetect than CI's pin, or a newer FFmpeg point release, zlib or dav1d than the native build's, or a new FFmpeg in opencv-python's Linux wheel), `release.yml` (tag → NuGet trusted publishing + GitHub release + binaries), `codeql.yml` (code scanning of the C#: PRs, main, weekly; findings under Security, not a required check).
+  `realworld.yml` (nightly 02:17 UTC and on demand, not on PRs), `mutation.yml` (PRs: the entries their files concern; nightly 03:41 UTC: all), `benchmark.yml` (weekly + on demand; `tools/bench.py`; runs on main also commit their numbers as JSON to the `bench-data` branch, `tools/bench_record.py`, schema in benchmarks/bench-data.md; on x64 also the frame-source path on browser-wasm AOT under Node against the same code natively, benchmarks/wasm, failing when their CSVs differ), `upstream.yml` (Mondays: an issue when PyPI has a newer scenedetect than CI's pin, or a newer FFmpeg point release, zlib or dav1d than the native build's, or a new FFmpeg in opencv-python's Linux wheel), `release.yml` (tag → NuGet trusted publishing + GitHub release + binaries), `codeql.yml` (code scanning of the C#: PRs, main, weekly; findings under Security, not a required check).
 - `Directory.Build.props` (version; release.yml overrides from the tag), `Directory.Packages.props` (central versions).
 
 ## Gotchas (each cost time once)
@@ -221,9 +221,13 @@ best-effort ones, which differ: docs/decisions/2026-10-29-mpeg-ps-pass-executabl
   SHA-256 in the action, retries, cached; move the pin by hand: BtbN prunes daily releases), never `curl | tar` (a reset mid-stream left tar a truncated archive); Docker images from
   `public.ecr.aws/docker/library/` (Docker Hub's anonymous rate limit stopped a release).
 - CI load: a PR whose files are all docs, `.claude/`, `.githooks/`, `benchmarks/`, `tests/FrameReader.Tests/`,
-  workflows CI never runs (release, benchmarks, upstream, Dependabot's, parity-os, compare) or FrameReader source files
-  ShotDetector's detection never runs is "light": AOT, ARM, Alpine, parity, real-world and mutation don't start
-  (skipped jobs pass the required checks). tools/ci-changes.sh decides, for all three `changes` jobs; the FrameReader
-  files come from the built assemblies (tools/reach, so a new use counts at once). The FrameReader benchmark runs on
-  demand and weekly only.
+  workflows CI never runs (release, benchmarks, upstream, Dependabot's, parity-os, compare), API baseline bumps in
+  Directory.Build.props (`build` still packs against them) or FrameReader source files ShotDetector's detection never
+  runs is "light": AOT, ARM, Alpine and parity don't start (skipped jobs pass the required checks).
+  tools/ci-changes.sh decides, for ci.yml's `changes` job; the FrameReader files come from the built assemblies
+  (tools/reach, so a new use counts at once). Mutation on any PR runs only the entries its files concern (an entry's
+  File, its test class's file, or the entry itself new in mutations.psd1; `Invoke-Mutations.ps1 -OnlyFiles`), in a
+  shard per 40, none when none; every entry's Find is checked either way. The full set runs nightly (03:41 UTC) and
+  real world only nightly (02:17 UTC; dispatch either on a branch to run it there); a failed night opens an issue
+  (tools/nightly-issue.sh). The FrameReader benchmark runs on demand and weekly only (docs/decisions/2026-10-31-ci-time.md).
   Every push reruns everything: docs go in before `gh pr create`, not as follow-up pushes.
