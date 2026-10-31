@@ -12,6 +12,7 @@
   </Folder>
   <Folder Name="/examples/">
     <Project Path="examples/ShotDetector.Example/ShotDetector.Example.csproj" />
+    <Project Path="examples/VideoRag/VideoRag.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ClipMaker/ClipMaker.csproj" />
@@ -19,5 +20,6 @@
     <Project Path="tests/AudioWithoutFfmpeg/AudioWithoutFfmpeg.csproj" />
     <Project Path="tests/FramesWithoutFfmpeg/FramesWithoutFfmpeg.csproj" />
     <Project Path="tests/ShotDetector.Tests/ShotDetector.Tests.csproj" />
+    <Project Path="tests/VideoRag.Tests/VideoRag.Tests.csproj" />
   </Folder>
 </Solution>
