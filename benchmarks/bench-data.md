@@ -65,7 +65,7 @@ wasm            benchmarks/wasm (x64 only; null or missing elsewhere and in olde
                              shots, native_detect_ms, native_ns_per_pixel (the native run's, same frames),
                              ratio (ns_per_pixel / native_ns_per_pixel),
                              csv_equal (the scene and stats CSVs equal the native run's, byte for byte) },
-                  checks[]: { film, check (a variant of the film's first frames: "rotation 90", ...),
+                  checks[]: { film, check (a variant of the film's first frames: "rotation 90", "variable frame rate", ...),
                               csv_equal (its content --stats CSVs equal the native run's) } (missing in older files) }
 ```
 

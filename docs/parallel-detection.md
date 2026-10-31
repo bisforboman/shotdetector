@@ -153,7 +153,9 @@ there is no file to seek, so the host does what `ScoreChunked` does and ShotDete
 - **The overlap check** is the chunked path's: a range's frames from the next range's start on must score (and carry
   pts) as the next range's do. With no sequential fallback, a mismatch is an error that names the frame.
 - **Identified by pts:** Merge runs the constant-rate check over every frame from frame 0's pts, as the frame-source
-  Detect does per frame, which plays the part of the file path's check against the probe's positions.
+  Detect does per frame, which plays the part of the file path's check against the probe's positions. With every
+  frame's timestamp given (`YuvVideo.FrameTimestamps`, a variable-rate video), each frame must be at its own entry
+  instead (2026-10-30, docs/decisions/2026-10-30-frame-source-vfr.md).
 - **What can't be split** is refused rather than read sequentially: a time range, frame skip and
   `DetectionMode.Parallel`. Every detector works, with stats too (threshold's dedupe by position stays in Decide).
 - **Shots as they come** (`DetectionOptions.OnShot`, 2026-10-30, docs/decisions/2026-10-30-score-range-on-shot.md): a

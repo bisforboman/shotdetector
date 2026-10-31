@@ -4,8 +4,8 @@
 // CSVs' SHA-256 lets the job check the WebAssembly run's results against the native run's on the same frames. Before
 // the runs, the other frame-source entry points on each input's first frames must give Detect's CSVs (CheckPaths); being
 // here also keeps them in the trimmed WebAssembly bundle, which ci.yml's wasm-trim job checks for FFmpeg's code. The
-// checks' variants of the input (its frames turned by a display rotation) report their CSVs' SHA-256 too, which must
-// equal the native run's.
+// checks' variants of the input (its frames turned by a display rotation, or at a variable frame rate) report their
+// CSVs' SHA-256 too, which must equal the native run's.
 //
 // Usage: <host> [--runs N] name=path,width,height,num/den,frames,colorspace ...
 // (the raw file holds at least `frames` frames of width x height yuv420p; colorspace as ffprobe names it, or "")
@@ -166,19 +166,23 @@ static class Bench
     /// DetectAsync, ScoreRangeAsync and ScoreRange in two ranges (one through its bytes, the second continuing from the
     /// first's scores) and Merge, on the first frames of
     /// <paramref name="input"/>: each must give Detect's scene and stats CSVs, with nothing decoded in-process. The same
-    /// for the frames turned by each display rotation, and Detect and DetectAsync for them deinterlaced (FastYuv's Yadif;
-    /// ranges refuse deinterlacing); the SHA-256 of each variant's CSVs, by its name.
+    /// for the frames turned by each display rotation, at a variable frame rate (every frame's timestamp given: the
+    /// first half at the input's rate, then each frame twice as long), also from a start time in its slower half, and
+    /// Detect and DetectAsync with the frames deinterlaced (FastYuv's Yadif; ranges refuse deinterlacing); the SHA-256
+    /// of each variant's CSVs, by its name.
     /// </summary>
     static List<(string Check, string Sha256)> CheckPaths(Input input, ReadAt read)
     {
         var hashes = new List<(string, string)>();
         foreach (int rotation in new[] { 0, 90, 180, -90 })
         {
-            string csvs = CheckPaths(input, read, rotation);
+            string csvs = CheckPaths(input, read, rotation, variableRate: false);
             if (rotation != 0)
                 hashes.Add(($"rotation {rotation}", Hash(csvs)));
         }
 
+        hashes.Add(("variable frame rate", Hash(CheckPaths(input, read, 0, variableRate: true))));
+        hashes.Add(("variable frame rate, start time", Hash(CheckPaths(input, read, 0, variableRate: true, startTime: true))));
         hashes.Add(("deinterlace", Hash(CheckDeinterlaced(input, read))));
         return hashes;
     }
@@ -203,10 +207,14 @@ static class Bench
     }
 
     /// <summary>One variant's checks (above): Detect's CSVs, which the other entry points gave.</summary>
-    static string CheckPaths(Input input, ReadAt read, int rotation)
+    static string CheckPaths(Input input, ReadAt read, int rotation, bool variableRate, bool startTime = false)
     {
         long frames = Math.Min(input.Frames, 300);
         int half = (int)(frames / 2);
+
+        // At a variable rate: in 1/90000 s, the first half at the rate, the rest twice as long each.
+        double step = 90000.0 * input.Rate.Den / input.Rate.Num;
+        long[] pts = [.. Enumerable.Range(0, (int)frames).Select(i => (long)Math.Round(i < half ? i * step : (half + ((i - half) * 2)) * step))];
         var video = new YuvVideo
         {
             Width = input.Width,
@@ -215,18 +223,32 @@ static class Bench
             ColorSpace = input.ColorSpace,
             FrameCount = frames,
             Rotation = rotation,
+            TimeBase = variableRate ? new FrameReader.Rational(1, 90000) : null,
+            FrameTimestamps = variableRate ? pts : null,
         };
+        IEnumerable<YuvFrame> Given(long from, long to) => Frames(input, read, new Counters(), from, to).Select((f, i) => variableRate ? f with { Pts = pts[from + i] } : f);
         var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, Yuv420Converter = new SwscaleYuv420() };
         string Csvs(DetectionResult r) => Shots.Csv(r.Shots, cuts: r.Cuts) + r.Stats!.Csv(r.Video.Position);
-        string expected = Csvs(ShotDetection.Detect(video, Frames(input, read, new Counters(), 0, frames), options));
-        var detected = ShotDetection.DetectAsync(video, Frames(input, read, new Counters(), 0, frames).ToAsyncEnumerable(), options).GetAwaiter().GetResult();
-        var first = ShotDetection.ScoreRangeAsync(video, Frames(input, read, new Counters(), 0, half + 1).ToAsyncEnumerable(), 0, options).GetAwaiter().GetResult();
-        var second = ShotDetection.ScoreRange(video, [first], Frames(input, read, new Counters(), half - 1, frames), half, options);
+        string variant = variableRate ? $"variable frame rate{(startTime ? ", start time" : "")}" : $"rotation {rotation}";
+        if (startTime)
+        {
+            // Ranges take no start time: Detect and DetectAsync alone, from a time between two frames of the slower half.
+            var from = options with { StartTime = ((pts[(half + frames) / 2] + (step * 0.7)) / 90000).ToString(CultureInfo.InvariantCulture) };
+            string started = Csvs(ShotDetection.Detect(video, Given(0, frames), from));
+            if (Csvs(ShotDetection.DetectAsync(video, Given(0, frames).ToAsyncEnumerable(), from).GetAwaiter().GetResult()) != started)
+                throw new InvalidOperationException($"{input.Name}, {variant}: DetectAsync's CSVs differ from Detect's on the first {frames} frames.");
+            return started;
+        }
+
+        string expected = Csvs(ShotDetection.Detect(video, Given(0, frames), options));
+        var detected = ShotDetection.DetectAsync(video, Given(0, frames).ToAsyncEnumerable(), options).GetAwaiter().GetResult();
+        var first = ShotDetection.ScoreRangeAsync(video, Given(0, half + 1).ToAsyncEnumerable(), 0, options).GetAwaiter().GetResult();
+        var second = ShotDetection.ScoreRange(video, [first], Given(half - 1, frames), half, options);
         var merged = ShotDetection.Merge(video, [RangeScores.FromBytes(first.ToBytes()), second], options);
         foreach (var (name, result) in new[] { ("DetectAsync", detected), ("ScoreRange and Merge", merged) })
         {
             if (Csvs(result) != expected || result.Video.DecodedInProcess)
-                throw new InvalidOperationException($"{input.Name}, rotation {rotation}: {name}'s CSVs differ from Detect's on the first {frames} frames, or it says it decoded in-process.");
+                throw new InvalidOperationException($"{input.Name}, {variant}: {name}'s CSVs differ from Detect's on the first {frames} frames, or it says it decoded in-process.");
         }
 
         return expected;

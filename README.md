@@ -183,7 +183,8 @@ Frames from another decoder (a managed one, in the browser): `ShotDetection.Dete
 options)` takes decoded 8-bit 4:2:0 planes (with strides) and the video's properties as FFmpeg reports them (average
 frame rate, time base and start pts, first frame's colour tags), and gives the file's result, byte for byte, with the
 same converter. Nothing on that path loads FFmpeg or starts ffmpeg, so it needs `Yuv420Converter` (ShotDetector.FastYuv's
-`SwscaleYuv420`): there is no other conversion without FFmpeg. So far a constant frame rate (checked), one frame size;
+`SwscaleYuv420`): there is no other conversion without FFmpeg. A constant frame rate (checked), or any rate with every frame's
+timestamp given up front (`YuvVideo.FrameTimestamps`: variable frame rate, as a file's); one frame size;
 a display rotation (`YuvVideo.Rotation`) turns the frames upright as a file's; deinterlacing takes FastYuv's `Yadif`
 (the stream's `YuvVideo.FieldOrder` for `Auto`, each frame's `Interlaced` and `TopFieldFirst` flags for its parity; not
 for ranges); `FfmpegResize` isn't available, the time range, crop, downscale, frame skip and stats
