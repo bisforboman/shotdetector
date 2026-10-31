@@ -3,7 +3,9 @@ name: Real world
 # ShotDetector and scenedetect on real public videos (tools/realworld.py: whole Blender open movies and short
 # clips in every common codec): cuts, scene lists and per-frame stats must be identical for every detector. And
 # FrameReader's audio on the films' soundtracks, identical to ffmpeg's.
-# Nightly, so a new ffmpeg/scenedetect/OpenCV release that changes a result is noticed the next morning.
+# Nightly only (and on demand: workflow_dispatch on a branch), so a new ffmpeg/scenedetect/OpenCV release that changes a
+# result is noticed the next morning; a failed night opens an issue (or comments on the open one). On pull requests the
+# jobs are skipped and "Real world passed" reports alone (docs/decisions/2026-10-31-ci-time.md).
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]   # drafts run nothing until marked ready
@@ -20,32 +22,8 @@ permissions:
   contents: read
 
 jobs:
-  # Docs-only pull requests (docs/ and *.md): the jobs below still run, so their required checks report, but skip
-  # their steps. Decided here, on a runner with git, from the PR's merge commit against its base.
-  changes:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    outputs:
-      docs_only: ${{ steps.diff.outputs.docs_only }}
-      light: ${{ steps.diff.outputs.light }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        if: github.event_name == 'pull_request'
-        with:
-          fetch-depth: 2
-      # FrameReader's assemblies are built when only FrameReader source changed (tools/ci-changes.sh).
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        if: github.event_name == 'pull_request'
-        with:
-          dotnet-version: 10.0.x
-      - id: diff
-        if: github.event_name == 'pull_request'
-        run: tools/ci-changes.sh >> "$GITHUB_OUTPUT"
-
   realworld:
-    if: needs.changes.outputs.light != 'true'
-    needs: changes
+    if: github.event_name != 'pull_request'
     name: Real world (${{ matrix.video }})
     runs-on: ubuntu-26.04
     timeout-minutes: 60
@@ -65,39 +43,32 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        if: needs.changes.outputs.docs_only != 'true'
         with:
           dotnet-version: 10.0.x
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        if: needs.changes.outputs.docs_only != 'true'
         with:
           python-version: '3.12'
 
       - name: Install ffmpeg ${{ env.FFMPEG }}
-        if: needs.changes.outputs.docs_only != 'true'
         timeout-minutes: 15
         uses: ./.github/actions/btbn-ffmpeg
         with:
           version: ${{ env.FFMPEG }}
 
       - name: Install scenedetect
-        if: needs.changes.outputs.docs_only != 'true'
         run: pip install scenedetect==0.7.2 opencv-python-headless==5.0.0.93
 
       - name: Build
-        if: needs.changes.outputs.docs_only != 'true'
         run: dotnet build src/ShotDetector.Cli -c Release
 
       - name: Cache the video
-        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: samples/realworld
           key: realworld-${{ matrix.video }}-${{ hashFiles('tools/realworld.py') }}
 
       - name: Compare with scenedetect
-        if: needs.changes.outputs.docs_only != 'true'
         run: |
           python tools/realworld.py ${{ matrix.video }} --report realworld.md || status=$?
           { echo "### ${{ matrix.video }}"; cat realworld.md; } >> "$GITHUB_STEP_SUMMARY"
@@ -108,8 +79,7 @@ jobs:
   # sequential result, and never falling back to sequential. In-process,
   # with FFmpeg 8.1's libraries, and the automatic count through the same build's ffmpeg executable (a process per chunk).
   parallel:
-    if: needs.changes.outputs.light != 'true'
-    needs: changes
+    if: github.event_name != 'pull_request'
     name: Real world parallel
     runs-on: ubuntu-26.04
     timeout-minutes: 60
@@ -175,8 +145,7 @@ jobs:
   # ffmpeg's command line (tests/FrameReader.Tests/RealWorldAudioTests.cs), one file after another in one job (five
   # jobs before, each mostly setup). Libraries and executable from one FFmpeg 8.1 build.
   audio:
-    if: needs.changes.outputs.docs_only != 'true'
-    needs: changes
+    if: github.event_name != 'pull_request'
     name: Real world audio
     runs-on: ubuntu-26.04
     timeout-minutes: 40
@@ -247,11 +216,11 @@ jobs:
           { echo "### Real world audio"; echo; echo "| File | AudioReader, SpectralStats vs ffmpeg |"; echo "|---|---|"; cat results.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
-  # The one check branch protection requires from this workflow: every job above passed or was skipped (a light PR
-  # skips the heavy ones, and a skipped matrix job doesn't report its per-matrix check names).
+  # The one check branch protection requires from this workflow: every job above passed or was skipped (a pull request
+  # skips them all; a skipped matrix job doesn't report its per-matrix check names, which nothing requires).
   passed:
     name: Real world passed
-    needs: [changes, realworld, audio, parallel]
+    needs: [realworld, audio, parallel]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -262,3 +231,18 @@ jobs:
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
           echo "$NEEDS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")' > /dev/null
+
+  # A failed night: an issue, or a comment on the one still open, so it isn't missed (tools/nightly-issue.sh).
+  report:
+    needs: passed
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/nightly-issue.sh "Nightly real-world comparison failed" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
