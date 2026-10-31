@@ -101,4 +101,22 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
             Directory.Delete(dir, true);
         }
     }
+
+    // --save-shotchanges writes Timeline.ShotChanges (Subtitle Edit's format; ShotChangesTests reads it as SE does).
+    [Fact]
+    public void SaveShotChangesWritesTheCutsInSeconds()
+    {
+        string dir = Directory.CreateTempSubdirectory("shotdetect-shotchanges-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "three.shotchanges");
+            var (exitCode, _, err) = Run("-i", clips.ThreeShots, "-d", "content", "-q", "--save-shotchanges", path);
+            Assert.True(exitCode == 0, err);
+            Assert.Equal("2.000\n4.000", File.ReadAllText(path));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
