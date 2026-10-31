@@ -46,6 +46,8 @@ jobs:
           - [ ] Read the release notes for changes to detection, downscaling, frame rates, timecodes, CSV/stats output or the CLI.
           - [ ] Compare: \`pip install scenedetect==$latest\`, then \`python tools/compare.py samples/*.mp4 ... --detector all --stats\` and the real-world films.
           - [ ] For each difference: reproduce it as a new \`PySceneDetectVersion\` value (default), keeping $ours selectable; tests and mutation lines for new quirks.
+          - [ ] The mode two releases back: \`[Obsolete]\` in this minor, removed at the next major; CI keeps the default and $ours (docs/decisions/2026-10-31-retiring-scenedetect-modes.md).
+          - [ ] Rerun \`tools/oracle.py\` with $latest installed and commit \`tests/ShotDetector.Tests/Data/oracle.txt\` (the property tests' answers; CI doesn't regenerate it).
           - [ ] Move the pins (\`scenedetect==\` in ci.yml's parity matrix, realworld.yml, benchmark.yml) and the docs.
           EOF
           )"
@@ -238,6 +240,7 @@ jobs:
           - [ ] Run the parity and real-world comparisons with \`opencv-python-headless==$latest\` (and the scenedetect release that's current).
           - [ ] If the FFmpeg major changed (libavcodec 63 = FFmpeg 9): the backlog's "Move to FFmpeg 9's libraries" (FFmpeg.AutoGen 9, the Native packages on 9.0.x), and re-check the colour (BT.709) and 10-bit notes in the README.
           - [ ] Move the \`opencv-python-headless==\` pins (ci.yml, realworld.yml, benchmark.yml) once results match.
+          - [ ] Check the Windows wheel's FFmpeg too: once it is FFmpeg 8 (it was 7.1), compare.py's \`--always-bt601\` on win32 is wrong and goes (docs/decisions/2026-10-11-the-windows-opencv-wheel-s-bt-709-difference.md).
           EOF
           )"
 

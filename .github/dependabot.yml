@@ -25,3 +25,8 @@ updates:
     groups:
       stylebro:
         patterns: ["StyleBro.*"]
+    # FFmpeg.AutoGen stays on 8.x until the native build moves to FFmpeg 9 (docs/backlog.md, Waiting): its 9.x binds
+    # libavcodec 63, which our FFmpeg 8 libraries aren't.
+    ignore:
+      - dependency-name: FFmpeg.AutoGen
+        versions: [">= 9.0.0"]
