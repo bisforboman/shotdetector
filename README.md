@@ -265,6 +265,11 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
   keyframes), byte-identical to scenedetect's except the EDL's comment line, which names ShotDetector.
   Like scenedetect, the OTIO clips declare an available range of 1980 frames whatever the video's
   length. In the library: `Timeline.Edl`, `Fcpx`, `Fcp7`, `Otio`, `Qp`.
+- `--save-shotchanges <file>` writes the cuts for [Subtitle Edit](https://github.com/SubtitleEdit/subtitleedit) (not a
+  scenedetect output): each cut's time in seconds, one per line (`12.480`), the format of SE's own `.shotchanges`
+  files. In SE: Video, Generate/import shot changes, Import, then the file; SE4 and SE5 read it as seconds (the `.`
+  tells them). Each line is the cut frame's presentation time, so variable frame rates are placed right, unlike an
+  import of frame numbers. In the library: `Timeline.ShotChanges`.
 - `--split-video <dir>` writes `{video}-Scene-{NNN}.mp4` with scenedetect's `split-video` ffmpeg
   command (libx264 veryfast CRF 22, AAC, subtitles dropped), and its options: `--split-copy`,
   `--split-high-quality`, `--split-crf`, `--split-preset`, `--split-args`, `--split-expand`

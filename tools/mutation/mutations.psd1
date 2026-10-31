@@ -515,5 +515,8 @@
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'bool past = first && Pts + keep > 0;'; Replace = 'bool past = false;'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'return taken.Reference(Pts, time);'; Replace = 'return taken.Reference();'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'long point = Demuxer.SeekPoint(_fmt, timestamp);'; Replace = 'long point = Demuxer.SeekPoint(_fmt, timestamp); SeekMicroseconds(point);'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
+
+        # --save-shotchanges: Subtitle Edit reads a plain list as seconds only when it has a '.', so whole seconds keep theirs
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'result.Cuts.Select(c => c.SecondsText())'; Replace = 'result.Cuts.Select(c => c.Seconds.ToString(CultureInfo.InvariantCulture))'; Tests = 'ShotChangesTests' }
     )
 }
