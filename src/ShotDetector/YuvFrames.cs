@@ -106,6 +106,23 @@ public readonly record struct YuvFrame(ReadOnlyMemory<byte> Y, int YStride, Read
     /// <summary>The frame's height in pixels as decoded; 0 (the default): <see cref="YuvVideo.Height"/>. See <see cref="Width"/>.</summary>
     public int Height { get; init; }
 
+    /// <summary>
+    /// The frame's colour matrix as ffprobe names it (its color_space: "bt709", "smpte170m", ...); null (the default),
+    /// empty or "unknown": <see cref="YuvVideo.ColorSpace"/>. As the file path in-process (and OpenCV's
+    /// sws_scale_frame), each frame is converted with its own colours, so a spliced stream whose tags change midway
+    /// gives a file's results. A frame whose colours the converter doesn't take is refused
+    /// (<see cref="ShotDetectionException"/>, <see cref="ShotDetectionError.InvalidInput"/>), where the file path
+    /// converts it with FFmpeg.
+    /// </summary>
+    public string? ColorSpace { get; init; }
+
+    /// <summary>
+    /// Whether the frame's samples are full range (its color_range "pc"; false: "tv"); null (the default):
+    /// <see cref="YuvVideo.FullRange"/>. A yuvj420p video's frames are full range whatever this says, as a file's.
+    /// See <see cref="ColorSpace"/>.
+    /// </summary>
+    public bool? FullRange { get; init; }
+
     /// <summary>The frame's presentation timestamp in <see cref="YuvVideo.TimeBase"/> (unused when that is null).</summary>
     public long Pts { get; init; }
 

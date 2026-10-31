@@ -23,6 +23,7 @@ internal sealed partial class VideoReader
     YuvFrame _currentFrame;                  // the last frame taken: valid until the next MoveNext
     byte[][]? _held;                         // deinterlacing: the last three frames taken, copied (frame k in k % 3)
     readonly bool[] _heldTff = new bool[3];  // each held frame's field order as yadif's auto parity reads it
+    readonly FrameColourTags[] _heldTags = new FrameColourTags[3]; // each held frame's colour tags
 
     /// <summary>Whether the frames come from the caller (<see cref="YuvVideo"/>), not a decoder.</summary>
     internal bool FromFrames => _frames is not null;
@@ -206,6 +207,7 @@ internal sealed partial class VideoReader
 
             // As yadif's auto parity (FrameDecoder's row path): top first unless flagged interlaced bottom first.
             _heldTff[_framesRead % 3] = !f.Interlaced || f.TopFieldFirst;
+            _heldTags[_framesRead % 3] = TagsOf(f);
         }
 
         _currentFrame = f;
@@ -221,6 +223,9 @@ internal sealed partial class VideoReader
             }
         }
     }
+
+    /// <summary>A frame's own colour tags, as the decoder's are named (null: the video's).</summary>
+    static FrameColourTags TagsOf(YuvFrame f) => new(f.ColorSpace, f.FullRange is { } full ? (full ? "pc" : "tv") : null, null);
 
     /// <summary>
     /// Frame <paramref name="frame"/> (at <paramref name="pts"/>) at frame / rate after frame 0 (at <paramref name="firstPts"/>),
@@ -399,14 +404,15 @@ internal sealed partial class VideoReader
             yield break;
         bool resize = (Width, Height) != (CropRegion.Width, CropRegion.Height);
         var resizer = resize ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
-        var convert = YuvForVideo!;
         int w = _codedSize.W, h = _codedSize.H, cw = (w + 1) / 2, ch = (h + 1) / 2;
         var yuv = new byte[IYuv420Converter.FrameSize(w, h)];
         var small = new byte[Width * Height * 3];
 
-        // The rows the resize reads, when the converter says which chroma rows those take; every row without a resize.
-        var rows = resizer is not null ? YuvRowsRead(resizer) : null;
-        int[] luma = rows?.Luma ?? [.. Enumerable.Range(0, h)], chroma = rows?.Chroma ?? [.. Enumerable.Range(0, ch)];
+        // Each frame converted with its own colour tags (the video's unless it says otherwise), as the file path
+        // in-process: one conversion per set of colours, with the rows the resize reads, when the converter says which
+        // chroma rows those take; every row without a resize.
+        var conversions = new FrameConversions(this, resizer, resizer is not null ? YuvRowsRead(resizer) : null);
+        int[] allLuma = [.. Enumerable.Range(0, h)], allChroma = [.. Enumerable.Range(0, ch)];
         int turn = Turn;
         int[] cols = turn != 0 ? [.. Enumerable.Range(0, w)] : [.. Enumerable.Range(CropRegion.X, CropRegion.Width)];
         var bgrRow = resize ? [] : new byte[w * 3];
@@ -425,6 +431,11 @@ internal sealed partial class VideoReader
                 throw new InvalidOperationException($"Frame {k} was passed before it was converted.");
             if ((k - startFrame) % (_frameSkip + 1) == 0)
             {
+                var tags = _deinterlace ? _heldTags[k % 3] : TagsOf(_currentFrame);
+                var conversion = conversions.For(tags) ?? throw new ShotDetectionException(ShotDetectionError.InvalidInput, string.Create(CultureInfo.InvariantCulture,
+                    $"Frame {k}'s colours (color_space '{tags.ColorSpace}', color_range '{tags.ColorRange}') aren't ones the converter takes (the file path converts such a frame with FFmpeg)."));
+                var convert = conversion.Yuv;
+                int[] luma = conversion.Rows?.Luma ?? allLuma, chroma = conversion.Rows?.Chroma ?? allChroma;
                 if (_deinterlace)
                 {
                     var cur = _held![k % 3];
