@@ -1,13 +1,21 @@
 #!/bin/bash
-# The `changes` jobs of ci.yml, realworld.yml and mutation.yml: what a pull request's commit touches, as their
-# outputs (docs_only=true, light=true, wasm=true). Light: nothing that can move ShotDetector's results, so the heavy jobs don't
-# start: docs, the benchmarks (with benchmark.yml's tools/bench*.py, and tools/bench-cpus.ps1, run by hand), workflows
-# CI never runs, FrameReader's tests, and FrameReader source files that ShotDetector's detection never runs (tools/reach
+# ci.yml's `changes` job: what a pull request's commit touches, as its outputs (docs_only=true, light=true,
+# wasm=true). Light: nothing that can move ShotDetector's results, so the heavy jobs don't start: docs, API baseline
+# bumps in Directory.Build.props, the benchmarks (with benchmark.yml's tools/bench*.py, and tools/bench-cpus.ps1, run by
+# hand), workflows CI never runs, FrameReader's tests, and FrameReader source files that ShotDetector's detection never runs (tools/reach
 # reads that from the built assemblies, so it can't go stale). wasm: what ci.yml's wasm-trim job checks could change (the
 # libraries the frame-source path is built from, benchmarks/wasm, the check itself), light or not.
 set -euo pipefail
 files=$(git diff --name-only HEAD^1 HEAD)
 [ -z "$files" ] && exit 0
+# A Directory.Build.props change that only moves the API baselines (ApiBaselineVersion, FrameReaderApiBaselineVersion,
+# after a stable release) is light: no results can move, and build still packs against the new baseline.
+if echo "$files" | grep -qx 'Directory.Build.props' \
+  && ! git diff -U0 HEAD^1 HEAD -- Directory.Build.props | grep -E '^[-+]' | grep -vE '^(\+\+\+|---) ' \
+    | grep -qvE '^[-+][[:space:]]*<(FrameReader)?ApiBaselineVersion>[^<]*</(FrameReader)?ApiBaselineVersion>[[:space:]]*$'; then
+  files=$(echo "$files" | grep -vx 'Directory.Build.props' || true)
+  [ -z "$files" ] && { echo light=true; exit 0; }
+fi
 if ! echo "$files" | grep -qvE '^docs/|\.md$'; then echo docs_only=true; fi
 if echo "$files" | grep -vE '\.md$' | grep -qE '^src/(ShotDetector|ShotDetector\.FastYuv|FrameReader)/|^benchmarks/wasm/|^Directory\.(Build|Packages)\.(props|targets)$|^\.github/workflows/ci\.yml$|^tools/(trim_path\.py|ci-changes\.sh)$'; then
   echo wasm=true
