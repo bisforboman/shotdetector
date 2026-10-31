@@ -48,3 +48,23 @@ Exactness is the repository's rule wherever it costs only arithmetic. ebur128's 
 can match FFmpeg to the digit. True peak is the one place where matching FFmpeg would mean copying an LGPL resampler
 to reproduce an overestimate, so it follows the standard and the difference is written down. The rest keeps the move
 additive: one FrameReader minor release per slice set, no ShotDetector break, no native change.
+
+## What "equal" is held to (slice 1, 2026-10-31)
+
+Found while building `LoudnessMeter`, with no new question for the owner:
+
+- **ebur128's two kernels.** On x86-64 with AVX, ebur128 filters two or more channels with
+  `ff_ebur128_filter_channels_avx`, which adds one term of the biquad in another order than the C kernel
+  (`b1·x + (y2 − a1·y0)` against `(b1·x + y2) − a1·y0`). The C kernel serves mono, and every channel count on ARM
+  (FFmpeg builds with `-std=c11`, so GCC doesn't contract to FMA there). The meter follows x86-64, the repository's
+  reference: the C order for mono, the AVX order from two channels. The difference stays in the last bits of the block
+  powers. The histogram hides it unless a block's loudness sits within about 1e-13 LU of a bin's edge, so no test can
+  tell the two orders apart, and the mutation list says so.
+- **The bins' energies.** ebur128 computes them with `ff_exp10`, which is glibc's `exp2`. .NET's `Math.Pow(2, x)`
+  differs from it in 8 of the 8001 bins, and glibc's x86-64 `exp2` isn't correctly rounded in 11. The meter computes
+  2^x correctly rounded in double-double arithmetic, the same on every platform (wasm included), then applies glibc's
+  11 one-ulp departures. A test compares all 8001 against the libm on Linux.
+- **What the tests hold.** Integrated loudness, range, its ends and sample peak are compared with
+  `AudioFilter(ebur128)` with `Assert.Equal` on doubles, on 14 generated clips (mono to 7.1, 32 to 96 kHz, a clip
+  shorter than a block, a partial last block, silence). True peak is held within 0.05 dB of tools/true_peak_reference.py's
+  ideal reconstruction, and within 0.1 dB of ebur128 where the clip has no energy near Nyquist.
