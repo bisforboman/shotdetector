@@ -3,7 +3,10 @@ namespace ShotDetector;
 /// <summary>What went wrong, for callers that handle failures differently (<see cref="ShotDetectionException.Reason"/>).</summary>
 public enum ShotDetectionError
 {
-    /// <summary>ffmpeg or ffprobe couldn't be started: a deployment problem.</summary>
+    /// <summary>
+    /// ffmpeg or ffprobe couldn't be started, or the ffmpeg is too old for the video (before 7.1, for formats needing
+    /// <c>in_chroma_loc</c>): a deployment problem.
+    /// </summary>
     FfmpegNotFound,
 
     /// <summary>The input couldn't be read as a video: missing, unreadable, not a video, or headers ffmpeg can't parse.</summary>
