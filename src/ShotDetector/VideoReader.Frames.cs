@@ -125,7 +125,7 @@ internal sealed partial class VideoReader
         _startPts = video.StartPts;
     }
 
-    /// <summary>What converting frames from the caller needs: the converter, yadif when deinterlacing, a format and height it takes.</summary>
+    /// <summary>What converting frames from the caller needs: the converter, yadif when deinterlacing, a format it takes (the size: the converter decides).</summary>
     static void CheckConversion(YuvVideo video, DetectionOptions o)
     {
         if (o.Yuv420Converter is null)
@@ -144,8 +144,6 @@ internal sealed partial class VideoReader
             throw new ArgumentException("FfmpegResize isn't available for frames from the caller (it is ffmpeg's scaler).");
         if (video.PixelFormat is not ("yuv420p" or "yuvj420p" or "yuv422p" or "yuvj422p" or "yuv420p10le"))
             throw new ArgumentException($"Frames from the caller must be yuv420p, yuvj420p, yuv422p, yuvj422p or yuv420p10le so far, not {video.PixelFormat}.");
-        if (video.Height % 2 != 0 && video.PixelFormat != "yuv420p10le")
-            throw new ArgumentException($"The frames' height must be even ({video.Height}): the converter reproduces swscale's unscaled {video.PixelFormat} conversion, which needs it.");
     }
 
     /// <summary>
