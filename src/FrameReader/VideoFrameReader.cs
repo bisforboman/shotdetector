@@ -822,7 +822,11 @@ public sealed unsafe class VideoFrameReader : IDisposable
         {
             ffmpeg.av_frame_unref(_out);
             (_out->format, _out->width, _out->height) = ((int)_format, width, height);
-            Check(ffmpeg.av_frame_get_buffer(_out, 1), "frame buffer"); // rows packed, planes one after another
+
+            // Aligned rows, as the scale filter's output buffers have: swscale takes other code paths into an unaligned
+            // buffer (packed rows), which at an odd width or height left the last chroma row unwritten and rounded the
+            // last BGR column differently (issue #656). Packed after converting, as rawvideo writes them.
+            Check(ffmpeg.av_frame_get_buffer(_out, 0), "frame buffer");
         }
 
         // As the scale filter does: the input read as progressive (its interl=0), and the output's tags those the link
@@ -835,32 +839,44 @@ public sealed unsafe class VideoFrameReader : IDisposable
         bool rgb = _options.FrameFormat is not (FrameFormat.Gray8 or FrameFormat.Yuv420p);
         _out->colorspace = rgb ? AVColorSpace.AVCOL_SPC_RGB : src->colorspace;
         _out->color_range = rgb ? AVColorRange.AVCOL_RANGE_JPEG : src->color_range;
-        int ret = ffmpeg.sws_scale_frame(_sws, _out, _in);
-        ffmpeg.av_frame_unref(_in);
-        Check(ret, "convert");
+
+        // The decoded frame already in the output's format and size: the scale filter passes it through untouched, where
+        // swscale's unscaled copy leaves the last chroma row of an odd height unwritten (issue #656).
+        bool passThrough = src->format == (int)_format && (src->width, src->height) == (width, height);
+        if (!passThrough)
+        {
+            int ret = ffmpeg.sws_scale_frame(_sws, _out, _in);
+            ffmpeg.av_frame_unref(_in);
+            Check(ret, "convert");
+        }
+
+        var converted = passThrough ? _in : _out;
         int size = ffmpeg.av_image_get_buffer_size(_format, width, height, 1);
         ReadOnlySpan<byte> data;
-        if (_options.FrameFormat != FrameFormat.Yuv420p)
+        if (!passThrough && _out->linesize[0] == size / height && _options.FrameFormat != FrameFormat.Yuv420p)
         {
-            data = new ReadOnlySpan<byte>(_out->data[0], size); // one plane, rows packed (align 1)
+            data = new ReadOnlySpan<byte>(_out->data[0], size); // one plane, its rows already packed
         }
         else
         {
-            // The planes packed one after another, as rawvideo writes them (the frame's buffer may pad between them).
+            // The rows and planes packed one after another, as rawvideo writes them.
             if (_packed.Length != size)
                 _packed = new byte[size];
             var planes = default(byte_ptrArray4);
             var strides = default(int_array4);
             for (uint i = 0; i < 4; i++)
             {
-                planes[i] = _out->data[i];
-                strides[i] = _out->linesize[i];
+                planes[i] = converted->data[i];
+                strides[i] = converted->linesize[i];
             }
 
             fixed (byte* p = _packed)
                 Check(ffmpeg.av_image_copy_to_buffer(p, size, in planes, in strides, _format, width, height, 1), "pack");
             data = _packed;
         }
+
+        if (passThrough)
+            ffmpeg.av_frame_unref(_in);
 
         // The aspect ratio as the scale filter sets its output's: the input's times the change in shape (0/1 stays).
         var sar = src->sample_aspect_ratio;

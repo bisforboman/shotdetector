@@ -78,6 +78,56 @@ public class VideoFrameReaderTests
         }
     }
 
+    // Odd sizes (issue #656): a frame whose width or height is odd, at its own size (swscale's unscaled copy for Yuv420p
+    // from a 4:2:0 source) and scaled to another odd size, from 4:2:0 and 4:2:2 sources, is ffmpeg's rawvideo byte for
+    // byte, the last half-size chroma row and column included.
+    [Theory]
+    [InlineData(321, 241, "yuv420p")]
+    [InlineData(320, 241, "yuv420p")]
+    [InlineData(321, 240, "yuv420p")]
+    [InlineData(321, 241, "yuvj420p")]
+    [InlineData(321, 241, "yuv422p")]
+    [InlineData(321, 241, "yuv420p10le")]
+    public void OddSizesAreFfmpegs(int w, int h, string pixelFormat)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-odd-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "odd.nut");
+            Run("-v", "error", "-y", "-f", "lavfi", "-i", $"testsrc2=s=320x240:r=25:d=0.4,scale={w}:{h}", "-c:v", "rawvideo", "-pix_fmt", pixelFormat, path);
+            foreach (var (format, ffmpegName) in new[] { (FrameFormat.Yuv420p, "yuv420p"), (FrameFormat.Bgr24, "bgr24"), (FrameFormat.Gray8, "gray") })
+            {
+                foreach (var size in new (int W, int H)?[] { null, (161, 91) })
+                {
+                    string scale = size is { } s ? $"scale={s.W}:{s.H}:flags=bicubic" : "scale=iw:ih:flags=bicubic";
+                    byte[] expected = Run("-v", "error", "-i", path, "-vf", $"{scale},format={ffmpegName}", "-f", "rawvideo", "-");
+                    var actual = new MemoryStream();
+                    int frames = 0;
+                    using (var reader = new VideoFrameReader(path, new VideoFrameReaderOptions
+                    { Width = size?.W, Height = size?.H, FrameFormat = format, Decoder = new FrameDecoderOptions() }))
+                    {
+                        while (reader.TryRead(out var frame))
+                        {
+                            frames++;
+                            Assert.Equal((size?.W ?? w, size?.H ?? h), (frame.Width, frame.Height));
+                            actual.Write(frame.Data);
+                        }
+                    }
+
+                    Assert.Equal(10, frames);
+                    Assert.True(expected.AsSpan().SequenceEqual(actual.ToArray()),
+                        $"{w}x{h} {pixelFormat} {format} {scale}: {expected.Length} bytes from ffmpeg, {actual.Length} read; first difference at {FirstDifference(expected, actual.ToArray())}");
+                }
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // MaxWidth: ffmpeg's scale='min(N,iw)':-2, on the frame after autorotate (a 320x240 stream shown at 90 degrees is
     // 240 wide), an odd size, and a height whose -2 rounding is a tie (320x241: 120.5 rounds up); never upscaled, and
     // a height that rounds to 0 (a width of 1) is the input's, as libavfilter fills it in.
