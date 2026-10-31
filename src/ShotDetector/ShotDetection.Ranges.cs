@@ -290,8 +290,8 @@ public static partial class ShotDetection
     {
         cancellationToken.ThrowIfCancellationRequested();
         var o = (options ?? new DetectionOptions()).Resolved();
-        CheckOptions(o, null);
         CheckRangeOptions(video, o);
+        CheckOptions(o, false);
         var before = earlier is null ? null : Earlier(video, o, earlier, firstFrame);
         int from = Math.Max(0, firstFrame - 1);
 
@@ -375,6 +375,8 @@ public static partial class ShotDetection
     {
         if (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null)
             throw new ArgumentException("A time range (StartTime, EndTime, Duration) isn't available for ranges: score the whole video, from frame 0, in ranges.");
+        if (o.TrimReferenceTone)
+            throw new ArgumentException("TrimReferenceTone isn't available for ranges: it sets a time range; score the whole video, and trim with Detect.");
         if (o.FrameSkip != 0)
             throw new ArgumentException("FrameSkip isn't available for ranges: which frames it analyses runs across them.");
         if (o.Mode == DetectionMode.Parallel)
@@ -432,8 +434,8 @@ public static partial class ShotDetection
             if (list.Count == 0)
                 throw new ArgumentException("Merge needs at least one range.", nameof(ranges));
             var o = (options ?? new DetectionOptions()).Resolved();
-            CheckOptions(o, null);
             CheckRangeOptions(video, o);
+            CheckOptions(o, false);
             CheckFingerprints(video, o, list, nameof(ranges), "this merge's");
             var (pts, scores) = Joined(VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list);
             if (pts.Length > 0)

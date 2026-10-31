@@ -23,7 +23,6 @@ Line numbers are at commit 15a2d89 (main after the 3.23.0 release).
 | Odd frame height (8-bit formats) | Converted by FFmpeg (pipeline `SampledBgr`: FastYuv declines it) | Refused: "height must be even" (yuv420p10le of an odd height is taken since #627, as the file path's 10-bit pipeline takes it) | **Gap: refused** (rare) | `VideoReader.Frames.cs:57-58`. Probe: ffv1 at 320x239 (`-vf scale=320:239`): file path fine, frame source throws |
 | Other pixel formats (yuv444p, gray, nv12, ...) | Converted by FFmpeg (pipeline `SampledBgr`) | Refused; no managed converter reproduces FFmpeg's for them | **Gap: refused** (rare in browsers' decoders) | `VideoReader.Frames.cs:53-54`. Probe: libx264 yuv444p, ffv1 gray: file path fine, frame source throws |
 | Scenes from a cut list (`ShotDetection.LoadScenes`: the exports from an edited or saved cut list) | `LoadScenes(path, ...)` reads the video (VideoReader, FFmpeg) for its positions and properties | No overload for `YuvVideo` (or from a `DetectionResult` plus a cut list), so a browser host can't export an edited cut list | **Gap: missing** (found 2026-10-31, #647; needed by shotdetector-web#90) | `ShotDetection.cs` (`LoadScenes`) |
-| Reference tone trim (`TrimReferenceTone`, CLI `--trim-reference-tone`) | Reads the audio with FrameReader's `AudioReader` (FFmpeg), finds the tone, sets the time range | Refused: "needs a file path". `FrameReader.ReferenceTone.Find` takes an `AudioReader` only, so a caller with its own decoded audio can't find the tone either; it can set `StartTime`/`EndTime` itself | **Gap: refused** | `ShotDetection.cs:1189-1194`, `:1435-1436`; `ReferenceTone.cs:54`; `RejectsWhatItCantReproduce("tone")` |
 
 ## By design, documented
 
@@ -60,6 +59,7 @@ Line numbers are at commit 15a2d89 (main after the 3.23.0 release).
 | 8-bit 4:2:2 (yuv422p, yuvj422p), since #627 | `YuvVideo.PixelFormat` yuv422p or yuvj422p, chroma planes of the full height: FastYuv's 4:2:2 converter, as the file path's `Yuv422Sampled` | `SameAsTheFileForEachFormat` (libx264 yuv422p, MJPEG yuvj422p, resized and not, turned, deinterlaced); samples `sintel_422.mp4`, `sintel_rotated_422.mp4`, `broadcast/xdcam_hd422_1080i25.mxf` deinterlaced (CSVs equal, scratch run) |
 | Odd frame width | Taken | Probe: ffv1 at 319x240, downscaled and not (`Downscale = 1`, pipeline `FfmpegScale` on the file): equal |
 | IDCT (MPEG-1/2, MPEG-4 Part 2, MJPEG) | The caller's decoder's business | Probe on x64: mpeg4 and mpeg2video decoded at FFmpeg's default IDCT (no `-idct`): equal to the file path. Not checked on ARM, where the file path's rule (`VideoReader.IdctOptions`, internal) matters (CLAUDE.md, ARM gotcha) |
+| Reference tone trim (`TrimReferenceTone`), since #629 | `YuvVideo.ReferenceTone`: the tone the host found in the audio it decoded, with FrameReader's `ReferenceToneFinder` (already there since #494: no FFmpeg, the segments `ReferenceTone.Find` gives for the same samples, however they are chunked). Trimmed as the file path trims, reported in `DetectionResult.ReferenceTone`; refused without it ("needs YuvVideo.ReferenceTone"), and for ranges (it sets a time range) | `FrameInputTests.SameAsTheFileTrimmedToTone` (tone before and after the programme, found in the ffmpeg executable's f32le: the file path's segments and CSVs), `RejectsWhatItCantReproduce("tone")`, `FrameRangeTests.ScoringRefusesWhatARangeCantHonour`; docs/decisions/2026-10-31-frame-source-tone.md |
 | Shots as found, cancellation, progress, warnings | `OnShot`, `DetectAsync`, `Progress`, `Warnings` | `OnShotTests`, `FrameSourceAsyncTests` |
 | Ranges with rotation, variable frame rate, resume | `ScoreRange(earlier, ...)`, `Merge` | `FrameInputTests.RangesFromKeyframesMergeIntoTheSequentialResult` (mpeg4-turned), `RangesAreAtTheirFrameTimestamps`, `FrameRangeTests` |
 | Deinterlaced ranges, since #628 | `ScoreRange` given one more frame on each side (from `firstFrame - 2`, to two past the range's end; `ShotDetection.RangeFrames` gives either span); `Merge` and a continuing range take each range's last frame from the range that ends with the video only | `FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult` (every split, On and Auto, the field order changing per frame), `RangeFramesGiveTheFramesEachRangeNeeds`, `ADeinterlacedRangeTellsTheShotsDetectTells` (OnShot, resumed runs); `FrameInputTests.DeinterlacedRangesFromKeyframesMergeIntoTheSequentialResult` (libx264 MBAFF top and bottom first, MPEG-2, 10-bit and 4:2:2 MBAFF split at keyframes, each range decoded from its keyframe: the merge equals the sequential deinterlaced run and `Detect(path)`'s CSVs). Before #628, refused ("Deinterlacing isn't available for ranges") |
@@ -77,7 +77,8 @@ Line numbers are at commit 15a2d89 (main after the 3.23.0 release).
 | `DecodedInProcess`, `Streamed` | False |
 | `Chunks`, `ChunkFallback` | 1, null |
 | `Position(frame)` | From the frame's pts, its `FrameTimestamps` entry, or its number (`VideoReader.Frames.cs` `FramePosition`) |
-| `DetectionResult.VideoPath`, `ReferenceTone` | Null (see the gaps and exports above) |
+| `DetectionResult.VideoPath` | Null (see the exports above) |
+| `DetectionResult.ReferenceTone` | `YuvVideo.ReferenceTone` with `TrimReferenceTone`, else null, as a file's |
 | Warnings | The file path's HLS and chroma-siting warnings don't arise (no ffmpeg executable, no siting); a size change is refused on the frame source (#625); colour tags are followed per frame (#626) |
 
 ## Proposed issues
@@ -98,7 +99,7 @@ For the owner to pick from; not filed.
 4. **Ranges: deinterlace** (medium, from shotdetector-web: a deinterlaced video runs on one worker, no split run, no
    resume; done in #628). Let `ScoreRange` take the frame before its first and after its last (or say how many it was given) so
    yadif sees the same neighbours as the sequential run, and `Merge` accept deinterlaced ranges.
-5. **Reference tone without a file** (low). `FrameReader.ReferenceTone.Find` over samples the caller decoded (an
+5. **Reference tone without a file** (low; done in #629: `YuvVideo.ReferenceTone`, the search itself was `ReferenceToneFinder` already). `FrameReader.ReferenceTone.Find` over samples the caller decoded (an
    overload on PCM), so a frame-source host can find the tone and set the time range; or `TrimReferenceTone` taking
    given tone segments.
 6. **Frame sources: odd heights and other pixel formats** (low, rare in practice): FastYuv declines odd heights and

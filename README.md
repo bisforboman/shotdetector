@@ -174,7 +174,8 @@ audio, and `TrimReferenceTone = true` leaves it out of detection: detection star
 5 s and stops before one that ends in the last 5 s; the runs found are in `DetectionResult.ReferenceTone`. Line-up
 that cuts one channel now and then (EBU, GLITS) is one run; beeps, music and runs shorter than
 `ReferenceTone.MinDuration` (5 s; `DetectionOptions.ReferenceTone` is FrameReader's `ReferenceToneOptions`) don't count. Not in scenedetect, and off by default. It reads the audio in-process,
-so FFmpeg's libraries are needed, and a file path (not a Stream or URL).
+so FFmpeg's libraries are needed, and a file path (not a Stream or URL); frames from another decoder (below) take the
+tone their host found in the audio it decoded (FrameReader's `ReferenceToneFinder`, no FFmpeg) as `YuvVideo.ReferenceTone`.
 
 Which decoder a run uses is in every `DetectionProgress` report (`DecodesInProcess`), from a first report
 sent before any frame, so `DetectStreamAsync` callers see it too. `ShotDetection.CanDecodeInProcess()` tells a worker at
@@ -197,7 +198,7 @@ timestamp given up front (`YuvVideo.FrameTimestamps`: variable frame rate, as a 
 a display rotation (`YuvVideo.Rotation`) turns the frames upright as a file's; deinterlacing takes FastYuv's `Yadif`
 (the stream's `YuvVideo.FieldOrder` for `Auto`, each frame's `Interlaced` and `TopFieldFirst` flags for its parity; not
 for ranges); `FfmpegResize` isn't available, the time range, crop, downscale, frame skip and stats
-are (docs/decisions/2026-10-24-managedcodecs-showcase.md). A long video can be split across runtimes with no shared
+are, and `TrimReferenceTone` with the tone given in `YuvVideo.ReferenceTone` (not for ranges) (docs/decisions/2026-10-24-managedcodecs-showcase.md). A long video can be split across runtimes with no shared
 memory (Web Workers): `ShotDetection.ScoreRange` scores a range of frames (from the frame before it to one past its
 end), its `RangeScores` travel as bytes (`ToBytes`, `FromBytes`), and `ShotDetection.Merge` gives exactly `Detect`'s
 result for the whole video, refusing ranges that don't fit together (docs/parallel-detection.md, "Frame-source ranges").
@@ -269,6 +270,11 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
 - `--save-html <file>` writes scenedetect's `save-html` page (cut list and shot table with the
   thumbnails), byte-identical to scenedetect's; `--html-no-images`, `--html-image-width/height`.
   In the library: `Shots.Html`.
+- `--contact-sheet <file>` writes a contact sheet (not a scenedetect output), a `.png` or a `.pdf` by the extension: a
+  row per shot, its number, start timecode and length, then the frames `--save-images` picks (`--num-images`,
+  `--frame-margin`), `--contact-sheet-width <px>` wide (320 by default). The PNG is one image (its labels in a small
+  built-in font); the PDF has A4 pages with the video's name, for long films, and embeds the JPEGs as encoded
+  ([why](docs/decisions/2026-10-31-contact-sheet.md)).
 - `--save-edl`, `--save-fcp` (`--fcp-format fcpx|fcp7`), `--save-otio` and `--save-qp` write scenedetect's
   timeline exports for editors and encoders (CMX 3600 EDL, Final Cut Pro XML, OpenTimelineIO, x264 QP
   keyframes), byte-identical to scenedetect's except the EDL's comment line, which names ShotDetector.

@@ -25,6 +25,12 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (!Streaming && restart is null)'; Replace = 'if (!Streaming)'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'SitingChangeNotFollowed = true;'; Replace = ';'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
 
+        # Reference tone on frames from the caller (#629): trimmed by YuvVideo.ReferenceTone as the file path trims by the
+        # tone it finds; refused without it, and for ranges (a time range)
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'tone = !video.FromFrames'; Replace = 'tone = video.FromFrames'; Tests = 'FrameInputTests' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'video.GivenTone ?? throw'; Replace = 'video.GivenTone ?? Array.Empty<FrameReader.ToneSegment>() ?? throw'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.TrimReferenceTone)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }
+
         # Timestamps that start over (two encodes joined): known before the first frame (a file's packets, MPEG-PS's
         # pass; MPEG-PS's arriving ones may), the shots are told at the end, as the sorted cuts make them
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ' && !video.TimestampsStartOver;'; Replace = ';'; Tests = 'TimestampResetTests' }
@@ -548,6 +554,13 @@
         @{ File = 'src/ShotDetector.Cli/Program.cs'; Find = 'return verdict.Pass ? 0 : 3;'; Replace = 'return 0;'; Tests = 'CliTests.Loudness' }
         @{ File = 'src/FrameReader/Loudness.cs'; Find = 'Get("sample_peak"), Get("true_peak")'; Replace = 'Get("sample_peak") - 0.05, Get("true_peak")'; Tests = 'LoudnessTests'; Project = 'tests/FrameReader.Tests' }
 
+        # SilenceFinder: silencedetect's counting, sample by sample: strictly under the level as a float, the duration
+        # rounded to the nearest instant, a count of every channel's samples in turn (not of instants), the start's arithmetic
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = 's < noise && s > -noise'; Replace = 's <= noise && s >= -noise'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '+ 500000) / 1000000'; Replace = ') / 1000000'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '_notify = _instants * channels;'; Replace = '_notify = (_instants * channels) - channels + 1;'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '(_position / _channels) + 1 - _instants'; Replace = '(_position / _channels) - _instants'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
+
         # --save-shotchanges: Subtitle Edit reads a plain list as seconds only when it has a '.', so whole seconds keep theirs
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'result.Cuts.Select(c => c.SecondsText())'; Replace = 'result.Cuts.Select(c => c.Seconds.ToString(CultureInfo.InvariantCulture))'; Tests = 'ShotChangesTests' }
 
@@ -559,5 +572,12 @@
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'Math.Ceiling(Math.Round(cut, 3, MidpointRounding.AwayFromZero))'; Replace = 'Math.Ceiling(cut)'; Tests = 'YouTubeChaptersTests' }
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (!(minLength >= 10))'; Replace = 'if (minLength < 5)'; Tests = 'YouTubeChaptersTests' }
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (!(minLength > 0))'; Replace = 'if (minLength < 0)'; Tests = 'YouTubeChaptersTests' }
+
+        # --contact-sheet: save-images' own frames (its options but the size and format), our PNG decoder's row filters,
+        # and the PDF's page breaks
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = 'FileName = "$SCENE_NUMBER-$IMAGE_NUMBER",'; Replace = 'FileName = "$SCENE_NUMBER-$IMAGE_NUMBER", FrameMargin = 0,'; Tests = 'ContactSheetTests' }
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = '4 => Paeth(a, b, c),'; Replace = '4 => a,'; Tests = 'ContactSheetTests' }
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = '3 => (a + b) / 2,'; Replace = '3 => (a + b + 1) / 2,'; Tests = 'ContactSheetTests' }
+        @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = 'if (pages[^1].Count > 0 && used + heights[r] > room)'; Replace = 'if (pages[^1].Count > 0 && used + heights[r] > room * 10)'; Tests = 'ContactSheetTests' }
     )
 }

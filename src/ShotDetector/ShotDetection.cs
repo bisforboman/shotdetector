@@ -570,7 +570,8 @@ public sealed record DetectionOptions
     /// Leave out reference tone (1 kHz line-up tone, <see cref="ShotDetection.FindReferenceTone"/>) at the start and
     /// end: detection starts after a segment that begins in the first 5 s, and stops before one that ends in the last
     /// 5 s; the segments found are in <see cref="DetectionResult.ReferenceTone"/>. Not in scenedetect. Needs a file
-    /// path and FFmpeg's libraries (the audio is read in-process), and sets the time range itself: not with
+    /// path and FFmpeg's libraries (the audio is read in-process), or frames from the caller with
+    /// <see cref="YuvVideo.ReferenceTone"/> (the tone it found in the audio; not for ranges), and sets the time range itself: not with
     /// <see cref="StartTime"/>, <see cref="EndTime"/> or <see cref="RangeDuration"/>.
     /// </summary>
     public bool TrimReferenceTone { get; init; }
@@ -762,12 +763,12 @@ public static partial class ShotDetection
     /// (<see cref="DetectionOptions.StartTime"/>: the frames before it are still enumerated, not converted), frame skip,
     /// crop, downscale, the frame rate override, merge and drop of short shots, progress, warnings,
     /// <see cref="DetectionOptions.OnShot"/> (each shot as soon as it is known, while frames are still pulled) and
-    /// <see cref="DetectionOptions.Deinterlace"/> with <see cref="DetectionOptions.Yadif"/> (an <see cref="ArgumentException"/>
+    /// <see cref="DetectionOptions.TrimReferenceTone"/> with <see cref="YuvVideo.ReferenceTone"/> (the tone the caller found in the
+    /// audio), <see cref="DetectionOptions.Deinterlace"/> with <see cref="DetectionOptions.Yadif"/> (an <see cref="ArgumentException"/>
     /// without it, when it would deinterlace: Auto goes by <see cref="YuvVideo.FieldOrder"/>, each frame's parity by its
     /// <see cref="YuvFrame.Interlaced"/> and <see cref="YuvFrame.TopFieldFirst"/>; the frames held as FrameDecoder's row-wise
     /// yadif holds them, deinterlaced before they are turned). Not available
-    /// (an <see cref="ArgumentException"/>): <see cref="DetectionOptions.FfmpegResize"/>,
-    /// <see cref="DetectionOptions.TrimReferenceTone"/>. Ignored, as nothing
+    /// (an <see cref="ArgumentException"/>): <see cref="DetectionOptions.FfmpegResize"/>. Ignored, as nothing
     /// is decoded here: <see cref="DetectionOptions.Decoder"/>, <see cref="DetectionOptions.FfmpegDirectory"/>,
     /// <see cref="DetectionOptions.DecodeThreads"/>, <see cref="DetectionOptions.Streaming"/>,
     /// <see cref="DetectionOptions.ProbeBytes"/>; the frames are read once, in order (<see cref="DetectionMode.Parallel"/>
@@ -1158,7 +1159,7 @@ public static partial class ShotDetection
         }
 
         string? videoPath = decoded?.Path;
-        CheckOptions(o, videoPath);
+        CheckOptions(o, videoPath is not null || frames is not null);
 
         // A spilled Stream's temporary file is deleted at the end.
         using var input = decoded;
@@ -1194,7 +1195,10 @@ public static partial class ShotDetection
         {
             if (video.Streaming)
                 throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately).");
-            tone = decoded!.ReferenceTone(o, cancellationToken);
+            tone = !video.FromFrames
+                ? decoded!.ReferenceTone(o, cancellationToken)
+                : video.GivenTone ?? throw new ArgumentException("TrimReferenceTone on frames from the caller needs YuvVideo.ReferenceTone: "
+                    + "the tone in the video's audio, found with FrameReader's ReferenceToneFinder.");
             o = TrimmedToTone(o, tone, video.Duration);
         }
 
@@ -1434,10 +1438,13 @@ public static partial class ShotDetection
     }
 
     /// <summary>The checks of the resolved options every run makes before reading anything (an <see cref="ArgumentException"/>).</summary>
-    static void CheckOptions(DetectionOptions o, string? videoPath)
+    /// <param name="o">The resolved options.</param>
+    /// <param name="tone">Whether the run can have the reference tone: a file path's (its audio read separately), or the
+    /// caller's (<see cref="YuvVideo.ReferenceTone"/>, checked when the run starts).</param>
+    static void CheckOptions(DetectionOptions o, bool tone)
     {
-        if (o.TrimReferenceTone && videoPath is null)
-            throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately).");
+        if (o.TrimReferenceTone && !tone)
+            throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately), or frames from the caller with YuvVideo.ReferenceTone.");
         if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null))
             throw new ArgumentException("TrimReferenceTone sets the time range itself; leave StartTime, EndTime and RangeDuration unset.");
         if (o.FrameSkip < 0)
