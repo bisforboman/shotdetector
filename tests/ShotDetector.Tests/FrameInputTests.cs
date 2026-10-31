@@ -47,6 +47,86 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         await AssertSame(clips.ThreeShots, options);
     }
 
+    // Reference tone (issue #629): bars with 1 kHz tone for 6 s before the programme ("lead": the trim sets the start) or
+    // after it ("trail": the end, from YuvVideo.Duration). The host finds the tone in audio it decoded itself (here the
+    // ffmpeg executable's f32le, fed to FrameReader's ReferenceToneFinder in chunks of its own size): the file path's
+    // segments, and with them in YuvVideo.ReferenceTone the file path's trimmed result.
+    [Theory]
+    [InlineData("lead", "content")]
+    [InlineData("trail", "content")]
+    [InlineData("lead", "adaptive")]
+    public async Task SameAsTheFileTrimmedToTone(string where, string detector)
+    {
+        if (Libs is null)
+            return;
+        string clip = ToneClip(where);
+        var options = new DetectionOptions
+        {
+            Detector = detector == "content" ? DetectorKind.Content : DetectorKind.Adaptive,
+            CollectStats = true,
+            FfmpegDirectory = Libs,
+            Decoder = VideoDecoder.InProcess,
+            Yuv420Converter = new SwscaleYuv420(),
+            TrimReferenceTone = true,
+        };
+        var expected = ShotDetection.FindReferenceTone(clip, options);
+        Assert.Single(expected);
+
+        var finder = new FrameReader.ReferenceToneFinder(48000, 2, options.ReferenceTone);
+        var psi = new ProcessStartInfo(Path.Combine(Libs, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg")) { RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (string a in new[] { "-v", "error", "-i", clip, "-map", "0:a", "-f", "f32le", "-" })
+            psi.ArgumentList.Add(a);
+        using (var p = Process.Start(psi)!)
+        {
+            var stderr = p.StandardError.ReadToEndAsync();
+            var buffer = new byte[4000 * 2 * sizeof(float)];
+            long instants = 0;
+            int filled;
+            while ((filled = await p.StandardOutput.BaseStream.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false)) > 0)
+            {
+                var samples = MemoryMarshal.Cast<byte, float>(buffer.AsSpan(0, filled));
+                finder.Add(samples, TimeSpan.FromSeconds(instants / 48000.0));
+                instants += samples.Length / 2;
+            }
+
+            await p.WaitForExitAsync();
+            Assert.True(p.ExitCode == 0, await stderr);
+        }
+
+        var tone = finder.Finish();
+        Assert.Equal(expected, tone);
+        await AssertSame(clip, options, tone: tone);
+        var trimmed = ShotDetection.Detect(clip, options);
+        Assert.Equal(tone, trimmed.ReferenceTone);
+        Assert.True(where == "lead" ? trimmed.Shots[0].Start.FrameNum == 150 : trimmed.Shots[^1].End.FrameNum == 100);
+    }
+
+    /// <summary>The three-part clip with stereo AAC: 6 s of bars and -18 dBFS tone before (lead) or after (trail) 4 s of programme.</summary>
+    string ToneClip(string where)
+    {
+        string path = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, $"tone-{where}.mp4");
+        if (File.Exists(path))
+            return path;
+        const string Bars = "-f lavfi -i smptebars=s=320x240:r=25:d=6 -f lavfi -i sine=f=1000:r=48000:d=6";
+        const string Programme = "-f lavfi -i testsrc2=s=320x240:r=25:d=2 -f lavfi -i anoisesrc=r=48000:a=0.1:d=2 "
+            + "-f lavfi -i mandelbrot=s=320x240:r=25 -f lavfi -i anoisesrc=r=48000:a=0.1:c=pink:d=2";
+        string inputs = where == "lead" ? Bars + " " + Programme : Programme + " " + Bars;
+        string concat = where == "lead"
+            ? "[4]trim=duration=2,setpts=PTS-STARTPTS[m];[0:v][1:a][2:v][3:a][m][5:a]concat=n=3:v=1:a=1[v][a]"
+            : "[2]trim=duration=2,setpts=PTS-STARTPTS[m];[0:v][1:a][m][3:a][4:v][5:a]concat=n=3:v=1:a=1[v][a]";
+        var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg")) { RedirectStandardError = true };
+        foreach (string a in $"-v error -y {inputs} -filter_complex {concat} -map [v] -map [a] -ac 2 -c:v mpeg4 -q:v 2 -c:a aac".Split(' '))
+            psi.ArgumentList.Add(a);
+        string temporary = path + ".part.mp4";
+        psi.ArgumentList.Add(temporary);
+        using var p = Process.Start(psi)!;
+        string stderr = p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        Assert.True(p.ExitCode == 0, stderr);
+        File.Move(temporary, path, overwrite: true);
+        return path;
+    }
+
     // H.264 with B-frames at 29.97 fps in mp4 (an edit list, decode order unlike presentation order, timestamps whose
     // microseconds round): the showcase's input. The same stream in MPEG-TS starts at 1.4 s (StartPts). Made with the
     // ffmpeg executable's libx264; skipped without it.
@@ -380,6 +460,8 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             Assert.Contains("must be yuv420p, yuvj420p, yuv422p, yuvj422p or yuv420p10le so far, not yuv444p", e.Message);
         if (name == "odd")
             Assert.Contains("height must be even", e.Message);
+        if (name == "tone")
+            Assert.Contains("needs YuvVideo.ReferenceTone", e.Message);
     }
 
     [Theory]
@@ -723,11 +805,12 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     }
 
     // The frames of a file, as a decoder gives them, and the file's result for them.
-    static async Task AssertSame(string path, DetectionOptions options, bool timestamps = false)
+    static async Task AssertSame(string path, DetectionOptions options, bool timestamps = false, IReadOnlyList<FrameReader.ToneSegment>? tone = null)
     {
         var file = ShotDetection.Detect(path, options);
         Assert.True(file.Video.DecodedInProcess);
         var (video, frames) = Decoded(path, timestamps);
+        video = video with { ReferenceTone = tone };
         var ours = ShotDetection.Detect(video, frames, options);
 
         // The same frames from an asynchronous source (DetectAsync) give the same result.
@@ -741,6 +824,8 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             (awaited.Video.ProcessedWidth, awaited.Video.ProcessedHeight, awaited.Video.FrameRate, awaited.Video.OpenCvFrameCount, awaited.Video.Duration));
         Assert.Equal(file.FrameCount, ours.FrameCount);
         Assert.Equal(file.MinSceneLengthFrames, ours.MinSceneLengthFrames);
+        Assert.Equal(file.ReferenceTone, ours.ReferenceTone);
+        Assert.Equal(ours.ReferenceTone, awaited.ReferenceTone);
         Assert.Equal(file.Cuts, ours.Cuts);
         Assert.Equal(file.Shots, ours.Shots);
         Assert.Equal(Shots.Csv(file.Shots, cuts: file.Cuts), Shots.Csv(ours.Shots, cuts: ours.Cuts));

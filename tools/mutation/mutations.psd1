@@ -25,6 +25,12 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (!Streaming && restart is null)'; Replace = 'if (!Streaming)'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'SitingChangeNotFollowed = true;'; Replace = ';'; Tests = 'VideoTests.TheExecutableFollowsEachFramesChromaSiting' }
 
+        # Reference tone on frames from the caller (#629): trimmed by YuvVideo.ReferenceTone as the file path trims by the
+        # tone it finds; refused without it, and for ranges (a time range)
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'tone = !video.FromFrames'; Replace = 'tone = video.FromFrames'; Tests = 'FrameInputTests' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'video.GivenTone ?? throw'; Replace = 'video.GivenTone ?? Array.Empty<FrameReader.ToneSegment>() ?? throw'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.TrimReferenceTone)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }
+
         # Timestamps that start over (two encodes joined): known before the first frame (a file's packets, MPEG-PS's
         # pass; MPEG-PS's arriving ones may), the shots are told at the end, as the sorted cuts make them
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ' && !video.TimestampsStartOver;'; Replace = ';'; Tests = 'TimestampResetTests' }
