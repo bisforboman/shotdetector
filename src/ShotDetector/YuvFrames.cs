@@ -12,7 +12,10 @@ public sealed record YuvVideo
     /// <summary>Width of the decoded frames in pixels (all frames have this size), as decoded: before <see cref="Rotation"/>.</summary>
     public required int Width { get; init; }
 
-    /// <summary>Height of the decoded frames in pixels; even for the 8-bit formats (swscale's unscaled conversion, which the converter reproduces, needs that).</summary>
+    /// <summary>
+    /// Height of the decoded frames in pixels. An odd one (8-bit formats) needs a converter that implements
+    /// <see cref="IYuvOddHeightConverter"/> (FastYuv's does: swscale scales such frames, as 10-bit ones) and an even width.
+    /// </summary>
     public required int Height { get; init; }
 
     /// <summary>
@@ -36,8 +39,9 @@ public sealed record YuvVideo
 
     /// <summary>
     /// ffprobe's chroma_location of the first frame ("left", "center", "topleft", ...); null (the default), empty or
-    /// "unspecified": unspecified, which swscale takes as center. Used for yuv420p10le only, as by the file path: swscale
-    /// interpolates that format's chroma from where its samples sit (h264 and HEVC 4:2:0 are usually "left").
+    /// "unspecified": unspecified, which swscale takes as center. Used for yuv420p10le and for 8-bit frames of an odd
+    /// height only, as by the file path: swscale interpolates their chroma from where its samples sit (h264 and HEVC
+    /// 4:2:0 are usually "left").
     /// </summary>
     public string? ChromaLocation { get; init; }
 
@@ -139,8 +143,8 @@ public readonly record struct YuvFrame(ReadOnlyMemory<byte> Y, int YStride, Read
 
     /// <summary>
     /// The frame's chroma_location as ffprobe names it ("left", "topleft", ...); null (the default), empty or
-    /// "unspecified": <see cref="YuvVideo.ChromaLocation"/>. Followed per frame for yuv420p10le, as the file path
-    /// in-process follows each frame's siting; unused for the other formats. See <see cref="ColorSpace"/>.
+    /// "unspecified": <see cref="YuvVideo.ChromaLocation"/>. Followed per frame for yuv420p10le and 8-bit frames of an odd
+    /// height, as the file path in-process follows each frame's siting; unused otherwise. See <see cref="ColorSpace"/>.
     /// </summary>
     public string? ChromaLocation { get; init; }
 

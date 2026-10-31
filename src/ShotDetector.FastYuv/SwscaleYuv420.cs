@@ -22,7 +22,7 @@ namespace ShotDetector.FastYuv;
 /// And 10-bit 4:2:0, yuv420p10le (<see cref="IYuv420P10Converter"/>): swscale scales that one (no unscaled converter),
 /// so the port follows x86's scaled path, its MMXEXT vertical scaler and output, for even widths.
 /// </summary>
-public sealed partial class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, IYuv420P10Converter, IYuvChromaRows
+public sealed partial class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, IYuv420P10Converter, IYuvOddHeightConverter, IYuvChromaRows
 {
     /// <summary>ff_yuv2rgb_coeffs (crv, cbu, cgu, cgv), indexed by AVColorSpace.</summary>
     internal static readonly int[][] Coeffs =
@@ -125,6 +125,13 @@ public sealed partial class SwscaleYuv420 : IYuv420Converter, IYuv422Converter, 
     /// <inheritdoc/>
     IYuv420P10Converter? IYuv420P10Converter.ForVideo(string colorSpace, bool fullRange, string? chromaLocation, int width, int height) =>
         SwscaleYuv420P10.For(colorSpace, fullRange, chromaLocation, width, height);
+
+    /// <inheritdoc/>
+    // swscale's scaled path, as for 10-bit: the 10-bit port on the 8-bit samples (see SwscaleYuv420P10).
+    IYuvFrameConverter? IYuvOddHeightConverter.ForOddHeight(string pixelFormat, string colorSpace, bool fullRange, string? chromaLocation, int width, int height) =>
+        height % 2 == 0 || pixelFormat is not ("yuv420p" or "yuvj420p" or "yuv422p" or "yuvj422p")
+            ? null
+            : SwscaleYuv420P10.For(colorSpace, fullRange, chromaLocation, width, height, eightBit: true, chroma422: pixelFormat is "yuv422p" or "yuvj422p");
 
     SwscaleYuv420P10? _untagged10;
 

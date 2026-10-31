@@ -25,7 +25,7 @@ The converter is a bit-exact port of FFmpeg libswscale's yuv420p → BGR24 conve
 all 2^24 Y/U/V values), so this package is licensed under the **GNU LGPL 2.1 or later**
 (COPYING.LGPL). The ShotDetector package itself is MIT. It converts yuv422p (and yuvj422p) too: swscale runs the same
 converter for it, with a chroma row for every row (`IYuv422Converter`, which `SwscaleYuv420` implements). Video that
-isn't 8-bit yuv420p or yuv422p with an even decoded height, or 10-bit 4:2:0 (below), uses the normal path anyway.
+isn't 8-bit yuv420p or yuv422p, or 10-bit 4:2:0 (below), uses the normal path anyway.
 Rotated video is converted before it is turned, as OpenCV does, so turned video takes the fast path too. On ARM, where
 FFmpeg's own conversion rounds differently, it gives x86's results.
 
@@ -36,6 +36,11 @@ widths and any height, and gives x86's bytes there (checked against FFmpeg 8.1 o
 frames). It exists for other CPUs' results; on x64 it gives the same results as the normal path at about the same
 speed. It converts a frame's pixels in one pass (`IYuv420P10FrameConverter`), filtering each chroma row once, as
 swscale does.
+
+At an odd decoded height swscale can't take its unscaled converter for 8-bit 4:2:0 or 4:2:2 and scales instead,
+interpolating the chroma from where it sits: the 10-bit port runs those too, on the 8-bit samples widened to 10 bits
+(swscale's 8-bit and 10-bit horizontal scalers then give the same 15-bit rows), with 4:2:2's one-tap vertical output
+(`yuv2bgr24_1`) for 4:2:2 (`IYuvOddHeightConverter`, which `SwscaleYuv420` implements; even widths).
 
 Each converter also says which chroma rows converting a row reads (`IYuvChromaRows`), so decoding in-process
 ShotDetector copies, and with `Yadif` deinterlaces, only the rows it converts, not whole frames.

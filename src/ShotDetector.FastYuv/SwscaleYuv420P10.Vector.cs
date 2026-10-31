@@ -306,7 +306,7 @@ internal sealed partial class SwscaleYuv420P10
     unsafe void PixelsByPlan(PixelPlan plan, ushort* luma, int* cols, int* pairOf, int* tb, int* tg, int* tr, byte* output, bool packed)
     {
         var yCoeff = Vector128.Create(_yCoeff);
-        var yAdd = Vector128.Create((short)(4 - _yOffset));
+        var yAdd = Vector128.Create((short)(_rounder - _yOffset));
         fixed (int* direct = plan.Direct, copied = plan.Copied, copies = plan.Copies, singles = plan.Singles)
         {
             for (int i = 0; i < plan.Direct.Length; i += 3)
@@ -336,11 +336,11 @@ internal sealed partial class SwscaleYuv420P10
                 }
             }
 
-            int yOffset = _yOffset, yc = _yCoeff;
+            int single = _rounder - _yOffset, yc = _yCoeff;
             for (int i = 0; i < plan.Singles.Length; i++)
             {
                 int j = singles[i];
-                Pixel(luma, cols[j], tb[pairOf[j]], tg[pairOf[j]], tr[pairOf[j]], yOffset, yc, output + Offset(packed, j, cols[j]));
+                Pixel(luma, cols[j], tb[pairOf[j]], tg[pairOf[j]], tr[pairOf[j]], single, yc, output + Offset(packed, j, cols[j]));
             }
         }
     }

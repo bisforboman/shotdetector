@@ -337,7 +337,7 @@ internal sealed class CvResize
     /// <see cref="ResizeYuv(byte[], byte[], YuvConversion, int, int, int, int, int)"/> for a frame converter, not turned:
     /// the pixels the resize reads converted in one pass, then resized from them.
     /// </summary>
-    void ResizeYuvFrame(byte[] yuv, byte[] dst, IYuv420P10FrameConverter frame, int width, int height, int cropX, int cropY)
+    void ResizeYuvFrame(byte[] yuv, byte[] dst, YuvFrameConverter frame, int width, int height, int cropX, int cropY)
     {
         if (_frameFor != (cropX, cropY))
         {
@@ -355,11 +355,11 @@ internal sealed class CvResize
     /// <paramref name="rows"/> × <paramref name="cols"/> converted by a frame converter into <paramref name="bgr"/>
     /// (packed): in one call, or, for outputs resized in chunks, in as many runs of rows, in parallel.
     /// </summary>
-    void ConvertFrame(IYuv420P10FrameConverter frame, byte[] yuv, int width, int height, int[] rows, int[] cols, byte[] bgr)
+    void ConvertFrame(YuvFrameConverter frame, byte[] yuv, int width, int height, int[] rows, int[] cols, byte[] bgr)
     {
         if (_chunks.Length == 1)
         {
-            frame.FrameToBgr(yuv, width, height, rows, cols, bgr);
+            frame(yuv, width, height, rows, cols, bgr);
             return;
         }
 
@@ -369,7 +369,7 @@ internal sealed class CvResize
             p =>
             {
                 int first = p * rows.Length / parts, end = (p + 1) * rows.Length / parts;
-                frame.FrameToBgr(yuv, width, height, rows.AsSpan(first, end - first), cols, bgr.AsSpan(first * n, (end - first) * n));
+                frame(yuv, width, height, rows.AsSpan(first, end - first), cols, bgr.AsSpan(first * n, (end - first) * n));
             });
     }
 

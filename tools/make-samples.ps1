@@ -74,6 +74,11 @@ try {
     # Xvid's (by its signature) and the platform's for the rest, which we replace with the C IDCT (Mpeg4Idct), so both.
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v mpeg4 -q:v 3 sintel_mpeg4.avi
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -c:v libxvid -q:v 3 sintel_xvid.avi
+    # An odd height (854x479; VP9, as libx264 refuses odd heights in 4:2:0), chroma sited left: swscale's unscaled
+    # converter needs an even height, so x86 scales it, interpolating the chroma from where it sits, as 10-bit; FastYuv
+    # reproduces that (IYuvOddHeightConverter), and arch-diff requires ARM to equal x64 on it.
+    ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -vf scale=854:479 -c:v libvpx-vp9 -crf 32 -b:v 0 -row-mt 1 `
+      -cpu-used 4 -chroma_sample_location left sintel_oddheight.mkv
     New-Item -ItemType Directory -Force informational | Out-Null
     # An odd width (853x480; VP9, as libx264 refuses odd widths in subsampled formats): x86's swscale converts it as even
     # widths. Reported on ARM until its first table is read (docs/decisions/2026-10-18-fastyuv-422.md).

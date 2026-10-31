@@ -146,6 +146,85 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // 8-bit 4:2:0 and 4:2:2 of an odd height, converted by the ffmpeg executable as VideoReader asks (bicubic, the chroma
+    // location given, the colour tags set) on x64: swscale's unscaled converter needs an even height, so it scales these
+    // as 10-bit (4:2:0: the MMXEXT vertical scaler; 4:2:2: yuv2bgr24_1, the horizontal chroma filter from the siting) and
+    // the last two rows in C. Every pixel, row by row and a frame at a time; noise and extremes, each siting, both ranges.
+    [Theory]
+    [InlineData("yuv420p", 64, 47, "left", "", "tv", "noise")]
+    [InlineData("yuv420p", 66, 33, "", "bt709", "tv", "extreme")]
+    [InlineData("yuv420p", 70, 21, "topleft", "bt2020nc", "pc", "extreme")]
+    [InlineData("yuvj420p", 62, 31, "center", "", "pc", "noise")]
+    [InlineData("yuv420p", 856, 11, "bottom", "smpte240m", "tv", "noise")]
+    [InlineData("yuv422p", 64, 47, "left", "", "tv", "noise")]
+    [InlineData("yuv422p", 66, 33, "", "bt709", "tv", "extreme")]
+    [InlineData("yuv422p", 70, 21, "topleft", "fcc", "pc", "extreme")]
+    [InlineData("yuvj422p", 62, 5, "center", "smpte170m", "pc", "noise")]
+    [InlineData("yuv422p", 856, 3, "left", "", "tv", "extreme")]
+    public void ConvertsOddHeightsAsSwscaleOnX64(string pixelFormat, int width, int height, string chromaLocation, string colorSpace, string range, string pattern)
+    {
+        if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
+            return;
+        bool is422 = pixelFormat.Contains("422");
+        var yuv = new byte[is422 ? IYuv422Converter.FrameSize(width, height) : IYuv420Converter.FrameSize(width, height)];
+        var random = new Random(width * height + pixelFormat.Length);
+        for (int i = 0; i < yuv.Length; i++)
+            yuv[i] = (byte)(pattern == "noise" ? random.Next(256) : random.Next(2) * 255);
+        string dir = Directory.CreateTempSubdirectory("shotdetector-fastyuv-odd-").FullName;
+        try
+        {
+            string input = Path.Combine(dir, "in.yuv"), output = Path.Combine(dir, "out.bgr");
+            File.WriteAllBytes(input, yuv);
+            string cs = colorSpace.Length > 0 ? colorSpace : "unknown";
+            string loc = chromaLocation.Length > 0 ? ":in_chroma_loc=" + chromaLocation : "";
+            VideoReader.Run("ffmpeg",
+                ["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", pixelFormat, "-s", $"{width}x{height}", "-i", input,
+                    "-vf", $"setparams=colorspace={cs}:range={range},scale={width}:{height}:flags=bicubic{loc},format=bgr24", "-f", "rawvideo", output],
+                default);
+            byte[] expected = File.ReadAllBytes(output), actual = new byte[width * height * 3];
+            int[] all = Enumerable.Range(0, width).ToArray();
+            var converter = ((IYuvOddHeightConverter)new SwscaleYuv420()).ForOddHeight(pixelFormat, cs, range == "pc", chromaLocation.Length > 0 ? chromaLocation : null, width, height)!;
+            for (int y = 0; y < height; y++)
+                converter.RowToBgr(yuv, width, height, y, all, actual.AsSpan(y * width * 3, width * 3));
+            Assert.Equal(expected, actual);
+
+            // A frame at a time: every pixel, and some rows at some columns, packed.
+            var whole = new byte[width * height * 3];
+            converter.FrameToBgr(yuv, width, height, Enumerable.Range(0, height).ToArray(), all, whole);
+            Assert.Equal(expected, whole);
+            int[] rows = Enumerable.Range(0, height).Where(y => y % 3 != 1).ToArray(), even = all.Where(x => x % 3 != 1).ToArray();
+            var packed = new byte[rows.Length * even.Length * 3];
+            converter.FrameToBgr(yuv, width, height, rows, even, packed);
+            for (int i = 0; i < rows.Length; i++)
+            {
+                for (int j = 0; j < even.Length; j++)
+                    Assert.Equal(expected.AsSpan((rows[i] * width + even[j]) * 3, 3), packed.AsSpan((i * even.Length + j) * 3, 3));
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // What the odd-height converter declines, so the default path converts: even heights (the unscaled converter's),
+    // odd widths (swscale's full chroma interpolation, in C), other formats, tiny frames.
+    [Fact]
+    public void OddHeightsDeclineWhatTheyDoNotReproduce()
+    {
+        IYuvOddHeightConverter converter = new SwscaleYuv420();
+        Assert.NotNull(converter.ForOddHeight("yuv420p", "unknown", false, null, 64, 47));
+        Assert.NotNull(converter.ForOddHeight("yuvj422p", "bt709", true, "left", 8, 3));
+        Assert.Null(converter.ForOddHeight("yuv420p", "unknown", false, null, 64, 48));
+        Assert.Null(converter.ForOddHeight("yuv420p", "unknown", false, null, 63, 47));
+        Assert.Null(converter.ForOddHeight("yuv422p", "unknown", false, null, 63, 47));
+        Assert.Null(converter.ForOddHeight("yuv444p", "unknown", false, null, 64, 47));
+        Assert.Null(converter.ForOddHeight("yuv420p10le", "unknown", false, null, 64, 47));
+        Assert.Null(converter.ForOddHeight("yuv420p", "unknown", false, null, 64, 7)); // a two-tap vertical filter
+        Assert.Null(converter.ForOddHeight("yuv420p", "ycgco", false, null, 64, 47));
+        Assert.Null(converter.ForOddHeight("yuv420p", "unknown", false, "elsewhere", 64, 47));
+    }
+
     // The 10-bit resize a frame at a time (each chroma row filtered once) against row by row: the same bytes, on any
     // CPU, for each chroma siting, odd heights, turned or not, cropped, in row chunks on several cores (400 x 380), and
     // again with the plan kept for the next frame.
@@ -166,7 +245,7 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
             samples[i] = (ushort)(i % 7 == 0 ? random.Next(2) * 1023 : random.Next(1024));
         var converter = (IYuv420P10FrameConverter)((IYuv420P10Converter)new SwscaleYuv420()).ForVideo("bt709", false, chromaLocation, width, height)!;
         var rowByRow = new YuvConversion(converter.RowToBgr);
-        var frameAtATime = new YuvConversion(converter.RowToBgr, converter);
+        var frameAtATime = new YuvConversion(converter.RowToBgr, converter.FrameToBgr);
         foreach (int turn in new[] { 0, 90, 180, 270 })
         {
             int tw = turn is 90 or 270 ? height : width, th = turn is 90 or 270 ? width : height;
@@ -323,9 +402,13 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
     [InlineData("420p10", 66, 34, "topleft")]
     [InlineData("420p10", 62, 31, "top")]
     [InlineData("420p10", 48, 30, "bottomleft")]
+    [InlineData("420odd", 64, 47, "left")]
+    [InlineData("420odd", 70, 21, "topleft")]
+    [InlineData("422odd", 64, 47, "left")]
+    [InlineData("422odd", 62, 23, null)]
     public void RowsOutsideTheRowsReadChangeNothing(string layout, int width, int height, string? chromaLocation)
     {
-        bool chroma422 = layout == "422", tenBit = layout == "420p10";
+        bool chroma422 = layout.StartsWith("422", StringComparison.Ordinal), tenBit = layout == "420p10";
         int chromaHeight = chroma422 ? height : (height + 1) / 2, chromaWidth = (width + 1) / 2, bytes = tenBit ? 2 : 1;
         var yuv = new byte[tenBit ? IYuv420P10Converter.FrameSize(width, height) : chroma422 ? IYuv422Converter.FrameSize(width, height) : IYuv420Converter.FrameSize(width, height)];
         var random = new Random(width * height + layout.Length);
@@ -343,7 +426,12 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
         if (tenBit)
         {
             var c10 = (IYuv420P10FrameConverter)((IYuv420P10Converter)fast).ForVideo("bt709", false, chromaLocation, width, height)!;
-            (conversion, chromaRows) = (new YuvConversion(c10.RowToBgr, c10), (IYuvChromaRows)c10);
+            (conversion, chromaRows) = (new YuvConversion(c10.RowToBgr, c10.FrameToBgr), (IYuvChromaRows)c10);
+        }
+        else if (layout.EndsWith("odd", StringComparison.Ordinal))
+        {
+            var odd = ((IYuvOddHeightConverter)fast).ForOddHeight(chroma422 ? "yuv422p" : "yuv420p", "bt709", false, chromaLocation, width, height)!;
+            (conversion, chromaRows) = (new YuvConversion(odd.RowToBgr, odd.FrameToBgr), (IYuvChromaRows)odd);
         }
         else if (chroma422)
         {
@@ -423,26 +511,31 @@ public class FastYuvTests(Clips clips) : IClassFixture<Clips>
     }
 
     // Whole videos: with FastYuv, the frames the detectors see are the default path's, byte for byte (on x64), through
-    // the ffmpeg executable and (with SHOTDETECTOR_FFMPEG_LIBS) in-process; and FastYuv is used where swscale's unscaled
-    // converter is (even decoded height), the BGR path elsewhere. Lossless ffv1 copies of the test clip; turned by a
+    // the ffmpeg executable and (with SHOTDETECTOR_FFMPEG_LIBS) in-process; and FastYuv is used where it reproduces
+    // swscale (even widths at odd heights, where swscale scales), the BGR path elsewhere. Lossless ffv1 copies of the test clip; turned by a
     // display matrix.
     [Theory]
     [InlineData("422", "-pix_fmt yuv422p", "", "", "Yuv422Sampled")]
     [InlineData("yuvj422", "-pix_fmt yuvj422p", "", "", "Yuv422Sampled")]
     [InlineData("422-bt709", "-pix_fmt yuv422p -colorspace bt709", "", "", "Yuv422Sampled")]
     [InlineData("422-oddwidth", "-vf format=yuv444p,crop=319:240:0:0,format=yuv422p", "", "", "Yuv422Sampled")]
-    [InlineData("422-oddheight", "-vf format=yuv444p,crop=320:237:0:0,format=yuv422p", "", "", "")]
+    [InlineData("422-oddheight", "-vf format=yuv444p,crop=320:237:0:0,format=yuv422p", "", "", "Yuv422Sampled")]
+    [InlineData("422-oddheight-left", "-vf format=yuv444p,crop=320:237:0:0,format=yuv422p -chroma_sample_location left", "", "", "Yuv422Sampled")]
+    [InlineData("422-oddheight-oddwidth", "-vf format=yuv444p,crop=319:237:0:0,format=yuv422p", "", "", "")]
+    [InlineData("420-oddheight-left-bt709", "-vf format=yuv444p,crop=320:237:0:0,format=yuv420p -chroma_sample_location left -colorspace bt709", "", "", "Yuv420Sampled")]
+    [InlineData("yuvj420-oddheight-topleft", "-vf format=yuv444p,crop=320:239:0:0,format=yuvj420p -chroma_sample_location topleft", "", "crop", "Yuv420Sampled")]
+    [InlineData("420-oddheight-oddwidth", "-vf format=yuv444p,crop=319:237:0:0,format=yuv420p", "", "", "")]
     [InlineData("422-crop", "-pix_fmt yuv422p", "", "crop", "Yuv422Sampled")]
     [InlineData("422-90", "-pix_fmt yuv422p", "-display_rotation 90", "", "Yuv422Sampled")]
     [InlineData("422-270", "-pix_fmt yuv422p", "-display_rotation -90", "", "Yuv422Sampled")]
     [InlineData("422-180", "-pix_fmt yuv422p", "-display_rotation 180", "", "Yuv422Sampled")]
     [InlineData("422-90-crop", "-pix_fmt yuv422p", "-display_rotation 90", "turned-crop", "Yuv422Sampled")]
     [InlineData("422-270-oddwidth", "-vf format=yuv444p,crop=319:240:0:0,format=yuv422p", "-display_rotation -90", "", "Yuv422Sampled")]
-    [InlineData("422-90-oddheight", "-vf format=yuv444p,crop=320:237:0:0,format=yuv422p", "-display_rotation 90", "", "")]
+    [InlineData("422-90-oddheight", "-vf format=yuv444p,crop=320:237:0:0,format=yuv422p -chroma_sample_location left", "-display_rotation 90", "", "Yuv422Sampled")]
     [InlineData("420-90", "-pix_fmt yuv420p", "-display_rotation 90", "", "Yuv420Sampled")]
     [InlineData("420-90-oddwidth", "-vf format=yuv444p,crop=319:240:0:0,format=yuv420p", "-display_rotation 90", "", "Yuv420Sampled")]
     [InlineData("420-180-oddwidth", "-vf format=yuv444p,crop=319:240:0:0,format=yuv420p", "-display_rotation 180", "", "Yuv420Sampled")]
-    [InlineData("420-90-oddheight", "-vf format=yuv444p,crop=320:237:0:0,format=yuv420p", "-display_rotation 90", "", "")]
+    [InlineData("420-90-oddheight", "-vf format=yuv444p,crop=320:237:0:0,format=yuv420p -chroma_sample_location left", "-display_rotation 90", "", "Yuv420Sampled")]
 
     // Chroma siting tags (Matroska keeps them): the default path tells swscale where the samples sit (in_chroma_loc,
     // BgrConverter's position), which the unscaled 8-bit converter FastYuv ports doesn't read.
