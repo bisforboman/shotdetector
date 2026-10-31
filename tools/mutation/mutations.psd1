@@ -533,7 +533,7 @@
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'while (starts.Count > 1 && end - starts[^1] < minLength)'; Replace = 'while (starts.Count > 1 && end - starts[^1] < 0)'; Tests = 'YouTubeChaptersTests' }
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (starts.Count < 3)'; Replace = 'if (starts.Count < 1)'; Tests = 'YouTubeChaptersTests' }
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'Math.Ceiling(Math.Round(cut, 3, MidpointRounding.AwayFromZero))'; Replace = 'Math.Ceiling(cut)'; Tests = 'YouTubeChaptersTests' }
-        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (!(minLength >= 10))'; Replace = 'if (minLength < 10)'; Tests = 'YouTubeChaptersTests' }
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (!(minLength >= 10))'; Replace = 'if (minLength < 5)'; Tests = 'YouTubeChaptersTests' }
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (!(minLength > 0))'; Replace = 'if (minLength < 0)'; Tests = 'YouTubeChaptersTests' }
     )
 }
