@@ -82,7 +82,8 @@ public sealed record YuvVideo
 /// <summary>
 /// One decoded 8-bit 4:2:0 frame (<see cref="ShotDetection.Detect(YuvVideo, IEnumerable{YuvFrame}, DetectionOptions?, CancellationToken)"/>):
 /// its three planes, each row <c>Stride</c> bytes after the one before. The luma plane has the video's width and height,
-/// the chroma planes half of each (rounded up). The planes are read before the enumeration moves on, so a decoder can
+/// the chroma planes half of each (rounded up). A frame of another size (<see cref="Width"/>, <see cref="Height"/>) is
+/// refused so far. The planes are read before the enumeration moves on, so a decoder can
 /// reuse its buffers for the next frame.
 /// </summary>
 /// <param name="Y">The luma plane.</param>
@@ -93,6 +94,18 @@ public sealed record YuvVideo
 /// <param name="VStride">Bytes from one Cr row to the next.</param>
 public readonly record struct YuvFrame(ReadOnlyMemory<byte> Y, int YStride, ReadOnlyMemory<byte> U, int UStride, ReadOnlyMemory<byte> V, int VStride)
 {
+    /// <summary>
+    /// The frame's width in pixels as decoded; 0 (the default): <see cref="YuvVideo.Width"/>. A frame of another size
+    /// than the video's (a stream whose resolution changes midway) is refused with a <see cref="ShotDetectionException"/>
+    /// (<see cref="ShotDetectionError.InvalidInput"/>) so far: the file path scales it to the stream's size as OpenCV
+    /// does, which the frame source can't reproduce yet, and its planes read at the video's size would give another
+    /// video's results.
+    /// </summary>
+    public int Width { get; init; }
+
+    /// <summary>The frame's height in pixels as decoded; 0 (the default): <see cref="YuvVideo.Height"/>. See <see cref="Width"/>.</summary>
+    public int Height { get; init; }
+
     /// <summary>The frame's presentation timestamp in <see cref="YuvVideo.TimeBase"/> (unused when that is null).</summary>
     public long Pts { get; init; }
 

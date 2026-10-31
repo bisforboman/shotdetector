@@ -377,6 +377,79 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     }
 
     [Theory]
+    [InlineData(0, 0, true)]
+    [InlineData(64, 48, true)]
+    [InlineData(80, 48, false)]
+    [InlineData(64, 40, false)]
+    [InlineData(-1, 0, false)]
+    public async Task AFrameOfAnotherSizeIsRefused(int width, int height, bool taken)
+    {
+        // Frame 30 of another size than the video's (its planes large enough for either): refused, not read at the
+        // video's size, by Detect, DetectAsync and ScoreRange alike; the video's own size, or 0, is taken.
+        var video = Video();
+        var big = Frames(video with { Width = 80, Height = 64 }, 40).ToList();
+        IEnumerable<YuvFrame> Frames40() => Frames(video, 40).Select((f, i) => i == 30 ? big[i] with { Width = width, Height = height } : f);
+        var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420() };
+        if (taken)
+        {
+            Assert.Equal(40, ShotDetection.Detect(video, Frames40(), options).FrameCount);
+            return;
+        }
+
+        var e = Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(video, Frames40(), options));
+        Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
+        Assert.Contains("Frame 30 is", e.Message);
+        Assert.Equal(ShotDetectionError.InvalidInput,
+            (await Assert.ThrowsAsync<ShotDetectionException>(() => ShotDetection.DetectAsync(video, FrameSourceAsyncTests.Yielding(Frames40()), options))).Reason);
+        Assert.Equal(ShotDetectionError.InvalidInput,
+            Assert.Throws<ShotDetectionException>(() => ShotDetection.ScoreRange(video, Frames40().Skip(20), 20, options)).Reason);
+    }
+
+    // A stream whose resolution changes midway (two libx264 encodes, 320x240 then 352x288, joined in MPEG-TS): the file
+    // path scales the later frames to 320x240; given as decoded, with their own size, they are refused.
+    [Fact]
+    public void AResolutionChangeIsRefused()
+    {
+        if (Libs is null || ResolutionChange() is not { } path)
+            return;
+        var (video, frames) = Decoded(path);
+        Assert.Equal((320, 240), (video.Width, video.Height));
+        var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420() };
+        var e = Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(video, frames, options));
+        Assert.Equal(ShotDetectionError.InvalidInput, e.Reason);
+        Assert.Contains("352x288, not the video's 320x240", e.Message);
+        Assert.Equal(new[] { 50, 100 }, ShotDetection.Detect(path, options with { FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess }).Cuts.Select(c => (int)c.FrameNum));
+    }
+
+    /// <summary>The three-shot clip's first 75 frames at 320x240 and the rest at 352x288, joined in MPEG-TS; null without libx264.</summary>
+    string? ResolutionChange()
+    {
+        string dir = Path.GetDirectoryName(clips.ThreeShots)!, path = Path.Combine(dir, "resolution-change.ts");
+        lock (H264Lock)
+        {
+            if (File.Exists(path))
+                return path;
+            string a = Path.Combine(dir, "resolution-a.ts"), b = Path.Combine(dir, "resolution-b.ts"), list = Path.Combine(dir, "resolution.txt");
+            try
+            {
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-frames:v", "75", "-c:v", "libx264", "-bf", "0", a], default);
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.ThreeShots, "-vf", "trim=start_frame=75,setpts=PTS-STARTPTS,scale=352:288", "-c:v", "libx264", "-bf", "0", b], default);
+            }
+            catch (Exception e) when (e is not Xunit.Sdk.XunitException)
+            {
+                return null;
+            }
+
+            File.WriteAllText(list, $"file '{a}'\nfile '{b}'\n");
+            string partial = path + ".part.ts";
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", partial], default);
+            File.Move(partial, path, true);
+        }
+
+        return path;
+    }
+
+    [Theory]
     [InlineData(1, false)]
     [InlineData(3, true)]
     [InlineData(30, true)]
@@ -622,7 +695,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
                 var y = decoder.GetPlane(0, out int ys).ToArray();
                 var u = decoder.GetPlane(1, out int us).ToArray();
                 var v = decoder.GetPlane(2, out int vs).ToArray();
-                yield return new YuvFrame(y, ys, u, us, v, vs) { Pts = decoder.Pts, Interlaced = flags[i].Interlaced, TopFieldFirst = flags[i].TopFieldFirst };
+                yield return new YuvFrame(y, ys, u, us, v, vs) { Width = decoder.Width, Height = decoder.Height, Pts = decoder.Pts, Interlaced = flags[i].Interlaced, TopFieldFirst = flags[i].TopFieldFirst };
             }
         }
     }

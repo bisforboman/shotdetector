@@ -152,6 +152,14 @@ internal sealed partial class VideoReader
 
         var f = _frames.Current;
         int w = _codedSize.W, h = _codedSize.H, cw = (w + 1) / 2, ch = (h + 1) / 2;
+        if ((f.Width == 0 ? w : f.Width, f.Height == 0 ? h : f.Height) != (w, h))
+        {
+            // A resolution change: the file path scales the frame to the stream's size (bicubic, as OpenCV), which the
+            // frame source can't yet; read at the video's size, its planes would give another video's results.
+            throw new ShotDetectionException(ShotDetectionError.InvalidInput, string.Create(CultureInfo.InvariantCulture,
+                $"Frame {_framesRead} is {(f.Width == 0 ? w : f.Width)}x{(f.Height == 0 ? h : f.Height)}, not the video's {w}x{h}: frames of another size (a resolution change midway) aren't supported for frames from the caller yet."));
+        }
+
         CheckPlane(f.Y, f.YStride, w, h, "Y");
         CheckPlane(f.U, f.UStride, cw, ch, "U");
         CheckPlane(f.V, f.VStride, cw, ch, "V");

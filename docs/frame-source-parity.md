@@ -18,7 +18,7 @@ Line numbers are at commit 15a2d89 (main after the 3.23.0 release).
 
 | Feature | File path | Frame source | Status | Evidence |
 |---|---|---|---|---|
-| Frame size changing midway | A frame of another size is scaled to the stream's size in its conversion (bicubic), as OpenCV's `sws_scale_frame` does into its buffer | `YuvFrame` has no size. A larger frame passes the plane check (stride and length at least the video's) and is read as its top-left corner; a smaller one throws (plane too small) | **Gap, silent: other results** | `VideoReader.cs:1631-1634`, `FrameWriter.cs:12`, `VideoReader.InProcess.cs:230`; `VideoReader.Frames.cs:155-157` (the only check). Probe: two libx264 segments, 320x240 then 352x288 (`-vf scale=352:288`), joined with the concat demuxer and `-c copy` in MPEG-TS: the file path's cuts are 50, 100; the frame source's 50, 75, 100, 60 of 151 stats rows differ, no warning |
+| Frame size changing midway | A frame of another size is scaled to the stream's size in its conversion (bicubic), as OpenCV's `sws_scale_frame` does into its buffer | `YuvFrame.Width`/`Height` (0: the video's) say each frame's size; a frame of another size is refused (`ShotDetectionException`, `InvalidInput`) since #625, where it was read as the video's size (a larger frame's top-left corner) | **Gap: refused** (was silent; scaling it is a backlog row, docs/decisions/2026-10-31-frame-source-size-change.md) | `VideoReader.cs:1631-1634`, `FrameWriter.cs:12`, `VideoReader.InProcess.cs:230`; the check in `VideoReader.Frames.cs` `TakeFrame`. Probe: two libx264 segments, 320x240 then 352x288 (`-vf scale=352:288`), joined with the concat demuxer and `-c copy` in MPEG-TS: the file path's cuts are 50, 100; the frame source's were 50, 75, 100, 60 of 151 stats rows differing, no warning; now "Frame 75 is 352x288, not the video's 320x240" (`FrameInputTests.AResolutionChangeIsRefused`, `AFrameOfAnotherSizeIsRefused`) |
 | Colour tags changing midway (a spliced stream) | In-process, each frame is converted with its own colour matrix and range (`FrameConversions.For`), as OpenCV's `sws_scale_frame` | Every frame is converted with `YuvVideo.ColorSpace`/`FullRange`: `YuvFrame` has no colour tags | **Gap, silent: other stats** | `VideoReader.InProcess.cs:98-127`; `VideoReader.Frames.cs:116-121`. Probe: libx264 BT.709 (3 s) then SMPTE 170M (3 s, `h264_metadata=matrix_coefficients=6`) joined with `-c copy` in MPEG-TS (ffprobe: 75 frames each): same cuts, but 52 of 151 content stats rows differ from frame 76 on (56 for histogram), no warning |
 | 10-bit 4:2:0 (yuv420p10le) | FastYuv's 10-bit converter (pipeline `Yuv420P10Sampled`), chroma interpolated from the first frame's chroma location | Refused: `ArgumentException` "must be yuv420p or yuvj420p so far". `YuvVideo` has no chroma location either, which this format's conversion needs | **Gap: refused** | `VideoReader.Frames.cs:53-54`; `VideoReader.cs:739` (chroma location, used for 10-bit only, `:772`). Probe: libx264 `-pix_fmt yuv420p10le`: file 150 frames, cuts 50, 100; frame source throws |
 | 8-bit 4:2:2 (yuv422p, yuvj422p) | FastYuv's 4:2:2 converter (pipeline `Yuv422Sampled`) | Refused, as above | **Gap: refused** | `VideoReader.Frames.cs:53-54`; `RejectsWhatItCantReproduce("format")`. Probe: libx264 yuv422p and mjpeg yuvj422p: file path fine, frame source throws |
@@ -76,13 +76,13 @@ Line numbers are at commit 15a2d89 (main after the 3.23.0 release).
 | `Chunks`, `ChunkFallback` | 1, null |
 | `Position(frame)` | From the frame's pts, its `FrameTimestamps` entry, or its number (`VideoReader.Frames.cs` `FramePosition`) |
 | `DetectionResult.VideoPath`, `ReferenceTone` | Null (see the gaps and exports above) |
-| Warnings | The file path's HLS and chroma-siting warnings don't arise (no ffmpeg executable, no siting); the colour-tag and size changes above give no warning on the frame source |
+| Warnings | The file path's HLS and chroma-siting warnings don't arise (no ffmpeg executable, no siting); the colour-tag change above gives no warning on the frame source (a size change is refused) |
 
 ## Proposed issues
 
 For the owner to pick from; not filed.
 
-1. **Frame sources: a frame of another size** (high: silently other results). `YuvFrame` carries no size, so a stream
+1. **Frame sources: a frame of another size** (high: silently other results; #625 refuses it, the owner's first step). `YuvFrame` carries no size, so a stream
    that changes resolution midway is read wrong (a larger frame as its top-left corner) or throws (a smaller one).
    Add the frame's size to `YuvFrame` (optional, defaulting to the video's) and either scale it to the video's size as
    the file path does (bicubic, as OpenCV) or, as a first step, refuse it with a clear error, so a result is never
