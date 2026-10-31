@@ -10,3 +10,6 @@ desktop numbers). The runner (4 vCPU) then showed 2 chunks paying there too, so 
 - **The automatic count:** half the CPUs, at most 4, from 4 CPUs on (over sequential below 8 cores and
   min(4, cores / 4) above, as first agreed): the runners gain 1.4-1.6x with 2 chunks on light-decode video, and no
   machine measured gained past 4 chunks.
+
+Since 2026-10-18 ([2026-10-18-parallel-default.md](2026-10-18-parallel-default.md)) `DetectionOptions.Mode`
+(Auto/Sequential/Parallel) replaces the bool, now obsolete; a hidden `--chunks N` exists for tests and benchmarks.

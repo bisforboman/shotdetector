@@ -8,3 +8,7 @@ Asked before milestone 6's audio:
   (checked byte for byte, seeking included), over also offering int16.
 - Hardware decoding: **skip for now (recommended)**, over an opt-in that may differ from software decoding: worth it
   only if bit-exact, which needs proving per codec and GPU, and CI runners have no GPUs.
+
+Since the same day
+([2026-10-09-hardware-decoding-merged-as-opt-in.md](2026-10-09-hardware-decoding-merged-as-opt-in.md)) hardware decoding
+is in FrameReader as an opt-in, off by default.

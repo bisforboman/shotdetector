@@ -16,3 +16,6 @@ task gave no more speed than a second decoder thread for more CPU, so it was dro
 
 **Choice 1.** `--threads 1` remains for the lowest CPU. Big Buck Bunny stays ~1.7x scenedetect's time in-process
 (backlog).
+
+Since 2026-10-11 ([2026-10-11-decoder-threads-like-opencv.md](2026-10-11-decoder-threads-like-opencv.md)) the decoder
+takes OpenCV's count, min(CPUs, 16), on both paths, not all CPUs.

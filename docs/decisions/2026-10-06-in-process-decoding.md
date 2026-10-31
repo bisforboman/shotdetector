@@ -18,3 +18,7 @@ libraries in the version the bindings were built for. How should it ship?
 
 **Choice 1.** It lives in the core package (the bindings are MIT); inputs it doesn't handle yet fall back to the
 ffmpeg executable.
+
+Since 2026-10-07
+([2026-10-07-after-0-6-1-defaults-native-libraries-10.md](2026-10-07-after-0-6-1-defaults-native-libraries-10.md))
+in-process decoding is the default (`VideoDecoder.Auto`) when FFmpeg 8's libraries load, no longer opt-in.

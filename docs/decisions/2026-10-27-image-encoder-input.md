@@ -61,3 +61,5 @@ frame with its tags (`-f rawvideo ... -vf setparams=...,setsar=... -frames:v 1 o
 every `FrameFormat`, both formats and their options, scaled and not, on eight sources. Close to, not identical with,
 the one command when the reader scales; a `Yuv420p` frame of a 4:2:0 source at its own size is exactly
 `ffmpeg -i X -frames:v 1 out.jpg`. The scaling encoder becomes a backlog row.
+
+The scaling encoder shipped: [2026-10-28-save-images-in-process.md](2026-10-28-save-images-in-process.md).

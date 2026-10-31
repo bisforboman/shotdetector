@@ -35,3 +35,6 @@ given last already covers), and it outlives the next read and the reader. `Decod
 The issue's picture-a-second loop gives each second's frame at or after it, `ffmpeg -i X -ss i` (equal to
 `-vf fps=1:round=up` where frames fall on the seconds), not `-vf fps=1`'s, which keeps the last frame of each slot
 (0.48 s, 1.48 s, ... at 25 fps): that one stays `FrameRate`'s, for reads.
+
+Since the same day ([2026-10-28-reader-take-frame-rate.md](2026-10-28-reader-take-frame-rate.md)) `TryTake` works with
+`FrameRate` too.

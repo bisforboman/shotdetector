@@ -52,3 +52,5 @@ in every native build variant (Linux glibc and musl, Windows, macOS).
 the other: JPEG's qscale (`-q:v`, 2-31, lower is better; not ShotDetector's 0-100 export quality) and PNG's
 compression level (`-compression_level`: speed against size, not quality). No generic "Quality". WebP becomes a
 backlog row: libwebp in every native variant, then the `webp` format and `Capability.WebP`.
+
+WebP shipped (docs/backlog-done.md).

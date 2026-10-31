@@ -34,3 +34,7 @@ What would change the answer:
 - FrameReader needing its own release pace.
 - An FFmpeg-free FrameReader surface that a browser consumer wants on its own. That is a package split inside this
   repository, a different question.
+
+Since 2026-10-28 ([2026-10-28-split-count-features.md](2026-10-28-split-count-features.md)) the count is of features,
+and since 2026-10-31 ([2026-10-31-split-trigger-criteria.md](2026-10-31-split-trigger-criteria.md)) this file's "what
+would change the answer" is the trigger.

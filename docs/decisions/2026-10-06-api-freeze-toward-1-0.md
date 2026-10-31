@@ -13,3 +13,6 @@ Which parts of the public API should 1.0 promise?
 3. **`DetectAsync` added** next to `Detect`. (Alternative: callers wrap `Detect` in `Task.Run`.)
 4. **`FrameTime`'s raw fields hidden**; `ToString()` is the timecode, `FrameTime.Frame` the one public factory.
    (Alternative: keep as is.)
+
+Since 2.0 ([2026-10-13-what-2-0-holds.md](2026-10-13-what-2-0-holds.md)) `VideoReader` is internal; the public API is
+the one of [2026-10-13-2-0-s-renames.md](2026-10-13-2-0-s-renames.md) and later releases.

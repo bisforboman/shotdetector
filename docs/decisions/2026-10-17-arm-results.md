@@ -26,3 +26,8 @@ The CLI's arm64 binaries are affected too. What to do?
 
 **1**: documented in README ("Where this differs from PySceneDetect", ARM); `arch-diff` fails unless ARM with FastYuv
 equals x64 on the 8-bit 4:2:0 clips, and prints the rest (default ARM, 10-bit, 4:2:2, MPEG-2, MJPEG) for information.
+
+Since 2026-10-18 the required set is wider: 4:2:2 ([2026-10-18-fastyuv-422.md](2026-10-18-fastyuv-422.md)), 10-bit 4:2:0
+([2026-10-18-fastyuv-10bit-x64.md](2026-10-18-fastyuv-10bit-x64.md)), MPEG-1/2 and MJPEG
+([2026-10-18-arm-mpeg-idct.md](2026-10-18-arm-mpeg-idct.md)) and MPEG-4 Part 2
+([2026-10-18-mpeg4-xvid-idct.md](2026-10-18-mpeg4-xvid-idct.md)).

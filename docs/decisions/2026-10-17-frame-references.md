@@ -5,3 +5,7 @@ To take BGR conversion off ShotDetector's decoding thread, FrameReader gets a re
 FrameDecoder.TakeFrame and BgrConverter overloads now** (over VideoFrameReader too in the same release); and ShotDetector's
 conversion workers, **on by default with a threshold**: one worker on small frames, more on HD only where measured
 faster (over opt-in first, as parallel detection started).
+
+Since the same day ([2026-10-17-decoded-frame-without-workers.md](2026-10-17-decoded-frame-without-workers.md)) the
+conversion workers are dropped (no gain measured); one conversion thread came back on 2026-10-22
+([2026-10-22-decode-split.md](2026-10-22-decode-split.md)).

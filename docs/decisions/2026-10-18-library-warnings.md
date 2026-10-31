@@ -17,3 +17,7 @@ carry warnings (new public API; the library had none) so they do?
 **1**. The library fills it (the same check, now in VideoReader), the CLI prints it. Scoped out: a local playlist
 whose segments are https (not decided), and DetectStreamAsync, which has no result object (its callers don't get
 the warnings; not widened).
+
+Both scope-outs were settled the next day: DetectStreamAsync gets `DetectionOptions.Warnings`
+([2026-10-19-warnings-as-they-happen.md](2026-10-19-warnings-as-they-happen.md)), and playlists:
+[2026-10-19-hls-warning-http-playlists.md](2026-10-19-hls-warning-http-playlists.md).

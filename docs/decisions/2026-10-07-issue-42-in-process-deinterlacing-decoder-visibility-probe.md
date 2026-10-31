@@ -18,3 +18,6 @@ container name and audio presence in the probe (and passing the probe back); int
 **All four; the API additions in 0.9.0 (with the 0.6.4 removal and ARM), then two quiet weeks to 1.0; reply when it
 ships.** In-process deinterlacing and the CI samples change no API, so they can land during the freeze. Passing the
 probe back stays out (detection's cost is the packet scan).
+
+Since 2026-10-08 ([2026-10-08-1-0-without-a-quiet-period.md](2026-10-08-1-0-without-a-quiet-period.md)) there is no
+quiet period before 1.0 to restart.

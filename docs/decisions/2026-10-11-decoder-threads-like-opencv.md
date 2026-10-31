@@ -11,3 +11,7 @@ corrupt and truncated files differently from run to run, in scenedetect (OpenCV)
 repeats itself there. OpenCV's thread count still gives the same kind of concealment (the same variation between
 runs on both sides); damaged files are best effort since
 [2026-10-22-damaged-files-best-effort.md](2026-10-22-damaged-files-best-effort.md).
+
+Since 2026-10-21 (#461) chunked runs, the default for long files from 4 CPUs on, share out up to twice the CPUs (at most
+16) for frame-threaded decoders up to 1080p; sequential runs keep this count
+([2026-10-21-sequential-decoder-threads.md](2026-10-21-sequential-decoder-threads.md)).
