@@ -54,3 +54,20 @@ The figures are the measures' whole point, and media-qc compares deliveries acro
 the same planes give the same numbers whichever decoder made them, but only if the meter takes the planes as both
 decoders give them, at their own depth and chroma layout. Matching silencedetect's counting costs nothing and removes
 the one place where "equal to FFmpeg" had an exception.
+
+## Found while building slice 3 (2026-10-31)
+
+Recorded here, with no new question for the owner:
+
+- **4:2:2 under a quarter turn.** ffmpeg's autorotate turns the picture with `transpose`, which can't keep 4:2:2: it
+  inserts a bicubic swscale conversion to 4:4:4 first, so signalstats' BRNG counts interpolated chroma there.
+  `PictureMeter` counts the decoded planes, the signal's own, which ffmpeg gives with `-noautorotate`; YMIN, YAVG, YMAX,
+  blackdetect and cropdetect read luma only and match autorotated ffmpeg. The test compares that one case's BRNG with a
+  `-noautorotate` pass. 4:2:0 (which `transpose` takes as it is) and 4:4:4 match autorotated ffmpeg throughout.
+- **The planes to feed it.** The checks read the decoder's own planes (`VideoFrameReader.TryTake`, `GetPlane`), which
+  are what ffmpeg's filters see. `VideoFrameReader`'s packed `FrameFormat.Yuv420p` output leaves the last chroma row
+  empty at odd heights (#656), so it isn't a way to feed the meter until that is fixed.
+- **Bars at other depths and layouts.** The definition reads each upright chroma column's luma (the mean of the pixels
+  over the chroma sample) and the chroma under its first pixel, so 4:2:2 and 4:4:4 read the chroma they have, and a
+  rotated 4:2:2 picture reads it where the turn puts it. Levels and tolerance scale by 2^(depth − 8), full range too
+  (FFmpeg's full-range 10-bit levels are 1023/255 of the 8-bit ones, within the tolerance of that).

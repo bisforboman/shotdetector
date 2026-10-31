@@ -547,6 +547,21 @@
         @{ File = 'src/ShotDetector.Cli/Program.cs'; Find = 'return verdict.Pass ? 0 : 3;'; Replace = 'return 0;'; Tests = 'CliTests.Loudness' }
         @{ File = 'src/FrameReader/Loudness.cs'; Find = 'Get("sample_peak"), Get("true_peak")'; Replace = 'Get("sample_peak") - 0.05, Get("true_peak")'; Tests = 'LoudnessTests'; Project = 'tests/FrameReader.Tests' }
 
+        # PictureMeter: FFmpeg's picture filters at any depth without FFmpeg. blackdetect's pixel_black_th_i truncated (37,
+        # full range 25, 151 at 10 bits); signalstats' broadcast range scaled by 2^(depth - 8), BRNG counting a luma pixel
+        # once (its chroma sample, at its own subsampling, adds only luma in range); EBU 100/0/75/0 bars (100% white);
+        # cropdetect's bottom line past max(y2, y1), x and y rounded up to even, its first two frames skipped; blackdetect's
+        # span at the end ending at the last frame's pts
+        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = '_black = (uint)(format.FullRange ? PixelBlack * max : (16 * _factor) + (PixelBlack * (235 - 16) * _factor));'; Replace = '_black = (uint)Math.Round(format.FullRange ? PixelBlack * max : (16 * _factor) + (PixelBlack * (235 - 16) * _factor));'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'int under = 16 * _factor, over = 235 * _factor;'; Replace = 'int under = 16, over = 235;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'ChromaSubsampling.Yuv422 => (1, 0),'; Replace = 'ChromaSubsampling.Yuv422 => (1, 1),'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'if (q >= under && q <= over)'; Replace = 'if (true)'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'is var i and >= 0 ? i : Nearest(_white, y[c], u[c], v[c]);'; Replace = 'is var i and >= 0 ? i : (sbyte)-1;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'if (bottom > Math.Max(_y2, _y1))'; Replace = 'if (bottom > _y2)'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'int x = (_x1 + 1) & ~1, y = (_y1 + 1) & ~1;'; Replace = 'int x = _x1 & ~1, y = _y1 & ~1;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'const int skip = 2;'; Replace = 'const int skip = 0;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = '? new FrameSpan(FirstFrame + start, FirstFrame + last, _pts[start], _pts[last])'; Replace = '? new FrameSpan(FirstFrame + start, FirstFrame + last, _pts[start], (2 * _pts[last]) - _pts[Math.Max(last - 1, 0)])'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+
         # SilenceFinder: silencedetect's counting, sample by sample: strictly under the level as a float, the duration
         # rounded to the nearest instant, a count of every channel's samples in turn (not of instants), the start's arithmetic
         @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = 's < noise && s > -noise'; Replace = 's <= noise && s >= -noise'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }

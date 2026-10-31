@@ -41,6 +41,31 @@ public sealed unsafe class DecodedFrame : IDisposable
     /// <summary>The frame's FFmpeg pixel format name (yuv420p, ...).</summary>
     public string PixelFormat => ffmpeg.av_get_pix_fmt_name((AVPixelFormat)Frame->format) ?? "unknown";
 
+    /// <summary>The decoder's picture type for this frame (FFmpeg's <c>pict_type</c>: I, P, B ...).</summary>
+    public PictureType PictureType => (PictureType)Frame->pict_type;
+
+    /// <summary>Whether the samples are full range: the frame's colour range is pc (JPEG), or its format a yuvj one.</summary>
+    internal bool FullRange => Frame->color_range == AVColorRange.AVCOL_RANGE_JPEG || PixelFormat.StartsWith("yuvj", StringComparison.Ordinal);
+
+    /// <summary>The frame's depth and chroma subsampling when it is planar YUV of 8 to 16 bits (little-endian over 8) in 4:2:0, 4:2:2 or 4:4:4; depth 0 otherwise.</summary>
+    internal (int Depth, ChromaSubsampling Chroma) YuvLayout()
+    {
+        var d = ffmpeg.av_pix_fmt_desc_get((AVPixelFormat)Frame->format);
+        bool yuv = d != null && (d->flags & ffmpeg.AV_PIX_FMT_FLAG_PLANAR) != 0 && (d->flags & ffmpeg.AV_PIX_FMT_FLAG_RGB) == 0
+            && (d->flags & ffmpeg.AV_PIX_FMT_FLAG_BE) == 0 && d->nb_components >= 3;
+        if (!yuv)
+            return (0, default);
+        int depth = d->comp[0].depth;
+        ChromaSubsampling? chroma = (d->log2_chroma_w, d->log2_chroma_h) switch
+        {
+            (1, 1) => ChromaSubsampling.Yuv420,
+            (1, 0) => ChromaSubsampling.Yuv422,
+            (0, 0) => ChromaSubsampling.Yuv444,
+            _ => null,
+        };
+        return depth is >= 8 and <= 16 && chroma is { } c && d->comp[1].plane == 1 && d->comp[2].plane == 2 ? (depth, c) : (0, default);
+    }
+
     /// <summary>The decoder's bits per raw sample, which ffmpeg's command line hands its encoder (capped at the encoder's format's depth).</summary>
     internal int BitsPerRawSample { get; }
 
