@@ -298,8 +298,10 @@ Console.WriteLine($"{m.Loudness.Integrated:0.0} LUFS, {m.Channels[0].FullScale} 
 
 Integrated loudness, loudness range and its ends are ebur128's own arithmetic, so they are the same doubles as
 `Loudness.Measure` on the same samples. That covers its running sums, its 0.01 LU histogram (truncated), its gates and
-percentile walk, the order its x86-64 AVX kernel adds in, and glibc's `exp2` for the bins' energies. The sample peak is
-equal too. Channel weights follow BS.1770-4 as ebur128 does: 0 for the LFE, 1.41 for side and back channels. Pass
+percentile walk, and the order its x86-64 AVX kernel adds in. The sample peak is equal too. One thing depends on the
+host: ebur128 takes its bins' energies from the libm's `exp2`, whose last bit differs between glibc builds. The meter
+uses correctly rounded energies, so in the rare programme that fills a bin where a host's libm is an ulp off, I differs
+there by about an ulp. Channel weights follow BS.1770-4 as ebur128 does: 0 for the LFE, 1.41 for side and back channels. Pass
 `ChannelWeights.ForLayout(info.ChannelLayout)` when the layout isn't FFmpeg's default for the count.
 
 The true peak is where they differ, on purpose (docs/decisions/2026-10-31-frame-reader-measures.md). The meter follows

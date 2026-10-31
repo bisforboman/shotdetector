@@ -60,10 +60,16 @@ Found while building `LoudnessMeter`, with no new question for the owner:
   reference: the C order for mono, the AVX order from two channels. The difference stays in the last bits of the block
   powers. The histogram hides it unless a block's loudness sits within about 1e-13 LU of a bin's edge, so no test can
   tell the two orders apart, and the mutation list says so.
-- **The bins' energies.** ebur128 computes them with `ff_exp10`, which is glibc's `exp2`. .NET's `Math.Pow(2, x)`
-  differs from it in 8 of the 8001 bins, and glibc's x86-64 `exp2` isn't correctly rounded in 11. The meter computes
-  2^x correctly rounded in double-double arithmetic, the same on every platform (wasm included), then applies glibc's
-  11 one-ulp departures. A test compares all 8001 against the libm on Linux.
+- **The bins' energies depend on the host.** ebur128 computes them with `ff_exp10`, the exp2 of whatever libm the
+  process loads, and glibc's builds differ in the last bit. The generic x86-64 build (Ubuntu 24.04, glibc 2.39 to
+  2.44 alike) is one ulp off correct rounding in 11 of the 8001 bins. Ubuntu 26.04's runners, presumably on its
+  x86-64-v3 build compiled with FMA, round the first of those correctly (CI's first run of #655 failed on it, bin 67:
+  1.3680437930569386e-07 against 1.3680437930569383e-07). .NET's `Math.Pow(2, x)` is off in 7. No table matches
+  every host, so the meter takes 2^x correctly rounded (double-double, the same on every platform, wasm included) and
+  copies no libm's errors. Tests hold 13 hard bins to mpmath's values and every bin within one ulp of the host's libm.
+  So I and LRA are ebur128's doubles when the bins a programme fills have the same energy on its host. A different
+  energy in a filled bin moves I by about an ulp. None of the clips here, on this machine or on CI's runner, fill such
+  a bin: an even rarer case than the AVX kernel's.
 - **What the tests hold.** Integrated loudness, range, its ends and sample peak are compared with
   `AudioFilter(ebur128)` with `Assert.Equal` on doubles, on 14 generated clips (mono to 7.1, 32 to 96 kHz, a clip
   shorter than a block, a partial last block, silence). True peak is held within 0.05 dB of tools/true_peak_reference.py's

@@ -179,15 +179,12 @@ public sealed class LoudnessMeter
     }
 
     /// <summary>
-    /// ebur128's ENERGY: ff_exp10, which is glibc's exp2 of M_LOG2_10 × x. Computed here correctly rounded (double-double,
-    /// the same on every platform), then moved one ulp where glibc's x86-64 exp2 (its FMA variant) rounds the other way:
-    /// 11 of the 8001 bins (LoudnessMeterTests.BinEnergiesAreExp2s checks them all against the libm).
+    /// ebur128's ENERGY: ff_exp10, the host libm's exp2 of M_LOG2_10 × x. Computed here correctly rounded (double-double,
+    /// the same on every platform). glibc's exp2 differs by the build: its generic x86-64 build is one ulp off correct
+    /// rounding in 11 of the 8001 bins, its x86-64-v3 build (Ubuntu 26.04's runners) not in the first of them, so no table
+    /// matches every host; correct rounding is the one that doesn't depend on it (decision 2026-10-31-frame-reader-measures.md).
     /// </summary>
-    static double Energy(int bin)
-    {
-        double e = Exp2(Log2Of10 * ((BinLoudness[bin] + 0.691) / 10.0));
-        return Array.IndexOf(Glibc.Down, bin) >= 0 ? Math.BitDecrement(e) : Array.IndexOf(Glibc.Up, bin) >= 0 ? Math.BitIncrement(e) : e;
-    }
+    static double Energy(int bin) => Exp2(Log2Of10 * ((BinLoudness[bin] + 0.691) / 10.0));
 
     /// <summary>
     /// 2^x correctly rounded for |x| up to about 1000: 2^n × e^(f ln 2) with f = x - n in [-0.5, 0.5], the exponential
@@ -254,13 +251,6 @@ public sealed class LoudnessMeter
         var (p, e) = TwoProduct(q, k);
         double r = ((aHi - p) - e + aLo) / k;
         return TwoSum(q, r);
-    }
-
-    /// <summary>The bins where glibc's exp2 (x86-64, FMA) rounds down or up from the correctly rounded energy.</summary>
-    static class Glibc
-    {
-        public static readonly int[] Down = [67, 2195, 4267, 4355, 6311];
-        public static readonly int[] Up = [1076, 2945, 3543, 6671, 7102, 7341];
     }
 
     static double Lufs(double energy) => -0.691 + (10 * Math.Log10(energy));

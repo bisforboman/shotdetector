@@ -174,18 +174,51 @@ public class LoudnessMeterTests
         Assert.Throws<InvalidOperationException>(() => meter.Finish());
     }
 
-    // The histogram's energies are FFmpeg's ff_exp10 (glibc's exp2) of each bin's loudness, bit for bit: x86-64's, the
-    // reference (ARM's glibc rounds its own way).
+    // The histogram's energies: ebur128's ff_exp10 of each bin's loudness, correctly rounded, the same on every host. The
+    // bins where glibc's generic x86-64 exp2 isn't (one ulp off), and where Math.Pow(2, x) isn't, by mpmath at 200 bits.
+    [Theory]
+    [InlineData(67, "0x1.25c900bd4f693p-23")]
+    [InlineData(1076, "0x1.76ebccfc41a38p-20")]
+    [InlineData(2195, "0x1.3430e2c4a8991p-16")]
+    [InlineData(2945, "0x1.b14572c40e2b5p-14")]
+    [InlineData(3543, "0x1.ad3d5ef658177p-12")]
+    [InlineData(4267, "0x1.1c30d47b999abp-9")]
+    [InlineData(4355, "0x1.5c064b4ef9e4fp-9")]
+    [InlineData(4738, "0x1.a451e39a66501p-8")]
+    [InlineData(5065, "0x1.be388ebae573cp-7")]
+    [InlineData(6311, "0x1.eb64e4d115a89p-3")]
+    [InlineData(6671, "0x1.196e023b26bdfp-1")]
+    [InlineData(7102, "0x1.7b9cade899febp+0")]
+    [InlineData(7341, "0x1.4916200abc581p+1")]
+    public void BinEnergiesAreCorrectlyRounded(int bin, string hex) =>
+        Assert.Equal(Hex(hex), LoudnessMeter.BinEnergy[bin]);
+
+    // And the host's libm (what FFmpeg's ebur128 computes them with) is within one ulp of them in every bin: glibc's
+    // builds differ in the last bit only, which is why the meter follows none of them (2026-10-31-frame-reader-measures.md).
     [Fact]
-    public void BinEnergiesAreExp2s()
+    public void BinEnergiesAreWithinAnUlpOfTheLibm()
     {
-        if (!OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.X64)
+        if (!OperatingSystem.IsLinux())
             return;
         for (int i = 0; i < LoudnessMeter.BinEnergy.Length; i++)
         {
             double loudness = (i / 100.0) + -70;
-            Assert.Equal(Exp2(3.32192809488736234787 * ((loudness + 0.691) / 10.0)), LoudnessMeter.BinEnergy[i]);
+            double libm = Exp2(3.32192809488736234787 * ((loudness + 0.691) / 10.0));
+            double ours = LoudnessMeter.BinEnergy[i];
+            Assert.True(libm == ours || Math.BitIncrement(ours) == libm || Math.BitDecrement(ours) == libm, $"bin {i}: {ours:R}, libm {libm:R}");
         }
+    }
+
+    // A C99 hexadecimal float, as mpmath's float.hex() writes it.
+    static double Hex(string hex)
+    {
+        int p = hex.IndexOf('p', StringComparison.Ordinal);
+        string mantissa = hex[2..p];
+        int dot = mantissa.IndexOf('.', StringComparison.Ordinal);
+        string digits = mantissa.Replace(".", "", StringComparison.Ordinal);
+        int fraction = dot < 0 ? 0 : mantissa.Length - dot - 1;
+        double m = ulong.Parse(digits, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
+        return Math.ScaleB(m, int.Parse(hex[(p + 1)..], System.Globalization.CultureInfo.InvariantCulture) - (4 * fraction));
     }
 
     [DllImport("libm.so.6", EntryPoint = "exp2")]

@@ -518,13 +518,13 @@
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'long point = Demuxer.SeekPoint(_fmt, timestamp);'; Replace = 'long point = Demuxer.SeekPoint(_fmt, timestamp); SeekMicroseconds(point);'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
 
         # LoudnessMeter: ebur128's arithmetic without FFmpeg. Each block in a 0.01 LU bin, truncated; the relative gate's
-        # bin; the 95th percentile's rank rounded; the bins' energies glibc's exp2 (one ulp off correct rounding in 11 bins);
+        # bin; the 95th percentile's rank rounded; the bins' energies correctly rounded (Math.Pow and glibc are off by an ulp);
         # the LFE weighted 0; true peak 4 times oversampled below 192 kHz (Annex 2). Not guarded by a test: the AVX kernel's
         # order of one sum, which the histogram hides unless a block sits within about 1e-13 LU of a bin's edge
         @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'Math.Clamp((int)((loudness - AbsoluteGate) * Grain), 0, HistogramSize - 1)'; Replace = 'Math.Clamp((int)Math.Round((loudness - AbsoluteGate) * Grain), 0, HistogramSize - 1)'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'return Bin(Lufs(mean) + below);'; Replace = 'return Bin(Lufs(mean) + below + 0.005);'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'wanted = (ulong)((95 * powers * 0.01) + 0.5);'; Replace = 'wanted = (ulong)(95 * powers * 0.01);'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'public static readonly int[] Down = [67, 2195, 4267, 4355, 6311];'; Replace = 'public static readonly int[] Down = [];'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'static double Energy(int bin) => Exp2(Log2Of10'; Replace = 'static double Energy(int bin) => Math.Pow(2, Log2Of10'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/ChannelWeights.cs'; Find = 'weights.Add(c is Lfe or Lfe2 ? 0 :'; Replace = 'weights.Add(c is Lfe2 ? 0 :'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/TruePeakMeter.cs'; Find = '_factor = sampleRate < 192000 ? 4 : 1;'; Replace = '_factor = sampleRate < 96000 ? 4 : sampleRate < 192000 ? 2 : 1;'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
 
