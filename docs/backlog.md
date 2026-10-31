@@ -35,6 +35,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 ## Maybe
 
+- Frame sources: scale a frame of another size to the video's, as the file path does (port swscale's scaled 8-bit yuv420p to BGR path, x86's, to FastYuv)
+  - Why: since #625 a stream whose resolution changes midway is refused through the frame source (`YuvFrame.Width`/`Height`), where Detect(path) scales such frames (bicubic, as OpenCV) and gives a result; FastYuv already has the bicubic filter set-up and the MMXEXT vertical scaler and output from its 10-bit port. Worth it once a frame-source caller meets resolution changes (adaptive streams, splices)
+  - Status: Maybe (the owner chose refusing first, docs/decisions/2026-10-31-frame-source-size-change.md)
+
 - MPEG-PS chunking: long DVD/VOB rips on several cores
   - Why: Files whose packets lack timestamps (MPEG-PS) never run in chunks (`NotChunkable`: "packets without timestamps"), because chunk bounds need every frame's time up front, the pass #546 removed in-process. Long rips can't use more than one decoder. Measure the pass's cost against what chunking gains (1.3-1.5x on 4 CPUs elsewhere) before deciding whether to bring the pass back for long files
   - Status: Maybe
