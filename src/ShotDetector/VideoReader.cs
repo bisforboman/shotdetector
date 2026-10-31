@@ -769,7 +769,7 @@ internal sealed partial class VideoReader
         // Like OpenCV with FFmpeg 8 (and ffmpeg's own scale filter), conversion follows the colour tags.
         bool fullRange = _pixelFormat is "yuvj420p" or "yuvj422p" || stream.GetValueOrDefault("color_range") == "pc";
         string colorSpace = _alwaysBt601 ? "bt470bg" : stream.GetValueOrDefault("color_space", "");
-        return new(colorSpace, fullRange, TenBit ? chromaLocation : null);
+        return new(colorSpace, fullRange, Interpolates ? chromaLocation : null);
     }
 
     /// <summary>_yuv420 configured for this video's layout and these colours; null where it declines them.</summary>
@@ -780,6 +780,14 @@ internal sealed partial class VideoReader
         // 4:2:2 when the converter does that too (FastYuv's does): swscale takes the same unscaled converter for it. 10-bit
         // 4:2:0 too: swscale scales that one (interpolating the chroma from where it sits), so its converter is for the
         // size and chroma location as well, and declines sizes it doesn't reproduce.
+        // 8-bit of an odd height: swscale scales that too (its unscaled converter needs an even height), as 10-bit.
+        if (!TenBit && _codedSize.H % 2 != 0)
+        {
+            return (_yuv420 as IYuvOddHeightConverter)?.ForOddHeight(_pixelFormat, colorSpace, fullRange, chromaLocation, _codedSize.W, _codedSize.H) is { } odd
+                ? new(odd.RowToBgr, odd.FrameToBgr, odd as IYuvChromaRows)
+                : null;
+        }
+
         return _pixelFormat switch
         {
             "yuv420p" or "yuvj420p" => _yuv420?.ForColor(colorSpace, fullRange) is { } c420 ? new(c420.RowToBgr, ChromaRows: c420 as IYuvChromaRows) : null,
@@ -789,7 +797,7 @@ internal sealed partial class VideoReader
 
             // A frame at a time when the converter does that too (FastYuv's does): each chroma row filtered once per frame.
             "yuv420p10le" => (_yuv420 as IYuv420P10Converter)?.ForVideo(colorSpace, fullRange, chromaLocation, _codedSize.W, _codedSize.H) is { } c10
-                ? new(c10.RowToBgr, c10 as IYuv420P10FrameConverter, c10 as IYuvChromaRows)
+                ? new(c10.RowToBgr, c10 is IYuv420P10FrameConverter f ? f.FrameToBgr : null, c10 as IYuvChromaRows)
                 : null,
             _ => null,
         };
@@ -1389,8 +1397,9 @@ internal sealed partial class VideoReader
     /// <summary>How frames get from ffmpeg to the downscaled BGR the detectors see.</summary>
     public FramePipeline Pipeline => !_ffmpegResize && (Width, Height) != (CropRegion.Width, CropRegion.Height)
 
-        // swscale's unscaled yuv420p/yuv422p converter (what OpenCV gets) needs an even decoded height (10-bit: any).
-        ? (YuvForVideo is not null && !_sizeChanges && (TenBit || _codedSize.H % 2 == 0) ? YuvPipeline
+        // The converter declines what it doesn't reproduce (YuvForVideo null); an odd 8-bit height only with
+        // IYuvOddHeightConverter (swscale's unscaled yuv420p/yuv422p converter needs an even one).
+        ? (YuvForVideo is not null && !_sizeChanges ? YuvPipeline
             : _fullFrames || (!DecodesInProcess && !SampledPays(CropRegion.Width, CropRegion.Height, Width, Height))
                 ? FramePipeline.FullFrameResize : FramePipeline.SampledBgr)
         : FramePipeline.FfmpegScale;
@@ -1400,6 +1409,12 @@ internal sealed partial class VideoReader
 
     /// <summary>Whether the video is 10-bit 4:2:0 (yuv420p10le): two bytes a sample.</summary>
     bool TenBit => _pixelFormat == "yuv420p10le";
+
+    /// <summary>
+    /// Whether swscale scales this video to BGR, interpolating the chroma from where it sits (so the chroma location
+    /// matters): 10-bit, and 8-bit of an odd height (its unscaled converter needs an even one).
+    /// </summary>
+    bool Interpolates => TenBit || _codedSize.H % 2 != 0;
 
     /// <summary>The YUV pipeline for the video's layout.</summary>
     FramePipeline YuvPipeline => TenBit ? FramePipeline.Yuv420P10Sampled : Yuv422 ? FramePipeline.Yuv422Sampled : FramePipeline.Yuv420Sampled;

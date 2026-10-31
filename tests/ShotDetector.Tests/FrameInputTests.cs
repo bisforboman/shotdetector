@@ -357,7 +357,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         var video = name switch
         {
             "format" => Video() with { PixelFormat = "yuv444p" },
-            "odd" => Video() with { Height = 63 },
+            "odd" => Video() with { Width = 63, Height = 63 },
             "colour" => Video() with { ColorSpace = "ycgco" },
             _ => Video(),
         };
@@ -379,7 +379,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         if (name == "format")
             Assert.Contains("must be yuv420p, yuvj420p, yuv422p, yuvj422p or yuv420p10le so far, not yuv444p", e.Message);
         if (name == "odd")
-            Assert.Contains("height must be even", e.Message);
+            Assert.Contains("8-bit of an odd height, at an even width", e.Message);
     }
 
     [Theory]
@@ -474,6 +474,14 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     [InlineData("mjpeg-422", "histogram")]
     [InlineData("h264-10-tff", "deinterlace")]
     [InlineData("h264-422-tff", "deinterlace")]
+    [InlineData("ffv1-420-odd", "content")]
+    [InlineData("ffv1-420-odd", "adaptive")]
+    [InlineData("ffv1-420-odd", "scale")]
+    [InlineData("ffv1-420-odd", "turned")]
+    [InlineData("ffv1-422-odd", "content")]
+    [InlineData("ffv1-422-odd", "histogram")]
+    [InlineData("ffv1-422-odd", "scale")]
+    [InlineData("ffv1-422-odd", "turned")]
     public async Task SameAsTheFileForEachFormat(string clip, string name)
     {
         if (Libs is null || FormatClip(clip) is not { } path)
@@ -493,7 +501,9 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         };
         await AssertSame(path, options);
         var (video, _) = Decoded(path);
-        Assert.Equal(clip.Contains("-10", StringComparison.Ordinal) ? "yuv420p10le" : clip.StartsWith("mjpeg", StringComparison.Ordinal) ? "yuvj422p" : "yuv422p", video.PixelFormat);
+        Assert.Equal(clip.Contains("-10", StringComparison.Ordinal) ? "yuv420p10le" : clip.StartsWith("mjpeg", StringComparison.Ordinal) ? "yuvj422p" : clip.Contains("420", StringComparison.Ordinal) ? "yuv420p" : "yuv422p", video.PixelFormat);
+        if (clip.EndsWith("-odd", StringComparison.Ordinal))
+            Assert.Equal((1, name == "turned" ? null : "left"), (video.Height % 2 + video.Width % 2, video.ChromaLocation)); // turned: mp4 keeps no siting
         if (clip == "h264-10-topleft")
             Assert.Equal("topleft", video.ChromaLocation);
     }
@@ -501,7 +511,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     /// <summary>The three-shot clip in another pixel format (<see cref="SameAsTheFileForEachFormat"/>); null without the encoder.</summary>
     string? FormatClip(string name)
     {
-        string dir = Path.GetDirectoryName(clips.ThreeShots)!, path = Path.Combine(dir, $"format-{name}" + (name.StartsWith("mjpeg", StringComparison.Ordinal) ? ".avi" : ".mp4"));
+        string dir = Path.GetDirectoryName(clips.ThreeShots)!, path = Path.Combine(dir, $"format-{name}" + (name.StartsWith("mjpeg", StringComparison.Ordinal) ? ".avi" : name.StartsWith("ffv1", StringComparison.Ordinal) ? ".mkv" : ".mp4"));
         lock (H264Lock)
         {
             if (File.Exists(path))
@@ -514,6 +524,10 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
                 "h264-422" => ["-i", clips.ThreeShots, "-pix_fmt", "yuv422p", "-c:v", "libx264"],
                 "mjpeg-422" => ["-i", clips.ThreeShots, "-pix_fmt", "yuvj422p", "-c:v", "mjpeg", "-q:v", "3"],
                 "h264-10-tff" => ["-i", clips.ThreeShots, "-pix_fmt", "yuv420p10le", "-c:v", "libx264", "-flags", "+ildct+ilme", "-top", "1"],
+
+                // Odd heights (swscale scales these, interpolating the chroma from where it sits): lossless, sited left.
+                "ffv1-420-odd" => ["-i", clips.ThreeShots, "-vf", "format=yuv444p,crop=320:239:0:0,format=yuv420p", "-chroma_sample_location", "left", "-c:v", "ffv1"],
+                "ffv1-422-odd" => ["-i", clips.ThreeShots, "-vf", "format=yuv444p,crop=320:237:0:0,format=yuv422p", "-chroma_sample_location", "left", "-c:v", "ffv1"],
                 _ => ["-i", clips.ThreeShots, "-pix_fmt", "yuv422p", "-c:v", "libx264", "-flags", "+ildct+ilme", "-top", "1"],
             };
             string partial = path + ".part" + Path.GetExtension(path);

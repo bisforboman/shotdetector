@@ -55,8 +55,6 @@ internal sealed partial class VideoReader
             throw new ArgumentException($"Frames from the caller must be yuv420p, yuvj420p, yuv422p, yuvj422p or yuv420p10le so far, not {video.PixelFormat}.");
         if (video.Width < 1 || video.Height < 1 || (long)video.Width * video.Height > FrameReader.FrameDecoderOptions.DefaultMaxPixels)
             throw new ArgumentException($"The frames' size ({video.Width}x{video.Height}) must be positive and at most 8192 x 8192 pixels.");
-        if (video.Height % 2 != 0 && video.PixelFormat != "yuv420p10le")
-            throw new ArgumentException($"The frames' height must be even ({video.Height}): the converter reproduces swscale's unscaled {video.PixelFormat} conversion, which needs it.");
         if (video.FrameRate.Num <= 0 || video.FrameRate.Den <= 0)
             throw new ArgumentException("YuvVideo.FrameRate must be positive.");
         if (video.TimeBase is { } t && (t.Num <= 0 || t.Den <= 0))
@@ -123,8 +121,8 @@ internal sealed partial class VideoReader
         _colours = new Lazy<Colours>(() => ReadColours(stream));
         if (YuvForVideo is null)
         {
-            throw new ArgumentException(video.PixelFormat == "yuv420p10le"
-                ? $"The converter doesn't take this video's colours or size (color_space '{video.ColorSpace}', full range {video.FullRange}, chroma location '{video.ChromaLocation}', {video.Width}x{video.Height}; FastYuv's 10-bit converter needs an even width)."
+            throw new ArgumentException(video.PixelFormat == "yuv420p10le" || video.Height % 2 != 0
+                ? $"The converter doesn't take this video's colours or size (color_space '{video.ColorSpace}', full range {video.FullRange}, chroma location '{video.ChromaLocation}', {video.Width}x{video.Height}; FastYuv converts 10-bit, and 8-bit of an odd height, at an even width)."
                 : $"The converter doesn't take this video's colours (color_space '{video.ColorSpace}', full range {video.FullRange}).");
         }
 
