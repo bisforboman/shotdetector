@@ -430,6 +430,22 @@ var tones = finder.Finish();
 var waveform = builder.Finish();
 ```
 
+`SilenceFinder` finds silences the way FFmpeg's `silencedetect` does (its defaults: -60 dB, 2 s), in the samples you
+give it, to the sample: it counts the samples under the level one channel after another, as the filter does, so its
+spans are the filter's even where a silence starts or ends on one channel before the other. Spans are in instants
+from the first sample given; add your own start.
+
+```csharp
+var silences = new SilenceFinder(sampleRate, channels, level: -60, duration: TimeSpan.FromSeconds(2));
+foreach (var samples in decodedPackets) // float, interleaved
+    silences.Add(samples);
+foreach (var s in silences.Finish())
+    Console.WriteLine($"silence {start + s.Start(sampleRate)} to {start + s.End(sampleRate)}");
+```
+
+silencedetect compares integer samples (16 and 32-bit PCM) in their own format against the level times the format's
+largest value, truncated; the finder takes floats, as FFmpeg's decoders give AAC, MP3, Opus and float PCM.
+
 Test media without the ffmpeg executable: `TestMedia.Write(path, options)` makes a synthetic clip from FFmpeg's own
 sources and encoders, in-process, for tests that need real media without committing any. Video sources are
 concatenated in order, so the cuts fall at known frames; interlaced output is flagged and coded as such.

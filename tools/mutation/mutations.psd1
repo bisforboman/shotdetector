@@ -524,6 +524,13 @@
         @{ File = 'src/ShotDetector.Cli/Program.cs'; Find = 'return verdict.Pass ? 0 : 3;'; Replace = 'return 0;'; Tests = 'CliTests.Loudness' }
         @{ File = 'src/FrameReader/Loudness.cs'; Find = 'Get("sample_peak"), Get("true_peak")'; Replace = 'Get("sample_peak") - 0.05, Get("true_peak")'; Tests = 'LoudnessTests'; Project = 'tests/FrameReader.Tests' }
 
+        # SilenceFinder: silencedetect's counting, sample by sample: strictly under the level as a float, the duration
+        # rounded to the nearest instant, a count of every channel's samples in turn (not of instants), the start's arithmetic
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = 's < noise && s > -noise'; Replace = 's <= noise && s >= -noise'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '+ 500000) / 1000000'; Replace = ') / 1000000'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '_notify = _instants * channels;'; Replace = '_notify = (_instants * channels) - channels + 1;'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '(_position / _channels) + 1 - _instants'; Replace = '(_position / _channels) - _instants'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
+
         # --save-shotchanges: Subtitle Edit reads a plain list as seconds only when it has a '.', so whole seconds keep theirs
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'result.Cuts.Select(c => c.SecondsText())'; Replace = 'result.Cuts.Select(c => c.Seconds.ToString(CultureInfo.InvariantCulture))'; Tests = 'ShotChangesTests' }
     )

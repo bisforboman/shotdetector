@@ -11,6 +11,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 ## Next
 
+- The managed measures in FrameReader for shotdetector-web and media-qc (#646): `SilenceFinder` and `PictureMeter`, the picture at any depth and chroma layout (10-bit 4:2:2 too)
+  - Why: The owner's private QC tool (media-qc) and shotdetector-web need one implementation of the picture and sound measures, giving the same figures from FrameReader's FFmpeg decoder and ManagedCodecs' managed one; FrameReader hosts them (docs/decisions/2026-10-31-frame-reader-measures.md, widened by 2026-10-31-frame-reader-measures-widening.md). Slice 1, `LoudnessMeter`, is PR #655
+  - Status: In progress (2026-10-31: `SilenceFinder` first, then `PictureMeter`; the FrameReader release waits on the owner, then shotdetector-web switches)
+
 - Fix every divergence the real-world check finds
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
