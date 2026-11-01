@@ -431,12 +431,13 @@ static class Qc
             || bars.Any(b => f.Start >= b.Start.TotalSeconds && End(f) <= b.End.TotalSeconds);
         bool Judged(ShotDetector.FreezeSpan f) => f.Start >= edge && End(f) <= end - edge && !Inside(f);
         var mid = spans.Where(Judged).ToList();
+        bool pass = mid.Count == 0;
         string Span(ShotDetector.FreezeSpan f) => $"{Clock(TimeSpan.FromSeconds(f.Start))}-{(f.End is { } e ? Clock(TimeSpan.FromSeconds(e)) : "end")}";
         string measured = spans.Count == 0 ? "none"
             : mid.Count == 0 ? $"{spans.Count} not judged (head, tail, black or bars): {string.Join(", ", spans.Select(Span))}"
             : $"{mid.Count} mid-programme: {string.Join(", ", mid.Select(Span))}";
         return new("freeze",
-            mid.Count == 0,
+            pass,
             measured,
             string.Create(CultureInfo.InvariantCulture, $"none of {freezeMin} s+ past {edge} s from either end"),
             j =>
