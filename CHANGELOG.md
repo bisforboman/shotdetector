@@ -6,6 +6,39 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.25.0 – 2026-11-01
+
+Contact sheets, and frames from the caller with reference-tone trimming, deinterlaced ranges, LoadScenes and odd heights.
+
+### New
+
+- `shotdetect --contact-sheet <file.png|file.pdf>`: a contact sheet, a row per shot with its number, start timecode and
+  length, then the frames `--save-images` picks, `--contact-sheet-width` pixels wide (320 by default); the PDF has A4
+  pages for long films (issue #649).
+- Ranges: `ScoreRange`, `ScoreRangeAsync` and `Merge` take deinterlacing (`Deinterlace` On, or Auto on an interlaced
+  field order, with FastYuv's `Yadif`). Before, they refused it. A range is given one more frame on each side for yadif:
+  from `firstFrame - 2` to two frames past its end. The merge, and a run resumed from earlier ranges' scores, give the
+  sequential deinterlaced result byte for byte, shots told as they come too (issue #628,
+  docs/decisions/2026-10-31-deinterlaced-ranges.md).
+- Ranges: `ShotDetection.RangeFrames(video, options, firstFrame, endFrame)` gives the frames to give `ScoreRange` for
+  a range, one frame on each side or two when deinterlacing, so a host no longer encodes those margins
+  (docs/decisions/2026-10-31-range-frames.md).
+- `ShotDetection.LoadScenes(YuvVideo, TextReader, column, options)`: load-scenes for frames from the caller, with the
+  video's properties from `YuvVideo` and the scene list as text (a `StringReader` over a list edited in a browser), so
+  a frame-source host can export again from an edited cut list. It gives `LoadScenes(path)`'s shots, cuts, positions
+  and exports byte for byte, and needs no converter (issue #647, docs/decisions/2026-10-31-load-scenes-frame-source.md).
+- FastYuv converts 8-bit yuv420p and yuv422p (and yuvj) video of an odd decoded height too, at even widths: swscale
+  scales those (its unscaled converter needs an even height), and FastYuv now reproduces that path as x86 runs it
+  (`IYuvOddHeightConverter`, which `SwscaleYuv420` implements). So the file path with FastYuv gives x86's results for
+  them on ARM too, and frame sources (`Detect(YuvVideo, ...)`) take odd heights, with the chroma sited by
+  `YuvVideo.ChromaLocation`, where they were refused ("height must be even"). yuv444p, gray and odd sizes in both
+  directions stay refused on frame sources (issue #630, docs/decisions/2026-10-31-frame-source-odd-heights.md).
+- Frame sources: `TrimReferenceTone` on `Detect(YuvVideo, ...)` and `DetectAsync`, with the tone the host found in the
+  audio it decoded given as `YuvVideo.ReferenceTone` (FrameReader's `ReferenceToneFinder` finds it without FFmpeg): the
+  file path's trim and result, byte for byte, and the segments back in `DetectionResult.ReferenceTone`. Without them
+  it is refused as before, and ranges (`ScoreRange`, `Merge`) refuse it, as they refuse a time range (issue #629,
+  docs/decisions/2026-10-31-frame-source-tone.md).
+
 ## 3.24.0 – 2026-10-31
 
 Loudness checks, YouTube chapters and Subtitle Edit shot changes, and frame sources in more formats.
