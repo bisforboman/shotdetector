@@ -253,6 +253,15 @@ exits with 3 when integrated loudness is more than `--loudness-tolerance` (0.5 L
 or the true peak is above `--true-peak-max` (-1 dBTP), EBU R128's limits, so a pipeline can stop there;
 `--loudness-json` prints the figures at full precision with each verdict. Not in scenedetect.
 
+`shotdetect qc -i <file>` runs a file's delivery checks in one report: a table on standard output (each check's
+figure, limit and PASS, FAIL or INFO), `--json <file>` (or `-`) with every check and the failing ones named, and exit
+code 3 when any check is out of range (0 when all pass). For now it checks loudness, as `--loudness` does (which stays
+as its loudness check alone); broadcast range, bars and tone, black and frozen spans follow (issue #636). `--preset`
+picks the limits: `ebu-r128` (the default: -23 LUFS ±0.5 LU, true peak -1 dBTP), `atsc-a85` (-24 LKFS ±2 LU,
+-2 dBTP), `streaming-14` and `streaming-16` (±1 LU, -1 dBTP); `--loudness-target`, `--loudness-tolerance` and
+`--true-peak-max` override them, and `--loudness-preset` gives `--loudness` the same presets
+([why](docs/decisions/2026-11-01-delivery-qc.md)). Not in scenedetect.
+
 ## Using the shot list
 
 ```

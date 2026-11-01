@@ -4,6 +4,7 @@ using ShotDetector;
 
 const string Usage = """
     Usage: shotdetect -i <video> [options]
+           shotdetect qc -i <file> [options]   delivery checks (loudness ...): shotdetect qc --help
 
       -i, --input <file|url|->           Video file, a URL (http, rtsp, ...), or - for standard input
 
@@ -115,6 +116,8 @@ const string Usage = """
           --loudness-target <LUFS>       Integrated loudness target (default -23, EBU R128)
           --loudness-tolerance <LU>      How far from the target still passes (default 0.5)
           --true-peak-max <dBTP>         Highest true peak that passes (default -1)
+          --loudness-preset <name>       The limits of a qc preset: ebu-r128 (default), atsc-a85, streaming-14,
+                                         streaming-16 (--loudness is qc's loudness check alone)
           --find-tone                    Only list reference tone (1 kHz line-up tone) in the audio, then stop;
                                          video or audio-only input. Not in scenedetect
           --trim-tone                    Leave reference tone at the start and end out of detection
@@ -126,7 +129,8 @@ const string Usage = """
 
 bool skipCuts = false, quiet = false, htmlNoImages = false, findTone = false, probe = false, probeJson = false;
 bool loudness = false, loudnessJson = false;
-double loudnessTarget = -23, loudnessTolerance = 0.5, truePeakMax = -1;
+double? loudnessTarget = null, loudnessTolerance = null, truePeakMax = null;
+var loudnessPreset = QcPreset.EbuR128;
 string? waveformPath = null, audioFilter = null, audioOut = null;
 var waveform = new FrameReader.WaveformOptions();
 var waveformBits = FrameReader.WaveformBits.Sixteen;
@@ -146,6 +150,10 @@ var given = new HashSet<string>();                 // options given on the comma
 Config? config = null;
 var images = new ImageOptions();
 var split = new SplitOptions();
+
+// shotdetect qc: the delivery checks, a command of its own (Qc.cs).
+if (args.Length > 0 && args[0] == "qc")
+    return Qc.Run(args[1..]);
 
 try
 {
@@ -483,6 +491,10 @@ try
                 truePeakMax = NextDouble();
                 loudness = true;
                 break;
+            case "--loudness-preset":
+                loudnessPreset = QcPreset.Named(Next());
+                loudness = true;
+                break;
             case "--find-tone":
                 findTone = true;
                 break;
@@ -585,7 +597,10 @@ try
         {
             FrameReader.FFmpegLibraries.Load(options.FfmpegDirectory);
             using var audio = new FrameReader.AudioReader(input);
-            var verdict = new LoudnessVerdict(FrameReader.Loudness.Measure(audio), loudnessTarget, loudnessTolerance, truePeakMax);
+            var verdict = new LoudnessVerdict(FrameReader.Loudness.Measure(audio),
+                loudnessTarget ?? loudnessPreset.Target,
+                loudnessTolerance ?? loudnessPreset.Tolerance,
+                truePeakMax ?? loudnessPreset.TruePeakMax);
             Console.WriteLine(loudnessJson ? verdict.Json() : string.Join(Environment.NewLine, verdict.Lines()));
             return verdict.Pass ? 0 : 3;
         }
