@@ -572,6 +572,12 @@
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'report.Where(c => c.Pass == false)'; Replace = 'report.Where(c => c.Pass == true && false)'; Tests = 'CliTests.Qc' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'return failing.Length == 0 ? 0 : 3;'; Replace = 'return 0;'; Tests = 'CliTests.Qc' }
         @{ File = 'src/ShotDetector.Cli/Program.cs'; Find = 'loudnessTolerance ?? loudnessPreset.Tolerance,'; Replace = 'loudnessTolerance ?? 0.5,'; Tests = 'CliTests.Qc' }
+        # ... broadcast range: --brng-max in percent, colour bars frames not judged; bars and tone judged only when required,
+        # overlapping in the first minute
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'if (m.IsBars(i))'; Replace = 'if (false && m.IsBars(i))'; Tests = 'CliTests.QcChecks' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'if (m.Brng(i) * 100 > brngMax)'; Replace = 'if (m.Brng(i) > brngMax)'; Tests = 'CliTests.QcChecks' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'require ? lineUp : null'; Replace = 'require ? true : null'; Tests = 'CliTests.QcChecks' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'o.Start < LineUpWindow'; Replace = 'o.Start >= LineUpWindow'; Tests = 'CliTests.QcChecks' }
         @{ File = 'src/FrameReader/Loudness.cs'; Find = 'Get("sample_peak"), Get("true_peak")'; Replace = 'Get("sample_peak") - 0.05, Get("true_peak")'; Tests = 'LoudnessTests'; Project = 'tests/FrameReader.Tests' }
 
         # PictureMeter: FFmpeg's picture filters at any depth without FFmpeg. blackdetect's pixel_black_th_i truncated (37,

@@ -261,4 +261,125 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
             Directory.Delete(dir, true);
         }
     }
+
+    // shotdetect qc's picture checks: broadcast range is signalstats' BRNG, YMIN and YMAX over the programme frames (the
+    // colour bars left out, docs/decisions/2026-11-01-delivery-qc.md), equal to ffmpeg's on the same frames; bars and
+    // tone are reported, and judged with --require-bars-tone. Needs SHOTDETECTOR_FFMPEG_LIBS (with ffmpeg beside them).
+    [Fact]
+    public void QcChecksBroadcastRangeAndBarsTone()
+    {
+        string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+        if (libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetect-qc-picture-").FullName;
+        try
+        {
+            static void Ffmpeg(params string[] args)
+            {
+                var psi = new ProcessStartInfo("ffmpeg") { RedirectStandardError = true };
+                foreach (string a in (string[])["-v", "error", "-y", .. args])
+                    psi.ArgumentList.Add(a);
+                using var p = Process.Start(psi)!;
+                string err = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+                Assert.True(p.ExitCode == 0, err);
+            }
+
+            // 6 s of SMPTE bars with 1 kHz tone, then 4 s of a test pattern with its luma lifted out of range.
+            string lineUp = Path.Combine(dir, "lineup.mkv"), plain = Path.Combine(dir, "plain.mkv");
+            Ffmpeg("-f",
+                "lavfi",
+                "-i",
+                "smptebars=s=320x240:r=25:d=6",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=s=320x240:r=25:d=4",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=f=1000:r=48000:d=6,volume=-15dB",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=f=440:r=48000:d=4,volume=-20dB",
+                "-filter_complex",
+                "[1]lutyuv=y=min(val*1.25\\,255)[l];[0][2][l][3]concat=n=2:v=1:a=1[v][a];[v]format=yuv420p[vo]",
+                "-map",
+                "[vo]",
+                "-map",
+                "[a]",
+                "-c:v",
+                "libx264",
+                "-qp",
+                "0",
+                "-c:a",
+                "pcm_s16le",
+                lineUp);
+            Ffmpeg("-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=2", "-vf", "format=yuv420p", "-c:v", "libx264", "-qp", "0", plain);
+
+            (int ExitCode, System.Text.Json.JsonElement Json) Qc(string file, params string[] more)
+            {
+                var (exitCode, output, err) = Run(["qc", "-i", file, "--ffmpeg-dir", libs, "--json", "-", .. more]);
+                Assert.True(exitCode is 0 or 3, err);
+                return (exitCode, System.Text.Json.JsonDocument.Parse(output).RootElement);
+            }
+
+            static System.Text.Json.JsonElement Check(System.Text.Json.JsonElement report, string name) =>
+                report.GetProperty("checks").EnumerateArray().Single(c => c.GetProperty("name").GetString() == name);
+            static string[] Failing(System.Text.Json.JsonElement report) =>
+                [.. report.GetProperty("failing").EnumerateArray().Select(f => f.GetString()!)];
+
+            // ffmpeg's signalstats on the programme frames (the first 150 are the bars).
+            string metadata = Path.Combine(dir, "signalstats.txt");
+            Ffmpeg("-noautorotate", "-i", lineUp, "-map", "0:v:0", "-vf", $"signalstats=stat=brng,metadata=mode=print:file={metadata.Replace("\\", "/").Replace(":", "\\:")}", "-f", "null", "-");
+            var frames = new List<Dictionary<string, string>>();
+            foreach (string line in File.ReadLines(metadata))
+            {
+                if (line.StartsWith("frame:", StringComparison.Ordinal))
+                    frames.Add([]);
+                else if (line.IndexOf('=', StringComparison.Ordinal) is int eq and > 0)
+                    frames[^1][line[..eq]] = line[(eq + 1)..];
+            }
+
+            var programme = frames.Skip(150).ToList();
+            double F(Dictionary<string, string> f, string key) => double.Parse(f["lavfi.signalstats." + key], System.Globalization.CultureInfo.InvariantCulture);
+            var (fails, report) = Qc(lineUp, "--checks", "range,bars-tone");
+            var range = Check(report, "broadcast-range");
+            Assert.Equal(3, fails);
+            Assert.Equal(["broadcast-range"], Failing(report));
+            Assert.Equal(150, range.GetProperty("barsFrames").GetInt32());
+            Assert.Equal(250, range.GetProperty("frames").GetInt32());
+            Assert.Equal(programme.Max(f => F(f, "BRNG")), range.GetProperty("measured").GetDouble(), 6);
+            Assert.Equal(programme.Count(f => F(f, "BRNG") > 0.01), range.GetProperty("framesOver").GetInt32());
+            Assert.Equal(programme.Min(f => F(f, "YMIN")), range.GetProperty("yMin").GetInt32());
+            Assert.Equal(programme.Max(f => F(f, "YMAX")), range.GetProperty("yMax").GetInt32());
+            Assert.Equal(6.84, range.GetProperty("at").GetDouble(), 6);
+            Assert.Equal(0, Qc(lineUp, "--checks", "range", "--brng-max", "16").ExitCode);
+
+            // Bars and tone: reported, not judged, unless required.
+            var barsTone = Check(report, "bars-tone");
+            Assert.Equal("info", barsTone.GetProperty("status").GetString());
+            var bars = Assert.Single(barsTone.GetProperty("bars").EnumerateArray());
+            Assert.Equal((0.0, 6.0), (bars.GetProperty("start").GetDouble(), bars.GetProperty("end").GetDouble()));
+            var tone = Assert.Single(barsTone.GetProperty("tone").EnumerateArray());
+            Assert.InRange(tone.GetProperty("start").GetDouble(), 0, 0.5);
+            Assert.InRange(tone.GetProperty("end").GetDouble(), 5.5, 6.5);
+            Assert.Equal("pass", Check(Qc(lineUp, "--checks", "bars-tone", "--require-bars-tone").Json, "bars-tone").GetProperty("status").GetString());
+
+            // A file without line-up passes the range and fails only when bars and tone are required; no audio, no loudness.
+            var (plainExit, plainReport) = Qc(plain);
+            Assert.Equal(0, plainExit);
+            Assert.Equal("pass", Check(plainReport, "broadcast-range").GetProperty("status").GetString());
+            Assert.Equal("info", Check(plainReport, "loudness").GetProperty("status").GetString());
+            var (required, requiredReport) = Qc(plain, "--require-bars-tone");
+            Assert.Equal(3, required);
+            Assert.Equal(["bars-tone"], Failing(requiredReport));
+            Assert.Equal(2, Run("qc", "-i", plain, "--brng-max", "101").ExitCode);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
