@@ -6,6 +6,43 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.26.0 – 2026-11-01
+
+Black and freeze spans on the detection pass, shotdetect qc (loudness presets, broadcast range, bars and tone, black, freeze), and RangeScores.EndFrame.
+
+### New
+
+- Black spans on the detection pass, as ffmpeg's blackdetect gives them, without a second decode:
+  `DetectionOptions.BlackDetect = new BlackDetectOptions()` (blackdetect's `d`, `pic_th` and `pix_th` as `MinDuration`,
+  `PictureThreshold` and `PixelThreshold`, its defaults) gives `DetectionResult.BlackSpans`. Each `BlackSpan` has its
+  first frame, black_end's frame and blackdetect's black_start and black_end in seconds, and prints as its log line.
+  Equal to `ffmpeg -vf blackdetect`'s on the executable and in-process paths, in parallel chunks, on a Stream and on
+  frames from the caller (`YuvVideo`); the frames as detection reads them (whole, every frame, deinterlaced when
+  deinterlacing, within the time range). Not for ranges yet (docs/decisions/2026-11-01-black-spans.md).
+- Still pictures on the detection pass, as ffmpeg's freezedetect gives them: `DetectionOptions.FreezeDetect = new
+  FreezeDetectOptions()` (freezedetect's `n` and `d` as `Noise` and `MinDuration`, its defaults) gives
+  `DetectionResult.FreezeSpans`. Each `FreezeSpan` has the still's first frame and freeze_start, and the first frame that
+  differs, freeze_end and freeze_duration (null for a still running to the end, as freezedetect prints no freeze_end).
+  Equal to `ffmpeg -vf freezedetect`'s on the executable and in-process paths, on a Stream and on frames from the caller;
+  with it the video is read in one pass (docs/decisions/2026-11-01-freeze-spans.md).
+- `shotdetect qc -i <file>`: a file's delivery checks in one report (a table on standard output, `--json`), exit code 3
+  when any check is out of range: loudness, with presets (`--preset ebu-r128`, the default, `atsc-a85`,
+  `streaming-14`, `streaming-16`), broadcast range, bars and tone, black and freeze, below (issue #636).
+  `--loudness` stays as its loudness check alone and takes the presets with `--loudness-preset`.
+- `shotdetect qc` checks broadcast range (signalstats' BRNG in every frame but colour bars at most `--brng-max`
+  percent, 1 by default, with the worst frame and the file's YMIN and YMAX, equal to ffmpeg's signalstats) and reports
+  colour bars and line-up tone, failing a file without both in its first minute with `--require-bars-tone`
+  (issue #636).
+- `shotdetect qc` checks black: ffmpeg's blackdetect spans of `--black-min` seconds (2) from the detection pass, a span
+  failing only mid-programme, more than `--edge` seconds (10) from the start and the end (issue #636).
+- `shotdetect qc` checks freeze: ffmpeg's freezedetect still pictures of `--freeze-min` seconds (2) from the detection
+  pass, failing only mid-programme and not inside black spans or colour bars (issue #636).
+- Ranges: `RangeScores.EndFrame` is one past the last frame whose scores are final: `FirstFrame + FrameCount`, or one
+  less when the range was deinterlaced, whose last frame isn't final. The next range, or a run resumed from a stopped
+  one, starts at `EndFrame - 1` at the latest, so a host no longer works that out from `RangeFrames`' margins. Merge's
+  and ScoreRange's refusals of a range that starts too late now name the frame to start at
+  (docs/decisions/2026-11-01-range-scores-end-frame.md).
+
 ## 3.25.0 – 2026-11-01
 
 Contact sheets, and frames from the caller with reference-tone trimming, deinterlaced ranges, LoadScenes and odd heights.

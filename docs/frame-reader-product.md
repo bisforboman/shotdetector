@@ -68,7 +68,9 @@ choice: don't split, keep counting (docs/decisions/2026-10-30-framereader-stays-
 (the macOS libraries built on macos-15, no FrameReader feature), so the window joins the next release's. 2.18.0: 1 of 2 needing both
 (EBU R128 loudness through ebur128, with `shotdetect --loudness` in the same PR, issue #636; `LoudnessMeter` without FFmpeg,
 issue #646, alone), recorded as information since 2026-10-31. 2.19.0: 0 of 4 (`SilenceFinder`,
-`PictureMeter`, channel layouts by names, all issue #646, and the odd-size fix, issue #656: each FrameReader alone).
+`PictureMeter`, channel layouts by names, all issue #646, and the odd-size fix, issue #656: each FrameReader alone). 2.20.0: 2 of 2
+needing both (black spans, #681, and freeze spans, #687: each FrameReader's detector with ShotDetector's
+detection-pass option in the same PR).
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
