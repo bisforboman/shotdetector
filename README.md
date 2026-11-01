@@ -222,8 +222,9 @@ available there (see "Versions"). The scenedetect 0.6.4 mode was dropped in 0.9.
 A runnable example of the library end to end (probe, shots, reference tone, a waveform with FrameReader) is in
 [examples/ShotDetector.Example](examples/ShotDetector.Example/Program.cs): `dotnet run --project examples/ShotDetector.Example -- video.mp4`.
 
-[examples/VideoRag](examples/VideoRag/README.md) turns a video into searchable chunks for RAG, one per shot with its
-times, through Microsoft.Extensions.DataIngestion (preview) into an in-memory vector store; a sample, not a package.
+[shotdetector-videorag](https://github.com/bisforboman/shotdetector-videorag) turns a video into searchable chunks for
+RAG, one per shot with its times, through Microsoft.Extensions.DataIngestion (preview) into an in-memory vector store;
+a sample in its own repository, on ShotDetector from NuGet.
 
 ## Command line
 

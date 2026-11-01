@@ -45,3 +45,6 @@ The enricher's captions and the vector store's embeddings need a chat model and 
 ### Answer
 
 **1** (the owner, 2026-10-31).
+
+Since 2026-11-01 ([2026-11-01-videorag-repo.md](2026-11-01-videorag-repo.md)) the sample lives in its own repository,
+bisforboman/shotdetector-videorag, so the first answer above no longer holds.
