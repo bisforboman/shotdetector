@@ -171,4 +171,94 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
             Directory.Delete(dir, true);
         }
     }
+
+    // shotdetect qc: loudness checks against the presets (docs/decisions/2026-11-01-delivery-qc.md), the same ebur128
+    // figures as --loudness; exit 3 and the failing checks named when any judged check is out of range. Needs
+    // SHOTDETECTOR_FFMPEG_LIBS (in-process only, like --loudness).
+    [Fact]
+    public void QcJudgesLoudnessAgainstThePresets()
+    {
+        string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+        if (libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetect-qc-").FullName;
+        try
+        {
+            string wav = Path.Combine(dir, "tone.wav");
+            using (var ffmpeg = Process.Start("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "aevalsrc=0.1*sin(440*2*PI*t)|0.08*sin(660*2*PI*t):s=48000:d=4", "-c:a", "pcm_s16le", wav]))
+                ffmpeg.WaitForExit();
+            static string N(double v) => v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            (int ExitCode, System.Text.Json.JsonElement Json) Qc(params string[] more)
+            {
+                var (exitCode, output, err) = Run(["qc", "-i", wav, "--ffmpeg-dir", libs, "--json", "-", .. more]);
+                Assert.True(exitCode is 0 or 3, err);
+                return (exitCode, System.Text.Json.JsonDocument.Parse(output).RootElement);
+            }
+
+            static System.Text.Json.JsonElement Check(System.Text.Json.JsonElement report, string name) =>
+                report.GetProperty("checks").EnumerateArray().Single(c => c.GetProperty("name").GetString() == name);
+            static string[] Failing(System.Text.Json.JsonElement report) =>
+                [.. report.GetProperty("failing").EnumerateArray().Select(f => f.GetString()!)];
+
+            // The figures are --loudness's.
+            var (_, loudness, _) = Run("-i", wav, "--ffmpeg-dir", libs, "--loudness-json");
+            var expected = System.Text.Json.JsonDocument.Parse(loudness).RootElement;
+            var (_, report) = Qc();
+            double integrated = expected.GetProperty("integrated").GetDouble(), truePeak = expected.GetProperty("truePeak").GetDouble();
+            Assert.Equal(integrated, Check(report, "integrated-loudness").GetProperty("measured").GetDouble());
+            Assert.Equal(truePeak, Check(report, "true-peak").GetProperty("measured").GetDouble());
+            Assert.Equal(expected.GetProperty("range").GetDouble(), Check(report, "loudness-range").GetProperty("measured").GetDouble());
+            Assert.Equal(expected.GetProperty("samplePeak").GetDouble(), Check(report, "sample-peak").GetProperty("measured").GetDouble());
+            Assert.Equal("info", Check(report, "loudness-range").GetProperty("status").GetString());
+
+            // Each preset's limits; EBU R128 by default.
+            foreach (var (preset, target, tolerance, max) in new[] { ("ebu-r128", -23.0, 0.5, -1.0), ("atsc-a85", -24, 2, -2), ("streaming-14", -14, 1, -1), ("streaming-16", -16, 1, -1) })
+            {
+                var (_, r) = Qc("--preset", preset);
+                Assert.Equal(preset, r.GetProperty("preset").GetString());
+                Assert.Equal(target, Check(r, "integrated-loudness").GetProperty("target").GetDouble());
+                Assert.Equal(tolerance, Check(r, "integrated-loudness").GetProperty("tolerance").GetDouble());
+                Assert.Equal(max, Check(r, "true-peak").GetProperty("max").GetDouble());
+            }
+
+            Assert.Equal("ebu-r128", report.GetProperty("preset").GetString());
+
+            // Pass and fail on each side of the tolerance, the preset's or given; the failing checks named.
+            var (pass, passing) = Qc("--loudness-target", N(integrated + 0.4));
+            Assert.Equal(0, pass);
+            Assert.True(passing.GetProperty("pass").GetBoolean());
+            Assert.Empty(Failing(passing));
+            var (fail, failed) = Qc("--loudness-target", N(integrated + 0.6));
+            Assert.Equal(3, fail);
+            Assert.Equal(["integrated-loudness"], Failing(failed));
+            Assert.Equal(0, Qc("--preset", "atsc-a85", "--loudness-target", N(integrated - 1.5)).ExitCode);
+            Assert.Equal(3, Qc("--preset", "atsc-a85", "--loudness-target", N(integrated - 2.5)).ExitCode);
+            Assert.Equal(0, Qc("--preset", "streaming-14", "--loudness-target", N(integrated + 0.9)).ExitCode);
+            var (both, bothFailed) = Qc("--loudness-target", N(integrated + 5), "--true-peak-max", N(truePeak - 0.1));
+            Assert.Equal(3, both);
+            Assert.Equal(["integrated-loudness", "true-peak"], Failing(bothFailed));
+
+            // The table on standard output, the JSON in a file.
+            string json = Path.Combine(dir, "qc.json");
+            var (exitCode, text, err) = Run("qc", "-i", wav, "--ffmpeg-dir", libs, "--json", json, "--loudness-target", N(integrated + 5));
+            Assert.True(exitCode == 3, err);
+            Assert.Matches(@"(?m)^integrated-loudness +-?\d+\.\d LUFS +.+ FAIL\r?$", text);
+            Assert.Contains("qc: FAIL (ebu-r128): integrated-loudness", text, StringComparison.Ordinal);
+            Assert.Equal(["integrated-loudness"], Failing(System.Text.Json.JsonDocument.Parse(File.ReadAllText(json)).RootElement));
+
+            // --loudness takes the presets too.
+            var (_, viaPreset, _) = Run("-i", wav, "--ffmpeg-dir", libs, "--loudness-json", "--loudness-preset", "atsc-a85");
+            var atsc = System.Text.Json.JsonDocument.Parse(viaPreset).RootElement;
+            Assert.Equal((-24.0, 2.0, -2.0), (atsc.GetProperty("target").GetDouble(), atsc.GetProperty("tolerance").GetDouble(), atsc.GetProperty("truePeakMax").GetDouble()));
+
+            // Usage errors.
+            Assert.Equal(2, Run("qc", "-i", wav, "--checks", "bogus").ExitCode);
+            Assert.Equal(2, Run("qc", "-i", wav, "--preset", "bogus").ExitCode);
+            Assert.Equal(2, Run("qc").ExitCode);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }

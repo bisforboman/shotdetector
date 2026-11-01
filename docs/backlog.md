@@ -35,6 +35,9 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
   - Status: Open
 
+- `shotdetect qc`, the delivery-QC command: loudness, broadcast range, bars and tone, black, freeze (#636)
+  - Why: What broadcasters check before accepting a file, in one command with a text and JSON report and one exit code (0 pass, 3 any check out of range); the open counterpart of the owner's media-qc, on FrameReader's measures. Scoping: docs/ideas/delivery-qc.md; the owner's answers: docs/decisions/2026-11-01-delivery-qc.md (a subcommand; freeze in scope; presets EBU R128, ATSC A/85, streaming -14/-16; `--loudness` kept as its alias; bars and tone reported, `--require-bars-tone` optional; black and freeze spans from the detection pass)
+  - Status: Building (2026-11-01). Slices: 1 `qc` with loudness and the presets; 2 broadcast range and bars and tone (`PictureMeter`, `ReferenceTone`); 3 black spans (after `DetectionOptions.BlackDetect` / `DetectionResult.BlackSpans`, from the #629/#630 session); 4 freeze spans (the same way); 5 the HTML report
 
 ## Waiting
 
@@ -122,15 +125,11 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - A Jellyfin plugin: chapters from shots, credits and black segments (#634)
   - Why: Most rips have no chapters; Jellyfin 12 is net10.0 and ships jellyfin-ffmpeg 8.1. Scoping: docs/ideas/jellyfin-plugin.md (4-6 PRs; six owner questions)
-  - Status: Maybe; first slice (scheduled task saving the strongest cut per N minutes as chapters) waits on the owner creating bisforboman/jellyfin-plugin-shotdetector (GPL-3.0)
+  - Status: Building in its own repository, bisforboman/jellyfin-plugin-shotchapters (GPL-3.0, docs/decisions/2026-10-31-jellyfin-plugin.md): v0.1.0 shipped with chapters from shots and black segments; its black spans are to come from ShotDetector's detection pass (docs/decisions/2026-11-01-jellyfin-black-spans.md)
 
 - A video reader for Microsoft.Extensions.DataIngestion (#635)
   - Why: Video as searchable, timestamped chunks in .NET RAG pipelines. Scoping: docs/ideas/dataingestion-video-reader.md (verdict park: a preview API, waits on StanzaSharp#233)
-  - Status: Maybe; first slice (examples/VideoRag, PR #641) in progress 2026-10-31
-
-- A delivery-QC command: black, bars and tone, broadcast range, loudness (#636)
-  - Why: What broadcasters check before accepting a file, mostly built already (FFmpeg's ebur128 through FrameReader, shotdetector-web's picture measures). Scoping: docs/ideas/delivery-qc.md (6-8 PRs; owner questions on where PictureMeter lives, subcommand or tool, freeze detection)
-  - Status: Maybe; first slice (`shotdetect --loudness`, PR #642) in progress 2026-10-31
+  - Status: Maybe; first slice done 2026-10-31 (examples/VideoRag, #641: a section per shot, middle-frame stills; docs/decisions/2026-10-31-videorag-sample.md); the rest waits on StanzaSharp#233
 
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and
 why: [decisions/](decisions/).

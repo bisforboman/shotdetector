@@ -563,6 +563,14 @@
         @{ File = 'src/ShotDetector.Cli/LoudnessVerdict.cs'; Find = 'Math.Abs(Result.Integrated - Target) <= Tolerance;'; Replace = 'Result.Integrated - Target <= Tolerance;'; Tests = 'CliTests.Loudness' }
         @{ File = 'src/ShotDetector.Cli/LoudnessVerdict.cs'; Find = 'public bool TruePeakPass => Result.TruePeak <= TruePeakMax;'; Replace = 'public bool TruePeakPass => true;'; Tests = 'CliTests.Loudness' }
         @{ File = 'src/ShotDetector.Cli/Program.cs'; Find = 'return verdict.Pass ? 0 : 3;'; Replace = 'return 0;'; Tests = 'CliTests.Loudness' }
+
+        # shotdetect qc: the presets' limits (docs/decisions/2026-11-01-delivery-qc.md), --loudness taking them, the failing
+        # checks named and the exit code
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'new("atsc-a85", -24, 2, -2),'; Replace = 'new("atsc-a85", -24, 0.5, -2),'; Tests = 'CliTests.Qc' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'new("streaming-14", -14, 1, -1),'; Replace = 'new("streaming-14", -14, 0.5, -1),'; Tests = 'CliTests.Qc' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'report.Where(c => c.Pass == false)'; Replace = 'report.Where(c => c.Pass == true && false)'; Tests = 'CliTests.Qc' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'return failing.Length == 0 ? 0 : 3;'; Replace = 'return 0;'; Tests = 'CliTests.Qc' }
+        @{ File = 'src/ShotDetector.Cli/Program.cs'; Find = 'loudnessTolerance ?? loudnessPreset.Tolerance,'; Replace = 'loudnessTolerance ?? 0.5,'; Tests = 'CliTests.Qc' }
         @{ File = 'src/FrameReader/Loudness.cs'; Find = 'Get("sample_peak"), Get("true_peak")'; Replace = 'Get("sample_peak") - 0.05, Get("true_peak")'; Tests = 'LoudnessTests'; Project = 'tests/FrameReader.Tests' }
 
         # PictureMeter: FFmpeg's picture filters at any depth without FFmpeg. blackdetect's pixel_black_th_i truncated (37,
