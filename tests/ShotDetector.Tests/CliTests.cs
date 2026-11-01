@@ -538,4 +538,71 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
             Directory.Delete(dir, true);
         }
     }
+
+    // shotdetect qc --html: one well-formed page (it parses as XML, a file name with '&' included), the checks table as the
+    // JSON's statuses, and the timeline's lanes with the judged black and freeze spans where they are
+    // (docs/decisions/2026-11-01-delivery-qc.md, item 14). Needs SHOTDETECTOR_FFMPEG_LIBS.
+    [Fact]
+    public void QcWritesAnHtmlReport()
+    {
+        string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+        if (libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetect-qc-html-").FullName;
+        try
+        {
+            // 45 s: bars 0-3, picture, a red still 14-18, picture, black 22-26, picture, bars 30-33, picture; no audio.
+            string clip = Path.Combine(dir, "bars & black.mkv"), html = Path.Combine(dir, "qc.html");
+            var psi = new ProcessStartInfo("ffmpeg") { RedirectStandardError = true };
+            string[] sources = ["smptebars=d=3", "testsrc2=d=11", "color=red:d=4", "testsrc2=d=4", "color=black:d=4", "testsrc2=d=4", "smptebars=d=3", "testsrc2=d=12"];
+            foreach (string a in (string[])["-v", "error", "-y", .. sources.SelectMany(src => (string[])["-f", "lavfi", "-i", src + ":s=160x120:r=10"]),
+                "-filter_complex", "[0][1][2][3][4][5][6][7]concat=n=8:v=1:a=0,format=yuv420p", "-c:v", "libx264", "-qp", "0", clip])
+            {
+                psi.ArgumentList.Add(a);
+            }
+
+            using (var p = Process.Start(psi)!)
+            {
+                string err = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+                Assert.True(p.ExitCode == 0, err);
+            }
+
+            var (exitCode, json, stderr) = Run("qc", "-i", clip, "--ffmpeg-dir", libs, "--html", html, "--json", "-");
+            Assert.True(exitCode == 3, stderr);
+            var report = System.Text.Json.JsonDocument.Parse(json).RootElement;
+            var page = System.Xml.Linq.XDocument.Load(html);
+            System.Xml.Linq.XNamespace x = "http://www.w3.org/1999/xhtml", svg = "http://www.w3.org/2000/svg";
+            Assert.Equal("qc: bars & black.mkv", page.Descendants(x + "title").Single().Value);
+
+            // A row per check, with the JSON's status.
+            foreach (var check in report.GetProperty("checks").EnumerateArray())
+            {
+                string name = check.GetProperty("name").GetString()!;
+                var row = page.Descendants(x + "tr").Single(r => (string?)r.Attribute("id") == "check-" + name);
+                Assert.Equal(check.GetProperty("status").GetString()!.ToUpperInvariant(), row.Elements(x + "td").Last().Value);
+            }
+
+            // The lanes: one judged black span at 22-26 s and one judged freeze at 14-18 s, on a 45 s axis from x 80 to 970.
+            System.Xml.Linq.XElement Lane(string name) => page.Descendants(svg + "g").Single(g => (string?)g.Attribute("id") == "lane-" + name);
+            IEnumerable<System.Xml.Linq.XElement> Spans(string lane, bool judged) =>
+                Lane(lane).Elements(svg + "rect").Where(r => ((string?)r.Attribute("class"))?.Split(' ') is { } c && c.Contains("span") && c.Contains("judged") == judged);
+            static double A(System.Xml.Linq.XElement e, string name) => double.Parse((string)e.Attribute(name)!, System.Globalization.CultureInfo.InvariantCulture);
+            static double At(double t) => 80 + (t / 45 * 890);
+            var black = Assert.Single(Spans("black", true));
+            Assert.Equal(At(22), A(black, "x"), 2);
+            Assert.Equal(At(26) - At(22), A(black, "width"), 2);
+            var freeze = Assert.Single(Spans("freeze", true));
+            Assert.Equal(At(14), A(freeze, "x"), 2);
+            Assert.Equal(3, Spans("freeze", false).Count());
+            Assert.Equal(2, Spans("bars", false).Count());
+            Assert.Empty(Spans("tone", false));
+            Assert.Single(Lane("brng").Elements(svg + "line"), l => (string?)l.Attribute("class") == "limit");
+            Assert.DoesNotContain(page.Descendants(svg + "g"), g => (string?)g.Attribute("id") == "lane-audio");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }

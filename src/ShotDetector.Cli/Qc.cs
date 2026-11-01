@@ -30,6 +30,9 @@ sealed record QcPreset(string Name, double Target, double Tolerance, double True
 /// </summary>
 sealed record QcCheck(string Name, bool? Pass, string Measured, string Limit, Action<Utf8JsonWriter> Details)
 {
+    /// <summary>The check's spans for the HTML report's timeline (black, freeze, bars, tone), judged ones marked.</summary>
+    public IReadOnlyList<QcSpan> Spans { get; init; } = [];
+
     public string Status => Pass switch { true => "pass", false => "fail", null => "info" };
 }
 
@@ -72,13 +75,14 @@ static class Qc
               --require-bars-tone            Fail unless colour bars and 1 kHz line-up tone overlap in the first
                                              minute (default: bars and tone are reported, never judged)
               --json <file>                  Also write the report as JSON (- for standard output, then no table)
+              --html <file>                  Also write the report as one HTML page: the checks and a timeline
               --ffmpeg-dir <folder>          FFmpeg 8's shared libraries (default: the bundled ones, then the system's)
         """;
 
     /// <summary>Runs <c>shotdetect qc</c> with the arguments after <c>qc</c>; returns the exit code.</summary>
     public static int Run(string[] args)
     {
-        string? input = null, jsonPath = null, ffmpegDir = null;
+        string? input = null, jsonPath = null, htmlPath = null, ffmpegDir = null;
         var preset = QcPreset.EbuR128;
         double? target = null, tolerance = null, truePeakMax = null;
         double brngMax = 1;
@@ -141,6 +145,9 @@ static class Qc
                     case "--json":
                         jsonPath = Next();
                         break;
+                    case "--html":
+                        htmlPath = Next();
+                        break;
                     case "--ffmpeg-dir":
                         ffmpegDir = Next();
                         break;
@@ -170,10 +177,12 @@ static class Qc
             TruePeakMax = truePeakMax ?? preset.TruePeakMax,
         };
         var report = new List<QcCheck>();
+        var timeline = new QcTimeline { BrngMax = brngMax / 100 };
         try
         {
             FrameReader.FFmpegLibraries.Load(ffmpegDir);
             var info = FrameReader.MediaProbe.Probe(input);
+            timeline.Duration = info.Duration?.TotalSeconds ?? 0;
             if (checks.Contains("loudness"))
             {
                 if (info.HasAudio)
@@ -194,6 +203,13 @@ static class Qc
                 var (measures, timeBase, first) = Measure(input, (int)Math.Round(video.Rotation ?? 0));
                 TimeSpan Time(long pts) => TimeSpan.FromSeconds((double)(pts - first) * timeBase.Num / timeBase.Den);
                 bars = [.. measures.BarsSpans().Select(b => (Time(b.StartPts), Time(b.EndPts)))];
+                if (htmlPath is not null && range)
+                {
+                    for (int i = 0; i < measures.Count; i++)
+                        timeline.Brng.Add((Time(measures.Pts(i)).TotalSeconds, measures.Brng(i)));
+                    timeline.Duration = Math.Max(timeline.Duration, timeline.Brng[^1].Time);
+                }
+
                 if (range)
                     report.Add(RangeCheck(measures, brngMax, Time));
                 if (barsTone)
@@ -235,6 +251,7 @@ static class Qc
                     FreezeDetect = freeze ? new() { MinDuration = TimeSpan.FromSeconds(freezeMin) } : null,
                 });
                 double end = result.Shots[^1].End.Seconds;
+                timeline.Duration = Math.Max(timeline.Duration, end);
                 if (black)
                     report.Add(BlackCheck(result.BlackSpans ?? [], end, blackMin, edge));
                 if (freeze)
@@ -248,6 +265,26 @@ static class Qc
         }
 
         string[] failing = [.. report.Where(c => c.Pass == false).Select(c => c.Name)];
+        if (htmlPath is not null)
+        {
+            try
+            {
+                if (timeline.Duration > 0 && FrameReader.MediaProbe.Probe(input).HasAudio)
+                {
+                    // About four points per drawn unit of the timeline.
+                    using var audio = new FrameReader.AudioReader(input);
+                    timeline.Waveform = FrameReader.WaveformData.Read(audio, new() { PixelsPerSecond = Math.Max(1, (int)Math.Ceiling(4000 / timeline.Duration)) });
+                }
+            }
+            catch (FrameReader.FrameReaderException e)
+            {
+                Console.Error.WriteLine(e.Message);
+                return 1;
+            }
+
+            File.WriteAllText(htmlPath, QcHtml.Page(input, limits, report, failing, timeline));
+        }
+
         if (jsonPath is not null)
         {
             string json = Json(input, limits, report, failing);
@@ -372,7 +409,11 @@ static class Qc
             }
 
             j.WriteEndArray();
-        });
+        })
+        {
+            Spans = [.. bars.Select(b => new QcSpan("bars", b.Start.TotalSeconds, b.End.TotalSeconds, false)),
+                .. tone.Select(t => new QcSpan("tone", t.Start.TotalSeconds, t.End.TotalSeconds, false))],
+        };
     }
 
     /// <summary>
@@ -409,7 +450,10 @@ static class Qc
                 }
 
                 j.WriteEndArray();
-            });
+            })
+        {
+            Spans = [.. spans.Select(b => new QcSpan("black", b.Start, b.End, Judged(b)))],
+        };
     }
 
     /// <summary>
@@ -460,7 +504,10 @@ static class Qc
                 }
 
                 j.WriteEndArray();
-            });
+            })
+        {
+            Spans = [.. spans.Select(f => new QcSpan("freeze", f.Start, f.End, Judged(f)))],
+        };
     }
 
     static (TimeSpan Start, TimeSpan End)? Overlap(TimeSpan a0, TimeSpan a1, TimeSpan b0, TimeSpan b1) =>
