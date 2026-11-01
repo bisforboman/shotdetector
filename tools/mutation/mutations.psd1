@@ -589,6 +589,10 @@
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'f.Start >= edge && End(f) <= end - edge && !Inside(f)'; Replace = '!Inside(f)'; Tests = 'CliTests.QcJudgesFreezes' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'MinDuration = TimeSpan.FromSeconds(freezeMin)'; Replace = 'MinDuration = TimeSpan.FromSeconds(2)'; Tests = 'CliTests.QcJudgesFreezes' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'f.End ?? end'; Replace = 'f.End ?? double.PositiveInfinity'; Tests = 'CliTests.QcJudgesFreezes' }
+        # ... --html: names escaped (the page parses as XML), judged spans marked, times placed on the timeline
+        @{ File = 'src/ShotDetector.Cli/QcHtml.cs'; Find = 'WebUtility.HtmlEncode(text)'; Replace = 'text'; Tests = 'CliTests.QcWrites' }
+        @{ File = 'src/ShotDetector.Cli/QcHtml.cs'; Find = '(s.Judged ? " judged" : "")'; Replace = '""'; Tests = 'CliTests.QcWrites' }
+        @{ File = 'src/ShotDetector.Cli/QcHtml.cs'; Find = 'Math.Clamp(t, 0, duration) / duration * Inner'; Replace = 'Math.Clamp(t, 0, duration) / duration * Width'; Tests = 'CliTests.QcWrites' }
         @{ File = 'src/FrameReader/Loudness.cs'; Find = 'Get("sample_peak"), Get("true_peak")'; Replace = 'Get("sample_peak") - 0.05, Get("true_peak")'; Tests = 'LoudnessTests'; Project = 'tests/FrameReader.Tests' }
 
         # PictureMeter: FFmpeg's picture filters at any depth without FFmpeg. blackdetect's pixel_black_th_i truncated (37,

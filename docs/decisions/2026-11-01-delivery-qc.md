@@ -86,6 +86,12 @@ Questions 2, 3 and 5 were answered while moving shotdetector-web's managed measu
       freeze inside a black span or colour bars isn't judged, since line-up and black are static by design. *Chosen.*
     - Any freeze.
     - Report only.
+14. **The HTML report** (asked before slice 5).
+    - **The checks table and one timeline**: a self-contained page with no scripts, an inline SVG timeline with a lane
+      each for black, freeze, bars and tone (judged spans in red), each frame's BRNG against its limit, and the audio's
+      waveform (FrameReader's `WaveformData`). No images. *Chosen.*
+    - The same plus a still of the worst broadcast-range frame and of each judged black or frozen span.
+    - The table only.
 
 ## The slices
 
