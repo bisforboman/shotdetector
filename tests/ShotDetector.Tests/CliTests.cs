@@ -455,4 +455,87 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
             Directory.Delete(dir, true);
         }
     }
+
+    // shotdetect qc's freeze check: freezedetect's still pictures from the detection pass (DetectionOptions.FreezeDetect),
+    // equal to ffmpeg's; one fails only mid-programme and not inside black or colour bars, which are still by design
+    // (docs/decisions/2026-11-01-delivery-qc.md). Needs SHOTDETECTOR_FFMPEG_LIBS.
+    [Fact]
+    public void QcJudgesFreezesOutsideBlackAndBars()
+    {
+        string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+        if (libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetect-qc-freeze-").FullName;
+        try
+        {
+            static void Ffmpeg(params string[] args)
+            {
+                var psi = new ProcessStartInfo("ffmpeg") { RedirectStandardError = true };
+                foreach (string a in (string[])["-v", "error", "-y", .. args])
+                    psi.ArgumentList.Add(a);
+                using var p = Process.Start(psi)!;
+                string err = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+                Assert.True(p.ExitCode == 0, err);
+            }
+
+            static string[] Inputs(params string[] sources) => [.. sources.SelectMany(src => (string[])["-f", "lavfi", "-i", src + ":s=160x120:r=10"])];
+
+            // 45 s: bars 0-3, picture, a red still 14-18, picture, black 22-26, picture, bars 30-33, picture.
+            string clip = Path.Combine(dir, "freeze.mkv"), still = Path.Combine(dir, "still.mkv");
+            Ffmpeg([.. Inputs("smptebars=d=3", "testsrc2=d=11", "color=red:d=4", "testsrc2=d=4", "color=black:d=4", "testsrc2=d=4", "smptebars=d=3", "testsrc2=d=12"),
+                "-filter_complex", "[0][1][2][3][4][5][6][7]concat=n=8:v=1:a=0,format=yuv420p", "-c:v", "libx264", "-qp", "0", clip]);
+
+            // A red still to the end: freezedetect gives no freeze_end.
+            Ffmpeg([.. Inputs("testsrc2=d=3", "color=red:d=3"), "-filter_complex", "[0][1]concat=n=2:v=1:a=0,format=yuv420p", "-c:v", "libx264", "-qp", "0", still]);
+
+            (int ExitCode, System.Text.Json.JsonElement Freeze) Qc(string file, params string[] more)
+            {
+                var (exitCode, output, err) = Run(["qc", "-i", file, "--ffmpeg-dir", libs, "--checks", "freeze", "--json", "-", .. more]);
+                Assert.True(exitCode is 0 or 3, err);
+                return (exitCode, System.Text.Json.JsonDocument.Parse(output).RootElement.GetProperty("checks")[0]);
+            }
+
+            // ffmpeg's freezedetect (d=2) on the same file.
+            var log = new ProcessStartInfo("ffmpeg") { RedirectStandardError = true };
+            foreach (string a in (string[])["-hide_banner", "-nostats", "-i", clip, "-vf", "freezedetect=d=2", "-f", "null", "-"])
+                log.ArgumentList.Add(a);
+            string text;
+            using (var p = Process.Start(log)!)
+            {
+                text = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+            }
+
+            static double D(string v) => double.Parse(v, System.Globalization.CultureInfo.InvariantCulture);
+            double[] starts = [.. Regex.Matches(text, @"freeze_start: (\S+)").Select(m => D(m.Groups[1].Value))];
+            double[] ends = [.. Regex.Matches(text, @"freeze_end: (\S+)").Select(m => D(m.Groups[1].Value))];
+            Assert.Equal(4, starts.Length);
+
+            var (exitCode, freeze) = Qc(clip);
+            Assert.Equal(3, exitCode);
+            var spans = freeze.GetProperty("spans").EnumerateArray().ToList();
+            Assert.Equal(starts, spans.Select(f => Math.Round(f.GetProperty("start").GetDouble(), 6)));
+            Assert.Equal(ends, spans.Select(f => Math.Round(f.GetProperty("end").GetDouble(), 6)));
+            Assert.Equal([false, true, false, false], spans.Select(f => f.GetProperty("judged").GetBoolean()));
+            Assert.Equal([true, false, true, true], spans.Select(f => f.GetProperty("insideBlackOrBars").GetBoolean()));
+
+            // A wider edge takes the red still into the head; a longer minimum finds none.
+            Assert.Equal(0, Qc(clip, "--edge", "15").ExitCode);
+            var (longer, none) = Qc(clip, "--freeze-min", "5");
+            Assert.Equal(0, longer);
+            Assert.Empty(none.GetProperty("spans").EnumerateArray());
+
+            // A still running to the end has no end; it is judged to the video's end (here with no edge).
+            var (tail, tailFreeze) = Qc(still);
+            Assert.Equal(0, tail);
+            var open = Assert.Single(tailFreeze.GetProperty("spans").EnumerateArray());
+            Assert.Equal(System.Text.Json.JsonValueKind.Null, open.GetProperty("end").ValueKind);
+            Assert.Equal(3, Qc(still, "--edge", "0").ExitCode);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
