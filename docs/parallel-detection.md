@@ -165,6 +165,10 @@ there is no file to seek, so the host does what `ScoreChunked` does and ShotDete
   again. Deinterlacing is in the fingerprint only when it deinterlaces, so earlier ranges' fingerprints are unchanged.
 - **Which frames** (docs/decisions/2026-10-31-range-frames.md): `ShotDetection.RangeFrames(video, options, firstFrame,
   endFrame)` gives a range's frames, `From` to `To` - 1, with either margin, so a host doesn't encode them.
+- **Where scores end** (2026-11-01, docs/decisions/2026-11-01-range-scores-end-frame.md): `RangeScores.EndFrame` is one
+  past the last frame whose scores are final, one less than `FirstFrame + FrameCount` when deinterlacing. The next range,
+  or a run resumed from a stopped one, starts before it (at `EndFrame - 1` at the latest); a range given `RangeFrames`'
+  span for [first, end) ends at end + 1 either way.
 - **What can't be split** is refused rather than read sequentially: a time range, frame skip and
   `DetectionMode.Parallel`. Every detector works, with stats too (threshold's dedupe by position stays in Decide).
 - **Shots as they come** (`DetectionOptions.OnShot`, 2026-10-30, docs/decisions/2026-10-30-score-range-on-shot.md): a
