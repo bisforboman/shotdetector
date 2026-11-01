@@ -35,10 +35,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
   - Status: Open
 
-- `shotdetect qc`, the delivery-QC command: loudness, broadcast range, bars and tone, black, freeze (#636)
-  - Why: What broadcasters check before accepting a file, in one command with a text and JSON report and one exit code (0 pass, 3 any check out of range); the open counterpart of the owner's media-qc, on FrameReader's measures. Scoping: docs/ideas/delivery-qc.md; the owner's answers: docs/decisions/2026-11-01-delivery-qc.md (a subcommand; freeze in scope; presets EBU R128, ATSC A/85, streaming -14/-16; `--loudness` kept as its alias; bars and tone reported, `--require-bars-tone` optional; black and freeze spans from the detection pass)
-  - Status: Building (2026-11-01). Slices: 1 `qc` with loudness and the presets; 2 broadcast range and bars and tone (`PictureMeter`, `ReferenceTone`); 3 black spans (after `DetectionOptions.BlackDetect` / `DetectionResult.BlackSpans`, from the #629/#630 session); 4 freeze spans (the same way); 5 the HTML report
-
 ## Waiting
 
 - Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)
