@@ -215,7 +215,8 @@ Where ffmpeg's `-ss` can't seek, the reader gives the full decode's frame instea
   none at all.
 
 Audio: `AudioReader` reads the best audio stream as interleaved float32, at a chosen sample rate and channel count
-(default: the stream's own), the samples `ffmpeg -vn -ar R -ac C -f f32le` gives; `Seek(time)` as `-ss`.
+(default: the stream's own), the samples `ffmpeg -vn -ar R -ac C -f f32le` gives; `Seek(time)` as `-ss`;
+`Stream = N` reads the input's audio stream N instead, as `-map 0:a:N` (a file with stereo and 5.1 mixes: 0 and 1).
 
 ```csharp
 using var audio = new AudioReader("video.mp4", new() { SampleRate = 16000, Channels = 1 }); // e.g. for speech models

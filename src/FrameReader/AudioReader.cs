@@ -15,6 +15,14 @@ public sealed record AudioReaderOptions
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
 
     /// <summary>
+    /// Which audio stream to read, counted among the input's audio streams from 0 as ffmpeg's <c>-map 0:a:N</c> counts
+    /// them (a file with stereo and 5.1 tracks: 0 and 1); null: the best one (<c>av_find_best_stream</c>, what
+    /// ffmpeg's library picks without a map). A number past the last audio stream is an
+    /// <see cref="FrameReaderException"/> (<see cref="FrameReaderError.InvalidInput"/>).
+    /// </summary>
+    public int? Stream { get; init; }
+
+    /// <summary>
     /// Stops opening and reading the input where FFmpeg waits, as on a network read (<see cref="OperationCanceledException"/>,
     /// or the read ends with an error); none by default.
     /// </summary>
@@ -50,7 +58,8 @@ public readonly ref struct AudioChunk
 }
 
 /// <summary>
-/// Reads a media file's audio, in this process through FFmpeg's libraries: the first (best) audio stream decoded and
+/// Reads a media file's audio, in this process through FFmpeg's libraries: the best audio stream (or the one
+/// <see cref="AudioReaderOptions.Stream"/> names) decoded and
 /// converted with swresample to interleaved float32 at a chosen rate and channel count, the samples ffmpeg's command
 /// line gives for <c>-vn -ar R -ac C -f f32le</c>. Chunks of whatever size the decoder gives.
 /// </summary>
@@ -96,13 +105,19 @@ public sealed unsafe class AudioReader : IDisposable
         var o = options ?? new AudioReaderOptions();
         if (o.SampleRate <= 0 || o.Channels <= 0)
             throw new ArgumentException("SampleRate and Channels are positive when set.", nameof(options));
+        if (o.Stream < 0)
+            throw new ArgumentException("Stream counts the audio streams from 0.", nameof(options));
         _io = io;
         try
         {
             FFmpegLibraries.Load();
             _fmt = Demuxer.Open(path, o.InputOptions, io, o.CancellationToken);
             AVCodec* codec = null;
-            _stream = ffmpeg.av_find_best_stream(_fmt, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
+            _stream = o.Stream is { } wanted ? AudioStream(_fmt, wanted) : ffmpeg.av_find_best_stream(_fmt, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
+            if (o.Stream is not null && _stream >= 0)
+                codec = ffmpeg.avcodec_find_decoder(_fmt->streams[_stream]->codecpar->codec_id);
+            if (_stream < 0 && o.Stream is { } n)
+                throw new FrameReaderException(FrameReaderError.InvalidInput, $"The input has no audio stream {n} (as -map 0:a:{n}): it has {AudioStreams(_fmt)}.");
             if (_stream < 0 || codec == null)
                 throw new FrameReaderException(FrameReaderError.InvalidInput, "The input has no audio stream that these FFmpeg libraries decode.");
             var st = _fmt->streams[_stream];
@@ -330,6 +345,30 @@ public sealed unsafe class AudioReader : IDisposable
     internal TimeSpan? Duration => _fmt->duration > 0 ? TimeSpan.FromTicks(_fmt->duration * 10) : null;
 
     internal int StreamIndex => _stream;
+
+    // The index in the container of its audio stream number n (counted as -map 0:a:n counts them); -1 when there is none.
+    static int AudioStream(AVFormatContext* fmt, int n)
+    {
+        for (int i = 0, seen = 0; i < fmt->nb_streams; i++)
+        {
+            if (fmt->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_AUDIO && seen++ == n)
+                return i;
+        }
+
+        return -1;
+    }
+
+    static int AudioStreams(AVFormatContext* fmt)
+    {
+        int count = 0;
+        for (int i = 0; i < fmt->nb_streams; i++)
+        {
+            if (fmt->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_AUDIO)
+                count++;
+        }
+
+        return count;
+    }
 
     /// <summary>Where <see cref="TryDecode"/>'s positions count from, on <see cref="AudioChunk.Time"/>'s timeline.</summary>
     internal TimeSpan Origin => TimeSpan.FromTicks((_start - (_fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : _fmt->start_time)) * 10);
