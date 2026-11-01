@@ -375,6 +375,8 @@ public static partial class ShotDetection
     {
         if (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null)
             throw new ArgumentException("A time range (StartTime, EndTime, Duration) isn't available for ranges: score the whole video, from frame 0, in ranges.");
+        if (o.BlackDetect is not null)
+            throw new ArgumentException("BlackDetect isn't available for ranges yet: run Detect on the frames for black spans.");
         if (o.TrimReferenceTone)
             throw new ArgumentException("TrimReferenceTone isn't available for ranges: it sets a time range; score the whole video, and trim with Detect.");
         if (o.FrameSkip != 0)
@@ -723,7 +725,7 @@ public static partial class ShotDetection
         nameof(DetectionOptions.StartTime), nameof(DetectionOptions.EndTime), nameof(DetectionOptions.RangeDuration),
         nameof(DetectionOptions.Start), nameof(DetectionOptions.End), nameof(DetectionOptions.Duration),
         nameof(DetectionOptions.FrameSkip),
-        nameof(DetectionOptions.FfmpegResize), nameof(DetectionOptions.TrimReferenceTone), nameof(DetectionOptions.ReferenceTone),
+        nameof(DetectionOptions.FfmpegResize), nameof(DetectionOptions.TrimReferenceTone), nameof(DetectionOptions.ReferenceTone), nameof(DetectionOptions.BlackDetect),
         nameof(DetectionOptions.Progress), nameof(DetectionOptions.Warnings), nameof(DetectionOptions.OnShot),
         nameof(DetectionOptions.ProgressStep), nameof(DetectionOptions.OnProbe), nameof(DetectionOptions.OnFrameTimestamps),
         nameof(DetectionOptions.FrameTimestampsFirst), nameof(DetectionOptions.Streaming),

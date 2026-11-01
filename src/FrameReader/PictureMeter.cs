@@ -100,9 +100,8 @@ public sealed class PictureMeter
         int max = (1 << format.BitDepth) - 1;
         _factor = 1 << (format.BitDepth - 8);
 
-        // blackdetect's pixel_black_th_i, an unsigned int: 0.1 × max in full range, 16f + 0.1 × 219 × f in limited,
-        // truncated (37 and 25 at 8 bits, 151 and 102 at 10).
-        _black = (uint)(format.FullRange ? blackPixelThreshold * max : (16 * _factor) + (blackPixelThreshold * (235 - 16) * _factor));
+        // blackdetect's pixel_black_th_i, an unsigned int (37 and 25 at 8 bits, 151 and 102 at 10, at its default 0.1).
+        _black = BlackPixels.Threshold(format.BitDepth, format.FullRange, blackPixelThreshold);
 
         // cropdetect's limit_upscaled: the float limit times max, in single precision, then lrint (24 at 8 bits, 96 at 10).
         _cropLimit = (int)Math.Round((double)(CropLimit * max), MidpointRounding.ToEven);

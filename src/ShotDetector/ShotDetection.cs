@@ -583,6 +583,16 @@ public sealed record DetectionOptions
     /// found).
     /// </summary>
     public FrameReader.ReferenceToneOptions ReferenceTone { get; init; } = new();
+
+    /// <summary>
+    /// ffmpeg's blackdetect on the same pass as detection (no second decode): its spans in
+    /// <see cref="DetectionResult.BlackSpans"/>, equal to <c>ffmpeg -vf blackdetect</c>'s on the video. null (the
+    /// default): not looked for. Each decoded frame is measured whole, as decoded: not cropped, not deinterlaced, every
+    /// frame (<see cref="FrameSkip"/> skips only the detectors' frames), within <see cref="StartTime"/> and
+    /// <see cref="EndTime"/> when set. The executable runs blackdetect in its own graph; in-process decoding and frames
+    /// from the caller measure with FrameReader's PictureMeter (the same counts). Not in scenedetect.
+    /// </summary>
+    public BlackDetectOptions? BlackDetect { get; init; }
 }
 
 /// <summary>How far <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/> has got.</summary>
@@ -631,6 +641,9 @@ public sealed record DetectionResult
 
     /// <summary>The reference tone found with <see cref="DetectionOptions.TrimReferenceTone"/>, else null.</summary>
     public IReadOnlyList<FrameReader.ToneSegment>? ReferenceTone { get; init; }
+
+    /// <summary>The black spans found with <see cref="DetectionOptions.BlackDetect"/>, in order, else null.</summary>
+    public IReadOnlyList<BlackSpan>? BlackSpans { get; init; }
 
     /// <summary>
     /// What the caller should know about how the video was read, one sentence each; empty when nothing (never null).
@@ -1466,6 +1479,7 @@ public static partial class ShotDetection
             Stats = stats,
             Cuts = Unique(cuts),
             ReferenceTone = tone,
+            BlackSpans = o.BlackDetect is { } bd ? (video.Black ?? new BlackFrames(1, startFrame)).Spans(bd, frameCount) : null,
             Warnings = warnings,
         };
     }
@@ -1478,6 +1492,7 @@ public static partial class ShotDetection
     {
         if (o.TrimReferenceTone && !tone)
             throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately), or frames from the caller with YuvVideo.ReferenceTone.");
+        o.BlackDetect?.Check();
         if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null))
             throw new ArgumentException("TrimReferenceTone sets the time range itself; leave StartTime, EndTime and RangeDuration unset.");
         if (o.FrameSkip < 0)
@@ -1615,6 +1630,7 @@ public static partial class ShotDetection
         var overlap = new double?[chunks, settings.Count];
         var sizes = new (int, int)?[chunks];
         var chunkStats = new Stats?[chunks];
+        var chunkBlack = new BlackFrames?[chunks];
         var bounds = Enumerable.Range(0, chunks + 1).Select(i => (int)((long)total * i / chunks)).ToArray();
         string? problem = null;
         void Fail(string why) => Interlocked.CompareExchange(ref problem, why, null);
@@ -1658,6 +1674,7 @@ public static partial class ShotDetection
 
                 if (!last && k != b + 1)
                     Fail($"chunk {i}: {k - a} frames, expected {b + 1 - a}");
+                chunkBlack[i] = reader.Black;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
@@ -1701,6 +1718,22 @@ public static partial class ShotDetection
         var all = Enumerable.Range(0, settings.Count)
             .Select(d => Enumerable.Range(0, chunks).SelectMany(i => metrics[i, d]).ToList())
             .ToArray();
+
+        // blackdetect's judgements (each frame's alone): each chunk's own frames, from its first to the next chunk's, in
+        // order, for the spans over the whole run (BlackFrames.Spans), as a sequential read gives them.
+        if (o.BlackDetect is not null && chunkBlack[0] is { } firstBlack)
+        {
+            var joined = new BlackFrames(firstBlack.TimeBase, 0);
+            for (int i = 0; i < chunks; i++)
+            {
+                var c = chunkBlack[i]!;
+                int skip = bounds[i] - c.FirstFrame, take = i == chunks - 1 ? c.Frames.Count - skip : bounds[i + 1] - bounds[i];
+                joined.Frames.AddRange(c.Frames.Skip(skip).Take(take));
+            }
+
+            video.Black = joined;
+        }
+
         return (all, all[0].Count, [.. Enumerable.Range(0, chunks).Select(i => (chunkStats[i], bounds[i], i == chunks - 1 ? int.MaxValue : bounds[i + 1]))]);
     }
 

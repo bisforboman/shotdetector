@@ -305,6 +305,10 @@ internal sealed partial class VideoReader
     internal const string ProbeEntries = "stream=codec_name,field_order,width,height,pix_fmt,color_space,color_range,chroma_location,r_frame_rate,avg_frame_rate,time_base,start_pts,start_time,nb_frames,duration:stream_side_data=rotation:format=duration,format_name";
     readonly IYuv420Converter? _yuv420;
     readonly FrameReader.IRowDeinterlacer? _yadif;
+
+    // blackdetect on the frames read (DetectionOptions.BlackDetect): each frame's judgement in Black, as it is given.
+    readonly BlackDetectOptions? _blackDetect;
+    BlackFrame? _lastBlack;
     long[] _knownPts;                  // presentation timestamps of the frames, in display order (not when streaming); see Pts
 
     // MPEG-PS (packets without pts): each frame's timestamp comes with the frame in-process, or from ffprobe's pass
@@ -466,6 +470,7 @@ internal sealed partial class VideoReader
         Compatibility = compatibility;
         _yuv420 = o.Yuv420Converter;
         _yadif = o.Yadif;
+        _blackDetect = o.BlackDetect;
         _path = path;
         _stream = video;
         _decoding = new Decoding(this);
@@ -1462,8 +1467,44 @@ internal sealed partial class VideoReader
     /// index: libavformat's seek finds a packet by time, and decoding starts at the next keyframe after it), frames would
     /// be lost, so the read starts over from <see cref="SeekBackAgain"/> frames early, up to from the start.
     /// </remarks>
-    internal IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken = default, int seekBack = 2) =>
-        _decoding is { } decoding ? decoding.Frames(startFrame, count, cancellationToken, seekBack) : FramesFromCaller(startFrame, count, cancellationToken);
+    internal IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken = default, int seekBack = 2)
+    {
+        var frames = _decoding is { } decoding ? decoding.Frames(startFrame, count, cancellationToken, seekBack) : FramesFromCaller(startFrame, count, cancellationToken);
+        return _blackDetect is null ? frames : Judged(frames, startFrame);
+    }
+
+    /// <summary>
+    /// The frames of a read with blackdetect's judgement of each kept in <see cref="Black"/>, in the order given (a read
+    /// started again from further back gives each frame once: the judgement is the last one set before it came out).
+    /// </summary>
+    IEnumerable<byte[]> Judged(IEnumerable<byte[]> frames, int startFrame)
+    {
+        Black = null;
+        foreach (var frame in frames)
+        {
+            var judged = _lastBlack ?? throw new InvalidOperationException("A frame came without its black judgement.");
+            (Black ??= new BlackFrames(BlackTimeBase, startFrame)).Frames.Add(judged);
+            _lastBlack = null;
+            yield return frame;
+        }
+
+        Black ??= new BlackFrames(BlackTimeBase, startFrame);
+    }
+
+    /// <summary>
+    /// blackdetect's judgement of each frame the last read gave (<see cref="DetectionOptions.BlackDetect"/>), from its
+    /// first; null without it, or before a read.
+    /// </summary>
+    internal BlackFrames? Black { get; set; }
+
+    /// <summary>
+    /// The time base the black judgements' pts are in (av_q2d): blackdetect's input's, the stream's, or half of it after
+    /// yadif, which doubles the pts.
+    /// </summary>
+    double BlackTimeBase => (_blackTimeBase ?? (_frames is not null && !_framesTimed ? 1 / _framesRate : _timeBase)) / (_deinterlace && _blackTimeBase is null ? 2 : 1);
+
+    // The time base showinfo reports, beside blackdetect in the executable's graph.
+    double? _blackTimeBase;
 
     /// <summary>
     /// Where a read through the executable goes on after a frame whose chroma siting isn't the one its scale filter was
@@ -1635,12 +1676,20 @@ internal sealed partial class VideoReader
         string[] args = ["-v", "info", "-nostats", .. noStdin, "-y",
             "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount)}", .. seek, .. _inputOptions, .. IdctOptions(Codec, _xvidIdct), .. MaxPixels, "-noautorotate", "-i", _path,
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
-        select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + "showinfo=checksum=0"];
+
+        // blackdetect (DetectionOptions.BlackDetect) on the frames detection reads, as decoded (deinterlaced when
+        // deinterlacing): before the crop and the conversion. At d=0, so every run is marked (the duration is applied over
+        // the whole run's judgements, chunks joined: BlackFrames.Spans); metadata=print logs each mark with its frame's pts.
+        string black = _blackDetect is { } bd ? bd.Filter(0) + ",metadata=mode=print," : "";
+        select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + black + "showinfo=checksum=0"];
 
         // Deinterlacing first, so the frames a seek decodes early still feed yadif, as in the copy it stands for (the
         // select keeps the frame before the wanted one: keepBefore).
         if (_deinterlace)
             select = ["-vf", "yadif" + (select.Length > 0 ? "," + select[1] : "")];
+
+        // yadif doubles the pts (and halves the time base): the stream's start in showinfo's units.
+        long startScale = _deinterlace ? 2 : 1;
         string prefix = select.Length > 0 ? select[1] + "," : "";
 
         // The stream's size, explicitly: a frame of another size (a resolution change) is scaled to it in the same
@@ -1669,7 +1718,7 @@ internal sealed partial class VideoReader
         psi.ArgumentList.Add(server is null ? "-" : $@"\\.\pipe\{pipeName}");
 
         using var proc = Start(psi);
-        using var livePts = new BlockingCollection<(long Pts, bool NewLayout, string Size, FrameColourTags Tags)>();
+        using var livePts = new BlockingCollection<(long Pts, bool NewLayout, string Size, FrameColourTags Tags, BlackFrame Black)>();
         string streamSize = $"{_codedSize.W}x{_codedSize.H}"; // OpenCV's buffer, as scale= in the BGR pipelines
         double liveTimeBase = _timeBase;
         if (!Streaming && restart is null)
@@ -1691,8 +1740,14 @@ internal sealed partial class VideoReader
                 // read (or, without one, at the next frame's line or the end). A tag missing from its line, or garbled
                 // (ffmpeg's other threads can write into the middle of a line: the muxer's dts warnings on variable frame
                 // rate), is the previous frame's.
-                (long Pts, bool NewLayout, string Size, FrameColourTags Tags)? pending = null;
+                (long Pts, bool NewLayout, string Size, FrameColourTags Tags, BlackFrame Black)? pending = null;
                 FrameColourTags previous = default;
+
+                // blackdetect's marks (lavfi.black_start, lavfi.black_end at a frame's pts), in order, applied to each
+                // frame showinfo sees at or after them: whether it is black.
+                var marks = new Queue<(long Pts, bool Black)>();
+                long markPts = 0;
+                bool blackNow = false;
 
                 // Streamed (with -copyts, as files, so ffmpeg leaves a timestamp that starts over as it is, as OpenCV
                 // does): times from the input's start, as ffmpeg's shift without -copyts gives them. The start from the
@@ -1702,6 +1757,8 @@ internal sealed partial class VideoReader
                 string? line;
                 while ((line = proc.StandardError.ReadLine()) is not null)
                 {
+                    if (_blackDetect is not null && BlackMark(line, ref markPts, marks))
+                        continue;
                     var frame = ShowInfoLine().Match(line);
                     if (frame.Success)
                     {
@@ -1711,12 +1768,17 @@ internal sealed partial class VideoReader
                         // showinfo sees the decoded frame, before the output's -pix_fmt conversion.
                         var format = FormatField().Match(line);
                         long framePts = long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture);
+                        while (marks.TryPeek(out var mark) && mark.Pts <= framePts)
+                            blackNow = marks.Dequeue().Black;
+                        long start = Streaming ? MicrosIn(startMicros, timeBaseNum, timeBaseDen) : _startPts * startScale;
+                        var judged = new BlackFrame(framePts - start, blackNow);
                         if (Streaming)
-                            framePts -= MicrosIn(startMicros, timeBaseNum, timeBaseDen);
-                        (long, bool, string, FrameColourTags) info = (framePts,
+                            framePts -= start;
+                        (long, bool, string, FrameColourTags, BlackFrame) info = (framePts,
                             frame.Groups[2].Value != streamSize || (format.Success && format.Groups[1].Value != _pixelFormat),
                             frame.Groups[2].Value,
-                            previous = previous with { ChromaLocation = SitingField(line) ?? previous.ChromaLocation });
+                            previous = previous with { ChromaLocation = SitingField(line) ?? previous.ChromaLocation },
+                            judged);
                         if (yuv)
                             pending = info;
                         else
@@ -1738,6 +1800,7 @@ internal sealed partial class VideoReader
                         timeBaseNum = long.Parse(timeBase.Groups[1].Value, CultureInfo.InvariantCulture);
                         timeBaseDen = long.Parse(timeBase.Groups[2].Value, CultureInfo.InvariantCulture);
                         liveTimeBase = timeBaseNum / (double)timeBaseDen;
+                        _blackTimeBase = liveTimeBase; // blackdetect's, beside showinfo
                         if (Streaming)
                             _timeBase = liveTimeBase;
                         continue;
@@ -1932,6 +1995,7 @@ internal sealed partial class VideoReader
                 // A chunk's first frame must have the first chunk's size (ShotDetection.ScoreChunked), as in-process.
                 if (FirstFrameSize is null && info.Size.Split('x') is [var w, var h])
                     FirstFrameSize = (int.Parse(w, CultureInfo.InvariantCulture), int.Parse(h, CultureInfo.InvariantCulture));
+                _lastBlack = info.Black;
                 if (Streaming)
                     _livePts.Add(pts); // from the input's start already (the stderr reader)
                 else
@@ -2110,6 +2174,33 @@ internal sealed partial class VideoReader
             ColorSpace = ColourSpaces.Contains(space) ? space : frame.ColorSpace,
         };
     }
+
+    /// <summary>
+    /// A line of metadata=print after blackdetect (the executable's graph with <see cref="DetectionOptions.BlackDetect"/>):
+    /// a frame's header (its pts, kept in <paramref name="markPts"/>) or one of blackdetect's marks on it, queued in
+    /// <paramref name="marks"/>. False for any other line.
+    /// </summary>
+    internal static bool BlackMark(string line, ref long markPts, Queue<(long Pts, bool Black)> marks)
+    {
+        if (!line.StartsWith("[Parsed_metadata_", StringComparison.Ordinal))
+            return false;
+        var header = MetadataFrameLine().Match(line);
+        if (header.Success)
+        {
+            markPts = long.Parse(header.Groups[1].Value, CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        if (line.Contains("] lavfi.black_start=", StringComparison.Ordinal))
+            marks.Enqueue((markPts, true));
+        else if (line.Contains("] lavfi.black_end=", StringComparison.Ordinal))
+            marks.Enqueue((markPts, false));
+        return true;
+    }
+
+    // metadata=print's frame header: "[Parsed_metadata_1 @ 0x...] frame:73   pts:37376   pts_time:2.92".
+    [System.Text.RegularExpressions.GeneratedRegex(@"\] frame:\s*\d+\s+pts:\s*(-?\d+)\s")]
+    private static partial System.Text.RegularExpressions.Regex MetadataFrameLine();
 
     [System.Text.RegularExpressions.GeneratedRegex(@"config in time_base: (\d+)/(\d+)")]
     private static partial System.Text.RegularExpressions.Regex TimeBaseLine();
