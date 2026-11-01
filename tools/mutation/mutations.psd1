@@ -82,6 +82,11 @@
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'v072 ? 128 : 256'; Replace = '256'; Tests = 'VideoTests.HistogramAndHashDefaultsFollowTheCompatibilityRelease' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'v072 ? 8 : 16'; Replace = '16'; Tests = 'VideoTests.HistogramAndHashDefaultsFollowTheCompatibilityRelease' }
 
+        # Hash detector: the same bits on every runtime (near-flat frames, whose DCT is noise around the median): the
+        # defaults' cosine tables checked in (Math.Cos differs on browser-wasm), numpy's median of the two middle values
+        @{ File = 'src/ShotDetector/HashDetector.cs'; Find = 'HashCosines.For(n, rows) ?? '; Replace = ''; Tests = 'HashDetectorTests' }
+        @{ File = 'src/ShotDetector/HashDetector.cs'; Find = '(float)((float)(sorted[half - 1] + sorted[half]) / 2f)'; Replace = 'sorted[half]'; Tests = 'HashDetectorTests' }
+
         # Rotation as OpenCV's: the converted image turned by the display matrix's angle, not ffmpeg's autorotate
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '.. MaxPixels, "-noautorotate", "-i", _path,'; Replace = '.. MaxPixels, "-i", _path,'; Tests = 'InProcessTests.RotatesAsTheFfmpegExecutable' }
 
