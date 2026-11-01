@@ -382,4 +382,77 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
             Directory.Delete(dir, true);
         }
     }
+
+    // shotdetect qc's black check: blackdetect's spans from the detection pass (DetectionOptions.BlackDetect), equal to
+    // ffmpeg's; only a span away from the first and last --edge seconds fails (docs/decisions/2026-11-01-delivery-qc.md).
+    // Needs SHOTDETECTOR_FFMPEG_LIBS.
+    [Fact]
+    public void QcJudgesBlackOnlyMidProgramme()
+    {
+        string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
+        if (libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("shotdetect-qc-black-").FullName;
+        try
+        {
+            // 30 s: black 0-3 s, picture, black 14-17 s, picture, black 27-30 s.
+            string clip = Path.Combine(dir, "black.mkv");
+            var psi = new ProcessStartInfo("ffmpeg") { RedirectStandardError = true };
+            foreach (string a in (string[])["-v", "error", "-y", "-f", "lavfi", "-i", "color=black:s=160x120:r=10:d=3", "-f", "lavfi", "-i", "testsrc2=s=160x120:r=10:d=11",
+                "-f", "lavfi", "-i", "color=black:s=160x120:r=10:d=3", "-f", "lavfi", "-i", "testsrc2=s=160x120:r=10:d=10", "-f", "lavfi", "-i", "color=black:s=160x120:r=10:d=3",
+                "-filter_complex", "[0][1][2][3][4]concat=n=5:v=1:a=0,format=yuv420p", "-c:v", "libx264", "-qp", "0", clip])
+            {
+                psi.ArgumentList.Add(a);
+            }
+
+            using (var p = Process.Start(psi)!)
+            {
+                string err = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+                Assert.True(p.ExitCode == 0, err);
+            }
+
+            (int ExitCode, System.Text.Json.JsonElement Black) Qc(params string[] more)
+            {
+                var (exitCode, output, err) = Run(["qc", "-i", clip, "--ffmpeg-dir", libs, "--checks", "black", "--json", "-", .. more]);
+                Assert.True(exitCode is 0 or 3, err);
+                return (exitCode, System.Text.Json.JsonDocument.Parse(output).RootElement.GetProperty("checks")[0]);
+            }
+
+            // ffmpeg's blackdetect (d=2) on the same file.
+            var log = new ProcessStartInfo("ffmpeg") { RedirectStandardError = true };
+            foreach (string a in (string[])["-hide_banner", "-nostats", "-i", clip, "-vf", "blackdetect=d=2", "-f", "null", "-"])
+                log.ArgumentList.Add(a);
+            string text;
+            using (var p = Process.Start(log)!)
+            {
+                text = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+            }
+
+            var expected = Regex.Matches(text, @"black_start:(\S+) black_end:(\S+)")
+                .Select(m => (double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture), double.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture)))
+                .ToList();
+            Assert.Equal(3, expected.Count);
+
+            var (exitCode, black) = Qc();
+            Assert.Equal(3, exitCode);
+            Assert.Equal("fail", black.GetProperty("status").GetString());
+            var spans = black.GetProperty("spans").EnumerateArray().ToList();
+            Assert.Equal(expected, spans.Select(b => (Math.Round(b.GetProperty("start").GetDouble(), 6), Math.Round(b.GetProperty("end").GetDouble(), 6))));
+            Assert.Equal([false, true, false], spans.Select(b => b.GetProperty("judged").GetBoolean()));
+            Assert.Equal(1, black.GetProperty("judgedSpans").GetInt32());
+
+            // A wider edge takes the middle span into the head; a longer minimum finds none.
+            Assert.Equal(0, Qc("--edge", "15").ExitCode);
+            var (longer, none) = Qc("--black-min", "4");
+            Assert.Equal(0, longer);
+            Assert.Empty(none.GetProperty("spans").EnumerateArray());
+            Assert.Equal(2, Run("qc", "-i", clip, "--edge", "-1").ExitCode);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
