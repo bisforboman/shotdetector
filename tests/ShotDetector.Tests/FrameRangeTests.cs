@@ -708,6 +708,10 @@ public class FrameRangeTests
 
         Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Yuv420Converter = null }));
 
+        // Black spans aren't kept with a range's scores yet: refused.
+        Assert.Contains("BlackDetect isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { BlackDetect = new() })).Message);
+        Assert.Contains("BlackDetect isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.Merge(video, [ShotDetection.ScoreRange(video, all, 0, options)], options with { BlackDetect = new() })).Message);
+
         // The tone trim sets a time range: refused for ranges, even with the tone given.
         var toned = video with { ReferenceTone = [] };
         Assert.Contains("isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(toned, all, 0, options with { TrimReferenceTone = true })).Message);

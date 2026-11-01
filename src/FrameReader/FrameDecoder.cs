@@ -89,6 +89,9 @@ public sealed unsafe class FrameDecoder : IDisposable
     /// <summary>The codec's frame rate (the decoder context's; 0/1 when unknown).</summary>
     internal AVRational CodecFrameRate => _dec->framerate;
 
+    /// <summary>The current frame, as FFmpeg holds it (deinterlaced rows computed only where asked for: read its planes through <see cref="GetPlane"/>).</summary>
+    internal AVFrame* CurrentFrame => _frame;
+
     /// <summary>The stream's time base in seconds per pts unit.</summary>
     public Rational TimeBase => new(_timeBase.num, _timeBase.den);
 

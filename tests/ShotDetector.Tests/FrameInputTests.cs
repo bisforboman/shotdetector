@@ -838,6 +838,8 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(file.FrameCount, ours.FrameCount);
         Assert.Equal(file.MinSceneLengthFrames, ours.MinSceneLengthFrames);
         Assert.Equal(file.ReferenceTone, ours.ReferenceTone);
+        Assert.Equal(file.BlackSpans, ours.BlackSpans);
+        Assert.Equal(ours.BlackSpans, awaited.BlackSpans);
         Assert.Equal(ours.ReferenceTone, awaited.ReferenceTone);
         Assert.Equal(file.Cuts, ours.Cuts);
         Assert.Equal(file.Shots, ours.Shots);
@@ -1168,6 +1170,48 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
                 yield return new YuvFrame(y, ys, u, us, v, vs) { Width = decoder.Width, Height = decoder.Height, ColorSpace = decoder.ColorSpace, FullRange = decoder.ColorRange is { } range ? range == "pc" : null, ChromaLocation = decoder.ChromaLocation, Pts = decoder.Pts, Interlaced = flags[i].Interlaced, TopFieldFirst = flags[i].TopFieldFirst };
             }
         }
+    }
+
+    // Black spans (DetectionOptions.BlackDetect) from the frames given: blackdetect's count on each frame's luma as given,
+    // or deinterlaced whole when deinterlacing, at its own pts: the file path's spans. The clip fades through black (2 s)
+    // and ends black; 8-bit, 10-bit, and MBAFF H.264 deinterlaced (blackdetect after yadif, in its time base).
+    [Theory]
+    [InlineData("yuv420p", "")]
+    [InlineData("yuv420p10le", "")]
+    [InlineData("yuv420p", "tff")]
+    public async Task SameAsTheFileWithBlackSpans(string format, string interlaced)
+    {
+        if (Libs is null)
+            return;
+        string path = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, $"black-{format}-{interlaced}.mp4");
+        lock (H264Lock)
+        {
+            if (!File.Exists(path))
+            {
+                string partial = path + ".part.mp4";
+                string[] field = interlaced == "tff" ? ["-flags", "+ildct+ilme", "-top", "1"] : [];
+                VideoReader.Run("ffmpeg",
+                    ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=2,fade=out:st=1:d=1", "-f", "lavfi", "-i", "color=black:s=320x240:r=25:d=2",
+                        "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=2,fade=in:st=0:d=0.5", "-f", "lavfi", "-i", "color=black:s=320x240:r=25:d=0.6",
+                        "-filter_complex", "[0][1][2][3]concat=n=4:v=1", "-pix_fmt", format, "-c:v", "libx264", .. field, partial],
+                    default);
+                File.Move(partial, path, true);
+            }
+        }
+
+        var options = new DetectionOptions
+        {
+            Detector = DetectorKind.Content,
+            CollectStats = true,
+            FfmpegDirectory = Libs,
+            Decoder = VideoDecoder.InProcess,
+            Yuv420Converter = new SwscaleYuv420(),
+            BlackDetect = new BlackDetectOptions { MinDuration = TimeSpan.FromSeconds(0.2) },
+        };
+        if (interlaced.Length > 0)
+            options = options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
+        await AssertSame(path, options);
+        Assert.Equal(2, ShotDetection.Detect(path, options).BlackSpans!.Count);
     }
 
     /// <summary>

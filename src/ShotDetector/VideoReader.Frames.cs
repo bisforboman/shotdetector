@@ -123,7 +123,43 @@ internal sealed partial class VideoReader
         _framesTimed = video.TimeBase is not null;
         _timeBase = video.TimeBase is { } tb ? tb.Num / (double)tb.Den : 0;
         _startPts = video.StartPts;
+        _blackDetect = o.BlackDetect;
+        _framesFullRange = video.FullRange || video.PixelFormat.StartsWith("yuvj", StringComparison.Ordinal);
     }
+
+    // The video's range (full: yuvj, or YuvVideo.FullRange), each frame's own where it says (blackdetect's threshold).
+    bool _framesFullRange;
+
+    /// <summary>
+    /// blackdetect's judgement of frame <paramref name="k"/> (DetectionOptions.BlackDetect): its luma as given, or
+    /// deinterlaced whole when deinterlacing (yadif's doubled pts then), counted by FrameReader's
+    /// <see cref="FrameReader.BlackPixels"/>. Untimed frames (no <see cref="YuvVideo.TimeBase"/>) at k frames of the rate.
+    /// </summary>
+    unsafe BlackFrame JudgeBlack(int k, BlackDetectOptions o, FrameColourTags tags)
+    {
+        int w = _codedSize.W, h = _codedSize.H, b = BytesPerSample;
+        bool full = tags.ColorRange is { } range and not "" ? range == "pc" || _pixelFormat.StartsWith("yuvj", StringComparison.Ordinal) : _framesFullRange;
+        int depth = b == 2 ? 10 : 8;
+        uint threshold = FrameReader.BlackPixels.Threshold(depth, full, o.PixelThreshold);
+        int black;
+        if (_deinterlace)
+        {
+            _blackLuma ??= new byte[w * h * b];
+            var cur = _held![k % 3];
+            fixed (byte* p = _held[Math.Max(k - 1, 0) % 3], c = cur, n = _framesRead > k + 1 ? _held[(k + 1) % 3] : cur, d = _blackLuma)
+                DeinterlacePlane(_yadif!, p, c, n, d, w, h, Enumerable.Range(0, h), _heldTff[k % 3] ? 0 : 1, b);
+            black = FrameReader.BlackPixels.Count(_blackLuma, w * b, w, h, depth, threshold);
+        }
+        else
+        {
+            black = FrameReader.BlackPixels.Count(_currentFrame.Y.Span, _currentFrame.YStride, w, h, depth, threshold);
+        }
+
+        long pts = _framesTimed && k - _frameBase is >= 0 and var given && given < _framePts.Count ? _framePts[given] - _startPts : k;
+        return new BlackFrame(_deinterlace ? 2 * pts : pts, (double)black / (w * h) >= o.PictureThreshold);
+    }
+
+    byte[]? _blackLuma; // deinterlacing: a frame's whole luma, deinterlaced, for blackdetect
 
     /// <summary>What converting frames from the caller needs: the converter, yadif when deinterlacing, a format it takes (the size: the converter decides).</summary>
     static void CheckConversion(YuvVideo video, DetectionOptions o)
@@ -518,6 +554,8 @@ internal sealed partial class VideoReader
                 }
             }
 
+            if (_blackDetect is { } bd)
+                _lastBlack = JudgeBlack(k, bd, _deinterlace ? _heldTags[k % 3] : TagsOf(_currentFrame));
             yield return small;
         }
     }
@@ -532,23 +570,24 @@ internal sealed partial class VideoReader
         int cw = (w + 1) / 2, parity = tff ? 0 : 1; // yadif filters with parity tff ^ 1: these rows are interpolated
         fixed (byte* p = prev, c = cur, n = next, d = yuv)
         {
-            Plane(_yadif!, p, c, n, d, w, h, luma, parity, b);
+            DeinterlacePlane(_yadif!, p, c, n, d, w, h, luma, parity, b);
             int u = w * h * b;
-            Plane(_yadif!, p + u, c + u, n + u, d + u, cw, ch, chroma, parity, b);
+            DeinterlacePlane(_yadif!, p + u, c + u, n + u, d + u, cw, ch, chroma, parity, b);
             int v = ((w * h) + (cw * ch)) * b;
-            Plane(_yadif!, p + v, c + v, n + v, d + v, cw, ch, chroma, parity, b);
+            DeinterlacePlane(_yadif!, p + v, c + v, n + v, d + v, cw, ch, chroma, parity, b);
         }
+    }
 
-        static void Plane(FrameReader.IRowDeinterlacer yadif, byte* prev, byte* cur, byte* next, byte* dst, int width, int height, int[] rows, int parity, int b)
+    /// <summary>One plane's <paramref name="rows"/> of <see cref="Deinterlace"/> (packed, stride = width × bytes a sample).</summary>
+    static unsafe void DeinterlacePlane(FrameReader.IRowDeinterlacer yadif, byte* prev, byte* cur, byte* next, byte* dst, int width, int height, IEnumerable<int> rows, int parity, int b)
+    {
+        int stride = width * b;
+        foreach (int y in rows)
         {
-            int stride = width * b;
-            foreach (int y in rows)
-            {
-                if (((y ^ parity) & 1) != 0)
-                    yadif.FilterRow((nint)dst, (nint)prev, (nint)cur, (nint)next, stride, stride, width, height, y, b);
-                else
-                    new ReadOnlySpan<byte>(cur + ((long)y * stride), stride).CopyTo(new Span<byte>(dst + ((long)y * stride), stride));
-            }
+            if (((y ^ parity) & 1) != 0)
+                yadif.FilterRow((nint)dst, (nint)prev, (nint)cur, (nint)next, stride, stride, width, height, y, b);
+            else
+                new ReadOnlySpan<byte>(cur + ((long)y * stride), stride).CopyTo(new Span<byte>(dst + ((long)y * stride), stride));
         }
     }
 }

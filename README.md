@@ -177,6 +177,16 @@ that cuts one channel now and then (EBU, GLITS) is one run; beeps, music and run
 so FFmpeg's libraries are needed, and a file path (not a Stream or URL); frames from another decoder (below) take the
 tone their host found in the audio it decoded (FrameReader's `ReferenceToneFinder`, no FFmpeg) as `YuvVideo.ReferenceTone`.
 
+Black spans on the same pass (no second decode): `BlackDetect = new BlackDetectOptions()` (ffmpeg's blackdetect: `d`
+2 s, `pic_th` 0.98, `pix_th` 0.10 by default, as `MinDuration`, `PictureThreshold`, `PixelThreshold`) gives
+`DetectionResult.BlackSpans`, equal to `ffmpeg -vf blackdetect`'s on the video: each `BlackSpan` has its first frame
+and black_end's frame (the numbering of the shots' frames) and blackdetect's black_start and black_end in seconds, and
+prints as blackdetect's log line. Each frame is judged as detection reads it: whole (not cropped), every frame (not
+skipped), deinterlaced when deinterlacing (blackdetect after yadif), within the time range, times from the video
+stream's start. The ffmpeg executable runs blackdetect in its own graph; in-process decoding and frames from another
+decoder count the luma with FrameReader's `BlackPixels` (blackdetect's arithmetic); chunks read in parallel join
+(docs/decisions/2026-11-01-black-spans.md). Not in scenedetect, and off by default.
+
 Which decoder a run uses is in every `DetectionProgress` report (`DecodesInProcess`), from a first report
 sent before any frame, so `DetectStreamAsync` callers see it too. `ShotDetection.CanDecodeInProcess()` tells a worker at
 startup whether FFmpeg's libraries load; `VideoDecoder.InProcess` without them throws `ShotDetectionException` with

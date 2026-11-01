@@ -158,6 +158,20 @@ internal sealed partial class VideoReader
         deinterlaced ? bestEffort : framePts ?? bestEffort;
 
     /// <summary>Frames(startFrame, count) decoded in-process: the same bytes per pipeline as the ffmpeg pipe, then the same resize.</summary>
+    /// <summary>
+    /// blackdetect's judgement of the decoder's frame: black when the share of its luma at or under the pixel threshold
+    /// reaches the picture threshold (FrameReader's <see cref="FrameReader.BlackPixels"/>, blackdetect's count). Deinterlaced
+    /// frames in yadif's time base (its doubled pts), as blackdetect after yadif sees them.
+    /// </summary>
+    /// <exception cref="ShotDetectionException">The decoder's pixel format is one ffmpeg converts before blackdetect (RGB, packed YUV).</exception>
+    BlackFrame JudgeBlack(FrameReader.FrameDecoder decoder, BlackDetectOptions o, long pts)
+    {
+        var counted = FrameReader.BlackPixels.Of(decoder, o.PixelThreshold)
+            ?? throw new ShotDetectionException(ShotDetectionError.InvalidInput,
+                $"BlackDetect: the video decodes to {decoder.PixelFormat}, which ffmpeg converts before blackdetect; read it with the ffmpeg executable (Decoder = FfmpegProcess).");
+        return new BlackFrame(_deinterlace ? 2 * pts : pts, (double)counted.Black / counted.Pixels >= o.PictureThreshold);
+    }
+
     IEnumerable<byte[]> FramesInProcess(int startFrame, int? count, CancellationToken cancellationToken, int seekBack)
     {
         var pipeline = Pipeline;
@@ -205,6 +219,9 @@ internal sealed partial class VideoReader
             free.Add(new byte[size]);
         double timeBase = 0;
         bool late = false;
+
+        // blackdetect's judgements of the frames handed over, in their order (DetectionOptions.BlackDetect).
+        var judgements = new System.Collections.Concurrent.ConcurrentQueue<BlackFrame>();
 
         // With ConvertThreads (by default for HD: DefaultConvertThreads), converting runs on a thread of its own: the
         // decoding thread takes each frame (a reference to its buffers, not a copy) and hands it over through a short
@@ -353,6 +370,10 @@ internal sealed partial class VideoReader
                         break;
                     }
 
+                    // blackdetect's judgement of the frame (DetectionOptions.BlackDetect), read here, before it is taken.
+                    if (_blackDetect is { } bd)
+                        judgements.Enqueue(JudgeBlack(decoder, bd, Streaming ? pts + offset : pts - _startPts));
+
                     // The frame's colour tags (and MPEG-PS's timestamp), read here: a taken frame doesn't say them.
                     var tags = conversions is null ? default : FrameColourTags.Of(decoder);
                     long timestamp = collecting ? InProcessProbe.FrameTimestamp(decoder) : 0;
@@ -421,6 +442,8 @@ internal sealed partial class VideoReader
                 if (previous is not null)
                     free.Add(previous);
                 previous = null;
+                if (_blackDetect is not null)
+                    _lastBlack = judgements.TryDequeue(out var judged) ? judged : throw new InvalidOperationException("A frame came without its black judgement.");
                 if (Streaming)
                 {
                     _timeBase = timeBase;
