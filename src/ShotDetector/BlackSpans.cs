@@ -67,8 +67,18 @@ public readonly record struct BlackSpan(int StartFrame, int EndFrame, double Sta
     }
 }
 
-/// <summary>One frame's black judgement on the detection pass: its pts (from the video stream's start, in <see cref="BlackFrames.TimeBase"/>) and whether it is black.</summary>
-internal readonly record struct BlackFrame(long Pts, bool Black);
+/// <summary>
+/// One frame's black judgement on the detection pass: its pts (from the video stream's start, in
+/// <see cref="BlackFrames.TimeBase"/>) and whether it is black; through the executable with freeze detection, also
+/// freezedetect's marks on it (<see cref="FreezeMark"/>).
+/// </summary>
+internal readonly record struct BlackFrame(long Pts, bool Black, FreezeMark? Freeze = null);
+
+/// <summary>
+/// freezedetect's lines on a frame in the executable's log: the frame's own time as FFmpeg prints it, and the marks
+/// freezedetect set on it (freeze_start: the still picture's first frame's time; freeze_duration and freeze_end: it ends here).
+/// </summary>
+internal sealed record FreezeMark(string Time, string? Start, long? Micros, bool End);
 
 /// <summary>
 /// A run's frames' black judgements, in display order from <see cref="FirstFrame"/>, and their spans as blackdetect

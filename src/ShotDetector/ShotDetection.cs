@@ -593,6 +593,17 @@ public sealed record DetectionOptions
     /// from the caller measure with FrameReader's PictureMeter (the same counts). Not in scenedetect.
     /// </summary>
     public BlackDetectOptions? BlackDetect { get; init; }
+
+    /// <summary>
+    /// ffmpeg's freezedetect on the same pass as detection: its still pictures in <see cref="DetectionResult.FreezeSpans"/>,
+    /// equal to <c>ffmpeg -vf freezedetect</c>'s on the video. null (the default): not looked for. The frames are compared
+    /// as detection reads them, as for <see cref="BlackDetect"/> (whole, every frame, deinterlaced when deinterlacing,
+    /// within the time range). freezedetect compares each frame with a still picture's first, however far back, so the
+    /// video is read in one pass (<see cref="DetectionMode.Parallel"/> is told why). The executable runs freezedetect in its
+    /// own graph; in-process decoding and frames from the caller compare with FrameReader's FreezeDetector (the same
+    /// arithmetic). Not in scenedetect.
+    /// </summary>
+    public FreezeDetectOptions? FreezeDetect { get; init; }
 }
 
 /// <summary>How far <see cref="ShotDetection.Detect(string, DetectionOptions?, CancellationToken)"/> has got.</summary>
@@ -644,6 +655,9 @@ public sealed record DetectionResult
 
     /// <summary>The black spans found with <see cref="DetectionOptions.BlackDetect"/>, in order, else null.</summary>
     public IReadOnlyList<BlackSpan>? BlackSpans { get; init; }
+
+    /// <summary>The still pictures found with <see cref="DetectionOptions.FreezeDetect"/>, in order, else null.</summary>
+    public IReadOnlyList<FreezeSpan>? FreezeSpans { get; init; }
 
     /// <summary>
     /// What the caller should know about how the video was read, one sentence each; empty when nothing (never null).
@@ -1353,6 +1367,7 @@ public static partial class ShotDetection
         long pixels = (long)video.SourceWidth * video.SourceHeight;
         string? notChunked = !parallel ? null
             : video.FromFrames ? "frames from the caller"
+            : o.FreezeDetect is not null ? "freeze detection (each frame is compared with a still picture's first, across chunks)"
             : NotChunkable(decoded?.Chunkable != true || video.Streaming, video.PtsFromFrames, startFrame != 0 || endFrame is not null, stride != 1);
         int chunks = parallel && notChunked is null
             ? o.Chunks ?? AutoChunks(Environment.ProcessorCount, video.ExpectedFrames, video.Fps, pixels, o.Mode == DetectionMode.Parallel, o.DecodeThreads)
@@ -1480,6 +1495,7 @@ public static partial class ShotDetection
             Cuts = Unique(cuts),
             ReferenceTone = tone,
             BlackSpans = o.BlackDetect is { } bd ? (video.Black ?? new BlackFrames(1, startFrame)).Spans(bd, frameCount) : null,
+            FreezeSpans = o.FreezeDetect is not null ? video.FreezeSpans(frameCount) : null,
             Warnings = warnings,
         };
     }
@@ -1493,6 +1509,7 @@ public static partial class ShotDetection
         if (o.TrimReferenceTone && !tone)
             throw new ArgumentException("TrimReferenceTone needs a file path (the audio is read separately), or frames from the caller with YuvVideo.ReferenceTone.");
         o.BlackDetect?.Check();
+        o.FreezeDetect?.Check();
         if (o.TrimReferenceTone && (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null))
             throw new ArgumentException("TrimReferenceTone sets the time range itself; leave StartTime, EndTime and RangeDuration unset.");
         if (o.FrameSkip < 0)

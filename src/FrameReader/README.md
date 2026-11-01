@@ -515,6 +515,13 @@ check alone, `BlackPixels` is blackdetect on one frame's luma (its threshold, `T
 planes of yours; `Of(decoder)` or `Of(frame)` on FrameReader's, in any format blackdetect takes as it is, gray and NV12
 too) without the meter's other figures: ShotDetector's black spans count with it.
 
+`FreezeDetector` is FFmpeg's freezedetect on frames of yours: each frame compared with a still picture's first by the
+mean absolute difference over every plane (scene_sad's integer sum, freezedetect's plane sizes), within `n`; a still
+lasting `d` is a `FrozenSpan`, with no end while it runs at the end (as freezedetect prints none). `For(decoder)` or
+`For(frame)` sizes it for FrameReader's frames, or give the planes' sizes yourself; `Finish(frames)` answers as of a
+number of frames, for a reader that decodes ahead. Checked against FFmpeg 8.1's filter at 8 and 10 bits, 4:2:0, 4:2:2,
+gray and NV12, odd sizes.
+
 Test media without the ffmpeg executable: `TestMedia.Write(path, options)` makes a synthetic clip from FFmpeg's own
 sources and encoders, in-process, for tests that need real media without committing any. Video sources are
 concatenated in order, so the cuts fall at known frames; interlaced output is flagged and coded as such.

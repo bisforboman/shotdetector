@@ -309,6 +309,16 @@ internal sealed partial class VideoReader
     // blackdetect on the frames read (DetectionOptions.BlackDetect): each frame's judgement in Black, as it is given.
     readonly BlackDetectOptions? _blackDetect;
     BlackFrame? _lastBlack;
+
+    // freezedetect on the frames read (DetectionOptions.FreezeDetect): in-process and from the caller, FrameReader's
+    // detector fed as frames are decoded (its frame 0 the read's first, pts less _freezeOrigin in _freezeTimeBase); through
+    // the executable, freezedetect's marks on each frame given, with its pts from the stream's start.
+    readonly FreezeDetectOptions? _freezeDetect;
+    FrameReader.FreezeDetector? _freezeDetector;
+    long _freezeOrigin;
+    double _freezeTimeBase;
+    int _freezeFirst;
+    readonly List<(long Pts, FreezeMark Mark)> _freezeFrames = [];
     long[] _knownPts;                  // presentation timestamps of the frames, in display order (not when streaming); see Pts
 
     // MPEG-PS (packets without pts): each frame's timestamp comes with the frame in-process, or from ffprobe's pass
@@ -471,6 +481,7 @@ internal sealed partial class VideoReader
         _yuv420 = o.Yuv420Converter;
         _yadif = o.Yadif;
         _blackDetect = o.BlackDetect;
+        _freezeDetect = o.FreezeDetect;
         _path = path;
         _stream = video;
         _decoding = new Decoding(this);
@@ -1470,7 +1481,53 @@ internal sealed partial class VideoReader
     internal IEnumerable<byte[]> Frames(int startFrame, int? count, CancellationToken cancellationToken = default, int seekBack = 2)
     {
         var frames = _decoding is { } decoding ? decoding.Frames(startFrame, count, cancellationToken, seekBack) : FramesFromCaller(startFrame, count, cancellationToken);
-        return _blackDetect is null ? frames : Judged(frames, startFrame);
+        return _blackDetect is null && _freezeDetect is null ? frames : Judged(frames, startFrame);
+    }
+
+    /// <summary>The detector freezedetect's options make for FrameReader (no frame rate: a duration without pts is 0).</summary>
+    static FrameReader.FreezeOptions FreezeOptions(FreezeDetectOptions o) => new() { Noise = o.Noise, MinDuration = o.MinDuration };
+
+    /// <summary>
+    /// freezedetect's still pictures over the first <paramref name="count"/> frames the last read gave
+    /// (<see cref="DetectionOptions.FreezeDetect"/>), from its first frame: FrameReader's detector's, or the executable's
+    /// marks (a freeze_start's time is its first frame's, matched among the frames given).
+    /// </summary>
+    internal IReadOnlyList<FreezeSpan> FreezeSpans(int count)
+    {
+        if (_freezeDetector is { } d)
+        {
+            double tb = _freezeTimeBase;
+            return [.. d.Finish(count).Select(s => new FreezeSpan(_freezeFirst + s.FirstFrame, s.EndFrame + _freezeFirst, (s.StartPts - _freezeOrigin) * tb, s.EndPts is { } e ? (e - _freezeOrigin) * tb : null)
+            {
+                Duration = s.DurationMicros / 1e6,
+            })];
+        }
+
+        var spans = new List<FreezeSpan>();
+        (int Frame, double Start)? open = null;
+        double timeBase = BlackTimeBase;
+        int n = Math.Min(count, _freezeFrames.Count);
+        for (int i = 0; i < n; i++)
+        {
+            var (pts, mark) = _freezeFrames[i];
+            if (mark.Start is { } start)
+            {
+                int at = i;
+                while (at > 0 && _freezeFrames[at].Mark.Time != start)
+                    at--;
+                open = (_freezeFirst + at, _freezeFrames[at].Pts * timeBase);
+            }
+
+            if (mark.End && open is { } o)
+            {
+                spans.Add(new FreezeSpan(o.Frame, _freezeFirst + i, o.Start, pts * timeBase) { Duration = mark.Micros / 1e6 });
+                open = null;
+            }
+        }
+
+        if (open is { } running)
+            spans.Add(new FreezeSpan(running.Frame, null, running.Start, null) { Duration = null });
+        return spans;
     }
 
     /// <summary>
@@ -1480,15 +1537,26 @@ internal sealed partial class VideoReader
     IEnumerable<byte[]> Judged(IEnumerable<byte[]> frames, int startFrame)
     {
         Black = null;
+        _freezeFrames.Clear();
+        _freezeDetector = null;
+        _freezeFirst = startFrame;
         foreach (var frame in frames)
         {
-            var judged = _lastBlack ?? throw new InvalidOperationException("A frame came without its black judgement.");
-            (Black ??= new BlackFrames(BlackTimeBase, startFrame)).Frames.Add(judged);
+            if (_blackDetect is not null)
+            {
+                var judged = _lastBlack ?? throw new InvalidOperationException("A frame came without its black judgement.");
+                (Black ??= new BlackFrames(BlackTimeBase, startFrame)).Frames.Add(judged);
+            }
+
+            // Through the executable: freezedetect's marks on the frame.
+            if (_lastBlack is { Freeze: { } mark } marked)
+                _freezeFrames.Add((marked.Pts, mark));
             _lastBlack = null;
             yield return frame;
         }
 
-        Black ??= new BlackFrames(BlackTimeBase, startFrame);
+        if (_blackDetect is not null)
+            Black ??= new BlackFrames(BlackTimeBase, startFrame);
     }
 
     /// <summary>
@@ -1681,7 +1749,11 @@ internal sealed partial class VideoReader
         // deinterlacing): before the crop and the conversion. At d=0, so every run is marked (the duration is applied over
         // the whole run's judgements, chunks joined: BlackFrames.Spans); metadata=print logs each mark with its frame's pts.
         string black = _blackDetect is { } bd ? bd.Filter(0) + ",metadata=mode=print," : "";
-        select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + black + "showinfo=checksum=0"];
+
+        // freezedetect (DetectionOptions.FreezeDetect) beside it, its lines read as showinfo's: each frame's marks precede
+        // the frame's showinfo line.
+        string freeze = _freezeDetect is { } fd ? fd.Filter() + "," : "";
+        select = ["-vf", (select.Length > 0 ? select[1] + "," : "") + black + freeze + "showinfo=checksum=0"];
 
         // Deinterlacing first, so the frames a seek decodes early still feed yadif, as in the copy it stands for (the
         // select keeps the frame before the wanted one: keepBefore).
@@ -1749,6 +1821,11 @@ internal sealed partial class VideoReader
                 long markPts = 0;
                 bool blackNow = false;
 
+                // freezedetect's lines since the last frame: they are the next frame's.
+                string? freezeStart = null;
+                long? freezeMicros = null;
+                bool freezeEnd = false;
+
                 // Streamed (with -copyts, as files, so ffmpeg leaves a timestamp that starts over as it is, as OpenCV
                 // does): times from the input's start, as ffmpeg's shift without -copyts gives them. The start from the
                 // line under "Input #0" (the maps are inputs too), the one connection that is read.
@@ -1758,6 +1835,8 @@ internal sealed partial class VideoReader
                 while ((line = proc.StandardError.ReadLine()) is not null)
                 {
                     if (_blackDetect is not null && BlackMark(line, ref markPts, marks))
+                        continue;
+                    if (_freezeDetect is not null && FreezeLine(line, ref freezeStart, ref freezeMicros, ref freezeEnd))
                         continue;
                     var frame = ShowInfoLine().Match(line);
                     if (frame.Success)
@@ -1771,7 +1850,10 @@ internal sealed partial class VideoReader
                         while (marks.TryPeek(out var mark) && mark.Pts <= framePts)
                             blackNow = marks.Dequeue().Black;
                         long start = Streaming ? MicrosIn(startMicros, timeBaseNum, timeBaseDen) : _startPts * startScale;
-                        var judged = new BlackFrame(framePts - start, blackNow);
+                        var judged = new BlackFrame(framePts - start,
+                            blackNow,
+                            _freezeDetect is null ? null : new FreezeMark(BlackSpan.Time(framePts * liveTimeBase), freezeStart, freezeMicros, freezeEnd));
+                        (freezeStart, freezeMicros, freezeEnd) = (null, null, false);
                         if (Streaming)
                             framePts -= start;
                         (long, bool, string, FrameColourTags, BlackFrame) info = (framePts,
@@ -2195,6 +2277,39 @@ internal sealed partial class VideoReader
             marks.Enqueue((markPts, true));
         else if (line.Contains("] lavfi.black_end=", StringComparison.Ordinal))
             marks.Enqueue((markPts, false));
+        return true;
+    }
+
+    /// <summary>
+    /// A line of freezedetect's in the executable's graph (<see cref="DetectionOptions.FreezeDetect"/>): its mark (the
+    /// freeze_start time as printed, freeze_duration in microseconds, freeze_end) kept for the next frame. False for any
+    /// other line.
+    /// </summary>
+    internal static bool FreezeLine(string line, ref string? start, ref long? micros, ref bool end)
+    {
+        if (!line.StartsWith("[Parsed_freezedetect_", StringComparison.Ordinal))
+            return false;
+        int at = line.IndexOf("] lavfi.freezedetect.", StringComparison.Ordinal);
+        if (at < 0)
+            return true;
+        string rest = line[(at + "] lavfi.freezedetect.".Length)..];
+        int colon = rest.IndexOf(": ", StringComparison.Ordinal);
+        if (colon < 0)
+            return true;
+        string value = rest[(colon + 2)..].Trim();
+        switch (rest[..colon])
+        {
+            case "freeze_start":
+                start = value;
+                break;
+            case "freeze_duration":
+                micros = (long)Math.Round(double.Parse(value, CultureInfo.InvariantCulture) * 1e6); // printed to the microsecond
+                break;
+            case "freeze_end":
+                end = true;
+                break;
+        }
+
         return true;
     }
 
