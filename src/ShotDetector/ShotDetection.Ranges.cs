@@ -539,7 +539,7 @@ public static partial class ShotDetection
         if (end < firstFrame)
             throw InvalidRanges($"Frames {end} to {firstFrame - 1} are in no range: the earlier ranges end at frame {end - 1}, this range starts at frame {firstFrame}.");
         if (end == firstFrame)
-            throw InvalidRanges($"The earlier ranges end at frame {end - 1}, without this range's first frame ({firstFrame}) to compare: a range's frames go to one frame past its end.");
+            throw InvalidRanges($"The earlier ranges end at frame {end - 1}, without this range's first frame ({firstFrame}) to compare: start at frame {end - 1} at the latest (the last earlier range's EndFrame - 1).");
         return joined;
     }
 
@@ -567,7 +567,7 @@ public static partial class ShotDetection
         int last = r.FirstFrame + r.FrameCount - 1;
         return new RangeScores(r.Fingerprint,
             r.FirstFrame,
-            r.FrameCount - 1,
+            r.EndFrame - r.FirstFrame,
             r.Pts.Length > 0 ? r.Pts[..^1] : r.Pts,
             [.. r.Metrics.Select(m => m[..^1])],
             r.Stats?.Where(e => e.Frame != last).ToArray(),
@@ -623,7 +623,7 @@ public static partial class ShotDetection
             if (aEnd < b.FirstFrame)
                 throw Invalid($"Frames {aEnd} to {b.FirstFrame - 1} are in no range: range {i - 1} ends at frame {aEnd - 1}, range {i} starts at frame {b.FirstFrame}.");
             if (aEnd == b.FirstFrame)
-                throw Invalid($"Range {i - 1} ends at frame {aEnd - 1}, without range {i}'s first frame ({b.FirstFrame}) to compare: a range's frames go to one frame past its end.");
+                throw Invalid($"Range {i - 1} ends at frame {aEnd - 1}, without range {i}'s first frame ({b.FirstFrame}) to compare: a range's frames go to one frame past its end, so range {i} starts at frame {aEnd - 1} at the latest (range {i - 1}'s EndFrame - 1).");
             if (timed)
             {
                 // b's frames from its frame before (b.FirstFrame - 1), a's from its own (a.FirstFrame - 1, or 0).

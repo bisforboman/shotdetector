@@ -15,11 +15,5 @@
     <PackageVersion Include="FFMpegCore" Version="5.5.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
-    <!-- examples/VideoRag only (issue #635): Microsoft.Extensions.DataIngestion is preview, pinned to the version
-         docs/ideas/dataingestion-video-reader.md checked; the rest is what its pipeline needs for this sample. -->
-    <PackageVersion Include="Microsoft.Extensions.DataIngestion" Version="10.11.0-preview.1.26513.7" />
-    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.11.0" />
-    <PackageVersion Include="Microsoft.ML.Tokenizers.Data.O200kBase" Version="1.0.3" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.InMemory" Version="1.74.0-preview" />
   </ItemGroup>
 </Project>

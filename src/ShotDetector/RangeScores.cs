@@ -42,6 +42,20 @@ public sealed class RangeScores
     /// </summary>
     public int FrameCount { get; }
 
+    /// <summary>
+    /// One past the last frame whose scores are final: <see cref="FirstFrame"/> + <see cref="FrameCount"/>, or one less
+    /// when the range was deinterlaced (its last frame was deinterlaced as the video's last, with itself as yadif's next
+    /// frame, so <see cref="ShotDetection.Merge"/> takes it only from the range that ends with the video). The next range,
+    /// or a range continuing from this one, must start before it: at <c>EndFrame - 1</c> at the latest, the overlap
+    /// frame both compare. A range given <see cref="ShotDetection.RangeFrames"/>' span for [first, end) has an
+    /// <c>EndFrame</c> of end + 1, deinterlaced or not, so the next range starts at end; a run whose frames stopped early
+    /// resumes at <c>EndFrame - 1</c>.
+    /// </summary>
+    public int EndFrame => FirstFrame + FrameCount - (Deinterlaced && FrameCount > 0 ? 1 : 0);
+
+    /// <summary>Whether the range was scored deinterlacing (its fingerprint says so: <see cref="ShotDetection.Fingerprint"/>).</summary>
+    internal bool Deinterlaced => Fingerprint.Contains("\nDeinterlace=", StringComparison.Ordinal);
+
     /// <summary>Warnings from scoring the range; the merge's result lists them.</summary>
     public IReadOnlyList<string> Warnings { get; }
 

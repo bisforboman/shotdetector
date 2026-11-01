@@ -240,6 +240,57 @@ public class FrameRangeTests
         Assert.Throws<ShotDetectionException>(() => ShotDetection.Merge(video, [first, rest], options with { Deinterlace = DeinterlaceMode.Off }));
     }
 
+    // EndFrame: one past the last final score. A range given RangeFrames' span for [first, end) ends at end + 1,
+    // progressive or deinterlaced (whose last frame given isn't final); a stopped run resumes at EndFrame - 1, any frame
+    // (as when every frame is a keyframe, MJPEG), and the resumed runs merge into Detect's result. A run resumed at
+    // EndFrame is refused, and the refusal says where to start.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RunsResumeAtTheEarlierRangesEndFrame(bool deinterlace)
+    {
+        var video = Video();
+        var options = Options("adaptive", true);
+        if (deinterlace)
+            options = options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
+        var all = deinterlace ? Interlaced(video) : Frames(video);
+        var expected = ShotDetection.Detect(video, all, options);
+        Assert.Equal(deinterlace, expected.Video.Deinterlaced);
+
+        var spanned = ShotDetection.ScoreRange(video, Given(video, options, all, 20, 50), 20, options);
+        Assert.Equal(51, spanned.EndFrame);
+        Assert.Equal(deinterlace ? 52 : 51, spanned.FirstFrame + spanned.FrameCount);
+        Assert.Equal(51, RangeScores.FromBytes(spanned.ToBytes()).EndFrame);
+
+        foreach (int[] stops in new[] { new[] { 39 }, [5, 6, 7], [31, 70], [3, 98] })
+        {
+            // Each run is given the frames from RangeFrames' start for its first frame to where it stops.
+            var ranges = new List<RangeScores>();
+            int first = 0;
+            for (int i = 0; i <= stops.Length; i++)
+            {
+                int stop = i < stops.Length ? stops[i] : Count;
+                long from = ShotDetection.RangeFrames(video, options, first, first + 1).From;
+                var earlier = ranges.Select(r => RangeScores.FromBytes(r.ToBytes()));
+                var scores = ShotDetection.ScoreRange(video, earlier, all.Skip((int)from).Take(stop - (int)from), first, options);
+                Assert.Equal(stop - (deinterlace ? 1 : 0), scores.EndFrame); // the video's last range too: Merge keeps its last frame
+                ranges.Add(scores);
+                if (i < stops.Length)
+                {
+                    // One frame later than EndFrame - 1: no final score to compare, refused with where to start.
+                    int late = scores.EndFrame;
+                    long lateFrom = ShotDetection.RangeFrames(video, options, late, late + 1).From;
+                    var e = Assert.Throws<ShotDetectionException>(() => ShotDetection.ScoreRange(video, ranges, all.Skip((int)lateFrom).Take(Count - (int)lateFrom), late, options));
+                    Assert.Contains($"start at frame {scores.EndFrame - 1} at the latest", e.Message);
+                }
+
+                first = scores.EndFrame - 1;
+            }
+
+            AssertSame(expected, ShotDetection.Merge(video, ranges, options));
+        }
+    }
+
     // Deinterlaced, a range from frame 0 tells the shots Detect tells, and runs that stop and continue from the earlier
     // ranges' scores tell the whole video's: a stopped run's last frame isn't final, so the next starts two frames
     // before where it stopped (its frames from four before), and the merge is the sequential result.

@@ -123,13 +123,5 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Subtitlers snap cues to shot changes; Subtitle Edit uses FFmpeg's scene score. Scoping: docs/ideas/subtitle-edit.md (no engine seam in SE; SE5 MIT, SE4 GPL-3.0; 3-5 PRs here plus 1 in SE)
   - Status: Maybe; first slice done 2026-10-31 (`--save-shotchanges` and `Timeline.ShotChanges`, SE's .shotchanges format); next, machine-readable progress for SE; the SE side waits on the owner
 
-- A Jellyfin plugin: chapters from shots, credits and black segments (#634)
-  - Why: Most rips have no chapters; Jellyfin 12 is net10.0 and ships jellyfin-ffmpeg 8.1. Scoping: docs/ideas/jellyfin-plugin.md (4-6 PRs; six owner questions)
-  - Status: Building in its own repository, bisforboman/jellyfin-plugin-shotchapters (GPL-3.0, docs/decisions/2026-10-31-jellyfin-plugin.md): v0.1.0 shipped with chapters from shots and black segments; its black spans are to come from ShotDetector's detection pass (docs/decisions/2026-11-01-jellyfin-black-spans.md)
-
-- A video reader for Microsoft.Extensions.DataIngestion (#635)
-  - Why: Video as searchable, timestamped chunks in .NET RAG pipelines. Scoping: docs/ideas/dataingestion-video-reader.md (verdict park: a preview API, waits on StanzaSharp#233)
-  - Status: Maybe; first slice done 2026-10-31 (examples/VideoRag, #641: a section per shot, middle-frame stills; docs/decisions/2026-10-31-videorag-sample.md); the rest waits on StanzaSharp#233
-
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and
 why: [decisions/](decisions/).
