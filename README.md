@@ -187,6 +187,13 @@ stream's start. The ffmpeg executable runs blackdetect in its own graph; in-proc
 decoder count the luma with FrameReader's `BlackPixels` (blackdetect's arithmetic); chunks read in parallel join
 (docs/decisions/2026-11-01-black-spans.md). Not in scenedetect, and off by default.
 
+Still pictures the same way: `FreezeDetect = new FreezeDetectOptions()` (ffmpeg's freezedetect: `n` 0.001 and `d`
+2 s by default, as `Noise` and `MinDuration`) gives `DetectionResult.FreezeSpans`, equal to `ffmpeg -vf freezedetect`'s:
+each `FreezeSpan` has the still picture's first frame and freeze_start, and the first frame that differs, freeze_end and
+freeze_duration, which are null for a still running to the end (freezedetect prints no freeze_end then). The frames are
+those detection reads, as for black spans. freezedetect compares each frame with a still picture's first, however far
+back, so with it the video is read in one pass (docs/decisions/2026-11-01-freeze-spans.md).
+
 Which decoder a run uses is in every `DetectionProgress` report (`DecodesInProcess`), from a first report
 sent before any frame, so `DetectStreamAsync` callers see it too. `ShotDetection.CanDecodeInProcess()` tells a worker at
 startup whether FFmpeg's libraries load; `VideoDecoder.InProcess` without them throws `ShotDetectionException` with
