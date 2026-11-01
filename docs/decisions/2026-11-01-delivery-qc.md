@@ -64,6 +64,29 @@ Questions 2, 3 and 5 were answered while moving shotdetector-web's managed measu
    - JSON only.
    - Text, JSON and HTML at once.
 
+10. **Broadcast range: what fails** (asked when building slice 2).
+    - **Any frame's BRNG above `--brng-max`, 1% by default**: signalstats' own measure, so exact by construction; the
+      worst frame's time and the file's YMIN and YMAX reported. A few stray pixels pass, a lifted or crushed picture
+      fails. *Chosen.*
+    - EBU R103's luma limits on YMIN and YMAX (5 and 246 at 8 bits): one pixel can fail a file.
+    - Report only.
+11. **Colour bars in the range check.** Building slice 2 showed ffmpeg's own `smptebars` at 1.25% BRNG (the PLUGE's
+    below-black strip is deliberate), so every file with SMPTE line-up would fail the 1% rule.
+    - **Leave the frames `PictureMeter` finds as colour bars out of the range check**, and count them in the report.
+      *Chosen.*
+    - Count them (files with bars fail unless `--brng-max` is raised).
+    - Raise the default to 2%.
+12. **Black spans: what fails** (asked before slice 3).
+    - **Mid-programme only**: a black span of `--black-min` (2 s) or longer that doesn't touch the first or last
+      `--edge` seconds (10 s) fails; black at the head and tail (slates, fades) is listed, not judged. *Chosen.*
+    - Any black span, head and tail included.
+    - Report only.
+13. **Frozen spans: what fails.**
+    - **As black**: a freeze of `--freeze-min` (2 s) or longer away from the first and last `--edge` seconds fails; a
+      freeze inside a black span or colour bars isn't judged, since line-up and black are static by design. *Chosen.*
+    - Any freeze.
+    - Report only.
+
 ## The slices
 
 1. `qc` with loudness and the presets; `--loudness` as its alias.
