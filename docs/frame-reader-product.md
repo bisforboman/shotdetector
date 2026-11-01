@@ -70,7 +70,8 @@ choice: don't split, keep counting (docs/decisions/2026-10-30-framereader-stays-
 issue #646, alone), recorded as information since 2026-10-31. 2.19.0: 0 of 4 (`SilenceFinder`,
 `PictureMeter`, channel layouts by names, all issue #646, and the odd-size fix, issue #656: each FrameReader alone). 2.20.0: 2 of 2
 needing both (black spans, #681, and freeze spans, #687: each FrameReader's detector with ShotDetector's
-detection-pass option in the same PR).
+detection-pass option in the same PR). 2.21.0: 0 of 1 (`AudioReaderOptions.Stream`, #697, for media-qc's every-track
+loudness: FrameReader alone).
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
