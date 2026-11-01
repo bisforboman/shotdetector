@@ -1049,6 +1049,38 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.True(ours.Shots.Count > 1);
     }
 
+    // The case shotdetector-web met: an MJPEG file (every frame a keyframe) deinterlaced in runs that stop anywhere, each
+    // resumed at the earlier ranges' EndFrame - 1 on a decoder of its own from RangeFrames' start for it: the merge is
+    // the sequential deinterlaced result and the file's.
+    [Fact]
+    public void DeinterlacedRunsOfAnAllKeyframeFileResumeAtEndFrame()
+    {
+        if (Libs is null || FormatClip("mjpeg-422") is not { } path)
+            return;
+        var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, Yuv420Converter = new SwscaleYuv420(), Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
+        var fromFile = ShotDetection.Detect(path, options with { FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess });
+        var (video, frames) = Decoded(path);
+        var sequential = frames.ToList();
+        var pts = sequential.Select(f => f.Pts).ToList();
+        var expected = ShotDetection.Detect(video, sequential, options);
+        var ranges = new List<RangeScores>();
+        int first = 0;
+        foreach (int stop in new[] { 40, 41, 77, 120, pts.Count })
+        {
+            long from = ShotDetection.RangeFrames(video, options, first, first + 1).From;
+            var given = from == 0 ? sequential : Decoded(path, from: pts[(int)from]).ToList();
+            ranges.Add(RangeScores.FromBytes(ShotDetection.ScoreRange(video, ranges, given.Take(stop - (int)from), first, options).ToBytes()));
+            Assert.Equal(stop - 1, ranges[^1].EndFrame);
+            first = ranges[^1].EndFrame - 1;
+        }
+
+        var merged = ShotDetection.Merge(video, ranges, options);
+        Assert.Equal(Shots.Csv(expected.Shots, cuts: expected.Cuts), Shots.Csv(merged.Shots, cuts: merged.Cuts));
+        Assert.Equal(expected.Stats!.Csv(expected.Video.Position), merged.Stats!.Csv(merged.Video.Position));
+        Assert.Equal(Shots.Csv(fromFile.Shots, cuts: fromFile.Cuts), Shots.Csv(merged.Shots, cuts: merged.Cuts));
+        Assert.Equal(fromFile.Stats!.Csv(fromFile.Video.Position), merged.Stats!.Csv(merged.Video.Position));
+    }
+
     /// <summary>The decoder options the file path decodes with: no autorotation, its IDCT.</summary>
     static FrameReader.FrameDecoderOptions DecoderOptions(string path)
     {
