@@ -50,7 +50,7 @@
         # after it (a tag cut short by another thread's output is the previous frame's); colours FastYuv declines send the
         # video to the BGR pipelines
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'livePts.Add(waiting with { Tags = previous = tags });'; Replace = 'livePts.Add(waiting);'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'previous = previous with { ChromaLocation = SitingField(line) ?? previous.ChromaLocation });'; Replace = 'previous = previous with { ChromaLocation = null });'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'previous = previous with { ChromaLocation = SitingField(line) ?? previous.ChromaLocation },'; Replace = 'previous = previous with { ChromaLocation = null },'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'ColorSpace = ColourSpaces.Contains(space) ? space : frame.ColorSpace,'; Replace = 'ColorSpace = space,'; Tests = 'FastYuvTests.ShowinfoTagsCutShortAreThePreviousFramesTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'GeneratedRegex(@" cl:([a-z]+) ")]'; Replace = 'GeneratedRegex(@" cl:([a-z]+)")]'; Tests = 'FastYuvTests.ShowinfoTagsCutShortAreThePreviousFramesTags' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'conversion?.Yuv ?? YuvForVideo!'; Replace = 'YuvForVideo!'; Tests = 'FastYuvTests.ExecutableFollowsEachFramesTags' }
@@ -240,7 +240,7 @@
         # Streamed timestamps already start at 0 (ffmpeg shifts them); not subtracted again
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(Streaming ? p : p - _startPts)'; Replace = '(p - _startPts)'; Tests = 'VideoTests' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (seek.Length == 0)'; Replace = 'if (!Streaming && seek.Length == 0)'; Tests = 'TimestampResetTests.AStreamGivesTheFilesCuts' }
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'framePts -= MicrosIn(startMicros, timeBaseNum, timeBaseDen);'; Replace = 'framePts -= 0;'; Tests = 'TimestampResetTests.AStreamGivesTheFilesCuts' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'long start = Streaming ? MicrosIn(startMicros, timeBaseNum, timeBaseDen) :'; Replace = 'long start = Streaming ? 0 :'; Tests = 'TimestampResetTests.AStreamGivesTheFilesCuts' }
 
         # Rotation tags: frames arrive upright, so the reported size is swapped
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (Math.Abs(_rotation) % 180 == 90)'; Replace = 'if (false)'; Tests = 'VideoTests' }
@@ -344,7 +344,7 @@
         # ... deinterlaced as FrameDecoder's row-wise yadif: frames k-1, k, k+1 (the first its own previous, the last its own
         # next), each frame's parity from its flags, Auto by the field order, the start taking the first frame's next, ranges refused
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'Deinterlace(_held[Math.Max(k - 1, 0) % 3], cur,'; Replace = 'Deinterlace(cur, cur,'; Tests = 'FrameInputTests.SameAsTheFileDeinterlaced' }
-        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_framesRead > k + 1 ? _held[(k + 1) % 3] : cur'; Replace = 'cur'; Tests = 'FrameInputTests.SameAsTheFileDeinterlaced' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'cur, _framesRead > k + 1 ? _held[(k + 1) % 3] : cur, _heldTff[k % 3], yuv'; Replace = 'cur, cur, _heldTff[k % 3], yuv'; Tests = 'FrameInputTests.SameAsTheFileDeinterlaced' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_heldTff[_framesRead % 3] = !f.Interlaced || f.TopFieldFirst;'; Replace = '_heldTff[_framesRead % 3] = true;'; Tests = 'FrameInputTests.EachFramesFlagsSetItsParity' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'video.FieldOrder is not (FieldOrder.Progressive or FieldOrder.Unknown)'; Replace = 'false'; Tests = 'FrameInputTests.AutoDeinterlacesWhatTheFieldOrderSays' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'StartEstimate(s) : 0) + FramesAhead;'; Replace = 'StartEstimate(s) : 0);'; Tests = 'FrameInputTests.SameAsTheFileDeinterlaced' }
@@ -570,7 +570,7 @@
         # once (its chroma sample, at its own subsampling, adds only luma in range); EBU 100/0/75/0 bars (100% white);
         # cropdetect's bottom line past max(y2, y1), x and y rounded up to even, its first two frames skipped; blackdetect's
         # span at the end ending at the last frame's pts
-        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = '_black = (uint)(format.FullRange ? PixelBlack * max : (16 * _factor) + (PixelBlack * (235 - 16) * _factor));'; Replace = '_black = (uint)Math.Round(format.FullRange ? PixelBlack * max : (16 * _factor) + (PixelBlack * (235 - 16) * _factor));'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/BlackPixels.cs'; Find = 'return (uint)(fullRange ? pixelThreshold * max : (16 * factor) + (pixelThreshold * (235 - 16) * factor));'; Replace = 'return (uint)Math.Round(fullRange ? pixelThreshold * max : (16 * factor) + (pixelThreshold * (235 - 16) * factor));'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'int under = 16 * _factor, over = 235 * _factor;'; Replace = 'int under = 16, over = 235;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'ChromaSubsampling.Yuv422 => (1, 0),'; Replace = 'ChromaSubsampling.Yuv422 => (1, 1),'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'if (q >= under && q <= over)'; Replace = 'if (true)'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
@@ -610,5 +610,21 @@
         # frame already in the output's format and size passed through as the scale filter does (swscale's copy drops a row)
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'Check(ffmpeg.av_frame_get_buffer(_out, 0), "frame buffer");'; Replace = 'Check(ffmpeg.av_frame_get_buffer(_out, 1), "frame buffer");'; Tests = 'VideoFrameReaderTests.OddSizesAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'bool passThrough = src->format == (int)_format && (src->width, src->height) == (width, height);'; Replace = 'bool passThrough = false;'; Tests = 'VideoFrameReaderTests.OddSizesAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
+
+        # Black spans on the detection pass, as blackdetect gives them: its minimum duration in time-base units truncated
+        # (check_black_end), a run still black at the end ending at its last frame, its time strings
+        # (av_ts_make_time_string2), pic_th as at least; the executable's marks applied to the frame they're on, chunks
+        # joined without their overlap frame, deinterlaced frames in yadif's time base; FrameReader's threshold and count
+        @{ File = 'src/ShotDetector/BlackSpans.cs'; Find = 'long least = (long)(o.MinDuration.TotalSeconds / tb);'; Replace = 'double least = o.MinDuration.TotalSeconds / tb;'; Tests = 'BlackDetectTests.SpansAreBlackdetects' }
+        @{ File = 'src/ShotDetector/BlackSpans.cs'; Find = 'Close(n - 1);'; Replace = '{ }'; Tests = 'BlackDetectTests' }
+        @{ File = 'src/ShotDetector/BlackSpans.cs'; Find = '(int)-log + 5 : 6'; Replace = '(int)-log + 6 : 6'; Tests = 'BlackDetectTests.TimesPrintAsFfmpegs' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '(double)counted.Black / counted.Pixels >= o.PictureThreshold'; Replace = '(double)counted.Black / counted.Pixels > o.PictureThreshold'; Tests = 'BlackDetectTests' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '_deinterlace ? 2 * pts : pts, '; Replace = 'pts, '; Tests = 'BlackDetectTests' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'mark.Pts <= framePts'; Replace = 'mark.Pts < framePts'; Tests = 'BlackDetectTests' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'int skip = bounds[i] - c.FirstFrame,'; Replace = 'int skip = 0,'; Tests = 'BlackDetectTests' }
+        @{ File = 'src/FrameReader/BlackPixels.cs'; Find = '(16 * factor) + (pixelThreshold'; Replace = '16 + (pixelThreshold'; Tests = 'PictureMeterTests.BlackPixelThresholdsAreBlackdetects'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = '(double)_black[i] / Pixels >= pictureThreshold;'; Replace = '(double)_black[i] / Pixels > pictureThreshold;'; Tests = 'PictureMeterTests.ThresholdsAreBlackdetects'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'bool threshold = BlackPixelThreshold != DefaultBlackPixelThreshold;'; Replace = 'bool threshold = true;'; Tests = 'PictureMeterTests.ThresholdsAreBlackdetects'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'range.BitDepth, range.BlackPixelThreshold) != (joined.Width, joined.Height, joined.FullRange, joined.BitDepth, joined.BlackPixelThreshold)'; Replace = 'range.BitDepth, 0.0) != (joined.Width, joined.Height, joined.FullRange, joined.BitDepth, 0.0)'; Tests = 'PictureMeterTests.ThresholdsAreBlackdetects'; Project = 'tests/FrameReader.Tests' }
     )
 }
