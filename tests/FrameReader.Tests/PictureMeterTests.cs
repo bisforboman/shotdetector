@@ -223,6 +223,94 @@ public class PictureMeterTests
         }
     }
 
+    // BlackPixels, blackdetect on one frame's luma alone: the meter's count on every frame of decoded video (8 and 10
+    // bits, limited and full range, odd sizes; from FrameDecoder's current frame and from taken frames), its thresholds
+    // (37 and 25 at 8 bits, 151 and 102 at 10), every luma at 255 at pix_th 1, and nothing for a format blackdetect takes
+    // only after ffmpeg converts it.
+    [Theory]
+    [InlineData("count8.nut", "-f lavfi -i testsrc2=s=161x91:r=25:d=1 -vf fade=out:st=0.3:d=0.5,format=yuv420p -c:v rawvideo", 0.10)]
+    [InlineData("count8full.nut", "-f lavfi -i testsrc2=s=161x91:r=25:d=1 -vf fade=out:st=0.3:d=0.5,format=yuvj422p -c:v rawvideo", 0.25)]
+    [InlineData("count10.mkv", "-f lavfi -i testsrc2=s=161x91:r=25:d=1 -vf fade=out:st=0.3:d=0.5,format=yuv420p10le " + Ffv1, 0.10)]
+    [InlineData("countgray.mkv", "-f lavfi -i testsrc2=s=161x91:r=25:d=1 -vf fade=out:st=0.3:d=0.5,format=gray " + Ffv1, 0.10)]
+    public void BlackPixelsAreTheMetersCount(string name, string encode, double pixelThreshold)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-blackpixels-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            Ffmpeg(["-v", "error", "-y", .. encode.Split(' '), path]);
+            using var decoder = new FrameDecoder(path, new FrameDecoderOptions { Autorotate = false });
+            PictureMeter? meter = null;
+            bool gray = name.Contains("gray", StringComparison.Ordinal);
+            var counts = new List<(int Black, int Pixels)>();
+            while (decoder.Next())
+            {
+                var mine = BlackPixels.Of(decoder, pixelThreshold);
+                Assert.NotNull(mine);
+                counts.Add(mine.Value);
+                using var frame = decoder.TakeFrame();
+                Assert.Equal(mine, BlackPixels.Of(frame, pixelThreshold));
+                if (!gray)
+                {
+                    meter ??= new PictureMeter(PictureFormat.Of(frame, decoder.TimeBase)!, 0, int.MaxValue, pixelThreshold);
+                    meter.Add(frame);
+                }
+            }
+
+            Assert.Contains(counts, c => c.Black == c.Pixels);
+            Assert.Contains(counts, c => c.Black < c.Pixels / 2);
+            if (meter is not null)
+            {
+                for (int i = 0; i < counts.Count; i++)
+                    Assert.Equal((meter.Measures.BlackPixels(i), meter.Measures.Width * meter.Measures.Height), counts[i]);
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void BlackPixelThresholdsAreBlackdetects()
+    {
+        Assert.Equal((37U, 25U, 151U, 102U), (BlackPixels.Threshold(8, false, 0.1), BlackPixels.Threshold(8, true, 0.1), BlackPixels.Threshold(10, false, 0.1), BlackPixels.Threshold(10, true, 0.1)));
+        Assert.Equal((16U, 235U, 255U), (BlackPixels.Threshold(8, false, 0), BlackPixels.Threshold(8, false, 1), BlackPixels.Threshold(8, true, 1)));
+        var white = new byte[20 * 3];
+        Array.Fill(white, (byte)255);
+        Assert.Equal(60, BlackPixels.Count(white, 20, 20, 3, 8, 255));
+        Assert.Equal(0, BlackPixels.Count(white, 20, 20, 3, 8, 254));
+        var row = new byte[] { 0, 0, 0, 37, 38, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 37, 38, 0 }; // vector lanes and a tail
+        Assert.Equal(16, BlackPixels.Count(row, row.Length, row.Length, 1, 8, 37));
+        var wide = new byte[] { 151, 0, 152, 0, 0, 4 };
+        Assert.Equal(1, BlackPixels.Count(wide, 6, 3, 1, 10, 151));
+        Assert.Throws<ArgumentException>(() => BlackPixels.Count(row, 10, 20, 1, 8, 37));
+        Assert.Throws<ArgumentOutOfRangeException>(() => BlackPixels.Threshold(7, false, 0.1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => BlackPixels.Threshold(8, false, 1.01));
+    }
+
+    [Fact]
+    public void BlackPixelsTakeWhatBlackdetectTakes()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-blackrgb-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "rgb.nut");
+            Ffmpeg("-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=64x48:r=25:d=0.2", "-pix_fmt", "rgb24", "-c:v", "rawvideo", path);
+            using var decoder = new FrameDecoder(path, new FrameDecoderOptions());
+            Assert.True(decoder.Next());
+            Assert.Null(BlackPixels.Of(decoder, 0.1));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // Colour bars by definition, on planes made here: the seven 75% BT.601 bars, the same with one bar missing, and the
     // seven at 10 bits in 4:4:4.
     [Fact]

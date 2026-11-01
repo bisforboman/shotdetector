@@ -44,27 +44,26 @@ public sealed record BlackDetectOptions
 /// <param name="End">blackdetect's black_end in seconds: <paramref name="EndFrame"/>'s pts times the time base, from the video stream's start.</param>
 public readonly record struct BlackSpan(int StartFrame, int EndFrame, double Start, double End)
 {
-    /// <summary>blackdetect's black_duration in seconds.</summary>
-    public double Duration => End - Start;
+    /// <summary>
+    /// blackdetect's black_duration in seconds: the pts between the ends times the time base (which can differ from
+    /// <see cref="End"/> - <see cref="Start"/> in the last bits; that difference for a span made by hand).
+    /// </summary>
+    public double Duration { get; init; } = End - Start;
 
-    /// <summary>As blackdetect logs the span: <c>black_start:2.92 black_end:5.64 black_duration:2.72</c> (%g, six significant digits).</summary>
-    public override string ToString() => $"black_start:{G(Start)} black_end:{G(End)} black_duration:{G(Duration)}";
+    /// <summary>As blackdetect logs the span: <c>black_start:2.92 black_end:5.64 black_duration:2.72</c> (FFmpeg's time strings).</summary>
+    public override string ToString() => $"black_start:{Time(Start)} black_end:{Time(End)} black_duration:{Time(Duration)}";
 
-    /// <summary>C's %g, as FFmpeg's av_ts2timestr prints a time: six significant digits, no trailing zeros.</summary>
-    internal static string G(double v)
+    /// <summary>
+    /// A time as FFmpeg 8.1 prints it (av_ts_make_time_string2): six decimals, or 5 - floor(log10(|t|)) under a second,
+    /// trailing zeros dropped, then a trailing point.
+    /// </summary>
+    internal static string Time(double t)
     {
-        if (v == 0)
-            return "0";
-        string s = v.ToString("E5", CultureInfo.InvariantCulture); // the six digits %g rounds to, and their exponent
-        int exponent = int.Parse(s[(s.IndexOf('E') + 1)..], CultureInfo.InvariantCulture);
-        if (exponent is < -4 or >= 6)
-        {
-            string mantissa = s[..s.IndexOf('E')].TrimEnd('0').TrimEnd('.');
-            return string.Create(CultureInfo.InvariantCulture, $"{mantissa}e{(exponent < 0 ? '-' : '+')}{Math.Abs(exponent):00}");
-        }
-
-        string fixedPoint = v.ToString("F" + Math.Max(0, 5 - exponent), CultureInfo.InvariantCulture);
-        return fixedPoint.Contains('.', StringComparison.Ordinal) ? fixedPoint.TrimEnd('0').TrimEnd('.') : fixedPoint;
+        double log = t == 0 ? double.NegativeInfinity : Math.Floor(Math.Log10(Math.Abs(t)));
+        int precision = double.IsFinite(log) && log < 0 ? (int)-log + 5 : 6;
+        string s = t.ToString("F" + precision.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+        s = s.TrimEnd('0');
+        return s.EndsWith('.') ? s[..^1] : s;
     }
 }
 
@@ -99,7 +98,7 @@ internal sealed class BlackFrames(double timeBase, int firstFrame)
         void Close(int end)
         {
             if (Frames[end].Pts - Frames[start].Pts >= least)
-                spans.Add(new BlackSpan(FirstFrame + start, FirstFrame + end, Frames[start].Pts * tb, Frames[end].Pts * tb));
+                spans.Add(new BlackSpan(FirstFrame + start, FirstFrame + end, Frames[start].Pts * tb, Frames[end].Pts * tb) { Duration = (Frames[end].Pts - Frames[start].Pts) * tb });
             start = -1;
         }
 

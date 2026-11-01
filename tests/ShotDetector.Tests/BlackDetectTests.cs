@@ -67,7 +67,7 @@ public sealed class BlackDetectTests : IDisposable
     [
         "process", "process-d0", "process-thresholds", "process-start", "process-fastyuv", "process-parallel", "process-deinterlace",
         "inprocess", "inprocess-d0", "inprocess-thresholds", "inprocess-start", "inprocess-fastyuv", "inprocess-parallel", "inprocess-deinterlace",
-        "process-10bit", "inprocess-10bit", "inprocess-full", "process-skip",
+        "process-10bit", "inprocess-10bit", "inprocess-full", "process-skip", "process-stream", "inprocess-stream", "process-picth1", "inprocess-picth1",
     ];
 
     [Theory]
@@ -80,10 +80,12 @@ public sealed class BlackDetectTests : IDisposable
         string path = name.EndsWith("10bit", StringComparison.Ordinal) ? Clip("fades10.mkv", "yuv420p10le")
             : name.EndsWith("full", StringComparison.Ordinal) ? Clip("fadesfull.mp4", "yuvj420p")
             : name.EndsWith("deinterlace", StringComparison.Ordinal) ? Clip("fadesi.mp4", "yuv420p", "-flags +ildct+ilme -top 1")
+            : name.EndsWith("stream", StringComparison.Ordinal) ? Clip("fades.mkv", "yuv420p")
             : Clip("fades.mp4", "yuv420p");
         var bd = name switch
         {
             _ when name.EndsWith("-d0", StringComparison.Ordinal) => new BlackDetectOptions { MinDuration = TimeSpan.Zero },
+            _ when name.EndsWith("picth1", StringComparison.Ordinal) => new BlackDetectOptions { MinDuration = TimeSpan.FromSeconds(0.3), PictureThreshold = 1 },
             _ when name.EndsWith("thresholds", StringComparison.Ordinal) => new BlackDetectOptions { MinDuration = TimeSpan.FromSeconds(0.3), PictureThreshold = 0.9, PixelThreshold = 0.2 },
             _ => new BlackDetectOptions { MinDuration = TimeSpan.FromSeconds(0.3) },
         };
@@ -104,7 +106,12 @@ public sealed class BlackDetectTests : IDisposable
             "skip" => options with { FrameSkip = 2 },
             _ => options,
         };
-        var result = ShotDetection.Detect(path, options);
+
+        // Streamed (a Stream: ffmpeg's stdin or FrameDecoder's reader): times from the stream's start, as for a file.
+        using var stream = name.EndsWith("stream", StringComparison.Ordinal) ? File.OpenRead(path) : null;
+        var result = stream is not null ? ShotDetection.Detect(stream, options) : ShotDetection.Detect(path, options);
+        if (stream is not null)
+            Assert.True(result.Video.Streamed);
         Assert.Equal(inProcess, result.Video.DecodedInProcess);
         if (name.EndsWith("parallel", StringComparison.Ordinal))
             Assert.Equal(3, result.Video.Chunks);
@@ -125,17 +132,38 @@ public sealed class BlackDetectTests : IDisposable
             Assert.True(s.StartFrame < s.EndFrame);
     }
 
-    // The span's text is blackdetect's (av_ts2timestr: %g, six significant digits) for times of every size.
+    // The span's text is blackdetect's (FFmpeg 8.1's av_ts_make_time_string2: six decimals, more under a second, trailing
+    // zeros and point dropped) for times of every size.
     [Theory]
     [InlineData(2.92, "2.92")]
     [InlineData(0, "0")]
-    [InlineData(1234567.5, "1.23457e+06")]
-    [InlineData(123456.5, "123456")]
-    [InlineData(0.0000125, "1.25e-05")]
-    [InlineData(0.000125, "0.000125")]
-    [InlineData(9.9999995, "10")]
-    [InlineData(705.4166666666666, "705.417")]
-    public void TimesPrintAsPercentG(double seconds, string printed) => Assert.Equal(printed, BlackSpan.G(seconds));
+    [InlineData(1.2083333333333333, "1.208333")]
+    [InlineData(705.4166666666666, "705.416667")]
+    [InlineData(1234567.5, "1234567.5")]
+    [InlineData(0.04, "0.04")]
+    [InlineData(0.0000125, "0.0000125")]
+    [InlineData(0.041666666666666664, "0.0416667")]
+    [InlineData(28, "28")]
+    [InlineData(-0.5, "-0.5")]
+    public void TimesPrintAsFfmpegs(double seconds, string printed) => Assert.Equal(printed, BlackSpan.Time(seconds));
+
+    // blackdetect's minimum duration in the time base is d / av_q2d(tb) truncated to an integer (check_black_end): at
+    // 1/25, 0.3 s is 7.5 units, so 7, and a run of 7 frames (0.28 s) is kept, one of 6 isn't. A run still black at the
+    // end ends at its last frame; a run of one frame is a span at d=0 (black_end the next frame).
+    [Fact]
+    public void SpansAreBlackdetects()
+    {
+        var frames = new BlackFrames(0.04, 10);
+        for (int i = 0; i < 30; i++)
+            frames.Frames.Add(new BlackFrame(i, i is (>= 2 and < 9) or (>= 12 and < 18) or 20 or >= 23));
+        var spans = frames.Spans(new BlackDetectOptions { MinDuration = TimeSpan.FromSeconds(0.3) }, frames.Frames.Count);
+        Assert.Equal([(12, 19)], spans.Select(s => (s.StartFrame, s.EndFrame)));
+        Assert.Equal("black_start:0.08 black_end:0.36 black_duration:0.28", spans[0].ToString());
+        var all = frames.Spans(new BlackDetectOptions { MinDuration = TimeSpan.Zero }, frames.Frames.Count);
+        Assert.Equal([(12, 19), (22, 28), (30, 31), (33, 39)], all.Select(s => (s.StartFrame, s.EndFrame)));
+        Assert.Equal("black_start:0.92 black_end:1.16 black_duration:0.24", all[3].ToString()); // to the last frame
+        Assert.Equal([(12, 19), (22, 24)], frames.Spans(new BlackDetectOptions { MinDuration = TimeSpan.Zero }, 15).Select(s => (s.StartFrame, s.EndFrame)));
+    }
 
     [Fact]
     public void OptionsAreChecked()
