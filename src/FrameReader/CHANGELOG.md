@@ -7,6 +7,40 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.19.0 – 2026-11-01
+
+Silences, picture measures and channel layouts without FFmpeg, and VideoFrameReader exact at odd sizes.
+
+### New
+
+- `ChannelWeights.ForLayout` also takes layouts FFmpeg doesn't name, as it describes them (`StreamInfo.ChannelLayout`):
+  `5 channels (FL+FR+LFE+BL+BR)`, the channel names alone in the samples' order, or `N channels` for channels without
+  positions. So `LoudnessMeter` weighs any layout as ebur128 does (issue #646).
+- `SilenceFinder`: silences in samples you decode yourself (no FFmpeg), a chunk at a time, as `silencedetect` finds them
+  in float samples, to the sample (`SilenceSpan`: first silent instant and the first after it, with times).
+- `PictureMeter`, `PictureMeasures`, `PictureFormat`, `PictureType`: the picture's measures of decoded frames, with
+  nothing of FFmpeg, as FFmpeg 8.1's filters compute them (issue #646). It takes 8 to 16 bits in 4:2:0, 4:2:2 or
+  4:4:4, from FrameReader's decoder (`Add(DecodedFrame)`, `PictureFormat.Of`) or as planes from any other decoder.
+  Per frame:
+  - signalstats' YMIN, YAVG, YMAX and BRNG;
+  - blackdetect's spans (`BlackSpans`);
+  - cropdetect's crop, per frame and over the run (`FrameCrop`, `Crop`, as `CropArea`);
+  - colour bars by their definition (`BarsSpans`);
+  - the decoder's picture type (`Types`).
+
+  Rotated video is read upright. Ranges measured by meters of their own join back into the whole run's measures, byte
+  for byte (`ToBytes`, `FromBytes`, `Join`).
+- `DecodedFrame.PictureType`: the decoder's picture type for the frame (I, P, B ...).
+
+### Fixed
+
+- `VideoFrameReader` at odd sizes: `FrameFormat.Yuv420p` at a frame's own size left the last chroma row as zeros when the
+  height was odd, and the RGB formats rounded the last column differently from ffmpeg when the width was odd (issue
+  #656). The output is now ffmpeg's `-f rawvideo` byte for byte there too. The conversion writes into aligned, zeroed
+  rows, as the scale filter's buffers are. A frame already in the output's format and size passes through, as the scale
+  filter passes it. On ARM, swscale doesn't write an odd width's last RGB column, so ffmpeg gives 0 there; the reader now
+  gives 0 too, where before it gave whatever the buffer held.
+
 ## 2.18.0 – 2026-10-31
 
 EBU R128 loudness: through FFmpeg's ebur128, and without FFmpeg on samples you decode yourself.
