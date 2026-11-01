@@ -51,12 +51,12 @@ public sealed class FreezeDetector
     readonly Rational _timeBase;
     readonly Rational? _frameRate;
     readonly byte[][] _reference;
-    readonly List<FrozenSpan> _spans = [];
+    readonly List<(FrozenSpan Span, int OpenedAt, int EndedAt)> _spans = [];
     bool _hasReference, _frozen;
     long _n, _referenceN;
     long? _referencePts;
     int _referenceIndex, _index;
-    (int Frame, long Pts)? _open;
+    (int Frame, long Pts, int OpenedAt)? _open;
 
     /// <summary>A detector of frames whose planes are <paramref name="planes"/> (in samples), at <paramref name="bitDepth"/> bits.</summary>
     /// <param name="planes">Each plane's width (the line's samples) and height, as freezedetect sizes them: 1 to 4 planes.</param>
@@ -133,15 +133,31 @@ public sealed class FreezeDetector
         or "gbrp14le" or "yuvj411p" or "yuv440p10le" or "yuv440p12le" or "gbrap12le" or "gbrap10le" or "gray12le"
         or "gray10le" or "gray9le" or "gray14le";
 
-    /// <summary>The still pictures found so far that have ended, in order.</summary>
-    public IReadOnlyList<FrozenSpan> Spans => _spans;
-
     /// <summary>
     /// The still pictures found: those that ended, and one still running (no end), as freezedetect reports them by
     /// the end of the frames.
     /// </summary>
-    public IReadOnlyList<FrozenSpan> Finish() =>
-        _open is { } open ? [.. _spans, new FrozenSpan(open.Frame, null, open.Pts, null, null)] : _spans;
+    public IReadOnlyList<FrozenSpan> Finish() => Finish(_index);
+
+    /// <summary>
+    /// The still pictures as freezedetect reports them after the first <paramref name="frames"/> frames given (a reader
+    /// that decodes ahead of the frames it has used): those that ended within them, and one still running there.
+    /// </summary>
+    public IReadOnlyList<FrozenSpan> Finish(int frames)
+    {
+        var found = new List<FrozenSpan>();
+        foreach (var (span, openedAt, endedAt) in _spans)
+        {
+            if (endedAt < frames)
+                found.Add(span);
+            else if (openedAt < frames)
+                found.Add(span with { EndFrame = null, EndPts = null, DurationMicros = null });
+        }
+
+        if (_open is { } open && open.OpenedAt < frames)
+            found.Add(new FrozenSpan(open.Frame, null, open.Pts, null, null));
+        return found;
+    }
 
     /// <summary>Adds a decoded frame (its planes and pts).</summary>
     public void Add(DecodedFrame frame)
@@ -244,10 +260,10 @@ public sealed class FreezeDetector
             if (micros >= _minMicros)
             {
                 if (!_frozen)
-                    _open = (_referenceIndex, _referencePts ?? long.MinValue);
+                    _open = (_referenceIndex, _referencePts ?? long.MinValue, index);
                 if (!frozen)
                 {
-                    _spans.Add(new FrozenSpan(_open!.Value.Frame, index, _open.Value.Pts, pts, micros));
+                    _spans.Add((new FrozenSpan(_open!.Value.Frame, index, _open.Value.Pts, pts, micros), _open.Value.OpenedAt, index));
                     _open = null;
                 }
 

@@ -840,6 +840,8 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(file.ReferenceTone, ours.ReferenceTone);
         Assert.Equal(file.BlackSpans, ours.BlackSpans);
         Assert.Equal(ours.BlackSpans, awaited.BlackSpans);
+        Assert.Equal(file.FreezeSpans, ours.FreezeSpans);
+        Assert.Equal(ours.FreezeSpans, awaited.FreezeSpans);
         Assert.Equal(ours.ReferenceTone, awaited.ReferenceTone);
         Assert.Equal(file.Cuts, ours.Cuts);
         Assert.Equal(file.Shots, ours.Shots);
@@ -1180,6 +1182,48 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             options = options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
         await AssertSame(path, options);
         Assert.Equal(2, ShotDetection.Detect(path, options).BlackSpans!.Count);
+    }
+
+    // Still pictures (DetectionOptions.FreezeDetect) from the frames given: freezedetect's comparison of each frame's planes
+    // as given, or deinterlaced whole when deinterlacing: the file path's spans. Held stills, one under light noise, one to
+    // the end; 8-bit, 10-bit, and MBAFF H.264 deinterlaced.
+    [Theory]
+    [InlineData("yuv420p", "")]
+    [InlineData("yuv420p10le", "")]
+    [InlineData("yuv420p", "tff")]
+    public async Task SameAsTheFileWithFreezeSpans(string format, string interlaced)
+    {
+        if (Libs is null)
+            return;
+        string path = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, $"freeze-{format}-{interlaced}.mp4");
+        lock (H264Lock)
+        {
+            if (!File.Exists(path))
+            {
+                string partial = path + ".part.mp4";
+                string[] field = interlaced == "tff" ? ["-flags", "+ildct+ilme", "-top", "1"] : [];
+                VideoReader.Run("ffmpeg",
+                    ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=1", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=1",
+                        "-filter_complex", "[0]tpad=stop_mode=clone:stop_duration=1.5[a];[1]tpad=stop_mode=clone:stop_duration=1,noise=alls=2:allf=t[b];[a][b]concat=n=2:v=1",
+                        "-pix_fmt", format, "-c:v", "libx264", "-crf", "12", .. field, partial],
+                    default);
+                File.Move(partial, path, true);
+            }
+        }
+
+        var options = new DetectionOptions
+        {
+            Detector = DetectorKind.Content,
+            CollectStats = true,
+            FfmpegDirectory = Libs,
+            Decoder = VideoDecoder.InProcess,
+            Yuv420Converter = new SwscaleYuv420(),
+            FreezeDetect = new FreezeDetectOptions { MinDuration = TimeSpan.FromSeconds(0.5) },
+        };
+        if (interlaced.Length > 0)
+            options = options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
+        await AssertSame(path, options);
+        Assert.NotEmpty(ShotDetection.Detect(path, options).FreezeSpans!);
     }
 
     /// <summary>

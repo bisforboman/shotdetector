@@ -124,11 +124,56 @@ internal sealed partial class VideoReader
         _timeBase = video.TimeBase is { } tb ? tb.Num / (double)tb.Den : 0;
         _startPts = video.StartPts;
         _blackDetect = o.BlackDetect;
+        _freezeDetect = o.FreezeDetect;
+        _framesTimeBase = video.TimeBase is { } given ? given : new FrameReader.Rational(video.FrameRate.Den, video.FrameRate.Num);
         _framesFullRange = video.FullRange || video.PixelFormat.StartsWith("yuvj", StringComparison.Ordinal);
     }
 
     // The video's range (full: yuvj, or YuvVideo.FullRange), each frame's own where it says (blackdetect's threshold).
     bool _framesFullRange;
+
+    // The frames' pts' time base: YuvVideo.TimeBase, or the frame rate's for untimed frames (frame n at n).
+    FrameReader.Rational _framesTimeBase;
+
+    /// <summary>
+    /// freezedetect's comparison of frame <paramref name="k"/> (DetectionOptions.FreezeDetect): its planes as given, or
+    /// deinterlaced whole when deinterlacing, with FrameReader's detector, at its pts (untimed: k).
+    /// </summary>
+    unsafe void CompareFrozen(int k, FreezeDetectOptions o)
+    {
+        int w = _codedSize.W, h = _codedSize.H, cw = (w + 1) / 2, ch = ChromaHeight, b = BytesPerSample;
+        if (_freezeDetector is null)
+        {
+            // freezedetect's plane sizes: the chroma's height shifted down (an odd height's last row left out).
+            int fh = Yuv422 ? h : h >> 1;
+            _freezeDetector = new FrameReader.FreezeDetector([(w, h), (cw, fh), (cw, fh)], b == 2 ? 10 : 8, _framesTimeBase, FreezeOptions(o));
+            (_freezeOrigin, _freezeTimeBase) = (_framesTimed ? _startPts : 0, _framesTimeBase.Num / (double)_framesTimeBase.Den);
+        }
+
+        long? pts = _framesTimed && k - _frameBase is >= 0 and var given && given < _framePts.Count ? _framePts[given] : k;
+        if (_deinterlace)
+        {
+            int u = w * h * b, v = u + (cw * ch * b);
+            _freezePlanes ??= new byte[PackedFrameSize];
+            var cur = _held![k % 3];
+            fixed (byte* p = _held[Math.Max(k - 1, 0) % 3], c = cur, n = _framesRead > k + 1 ? _held[(k + 1) % 3] : cur, d = _freezePlanes)
+            {
+                int parity = _heldTff[k % 3] ? 0 : 1;
+                DeinterlacePlane(_yadif!, p, c, n, d, w, h, Enumerable.Range(0, h), parity, b);
+                DeinterlacePlane(_yadif!, p + u, c + u, n + u, d + u, cw, ch, Enumerable.Range(0, ch), parity, b);
+                DeinterlacePlane(_yadif!, p + v, c + v, n + v, d + v, cw, ch, Enumerable.Range(0, ch), parity, b);
+            }
+
+            _freezeDetector.Add(pts, _freezePlanes.AsSpan(0, u), w * b, _freezePlanes.AsSpan(u, v - u), cw * b, _freezePlanes.AsSpan(v), cw * b);
+        }
+        else
+        {
+            var f = _currentFrame;
+            _freezeDetector.Add(pts, f.Y.Span, f.YStride, f.U.Span, f.UStride, f.V.Span, f.VStride);
+        }
+    }
+
+    byte[]? _freezePlanes; // deinterlacing: a frame's planes, deinterlaced whole, for freezedetect
 
     /// <summary>
     /// blackdetect's judgement of frame <paramref name="k"/> (DetectionOptions.BlackDetect): its luma as given, or
@@ -556,6 +601,8 @@ internal sealed partial class VideoReader
 
             if (_blackDetect is { } bd)
                 _lastBlack = JudgeBlack(k, bd, _deinterlace ? _heldTags[k % 3] : TagsOf(_currentFrame));
+            if (_freezeDetect is { } fz)
+                CompareFrozen(k, fz);
             yield return small;
         }
     }

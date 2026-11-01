@@ -174,6 +174,7 @@ internal sealed partial class VideoReader
 
     IEnumerable<byte[]> FramesInProcess(int startFrame, int? count, CancellationToken cancellationToken, int seekBack)
     {
+        _freezeDetector = null; // a read started again from further back compares from its own first frame
         var pipeline = Pipeline;
         var resizer = pipeline != FramePipeline.FfmpegScale ? new CvResize(CropRegion.Width, CropRegion.Height, Width, Height) : null;
         _livePackets.Clear();
@@ -373,6 +374,20 @@ internal sealed partial class VideoReader
                     // blackdetect's judgement of the frame (DetectionOptions.BlackDetect), read here, before it is taken.
                     if (_blackDetect is { } bd)
                         judgements.Enqueue(JudgeBlack(decoder, bd, Streaming ? pts + offset : pts - _startPts));
+
+                    // freezedetect's comparison of the frame (DetectionOptions.FreezeDetect), with the frames before it here.
+                    if (_freezeDetect is { } fz)
+                    {
+                        if (_freezeDetector is null)
+                        {
+                            _freezeDetector = FrameReader.FreezeDetector.For(decoder, FreezeOptions(fz))
+                                ?? throw new ShotDetectionException(ShotDetectionError.InvalidInput,
+                                    $"FreezeDetect: the video decodes to {decoder.PixelFormat}, which ffmpeg converts before freezedetect; read it with the ffmpeg executable (Decoder = FfmpegProcess).");
+                            (_freezeOrigin, _freezeTimeBase) = (Streaming ? -offset : _startPts, timeBase);
+                        }
+
+                        _freezeDetector.Add(decoder);
+                    }
 
                     // The frame's colour tags (and MPEG-PS's timestamp), read here: a taken frame doesn't say them.
                     var tags = conversions is null ? default : FrameColourTags.Of(decoder);
