@@ -11,10 +11,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 ## Next
 
-- The managed measures in FrameReader for shotdetector-web and media-qc (#646): `SilenceFinder` and `PictureMeter`, the picture at any depth and chroma layout (10-bit 4:2:2 too)
-  - Why: The owner's private QC tool (media-qc) and shotdetector-web need one implementation of the picture and sound measures, giving the same figures from FrameReader's FFmpeg decoder and ManagedCodecs' managed one; FrameReader hosts them (docs/decisions/2026-10-31-frame-reader-measures.md, widened by 2026-10-31-frame-reader-measures-widening.md). Slice 1, `LoudnessMeter`, is PR #655
-  - Status: In progress (2026-10-31: `SilenceFinder` first, then `PictureMeter`; the FrameReader release waits on the owner, then shotdetector-web switches)
-
 - Fix every divergence the real-world check finds
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
@@ -28,7 +24,7 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Open
 
 - arch-diff: require 8-bit odd widths
-  - Why: docs/decisions/2026-10-18-fastyuv-422.md left sintel_oddwidth.mkv reported, not required, "until its first ARM table is read" (tools/arch-summary.py, ci.yml's `--informational`); the same decision found 8-bit odd widths take the SSSE3 path FastYuv reproduces. Read a run's table: at 100 %, make it required; else record why not. Found in the 2026-10-31 decision review
+  - Why: docs/decisions/2026-10-18-fastyuv-422.md left sintel_oddwidth.mkv reported, not required, "until its first ARM table is read" (tools/arch-summary.py, ci.yml's `--informational`); the same decision found 8-bit odd widths take the SSSE3 path FastYuv reproduces. Read a run's table: at 100 %, make it required; else record why not. Found in the 2026-10-31 decision review. Lead from #668 (#656): on linux-arm64 swscale never writes an odd width's last RGB column (BtbN's build and ours alike; ffmpeg's command line gets zeros from its zeroed filter pool). If ShotDetector's own BGR buffers (BgrConverter/FrameWriter) aren't zeroed, the column holds old bytes there, which would explain the difference: check it on an ARM runner, zero the buffer as #668 did, then require the sample
   - Status: Open
 
 - compare.py's `--always-bt601` silently turns off in-process decoding
@@ -39,10 +35,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
   - Status: Open
 
-
-- FrameReader: managed picture and loudness measures (#646)
-  - Why: The owner chose (2026-10-31) to move shotdetector-web's managed measures (signalstats, blackdetect, cropdetect and colour-bar equivalents; a BS.1770-4 loudness meter; silences and peaks) into FrameReader, so the page's QC report (shotdetector-web#94) and the delivery-QC command (#636) share one implementation checked against FFmpeg once; FrameReader's own `Loudness` (#642) runs on FFmpeg's ebur128, which the browser can't use
-  - Status: Building: slice 1 (LoudnessMeter) merged in #655; slices 2-3 (SilenceFinder, PictureMeter) next
 
 ## Waiting
 
