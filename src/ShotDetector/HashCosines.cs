@@ -2,9 +2,9 @@ namespace ShotDetector;
 
 /// <summary>
 /// HashDetector's DCT-II basis (<c>HashDetector.CosineTable</c>) for the sizes scenedetect's defaults use, as
-/// checked-in values: what the formula gives with Math.Cos on x64 .NET. Math.Cos differs in its last bit between
-/// runtimes (browser-wasm's against x64's), and on a near-flat frame the DCT's coefficients are rounding noise around
-/// their median, so those last bits decide hash bits. HashDetectorTests checks these against the formula on x64.
+/// checked-in values: what the formula gives with Math.Cos on x64 Linux (glibc). Math.Cos differs in its last bit
+/// between runtimes (browser-wasm's, musl's on Alpine), and on a near-flat frame the DCT's coefficients are rounding
+/// noise around their median, so those last bits decide hash bits. HashDetectorTests checks these against the formula.
 /// </summary>
 internal static class HashCosines
 {

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using ShotDetector;
 
 // Expected values from cv2 (cvtColor BGR2GRAY, resize INTER_AREA, dct) on a deterministic image.
@@ -110,12 +111,15 @@ public class HashDetectorTests
         Assert.Null(HashCosines.For(24, 12));
     }
 
-    /// <summary>The checked-in tables are the formula's values with x64's Math.Cos, bit for bit (other CPUs' may differ).</summary>
+    /// <summary>
+    /// The checked-in tables are the formula's values with Math.Cos on x64 Linux (glibc), bit for bit; elsewhere within
+    /// one ulp of this runtime's formula: musl's cos (Alpine) differs in the last bit too, as does browser-wasm's.
+    /// </summary>
     [Fact]
-    public void TheCheckedInCosinesAreTheFormulaOnX64()
+    public void TheCheckedInCosinesAreTheFormulaOnX64Glibc()
     {
-        if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture != System.Runtime.InteropServices.Architecture.X64)
-            return;
+        bool reference = RuntimeInformation.ProcessArchitecture == Architecture.X64 && OperatingSystem.IsLinux()
+            && !RuntimeInformation.RuntimeIdentifier.Contains("musl", StringComparison.Ordinal);
         foreach (var (n, rows) in new[] { (16, 8), (32, 16) })
         {
             var table = HashCosines.For(n, rows)!;
@@ -124,7 +128,10 @@ public class HashDetectorTests
             for (int k = 0; k < rows; k++)
             {
                 for (int x = 0; x < n; x++)
-                    Assert.Equal(BitConverter.DoubleToInt64Bits(formula[k, x]), BitConverter.DoubleToInt64Bits(table[k, x]));
+                {
+                    long ulps = Math.Abs(BitConverter.DoubleToInt64Bits(formula[k, x]) - BitConverter.DoubleToInt64Bits(table[k, x]));
+                    Assert.True(ulps <= (reference ? 0 : 1), $"n={n} k={k} x={x}: {ulps} ulps from this runtime's formula");
+                }
             }
         }
     }
