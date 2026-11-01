@@ -24,8 +24,8 @@
     <Version>$(ShotDetectorVersion)</Version>
     <!-- Each product's API guard (SDK package validation): packing fails on a breaking change against its last stable
          version on nuget.org (docs/decisions/, 2026-10-08). -->
-    <ApiBaselineVersion>3.25.0</ApiBaselineVersion>
-    <FrameReaderApiBaselineVersion>2.19.0</FrameReaderApiBaselineVersion>
+    <ApiBaselineVersion>3.26.0</ApiBaselineVersion>
+    <FrameReaderApiBaselineVersion>2.20.0</FrameReaderApiBaselineVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="StyleBro.Analyzers" PrivateAssets="all" />
