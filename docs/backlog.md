@@ -61,6 +61,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Most time is in FFmpeg's native code, so .NET 11 promises little speed here (its raised hardware baseline: ReadyToRun at x86-64-v3; faster Native AOT interface dispatch); the risk is a JIT that changes results (the AVX-512 + tiered-JIT VideoWriter flake shows it can). Stay on net10.0 (LTS); run the tests and the parity comparison on net11, informational, then compare the weekly benchmark, and retarget only for a measured gain with identical results (the owner, 2026-10-22)
   - Status: Waiting (on .NET 11's release)
 
+- Explore a clean-room MIT replacement for FastYuv's converter. The first slice is the 8-bit converter: a functional specification, plus a conformance oracle whose expected bytes come from FFmpeg's x86 output, never from FastYuv
+  - Why: FastYuv is the only way to get x86's results on ARM and to run without FFmpeg, and it is LGPL because it ports FFmpeg's code. An MIT converter with the same bytes would let the MIT package do this itself (docs/ideas/fastyuv-optional.md; docs/decisions/2026-11-01-fastyuv-clean-room.md). Later slices: 10-bit 4:2:0, then yadif
+  - Status: Waiting (on the owner: the legal side's confirmation of the two-sided process, and whether a Claude session may be the implementer or it must be a person)
+
 ## Maybe
 
 - Frame sources: scale a frame of another size to the video's, as the file path does (port swscale's scaled 8-bit yuv420p to BGR path, x86's, to FastYuv)
