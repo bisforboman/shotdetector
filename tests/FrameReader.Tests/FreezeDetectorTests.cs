@@ -76,6 +76,79 @@ public class FreezeDetectorTests
         }
     }
 
+    // freezedetect's state on planes made here (one 8x8 plane, 25 fps, d = 2 frames: 80000 µs): a picture differing
+    // exactly d after the still's first is a span (micros >= d); a still is opened once, where d is reached, so the spans
+    // as of an earlier frame count keep it running from there (Finish(frames)).
+    [Fact]
+    public void StateIsFreezedetects()
+    {
+        var options = new FreezeOptions { MinDuration = TimeSpan.FromMilliseconds(80) };
+        byte[] a = new byte[64], b = new byte[64];
+        Array.Fill(b, (byte)200);
+
+        // Frames 0, 1 the same picture, frame 2 another, 80 ms after frame 0: start and end at frame 2.
+        var exact = new FreezeDetector([(8, 8)], 8, new Rational(1, 25), options);
+        foreach (var (pts, plane) in new[] { (0L, a), (1L, a), (2L, b) })
+            exact.Add(pts, plane, 8);
+        Assert.Equal([new FrozenSpan(0, 2, 0, 2, 80000)], exact.Finish());
+
+        // Frames 0 to 9 the same picture: opened at frame 2 (d reached), running; as of 3 frames running too, as of 2 none.
+        var still = new FreezeDetector([(8, 8)], 8, new Rational(1, 25), options);
+        for (long pts = 0; pts < 10; pts++)
+            still.Add(pts, a, 8);
+        Assert.Equal([new FrozenSpan(0, null, 0, null, null)], still.Finish());
+        Assert.Equal([new FrozenSpan(0, null, 0, null, null)], still.Finish(3));
+        Assert.Empty(still.Finish(2));
+        still.Add(10, b, 8);
+        Assert.Equal([new FrozenSpan(0, 10, 0, 10, 400000)], still.Finish());
+        Assert.Equal([new FrozenSpan(0, null, 0, null, null)], still.Finish(10));
+    }
+
+    // freezedetect sizes 4:2:0's chroma planes at the height shifted down: at an odd height their last row is left out,
+    // so frames differing only there are one still picture, as ffmpeg's filter says too. At 256 wide against ffmpeg as it
+    // runs; at 64 against its C code (-cpuflags 0): x86's SIMD SAD (scene_sad.asm) reads a whole vector of each row of a
+    // plane narrower than one (32 bytes here, under AVX-512's 64) and the C tail then reads the row again, so there the
+    // figures depend on the CPU; the detector is FFmpeg's C code.
+    [Theory]
+    [InlineData(256, false)]
+    [InlineData(64, true)]
+    public void OddHeightsLeaveTheLastChromaRowOut(int w, bool cOnly)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-freeze-odd-").FullName;
+        try
+        {
+            int h = 47, cw = w / 2, ch = 24;
+            string raw = Path.Combine(dir, "frames.yuv"), path = Path.Combine(dir, "odd.nut");
+            using (var file = File.Create(raw))
+            {
+                for (int f = 0; f < 80; f++)
+                {
+                    var frame = new byte[(w * h) + (2 * cw * ch)];
+                    Array.Fill(frame, (byte)128);
+                    byte last = (byte)(f % 2 == 0 ? 16 : 240);
+                    frame.AsSpan((w * h) + (cw * (ch - 1)), cw).Fill(last); // U's last row
+                    frame.AsSpan((w * h) + (cw * ch) + (cw * (ch - 1)), cw).Fill(last); // V's
+                    file.Write(frame);
+                }
+            }
+
+            Run("ffmpeg", ["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", $"{w}x{h}", "-r", "25", "-i", raw, "-c:v", "rawvideo", path]);
+            using var decoder = new FrameDecoder(path, new FrameDecoderOptions());
+            FreezeDetector? detector = null;
+            while (decoder.Next())
+                (detector ??= FreezeDetector.For(decoder)!).Add(decoder);
+            Assert.Equal([0], detector!.Finish().Select(s => s.FirstFrame));
+            string log = Run("ffmpeg", ["-hide_banner", "-nostats", "-nostdin", .. cOnly ? new[] { "-cpuflags", "0" } : [], "-i", path, "-vf", "freezedetect", "-f", "null", "-"]);
+            Assert.Contains("lavfi.freezedetect.freeze_start: 0", log, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void RescalesAsFfmpeg()
     {

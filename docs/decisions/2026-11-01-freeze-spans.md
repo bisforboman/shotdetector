@@ -50,6 +50,12 @@ versions finish the rows' tails in C), over the samples and 2^depth. Its duratio
   starts at the first frame read), times from the video stream's start. freezedetect's frame-rate fallback is left out
   in-process (no frame rate given: a duration without pts is 0), so a still across a frame without pts can differ from
   ffmpeg's there.
+- An FFmpeg x86 quirk found testing: scene_sad.asm's row loop is a do-while, so for a plane narrower than one vector
+  (64 bytes with AVX-512, 32 with AVX2, 16 with SSE2) it still reads a whole vector of each row (into the next row) and
+  the C tail then reads the row again: freezedetect's figures on such planes depend on the CPU. The detector is FFmpeg's
+  C code (`-cpuflags 0` gives its figures); frames at least 128 pixels wide (chroma planes of 64) never meet it, but on
+  tinier ones the executable path, which runs ffmpeg's own filter, can differ from in-process decoding
+  (`FreezeDetectorTests.OddHeightsLeaveTheLastChromaRowOut` shows both).
 - Printing: `FreezeSpan.ToString()` is freezedetect's three log lines' values on one line (`freeze_start:1.2
   freeze_duration:3.04 freeze_end:4.24`), the start alone for a still at the end, with FFmpeg's time strings.
 
