@@ -509,6 +509,12 @@ The meter counts the decoded planes, as ffmpeg does with `-noautorotate`. A run 
 meter (`new PictureMeter(format, firstFrame, endFrame)`), joins back into the whole run's measures byte for byte
 (`ToBytes`, `FromBytes`, `PictureMeasures.Join`).
 
+blackdetect's thresholds other than its defaults: `new PictureMeter(format, first, end, blackPixelThreshold)` counts
+black pixels at that `pix_th`, and `BlackSpans(d, pictureThreshold)` judges frames at that `pic_th`. For a black frame
+check alone, `BlackPixels` is blackdetect on one frame's luma (its threshold, `Threshold`, and its count, `Count`, on
+planes of yours; `Of(decoder)` or `Of(frame)` on FrameReader's, in any format blackdetect takes as it is, gray and NV12
+too) without the meter's other figures: ShotDetector's black spans count with it.
+
 Test media without the ffmpeg executable: `TestMedia.Write(path, options)` makes a synthetic clip from FFmpeg's own
 sources and encoders, in-process, for tests that need real media without committing any. Video sources are
 concatenated in order, so the cuts fall at known frames; interlaced output is flagged and coded as such.
