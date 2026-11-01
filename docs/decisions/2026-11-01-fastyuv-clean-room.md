@@ -57,3 +57,20 @@ The 8-bit slice alone doesn't cover everything ARM needs.
 ### Answer
 
 **4, nothing more.** FastYuv stays an explicit opt-in.
+
+## Parked (same day)
+
+Asked next who implements (a person, or a Claude session with mitigations) and where the work lives, the owner
+answered **"Park it for now"**, and left the rest **as a suggestion**.
+
+Nothing has been written: no specification, oracle or repository. When the exploration is picked up again, the
+suggestions on record are these:
+- The specification side works black-box too. It never opens swscale, `src/ShotDetector.FastYuv` or FastYuv's tests,
+  and derives the mapping from FFmpeg x86's output: every Y/U/V value for each colour matrix and range
+  `IYuv420Converter.ForColor` accepts. It checks that runners with and without AVX-512, and the executable and
+  in-process paths, give the same bytes.
+- The work lives in a new MIT repository the owner creates, with no FastYuv code or references, because the
+  implementer can't be given this one.
+- A person implements, which gives the stronger record. A Claude session's training data may include FFmpeg's source.
+  If a session implements anyway, it should be a fresh session with no checkout containing the port, a prompt
+  forbidding FFmpeg source, only the specification and oracle as input, and its transcript kept.
