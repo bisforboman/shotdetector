@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using ShotDetector;
 
 // Expected values from cv2 (cvtColor BGR2GRAY, resize INTER_AREA, dct) on a deterministic image.
@@ -80,5 +81,58 @@ public class HashDetectorTests
         }
 
         Assert.Equal([5], cuts);
+    }
+
+    static string Hex(bool[] bits) =>
+        string.Concat(bits.Chunk(8).Select(c => Convert.ToByte(string.Concat(c.Select(b => b ? '1' : '0')), 2).ToString("x2")));
+
+    /// <summary>
+    /// A flat frame: every DCT coefficient but the first is rounding noise (~1e-31) around a median near zero, so the
+    /// cosine table's last bits and the median's float32 rounding decide the bits. These are x64's; browser-wasm gave
+    /// other bits on such frames while the table came from its own Math.Cos (shotdetector-web, Tears of Steel).
+    /// </summary>
+    [Theory]
+    [InlineData(8, "d1c92ed12e2e2ed1", 32)]
+    [InlineData(16, "9626294a69d9d6a261d99626962669d969d969d9962669d969d9c62a962669d9", 127)]
+    public void FlatFramesHashTheSameEverywhere(int size, string expected, int ones)
+    {
+        var d = new HashDetector(i => FrameTime.Frame(i, new Fps(25, 1)), size: size);
+        d.SetFrameSize(64, 48);
+        var bits = d.Hash(Enumerable.Repeat((byte)16, 64 * 48 * 3).ToArray());
+        Assert.Equal(expected, Hex(bits));
+        Assert.Equal(ones, bits.Count(b => b)); // 127 at 16: two equal noise values make the median
+    }
+
+    [Fact]
+    public void TheDefaultSizesUseTheCheckedInCosines()
+    {
+        Assert.Same(HashCosines.For(16, 8), HashDetector.CosineTable(16, 8));
+        Assert.Same(HashCosines.For(32, 16), HashDetector.CosineTable(32, 16));
+        Assert.Null(HashCosines.For(24, 12));
+    }
+
+    /// <summary>
+    /// The checked-in tables are the formula's values with Math.Cos on x64 Linux (glibc), bit for bit; elsewhere within
+    /// one ulp of this runtime's formula: musl's cos (Alpine) differs in the last bit too, as does browser-wasm's.
+    /// </summary>
+    [Fact]
+    public void TheCheckedInCosinesAreTheFormulaOnX64Glibc()
+    {
+        bool reference = RuntimeInformation.ProcessArchitecture == Architecture.X64 && OperatingSystem.IsLinux()
+            && !RuntimeInformation.RuntimeIdentifier.Contains("musl", StringComparison.Ordinal);
+        foreach (var (n, rows) in new[] { (16, 8), (32, 16) })
+        {
+            var table = HashCosines.For(n, rows)!;
+            var formula = HashDetector.CosineFormula(n, rows);
+            Assert.Equal(formula.Length, table.Length);
+            for (int k = 0; k < rows; k++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    long ulps = Math.Abs(BitConverter.DoubleToInt64Bits(formula[k, x]) - BitConverter.DoubleToInt64Bits(table[k, x]));
+                    Assert.True(ulps <= (reference ? 0 : 1), $"n={n} k={k} x={x}: {ulps} ulps from this runtime's formula");
+                }
+            }
+        }
     }
 }

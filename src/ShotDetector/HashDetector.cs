@@ -6,8 +6,11 @@ namespace ShotDetector;
 /// coefficients compared with their median) and a cut when the hash differs from the previous frame's
 /// in at least threshold of its bits.
 /// Bit-exact with OpenCV for the grayscale conversion and the INTER_AREA resize. The DCT is computed
-/// in double precision rather than cv2.dct's float32, so a hash bit can differ only when a coefficient
-/// ties with the median to within ~1e-6 (not seen in 512,000 bits tested).
+/// in double precision rather than cv2.dct's float32, so a hash bit can differ when a coefficient
+/// ties with the median to within ~1e-6. That happens on near-flat frames (dark or faded ones): their
+/// coefficients other than the first are rounding noise around a median near zero, and the noise
+/// decides the bits. Our noise is the same on every runtime (the cosine table is checked in, the rest
+/// IEEE double and float32 arithmetic); cv2.dct's is its own.
 /// </summary>
 internal sealed class HashDetector(
     Func<int, FrameTime> position,
@@ -116,14 +119,15 @@ internal sealed class HashDetector(
             }
         }
 
-        // numpy.median of float32: mean of the two middle values, in float32.
+        // numpy.median of float32: mean of the two middle values, in float32, rounded so at each step explicitly:
+        // the comparison decides the bits of near-flat frames, where a wider intermediate would too.
         var sorted = (float[])_low.Clone();
         Array.Sort(sorted);
         int half = sorted.Length / 2;
-        float median = sorted.Length % 2 == 1 ? sorted[half] : (sorted[half - 1] + sorted[half]) / 2f;
+        float median = sorted.Length % 2 == 1 ? sorted[half] : (float)((float)(sorted[half - 1] + sorted[half]) / 2f);
         var bits = new bool[_low.Length];
         for (int i = 0; i < bits.Length; i++)
-            bits[i] = _low[i] > median;
+            bits[i] = (float)_low[i] > median;
         return bits;
     }
 
@@ -134,8 +138,14 @@ internal sealed class HashDetector(
             gray[i] = (byte)((bgr[p] * 3735 + bgr[p + 1] * 19235 + bgr[p + 2] * 9798 + 16384) >> 15);
     }
 
-    /// <summary>DCT-II basis, rows k &lt; <paramref name="rows"/>: sqrt(2/N)·cos(π(2x+1)k/2N), row 0 scaled by 1/√2.</summary>
-    static double[,] CosineTable(int n, int rows)
+    /// <summary>
+    /// DCT-II basis, rows k &lt; <paramref name="rows"/>: sqrt(2/N)·cos(π(2x+1)k/2N), row 0 scaled by 1/√2.
+    /// The defaults' sizes come checked in (<see cref="HashCosines"/>): Math.Cos's last bit differs between runtimes.
+    /// </summary>
+    internal static double[,] CosineTable(int n, int rows) => HashCosines.For(n, rows) ?? CosineFormula(n, rows);
+
+    /// <summary>The basis from the formula, with this runtime's Math.Cos.</summary>
+    internal static double[,] CosineFormula(int n, int rows)
     {
         var c = new double[rows, n];
         for (int k = 0; k < rows; k++)
