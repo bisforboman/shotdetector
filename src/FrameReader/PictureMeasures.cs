@@ -6,12 +6,16 @@ namespace FrameReader;
 /// <summary>
 /// The picture's measures of a run's frames (<see cref="PictureMeter"/>), by column, from <see cref="FirstFrame"/>, and
 /// FFmpeg's figures from them: <c>signalstats</c>' (<see cref="YAvg"/>, <see cref="Brng"/>), <c>blackdetect</c>'s
-/// (<see cref="BlackSpans"/>), <c>cropdetect</c>'s (<see cref="Crop"/>, <see cref="FrameCrop"/>), and the colour bars
+/// (<see cref="BlackSpans(double, double)"/>), <c>cropdetect</c>'s (<see cref="Crop"/>, <see cref="FrameCrop"/>), and the colour bars
 /// (<see cref="BarsSpans"/>); and each frame's picture type (<see cref="Type"/>, <see cref="Types"/>). The ranges of a split run join (<see cref="Join"/>) into the whole run's, byte for byte.
 /// </summary>
 public sealed class PictureMeasures
 {
     const uint Magic = 0x4D505246; // "FRPM": FrameReader's picture measures, version 1
+    const uint MagicThreshold = 0x32505246; // "FRP2": version 1 with the black pixel threshold after the header
+
+    /// <summary>blackdetect's default pixel_black_th, the threshold of version 1's measures.</summary>
+    internal const double DefaultBlackPixelThreshold = 0.10;
 
     readonly List<long> _pts = [];
     readonly List<ushort> _min = [], _max = [];
@@ -21,8 +25,9 @@ public sealed class PictureMeasures
     readonly List<bool> _bars = [];
     readonly List<PictureType> _type = [];
 
-    internal PictureMeasures(int width, int height, bool fullRange, int bitDepth, Rational timeBase, int firstFrame)
+    internal PictureMeasures(int width, int height, bool fullRange, int bitDepth, Rational timeBase, int firstFrame, double blackPixelThreshold)
     {
+        BlackPixelThreshold = blackPixelThreshold;
         Width = width;
         Height = height;
         FullRange = fullRange;
@@ -48,6 +53,12 @@ public sealed class PictureMeasures
 
     /// <summary>The first frame's index in the video (display order).</summary>
     public int FirstFrame { get; }
+
+    /// <summary>
+    /// blackdetect's pixel_black_th the black pixels were counted with (<see cref="PictureMeter"/>'s; 0.10, FFmpeg's
+    /// default, unless the meter was given another).
+    /// </summary>
+    public double BlackPixelThreshold { get; }
 
     /// <summary>How many frames, from <see cref="FirstFrame"/>.</summary>
     public int Count => _pts.Count;
@@ -107,7 +118,16 @@ public sealed class PictureMeasures
 
     /// <summary>blackdetect's: at least 98% of the pixels at or under its threshold.</summary>
     /// <param name="i">The frame, counted from <see cref="FirstFrame"/>.</param>
-    public bool IsBlack(int i) => (double)_black[i] / Pixels >= 0.98;
+    public bool IsBlack(int i) => IsBlack(i, 0.98);
+
+    /// <summary>blackdetect's with <c>pic_th=<paramref name="pictureThreshold"/></c>: that share of the pixels or more at or under its threshold.</summary>
+    /// <param name="i">The frame, counted from <see cref="FirstFrame"/>.</param>
+    /// <param name="pictureThreshold">The share of black pixels that makes a frame black (picture_black_ratio_th, 0 to 1).</param>
+    public bool IsBlack(int i, double pictureThreshold) => (double)_black[i] / Pixels >= pictureThreshold;
+
+    /// <summary>The black pixels blackdetect counts in frame <paramref name="i"/> (at or under <see cref="BlackPixelThreshold"/>).</summary>
+    /// <param name="i">The frame, counted from <see cref="FirstFrame"/>.</param>
+    public int BlackPixels(int i) => _black[i];
 
     /// <summary>Colour bars (<see cref="PictureMeter"/>, by their definition).</summary>
     /// <param name="i">The frame, counted from <see cref="FirstFrame"/>.</param>
@@ -145,10 +165,18 @@ public sealed class PictureMeasures
     /// after that isn't black, or at the end the last frame's pts (FFmpeg's, a FIXME there), kept when that lasts at
     /// least <paramref name="minSeconds"/> (in the time base, rounded down, as blackdetect).
     /// </summary>
-    public IReadOnlyList<FrameSpan> BlackSpans(double minSeconds = 2)
+    public IReadOnlyList<FrameSpan> BlackSpans(double minSeconds = 2) => BlackSpans(minSeconds, 0.98);
+
+    /// <summary>
+    /// <see cref="BlackSpans(double)"/> with <c>pic_th=<paramref name="pictureThreshold"/></c> (the pixel threshold is
+    /// the meter's, <see cref="BlackPixelThreshold"/>).
+    /// </summary>
+    /// <param name="minSeconds">blackdetect's d: the shortest span kept, in seconds.</param>
+    /// <param name="pictureThreshold">blackdetect's pic_th (picture_black_ratio_th): the share of black pixels that makes a frame black.</param>
+    public IReadOnlyList<FrameSpan> BlackSpans(double minSeconds, double pictureThreshold)
     {
         long least = (long)(minSeconds / (TimeBase.Num / (double)TimeBase.Den));
-        return Spans(IsBlack, endAtLast: true).Where(s => s.EndPts - s.StartPts >= least).ToArray();
+        return Spans(i => IsBlack(i, pictureThreshold), endAtLast: true).Where(s => s.EndPts - s.StartPts >= least).ToArray();
     }
 
     /// <summary>The colour bars' spans: from a bars frame to the first frame after that isn't (the end at the file's end).</summary>
@@ -209,7 +237,7 @@ public sealed class PictureMeasures
     /// <summary>The first <paramref name="count"/> frames' measures (a run's, cut to the frames its result read).</summary>
     public PictureMeasures Take(int count)
     {
-        var taken = new PictureMeasures(Width, Height, FullRange, BitDepth, TimeBase, FirstFrame);
+        var taken = new PictureMeasures(Width, Height, FullRange, BitDepth, TimeBase, FirstFrame, BlackPixelThreshold);
         for (int i = 0; i < Math.Min(count, Count); i++)
             taken.Add(_pts[i], _min[i], _max[i], _sum[i], _black[i], _brng[i], _top[i], _bottom[i], _left[i], _right[i], _bars[i], _type[i]);
         return taken;
@@ -232,8 +260,12 @@ public sealed class PictureMeasures
                 continue;
             }
 
-            if (range.FirstFrame != joined.Count || (range.Width, range.Height, range.FullRange, range.BitDepth) != (joined.Width, joined.Height, joined.FullRange, joined.BitDepth))
+            if (range.FirstFrame != joined.Count
+                || (range.Width, range.Height, range.FullRange, range.BitDepth, range.BlackPixelThreshold) != (joined.Width, joined.Height, joined.FullRange, joined.BitDepth, joined.BlackPixelThreshold))
+            {
                 break;
+            }
+
             for (int i = 0; i < range.Count; i++)
             {
                 joined.Add(range._pts[i],
@@ -254,14 +286,20 @@ public sealed class PictureMeasures
         return joined;
     }
 
-    /// <summary>The measures as bytes, for a range's worker to hand to the one that joins them, checked by a hash.</summary>
+    /// <summary>
+    /// The measures as bytes, for a range's worker to hand to the one that joins them, checked by a hash. At the default
+    /// pixel threshold the same bytes as before it could be set (version 1).
+    /// </summary>
     public byte[] ToBytes()
     {
         const int header = (4 * 4) + 1 + 1 + (4 * 2) + 4;
         const int perFrame = 8 + 2 + 2 + 8 + 4 + 4 + (2 * 4) + 1 + 1;
-        var bytes = new byte[header + perFrame * Count + 8];
+        bool threshold = BlackPixelThreshold != DefaultBlackPixelThreshold;
+        var bytes = new byte[header + (threshold ? 8 : 0) + perFrame * Count + 8];
         var w = new Writer(bytes);
-        w.UInt(Magic);
+        w.UInt(threshold ? MagicThreshold : Magic);
+        if (threshold)
+            w.Long(BitConverter.DoubleToInt64Bits(BlackPixelThreshold));
         w.Int(Width);
         w.Int(Height);
         w.Int(FirstFrame);
@@ -297,13 +335,15 @@ public sealed class PictureMeasures
         if (bytes.Length < 8 || Hash(bytes[..^8]) != BinaryPrimitives.ReadUInt64LittleEndian(bytes[^8..]))
             throw new InvalidDataException("The picture's measures are damaged (their hash differs).");
         var r = new Reader(bytes[..^8]);
-        if (r.UInt() != Magic)
+        uint magic = r.UInt();
+        if (magic is not (Magic or MagicThreshold))
             throw new InvalidDataException("These aren't the picture's measures.");
+        double threshold = magic == MagicThreshold ? BitConverter.Int64BitsToDouble(r.Long()) : DefaultBlackPixelThreshold;
         int width = r.Int(), height = r.Int(), first = r.Int();
         bool full = r.Byte() != 0;
         int depth = r.Byte();
         var timeBase = new Rational(r.Int(), r.Int());
-        var measures = new PictureMeasures(width, height, full, depth, timeBase, first);
+        var measures = new PictureMeasures(width, height, full, depth, timeBase, first, threshold);
         int count = r.Int();
         for (int i = 0; i < count; i++)
         {
@@ -428,7 +468,7 @@ public sealed class PictureMeasures
 
 /// <summary>Frames <see cref="FirstFrame"/> up to <see cref="EndFrame"/> and their pts, as FFmpeg reports the span.</summary>
 /// <param name="FirstFrame">The span's first frame (display order, in the video).</param>
-/// <param name="EndFrame">The frame after it; blackdetect's span at the end ends at the last frame itself (<see cref="PictureMeasures.BlackSpans"/>).</param>
+/// <param name="EndFrame">The frame after it; blackdetect's span at the end ends at the last frame itself (<see cref="PictureMeasures.BlackSpans(double, double)"/>).</param>
 /// <param name="StartPts">The first frame's pts.</param>
 /// <param name="EndPts">The end frame's pts (blackdetect's black_end).</param>
 public sealed record FrameSpan(int FirstFrame, int EndFrame, long StartPts, long EndPts);

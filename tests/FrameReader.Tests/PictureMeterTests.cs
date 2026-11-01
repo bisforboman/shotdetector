@@ -165,6 +165,64 @@ public class PictureMeterTests
         }
     }
 
+    // blackdetect's pix_th and pic_th other than its defaults: the meter counts black pixels at its own pixel threshold
+    // and the measures judge frames at any picture threshold, giving blackdetect's spans (d=0, every run) for each pair;
+    // the threshold travels with the measures' bytes (version 1's bytes at the default), and ranges of other thresholds
+    // don't join. 8-bit limited and full range, 10-bit, fading through grey.
+    [Theory]
+    [InlineData("fade.nut", "-f lavfi -i testsrc2=s=160x90:r=25:d=2 -vf fade=out:st=0.5:d=1,format=yuv420p -c:v rawvideo")]
+    [InlineData("fadefull.nut", "-f lavfi -i testsrc2=s=160x90:r=25:d=2 -vf fade=out:st=0.5:d=1,format=yuvj420p -c:v rawvideo")]
+    [InlineData("fade10.mkv", "-f lavfi -i testsrc2=s=160x90:r=25:d=2 -vf fade=out:st=0.5:d=1,format=yuv422p10le " + Ffv1)]
+    public void ThresholdsAreBlackdetects(string name, string encode)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-black-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, name);
+            Ffmpeg(["-v", "error", "-y", .. encode.Split(' '), path]);
+            _ = Measure(path, 0, out var format);
+            foreach (var (pix, pic) in new[] { (0.1, 0.98), (0.3, 0.98), (0.3, 0.6), (0.05, 0.5), (0.0, 1.0), (1.0, 0.0) })
+            {
+                var meter = new PictureMeter(format, 0, int.MaxValue, pix);
+                Feed(path, meter, 0);
+                var measures = meter.Measures;
+                Assert.Equal(pix, measures.BlackPixelThreshold);
+                string log = Ffmpeg(["-hide_banner", "-nostats", "-nostdin", "-copyts", "-i", path, "-map", "0:v:0",
+                    "-vf", FormattableString.Invariant($"blackdetect=d=0:pix_th={pix}:pic_th={pic}"), "-f", "null", "-"]);
+                var theirs = log.Split('\n').Where(l => l.Contains("black_start:", StringComparison.Ordinal))
+                    .Select(l => l[l.IndexOf("black_start:", StringComparison.Ordinal)..].Split(' ').Select(w => w.Split(':')[1]).ToArray())
+                    .ToList();
+                var mine = measures.BlackSpans(0, pic);
+                double tb = measures.TimeBase.Num / (double)measures.TimeBase.Den;
+                Assert.True(mine.Count == theirs.Count, $"pix_th={pix} pic_th={pic}: {mine.Count} spans, FFmpeg's {theirs.Count}");
+                foreach (var (m, s) in mine.Zip(theirs))
+                    Assert.True(Printed(s[0], m.StartPts * tb) && Printed(s[1], m.EndPts * tb), $"pix_th={pix} pic_th={pic}: {m}, FFmpeg's {string.Join(' ', s)}");
+
+                var back = PictureMeasures.FromBytes(measures.ToBytes());
+                Assert.Equal(pix, back.BlackPixelThreshold);
+                Assert.Equal(measures.ToBytes(), back.ToBytes());
+            }
+
+            var standard = new PictureMeter(format);
+            Feed(path, standard, 0);
+            Assert.Equal(0x4D505246U, System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(standard.Measures.ToBytes())); // version 1
+
+            // The rest of the run at another threshold: not joined.
+            var rest = new PictureMeter(format, 10, int.MaxValue, 0.3);
+            Feed(path, rest, 10);
+            Assert.True(rest.Measures.Count > 0);
+            Assert.Equal(10, PictureMeasures.Join([standard.Measures.Take(10), rest.Measures])!.Count);
+            Assert.Throws<ArgumentOutOfRangeException>(() => new PictureMeter(format, 0, 1, 1.5));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new PictureMeter(format, 0, 1, double.NaN));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // Colour bars by definition, on planes made here: the seven 75% BT.601 bars, the same with one bar missing, and the
     // seven at 10 bits in 4:4:4.
     [Fact]

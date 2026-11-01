@@ -25,8 +25,7 @@ namespace FrameReader;
 /// </example>
 public sealed class PictureMeter
 {
-    // blackdetect's pixel_black_th (0.10) and cropdetect's limit (24/255, a float option), FFmpeg 8.1's defaults.
-    const double PixelBlack = 0.10;
+    // cropdetect's limit (24/255, a float option), FFmpeg 8.1's default.
     const float CropLimit = (float)(24.0 / 255);
 
     readonly int _width, _height, _hsub, _vsub, _cw, _ch, _bytes, _factor;
@@ -59,8 +58,25 @@ public sealed class PictureMeter
     /// <exception cref="ArgumentException">The size or time base isn't positive, the depth isn't 8 to 16, or the rotation isn't a quarter turn.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="firstFrame"/> is negative or <paramref name="endFrame"/> under it.</exception>
     public PictureMeter(PictureFormat format, int firstFrame, int endFrame)
+        : this(format, firstFrame, endFrame, PictureMeasures.DefaultBlackPixelThreshold)
+    {
+    }
+
+    /// <summary>
+    /// <see cref="PictureMeter(PictureFormat, int, int)"/> counting black pixels as blackdetect does with
+    /// <c>pix_th=<paramref name="blackPixelThreshold"/></c> (pixel_black_th; 0.10, its default, in the other constructors).
+    /// </summary>
+    /// <param name="format">The frames' size, range, time base, rotation, depth and chroma.</param>
+    /// <param name="firstFrame">The first frame's index in the video (display order).</param>
+    /// <param name="endFrame">The index after the last frame measured.</param>
+    /// <param name="blackPixelThreshold">The luma at or under which a pixel is black, as a share of the range above black (0 to 1).</param>
+    /// <exception cref="ArgumentException">The size or time base isn't positive, the depth isn't 8 to 16, or the rotation isn't a quarter turn.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="firstFrame"/> is negative or <paramref name="endFrame"/> under it, or <paramref name="blackPixelThreshold"/> isn't 0 to 1.</exception>
+    public PictureMeter(PictureFormat format, int firstFrame, int endFrame, double blackPixelThreshold)
     {
         ArgumentNullException.ThrowIfNull(format);
+        if (!(blackPixelThreshold is >= 0 and <= 1))
+            throw new ArgumentOutOfRangeException(nameof(blackPixelThreshold), blackPixelThreshold, "blackdetect's pix_th is 0 to 1.");
         if (format.Width <= 0 || format.Height <= 0)
             throw new ArgumentException("The frame's size must be positive.", nameof(format));
         if (format.TimeBase.Num <= 0 || format.TimeBase.Den <= 0)
@@ -86,14 +102,14 @@ public sealed class PictureMeter
 
         // blackdetect's pixel_black_th_i, an unsigned int: 0.1 × max in full range, 16f + 0.1 × 219 × f in limited,
         // truncated (37 and 25 at 8 bits, 151 and 102 at 10).
-        _black = (uint)(format.FullRange ? PixelBlack * max : (16 * _factor) + (PixelBlack * (235 - 16) * _factor));
+        _black = (uint)(format.FullRange ? blackPixelThreshold * max : (16 * _factor) + (blackPixelThreshold * (235 - 16) * _factor));
 
         // cropdetect's limit_upscaled: the float limit times max, in single precision, then lrint (24 at 8 bits, 96 at 10).
         _cropLimit = (int)Math.Round((double)(CropLimit * max), MidpointRounding.ToEven);
         _bars = BarColours.For(format.FullRange, _factor);
         _first = firstFrame;
         _end = endFrame;
-        Measures = new PictureMeasures(_uprightWidth, _uprightHeight, format.FullRange, format.BitDepth, format.TimeBase, firstFrame);
+        Measures = new PictureMeasures(_uprightWidth, _uprightHeight, format.FullRange, format.BitDepth, format.TimeBase, firstFrame, blackPixelThreshold);
     }
 
     /// <summary>The frames measured so far.</summary>
