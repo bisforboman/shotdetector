@@ -1092,3 +1092,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - FrameReader: managed picture and loudness measures (#646)
   - Why: The owner chose (2026-10-31) to move shotdetector-web's managed measures (signalstats, blackdetect, cropdetect and colour-bar equivalents; a BS.1770-4 loudness meter; silences and peaks) into FrameReader, so the page's QC report (shotdetector-web#94) and the delivery-QC command (#636) share one implementation checked against FFmpeg once; FrameReader's own `Loudness` (#642) runs on FFmpeg's ebur128, which the browser can't use
   - Status: **Done (2026-10-31)**: `LoudnessMeter` (#655, released in FrameReader 2.18.0), `SilenceFinder` (#657), `PictureMeter` at 8 to 16 bits and 4:2:0/4:2:2/4:4:4 (#664) and `ChannelWeights` by channel names (#666); released in FrameReader 2.19.0 (#673)
+
+- A Jellyfin plugin: chapters from shots, credits and black segments (#634)
+  - Why: Most rips have no chapters; Jellyfin 12 is net10.0 and ships jellyfin-ffmpeg 8.1. Scoping: docs/ideas/jellyfin-plugin.md (4-6 PRs; six owner questions)
+  - Status: **Done (2026-11-01)**: built in its own repository, bisforboman/jellyfin-plugin-shotchapters (GPL-3.0, Jellyfin 12, docs/decisions/2026-10-31-jellyfin-plugin.md); v0.1.0 released 2026-10-31 with chapters from shots and black stretches as media segments. Credits left to Intro Skipper, which already finds them. The plugin's switch to ShotDetector's black spans (docs/decisions/2026-11-01-jellyfin-black-spans.md) is tracked there; the owner closed #634
