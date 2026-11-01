@@ -43,7 +43,7 @@ sealed record QcCheck(string Name, bool? Pass, string Measured, string Limit, Ac
 static class Qc
 {
     /// <summary>The checks <c>--checks</c> can name.</summary>
-    static readonly string[] Known = ["loudness", "range", "bars-tone"];
+    static readonly string[] Known = ["loudness", "range", "bars-tone", "black"];
 
     /// <summary>How long from the start bars and tone must overlap for <c>--require-bars-tone</c>.</summary>
     static readonly TimeSpan LineUpWindow = TimeSpan.FromMinutes(1);
@@ -55,7 +55,7 @@ static class Qc
         3 when any is out of range (1: an error, 2: usage). Not in scenedetect.
 
           -i, --input <file|url>             The file to check
-              --checks <list>                Comma-separated checks to run (default all): loudness, range, bars-tone
+              --checks <list>                Comma-separated checks to run (default all): loudness, range, bars-tone, black
               --preset <name>                Loudness limits: ebu-r128 (default; -23 LUFS +/- 0.5 LU, true peak -1 dBTP),
                                              atsc-a85 (-24 LKFS +/- 2, -2 dBTP), streaming-14 or streaming-16 (+/- 1, -1 dBTP)
               --loudness-target <LUFS>       Integrated loudness target (default: the preset's)
@@ -64,6 +64,9 @@ static class Qc
               --brng-max <percent>           Most pixels of any frame outside broadcast range (signalstats' BRNG:
                                              luma outside 16-235, chroma outside 16-240 at 8 bits) that passes
                                              (default 1)
+              --black-min <seconds>          Shortest black span (ffmpeg's blackdetect d; default 2)
+              --edge <seconds>               Black at the head and tail, within this of the start or end, is listed,
+                                             not judged (default 10)
               --require-bars-tone            Fail unless colour bars and 1 kHz line-up tone overlap in the first
                                              minute (default: bars and tone are reported, never judged)
               --json <file>                  Also write the report as JSON (- for standard output, then no table)
@@ -78,6 +81,7 @@ static class Qc
         double? target = null, tolerance = null, truePeakMax = null;
         double brngMax = 1;
         bool requireBarsTone = false;
+        double blackMin = 2, edge = 10;
         var checks = new List<string>(Known);
         try
         {
@@ -113,6 +117,16 @@ static class Qc
                         brngMax = NextDouble();
                         if (!(brngMax is >= 0 and <= 100))
                             throw new ArgumentException("--brng-max is a percentage, 0 to 100");
+                        break;
+                    case "--black-min":
+                        blackMin = NextDouble();
+                        if (!(blackMin >= 0))
+                            throw new ArgumentException("--black-min is seconds, 0 or more");
+                        break;
+                    case "--edge":
+                        edge = NextDouble();
+                        if (!(edge >= 0))
+                            throw new ArgumentException("--edge is seconds, 0 or more");
                         break;
                     case "--require-bars-tone":
                         requireBarsTone = true;
@@ -192,8 +206,26 @@ static class Qc
                 if (barsTone)
                     report.Add(new("bars-tone", requireBarsTone ? false : null, "no video", requireBarsTone ? "bars and tone in the first minute" : "", j => j.WriteNull("measured")));
             }
+
+            if (checks.Contains("black"))
+            {
+                if (info.Video is null)
+                {
+                    report.Add(new("black", null, "no video", "", j => j.WriteNull("measured")));
+                }
+                else
+                {
+                    // ffmpeg's blackdetect on a detection pass (DetectionOptions.BlackDetect), the whole video.
+                    var result = ShotDetector.ShotDetection.Detect(input, new ShotDetector.DetectionOptions
+                    {
+                        FfmpegDirectory = ffmpegDir,
+                        BlackDetect = new() { MinDuration = TimeSpan.FromSeconds(blackMin) },
+                    });
+                    report.Add(BlackCheck(result.BlackSpans ?? [], result.Shots[^1].End.Seconds, blackMin, edge));
+                }
+            }
         }
-        catch (Exception e) when (e is FrameReader.FrameReaderException or InvalidOperationException)
+        catch (Exception e) when (e is FrameReader.FrameReaderException or InvalidOperationException or ShotDetector.ShotDetectionException)
         {
             Console.Error.WriteLine(e.Message);
             return 1;
@@ -325,6 +357,43 @@ static class Qc
 
             j.WriteEndArray();
         });
+    }
+
+    /// <summary>
+    /// Black: blackdetect's spans of <paramref name="blackMin"/> seconds or more, each judged only mid-programme, when it
+    /// starts at least <paramref name="edge"/> seconds after the start and ends at least that long before the video's
+    /// <paramref name="end"/>; spans at the head and tail (slates, fades) are listed, not judged.
+    /// </summary>
+    internal static QcCheck BlackCheck(IReadOnlyList<ShotDetector.BlackSpan> spans, double end, double blackMin, double edge)
+    {
+        bool Judged(ShotDetector.BlackSpan b) => b.Start >= edge && b.End <= end - edge;
+        var mid = spans.Where(Judged).ToList();
+        static string Span(ShotDetector.BlackSpan b) => $"{Clock(TimeSpan.FromSeconds(b.Start))}-{Clock(TimeSpan.FromSeconds(b.End))}";
+        string measured = spans.Count == 0 ? "none"
+            : mid.Count == 0 ? $"{spans.Count} at the head or tail: {string.Join(", ", spans.Select(Span))}"
+            : $"{mid.Count} mid-programme: {string.Join(", ", mid.Select(Span))}";
+        return new("black",
+            mid.Count == 0,
+            measured,
+            string.Create(CultureInfo.InvariantCulture, $"none of {blackMin} s+ past {edge} s from either end"),
+            j =>
+            {
+                j.WriteNumber("minDuration", blackMin);
+                j.WriteNumber("edge", edge);
+                j.WriteNumber("judgedSpans", mid.Count);
+                j.WriteStartArray("spans");
+                foreach (var b in spans)
+                {
+                    j.WriteStartObject();
+                    j.WriteNumber("start", b.Start);
+                    j.WriteNumber("end", b.End);
+                    j.WriteNumber("duration", b.Duration);
+                    j.WriteBoolean("judged", Judged(b));
+                    j.WriteEndObject();
+                }
+
+                j.WriteEndArray();
+            });
     }
 
     static (TimeSpan Start, TimeSpan End)? Overlap(TimeSpan a0, TimeSpan a1, TimeSpan b0, TimeSpan b1) =>

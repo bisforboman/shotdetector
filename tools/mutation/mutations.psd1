@@ -578,6 +578,10 @@
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'if (m.Brng(i) * 100 > brngMax)'; Replace = 'if (m.Brng(i) > brngMax)'; Tests = 'CliTests.QcChecks' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'require ? lineUp : null'; Replace = 'require ? true : null'; Tests = 'CliTests.QcChecks' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'o.Start < LineUpWindow'; Replace = 'o.Start >= LineUpWindow'; Tests = 'CliTests.QcChecks' }
+        # ... black: --black-min given to blackdetect, spans judged only away from the first and last --edge seconds
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'b.Start >= edge && b.End <= end - edge'; Replace = 'b.Start >= 0 && b.End <= end'; Tests = 'CliTests.QcJudgesBlack' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = '            mid.Count == 0,'; Replace = '            true,'; Tests = 'CliTests.QcJudgesBlack' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'MinDuration = TimeSpan.FromSeconds(blackMin)'; Replace = 'MinDuration = TimeSpan.FromSeconds(2)'; Tests = 'CliTests.QcJudgesBlack' }
         @{ File = 'src/FrameReader/Loudness.cs'; Find = 'Get("sample_peak"), Get("true_peak")'; Replace = 'Get("sample_peak") - 0.05, Get("true_peak")'; Tests = 'LoudnessTests'; Project = 'tests/FrameReader.Tests' }
 
         # PictureMeter: FFmpeg's picture filters at any depth without FFmpeg. blackdetect's pixel_black_th_i truncated (37,

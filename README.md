@@ -270,8 +270,10 @@ code 3 when any check is out of range (0 when all pass). It checks loudness, as 
 loudness check alone); broadcast range, signalstats' BRNG (pixels outside 16-235 luma, 16-240 chroma at 8 bits) in
 every frame but colour bars at most `--brng-max` percent (1), with the worst frame and the file's YMIN and YMAX, equal
 to ffmpeg's signalstats on the same frames; and bars and tone, reported, failing only with `--require-bars-tone` when
-they don't overlap in the first minute. `--checks loudness,range,bars-tone` picks some; black and frozen spans follow
-(issue #636). `--preset`
+they don't overlap in the first minute; and black, ffmpeg's blackdetect spans of `--black-min` seconds (2) from the
+detection pass (`DetectionOptions.BlackDetect`), failing only mid-programme, more than `--edge` seconds (10) from the
+start and the end (black at the head and tail, slates and fades, is listed). `--checks loudness,range,bars-tone,black`
+picks some; frozen spans follow (issue #636). `--preset`
 picks the limits: `ebu-r128` (the default: -23 LUFS ±0.5 LU, true peak -1 dBTP), `atsc-a85` (-24 LKFS ±2 LU,
 -2 dBTP), `streaming-14` and `streaming-16` (±1 LU, -1 dBTP); `--loudness-target`, `--loudness-tolerance` and
 `--true-peak-max` override them, and `--loudness-preset` gives `--loudness` the same presets
