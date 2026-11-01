@@ -582,6 +582,13 @@
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'b.Start >= edge && b.End <= end - edge'; Replace = 'b.Start >= 0 && b.End <= end'; Tests = 'CliTests.QcJudgesBlack' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = '            mid.Count == 0,'; Replace = '            true,'; Tests = 'CliTests.QcJudgesBlack' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'MinDuration = TimeSpan.FromSeconds(blackMin)'; Replace = 'MinDuration = TimeSpan.FromSeconds(2)'; Tests = 'CliTests.QcJudgesBlack' }
+        # ... freeze: --freeze-min given to freezedetect, judged only away from the edges and not inside black or bars, a
+        # still running to the end judged to the video's end
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'black.Any(b => f.Start >= b.Start && End(f) <= b.End)'; Replace = 'false'; Tests = 'CliTests.QcJudgesFreezes' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = '|| bars.Any(b => f.Start >= b.Start.TotalSeconds && End(f) <= b.End.TotalSeconds)'; Replace = '|| false'; Tests = 'CliTests.QcJudgesFreezes' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'f.Start >= edge && End(f) <= end - edge && !Inside(f)'; Replace = '!Inside(f)'; Tests = 'CliTests.QcJudgesFreezes' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'MinDuration = TimeSpan.FromSeconds(freezeMin)'; Replace = 'MinDuration = TimeSpan.FromSeconds(2)'; Tests = 'CliTests.QcJudgesFreezes' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'f.End ?? end'; Replace = 'f.End ?? double.PositiveInfinity'; Tests = 'CliTests.QcJudgesFreezes' }
         @{ File = 'src/FrameReader/Loudness.cs'; Find = 'Get("sample_peak"), Get("true_peak")'; Replace = 'Get("sample_peak") - 0.05, Get("true_peak")'; Tests = 'LoudnessTests'; Project = 'tests/FrameReader.Tests' }
 
         # PictureMeter: FFmpeg's picture filters at any depth without FFmpeg. blackdetect's pixel_black_th_i truncated (37,

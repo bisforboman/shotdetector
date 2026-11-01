@@ -43,7 +43,7 @@ sealed record QcCheck(string Name, bool? Pass, string Measured, string Limit, Ac
 static class Qc
 {
     /// <summary>The checks <c>--checks</c> can name.</summary>
-    static readonly string[] Known = ["loudness", "range", "bars-tone", "black"];
+    static readonly string[] Known = ["loudness", "range", "bars-tone", "black", "freeze"];
 
     /// <summary>How long from the start bars and tone must overlap for <c>--require-bars-tone</c>.</summary>
     static readonly TimeSpan LineUpWindow = TimeSpan.FromMinutes(1);
@@ -55,7 +55,8 @@ static class Qc
         3 when any is out of range (1: an error, 2: usage). Not in scenedetect.
 
           -i, --input <file|url>             The file to check
-              --checks <list>                Comma-separated checks to run (default all): loudness, range, bars-tone, black
+              --checks <list>                Comma-separated checks to run (default all): loudness, range, bars-tone, black,
+                                             freeze
               --preset <name>                Loudness limits: ebu-r128 (default; -23 LUFS +/- 0.5 LU, true peak -1 dBTP),
                                              atsc-a85 (-24 LKFS +/- 2, -2 dBTP), streaming-14 or streaming-16 (+/- 1, -1 dBTP)
               --loudness-target <LUFS>       Integrated loudness target (default: the preset's)
@@ -65,8 +66,9 @@ static class Qc
                                              luma outside 16-235, chroma outside 16-240 at 8 bits) that passes
                                              (default 1)
               --black-min <seconds>          Shortest black span (ffmpeg's blackdetect d; default 2)
-              --edge <seconds>               Black at the head and tail, within this of the start or end, is listed,
-                                             not judged (default 10)
+              --freeze-min <seconds>         Shortest frozen picture (ffmpeg's freezedetect d; default 2)
+              --edge <seconds>               Black and frozen pictures at the head and tail, within this of the start
+                                             or end, are listed, not judged (default 10)
               --require-bars-tone            Fail unless colour bars and 1 kHz line-up tone overlap in the first
                                              minute (default: bars and tone are reported, never judged)
               --json <file>                  Also write the report as JSON (- for standard output, then no table)
@@ -81,7 +83,7 @@ static class Qc
         double? target = null, tolerance = null, truePeakMax = null;
         double brngMax = 1;
         bool requireBarsTone = false;
-        double blackMin = 2, edge = 10;
+        double blackMin = 2, freezeMin = 2, edge = 10;
         var checks = new List<string>(Known);
         try
         {
@@ -122,6 +124,11 @@ static class Qc
                         blackMin = NextDouble();
                         if (!(blackMin >= 0))
                             throw new ArgumentException("--black-min is seconds, 0 or more");
+                        break;
+                    case "--freeze-min":
+                        freezeMin = NextDouble();
+                        if (!(freezeMin >= 0))
+                            throw new ArgumentException("--freeze-min is seconds, 0 or more");
                         break;
                     case "--edge":
                         edge = NextDouble();
@@ -180,11 +187,13 @@ static class Qc
                 }
             }
 
-            bool range = checks.Contains("range"), barsTone = checks.Contains("bars-tone");
-            if ((range || barsTone) && info.Video is { } video)
+            bool range = checks.Contains("range"), barsTone = checks.Contains("bars-tone"), freeze = checks.Contains("freeze");
+            List<(TimeSpan Start, TimeSpan End)> bars = [];
+            if ((range || barsTone || freeze) && info.Video is { } video)
             {
                 var (measures, timeBase, first) = Measure(input, (int)Math.Round(video.Rotation ?? 0));
                 TimeSpan Time(long pts) => TimeSpan.FromSeconds((double)(pts - first) * timeBase.Num / timeBase.Den);
+                bars = [.. measures.BarsSpans().Select(b => (Time(b.StartPts), Time(b.EndPts)))];
                 if (range)
                     report.Add(RangeCheck(measures, brngMax, Time));
                 if (barsTone)
@@ -196,7 +205,7 @@ static class Qc
                         tone = FrameReader.ReferenceTone.Find(audio);
                     }
 
-                    report.Add(BarsToneCheck([.. measures.BarsSpans().Select(b => (Time(b.StartPts), Time(b.EndPts)))], tone, requireBarsTone));
+                    report.Add(BarsToneCheck(bars, tone, requireBarsTone));
                 }
             }
             else if (range || barsTone)
@@ -207,22 +216,29 @@ static class Qc
                     report.Add(new("bars-tone", requireBarsTone ? false : null, "no video", requireBarsTone ? "bars and tone in the first minute" : "", j => j.WriteNull("measured")));
             }
 
-            if (checks.Contains("black"))
+            bool black = checks.Contains("black");
+            if ((black || freeze) && info.Video is null)
             {
-                if (info.Video is null)
-                {
+                if (black)
                     report.Add(new("black", null, "no video", "", j => j.WriteNull("measured")));
-                }
-                else
+                if (freeze)
+                    report.Add(new("freeze", null, "no video", "", j => j.WriteNull("measured")));
+            }
+            else if (black || freeze)
+            {
+                // ffmpeg's blackdetect and freezedetect on one detection pass (DetectionOptions.BlackDetect and
+                // FreezeDetect), the whole video; black spans also for the freezes inside them.
+                var result = ShotDetector.ShotDetection.Detect(input, new ShotDetector.DetectionOptions
                 {
-                    // ffmpeg's blackdetect on a detection pass (DetectionOptions.BlackDetect), the whole video.
-                    var result = ShotDetector.ShotDetection.Detect(input, new ShotDetector.DetectionOptions
-                    {
-                        FfmpegDirectory = ffmpegDir,
-                        BlackDetect = new() { MinDuration = TimeSpan.FromSeconds(blackMin) },
-                    });
-                    report.Add(BlackCheck(result.BlackSpans ?? [], result.Shots[^1].End.Seconds, blackMin, edge));
-                }
+                    FfmpegDirectory = ffmpegDir,
+                    BlackDetect = new() { MinDuration = TimeSpan.FromSeconds(blackMin) },
+                    FreezeDetect = freeze ? new() { MinDuration = TimeSpan.FromSeconds(freezeMin) } : null,
+                });
+                double end = result.Shots[^1].End.Seconds;
+                if (black)
+                    report.Add(BlackCheck(result.BlackSpans ?? [], end, blackMin, edge));
+                if (freeze)
+                    report.Add(FreezeCheck(result.FreezeSpans ?? [], result.BlackSpans ?? [], bars, end, freezeMin, edge));
             }
         }
         catch (Exception e) when (e is FrameReader.FrameReaderException or InvalidOperationException or ShotDetector.ShotDetectionException)
@@ -389,6 +405,57 @@ static class Qc
                     j.WriteNumber("end", b.End);
                     j.WriteNumber("duration", b.Duration);
                     j.WriteBoolean("judged", Judged(b));
+                    j.WriteEndObject();
+                }
+
+                j.WriteEndArray();
+            });
+    }
+
+    /// <summary>
+    /// Freeze: freezedetect's still pictures of <paramref name="freezeMin"/> seconds or more, each judged only
+    /// mid-programme (at least <paramref name="edge"/> seconds from the start and from the video's
+    /// <paramref name="end"/>; one still at the end runs to it) and not inside a black span or colour bars, which are
+    /// still by design.
+    /// </summary>
+    internal static QcCheck FreezeCheck(IReadOnlyList<ShotDetector.FreezeSpan> spans,
+        IReadOnlyList<ShotDetector.BlackSpan> black,
+        IReadOnlyList<(TimeSpan Start, TimeSpan End)> bars,
+        double end,
+        double freezeMin,
+        double edge)
+    {
+        double End(ShotDetector.FreezeSpan f) => f.End ?? end;
+        bool Inside(ShotDetector.FreezeSpan f) =>
+            black.Any(b => f.Start >= b.Start && End(f) <= b.End)
+            || bars.Any(b => f.Start >= b.Start.TotalSeconds && End(f) <= b.End.TotalSeconds);
+        bool Judged(ShotDetector.FreezeSpan f) => f.Start >= edge && End(f) <= end - edge && !Inside(f);
+        var mid = spans.Where(Judged).ToList();
+        bool pass = mid.Count == 0;
+        string Span(ShotDetector.FreezeSpan f) => $"{Clock(TimeSpan.FromSeconds(f.Start))}-{(f.End is { } e ? Clock(TimeSpan.FromSeconds(e)) : "end")}";
+        string measured = spans.Count == 0 ? "none"
+            : mid.Count == 0 ? $"{spans.Count} not judged (head, tail, black or bars): {string.Join(", ", spans.Select(Span))}"
+            : $"{mid.Count} mid-programme: {string.Join(", ", mid.Select(Span))}";
+        return new("freeze",
+            pass,
+            measured,
+            string.Create(CultureInfo.InvariantCulture, $"none of {freezeMin} s+ past {edge} s from either end"),
+            j =>
+            {
+                j.WriteNumber("minDuration", freezeMin);
+                j.WriteNumber("edge", edge);
+                j.WriteNumber("judgedSpans", mid.Count);
+                j.WriteStartArray("spans");
+                foreach (var f in spans)
+                {
+                    j.WriteStartObject();
+                    j.WriteNumber("start", f.Start);
+                    if (f.End is { } e)
+                        j.WriteNumber("end", e);
+                    else
+                        j.WriteNull("end");
+                    j.WriteBoolean("judged", Judged(f));
+                    j.WriteBoolean("insideBlackOrBars", Inside(f));
                     j.WriteEndObject();
                 }
 
