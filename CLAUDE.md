@@ -126,9 +126,6 @@ and bullets), never a CHANGELOG itself, so parallel PRs don't conflict there.
   rerun it when the scenedetect pin moves; FsCheck invariants), PixelTests (resize, HSV, gray, edges, content score on
   generated images against cv2 and scenedetect: `Data/pixels.txt` from `tools/pixel_oracle.py`, which CI regenerates on
   Linux and diffs).
-- `examples/VideoRag`: a sample (no package) `VideoDocumentReader` for Microsoft.Extensions.DataIngestion (preview, pinned):
-  a section per shot headed by its times, middle-frame JPEGs for its image enricher; tests/VideoRag.Tests runs it offline
-  (docs/decisions/2026-10-31-videorag-sample.md).
 - `tools/compare.py`: runs scenedetect and shotdetect on videos, diffs cuts/CSVs/stats, Markdown report.
   `tools/make-samples.ps1`: synthetic + Blender trailers + VFR/rotation/colour variants. `tools/realworld.py`:
   whole Blender films and codec clips, pinned by SHA-256. `tools/mutation/`: guard mutations.

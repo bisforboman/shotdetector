@@ -123,9 +123,5 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Subtitlers snap cues to shot changes; Subtitle Edit uses FFmpeg's scene score. Scoping: docs/ideas/subtitle-edit.md (no engine seam in SE; SE5 MIT, SE4 GPL-3.0; 3-5 PRs here plus 1 in SE)
   - Status: Maybe; first slice done 2026-10-31 (`--save-shotchanges` and `Timeline.ShotChanges`, SE's .shotchanges format); next, machine-readable progress for SE; the SE side waits on the owner
 
-- A video reader for Microsoft.Extensions.DataIngestion (#635)
-  - Why: Video as searchable, timestamped chunks in .NET RAG pipelines. Scoping: docs/ideas/dataingestion-video-reader.md (verdict park: a preview API, waits on StanzaSharp#233)
-  - Status: Maybe; first slice done 2026-10-31 (examples/VideoRag, #641: a section per shot, middle-frame stills; docs/decisions/2026-10-31-videorag-sample.md); the rest waits on StanzaSharp#233
-
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and
 why: [decisions/](decisions/).

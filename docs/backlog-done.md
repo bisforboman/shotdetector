@@ -1096,3 +1096,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - A Jellyfin plugin: chapters from shots, credits and black segments (#634)
   - Why: Most rips have no chapters; Jellyfin 12 is net10.0 and ships jellyfin-ffmpeg 8.1. Scoping: docs/ideas/jellyfin-plugin.md (4-6 PRs; six owner questions)
   - Status: **Done (2026-11-01)**: built in its own repository, bisforboman/jellyfin-plugin-shotchapters (GPL-3.0, Jellyfin 12, docs/decisions/2026-10-31-jellyfin-plugin.md); v0.1.0 released 2026-10-31 with chapters from shots and black stretches as media segments. Credits left to Intro Skipper, which already finds them. The plugin's switch to ShotDetector's black spans (docs/decisions/2026-11-01-jellyfin-black-spans.md) is tracked there; the owner closed #634
+
+- A video reader for Microsoft.Extensions.DataIngestion (#635)
+  - Why: Video as searchable, timestamped chunks in .NET RAG pipelines. Scoping: docs/ideas/dataingestion-video-reader.md (verdict park: a preview API, waits on StanzaSharp#233)
+  - Status: **Moved (2026-11-01)**: the first slice (#641: a section per shot, middle-frame stills) moved to its own repository, bisforboman/shotdetector-videorag, on ShotDetector from NuGet (docs/decisions/2026-11-01-videorag-repo.md); the issue and the rest (transcripts, the StanzaSharp chunker) are tracked there
