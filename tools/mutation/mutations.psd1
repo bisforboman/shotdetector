@@ -634,5 +634,16 @@
         @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = '(double)_black[i] / Pixels >= pictureThreshold;'; Replace = '(double)_black[i] / Pixels > pictureThreshold;'; Tests = 'PictureMeterTests.ThresholdsAreBlackdetects'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'bool threshold = BlackPixelThreshold != DefaultBlackPixelThreshold;'; Replace = 'bool threshold = true;'; Tests = 'PictureMeterTests.ThresholdsAreBlackdetects'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'range.BitDepth, range.BlackPixelThreshold) != (joined.Width, joined.Height, joined.FullRange, joined.BitDepth, joined.BlackPixelThreshold)'; Replace = 'range.BitDepth, 0.0) != (joined.Width, joined.Height, joined.FullRange, joined.BitDepth, 0.0)'; Tests = 'PictureMeterTests.ThresholdsAreBlackdetects'; Project = 'tests/FrameReader.Tests' }
+
+        # Freeze spans on the detection pass, as freezedetect gives them: mafd at most n, d reached in microseconds rounded
+        # as av_rescale_q does, a start once (the frozen state kept), chroma heights shifted down, one pass; the executable's
+        # freeze_start matched to its frame by time
+        @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = 'frozen = mafd <= _noise;'; Replace = 'frozen = mafd < _noise;'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = 'if (micros >= _minMicros)'; Replace = 'if (micros > _minMicros)'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = '_frozen = frozen;'; Replace = ';'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = '(num + half) / den'; Replace = 'num / den'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = 'f->height >> (plane is 1 or 2 ? d->log2_chroma_h : 0)'; Replace = '-(-f->height >> (plane is 1 or 2 ? d->log2_chroma_h : 0))'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ': o.FreezeDetect is not null ? "freeze detection'; Replace = ': false ? "freeze detection'; Tests = 'FreezeDetectTests' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'while (at > 0 && _freezeFrames[at].Mark.Time != start)'; Replace = 'while (false)'; Tests = 'FreezeDetectTests' }
     )
 }
