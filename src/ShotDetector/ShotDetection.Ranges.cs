@@ -463,9 +463,9 @@ public static partial class ShotDetection
         CheckFingerprints(video, o, list, nameof(ranges), "these options'");
         if (o.FreezeDetect is not { } fd)
             return null;
-        var final = VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list;
-        var (pts, scores) = Joined(final);
-        int stale = Replayed(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o), fd, final, pts, scores.Frames).Stale;
+        var finalRanges = VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list;
+        var (pts, scores) = Joined(finalRanges);
+        int stale = Replayed(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o), fd, finalRanges, pts, scores.Frames).Stale;
         return stale < 0 ? null : stale;
     }
 
