@@ -257,6 +257,11 @@ def main() -> int:
     SCENEDETECT_PYTHON = a.scenedetect_python
     REF_SUFFIX = a.scenedetect_on
     REF_EXTRA, OUR_EXTRA = a.scenedetect_args.split(), a.ours_args.split() + os.environ.get("SHOTDETECTOR_OURS_ARGS", "").split()
+    # The Windows wheel's BT.601 (--always-bt601, below) is the executable's filter: refuse an in-process
+    # comparison there rather than build first and fail on the first video (shotdetect refuses it too).
+    if sys.platform == "win32" and any(x == "inprocess" and p == "--decoder" for p, x in zip(OUR_EXTRA, OUR_EXTRA[1:])):
+        sys.exit("compare.py: on Windows shotdetect gets --always-bt601 (the OpenCV wheel's BT.601), which decodes with the "
+                 "ffmpeg executable, so --decoder inprocess can't be compared here; use Linux or macOS for in-process")
     if a.fast_yuv:
         subprocess.run(["dotnet", "build", "-c", "Release", "-v", "q", "-p:WithFastYuv=true", "-o", str(FAST_DIR),
                         str(ROOT / "src" / "ShotDetector.Cli")], check=True, stdout=subprocess.DEVNULL)
