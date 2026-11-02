@@ -6,6 +6,23 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.27.0 – 2026-11-02
+
+The hash detector gives the same bits on WebAssembly and Alpine as on x64, and shotdetect qc --html writes the report as one page.
+
+### New
+
+- `shotdetect qc --html <file>`: the report as one self-contained page, the checks table and a timeline of black,
+  freeze, bars and tone spans (judged ones in red), each frame's broadcast-range share against its limit, and the
+  audio's waveform (issue #636).
+
+### Fixed
+
+- Hash detector (`detect-hash`): the same bits on WebAssembly and on Alpine (musl) as on x64 Linux. On near-flat
+  frames (dark or faded ones) the DCT is rounding noise around its median, and `Math.Cos`, whose last bit differs on
+  browser-wasm and with musl, decided some bits: the stats' `hash_dist` differed by 2/64 on a few frames of a film.
+  The default sizes' cosine tables are now built in, so x64 Linux results are unchanged.
+
 ## 3.26.0 – 2026-11-01
 
 Black and freeze spans on the detection pass, shotdetect qc (loudness presets, broadcast range, bars and tone, black, freeze), and RangeScores.EndFrame.
