@@ -27,10 +27,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: docs/decisions/2026-10-18-fastyuv-422.md left sintel_oddwidth.mkv reported, not required, "until its first ARM table is read" (tools/arch-summary.py, ci.yml's `--informational`); the same decision found 8-bit odd widths take the SSSE3 path FastYuv reproduces. Read a run's table: at 100 %, make it required; else record why not. Found in the 2026-10-31 decision review. Lead from #668 (#656): on linux-arm64 swscale never writes an odd width's last RGB column (BtbN's build and ours alike; ffmpeg's command line gets zeros from its zeroed filter pool). If ShotDetector's own BGR buffers (BgrConverter/FrameWriter) aren't zeroed, the column holds old bytes there, which would explain the difference: check it on an ARM runner, zero the buffer as #668 did, then require the sample
   - Status: Open
 
-- compare.py's `--always-bt601` silently turns off in-process decoding
-  - Why: `_alwaysBt601` makes VideoReader use the executable (VideoReader.InProcess.cs), and compare.py passes it on every Windows run, so a local `--decoder inprocess` comparison on Windows checks the executable instead. Refuse the combination with a clear error, or say so in compare.py's report. Found in the 2026-10-31 decision review
-  - Status: Open
-
 - Sequential runs with twice the decoder threads: measure again
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
   - Status: Open
