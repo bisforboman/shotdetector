@@ -169,6 +169,13 @@ there is no file to seek, so the host does what `ScoreChunked` does and ShotDete
   past the last frame whose scores are final, one less than `FirstFrame + FrameCount` when deinterlacing. The next range,
   or a run resumed from a stopped one, starts before it (at `EndFrame - 1` at the latest); a range given `RangeFrames`'
   span for [first, end) ends at end + 1 either way.
+- **Black and freeze spans** (2026-11-02, docs/decisions/2026-11-02-freeze-spans-for-ranges.md): a range carries each
+  frame's blackdetect judgement and freezedetect comparison (its detector at d = 0, from the frame before the range);
+  Merge works the black spans out over the joined judgements and replays freezedetect over the comparisons with the real
+  d. A range that starts inside a still compared with the wrong picture: `ShotDetection.FirstRangeToScoreAgain` names
+  it, and the host scores it again given the ranges before it, with the frames `RangeFrames(video, earlier, options,
+  first, end)` gives (from the still's first frame), until none is named. A resumed run's range, given the earlier
+  ranges and those frames, needs nothing more.
 - **What can't be split** is refused rather than read sequentially: a time range, frame skip and
   `DetectionMode.Parallel`. Every detector works, with stats too (threshold's dedupe by position stays in Decide).
 - **Shots as they come** (`DetectionOptions.OnShot`, 2026-10-30, docs/decisions/2026-10-30-score-range-on-shot.md): a

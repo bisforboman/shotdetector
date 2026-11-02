@@ -68,3 +68,8 @@ versions finish the rows' tails in C), over the samples and 2^depth. Its duratio
   in-process, FastYuv, a start time, deinterlaced (against `yadif,freezedetect`), a Stream, 10-bit, frame skip, and
   Parallel asked for (read in one pass, the warning given).
 - `FrameInputTests.SameAsTheFileWithFreezeSpans`: frames from the caller give the file path's spans.
+
+Since 2026-11-02 ([2026-11-02-freeze-spans-for-ranges.md](2026-11-02-freeze-spans-for-ranges.md)), ranges take
+`FreezeDetect`: each range carries each frame's comparison and Merge replays freezedetect over them. A range that starts
+inside a still is scored again given the earlier ranges, from the still's first frame (`FirstRangeToScoreAgain`,
+`RangeFrames` with the earlier ranges), so the spans equal Detect's in any split.
