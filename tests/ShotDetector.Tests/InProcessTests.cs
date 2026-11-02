@@ -320,35 +320,24 @@ public class InProcessTests(Clips clips) : IClassFixture<Clips>
                 _ => options,
             };
 
-            // 9 to 16 bits: FFmpeg 8.1's x86 SIMD yadif gives a different result on every run, so the reference is its C
-            // code (-cpuflags 0) as a lossless copy, read without deinterlacing.
-            bool deep = args.Contains("10le");
-            string reference = Path.ChangeExtension(clip, ".ref.mkv");
-            if (deep)
-            {
-                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-cpuflags", "0", "-noautorotate", "-i", clip, "-vf", "yadif", "-c:v", "ffv1", reference], default);
-                Turn(reference);
-            }
-
-            var ffmpegs = deep ? ShotDetection.Detect(reference, options with { Deinterlace = DeinterlaceMode.Off }) : ShotDetection.Detect(clip, options);
+            // 9 to 16 bits too: there FFmpeg's yadif runs on one thread, where it equals its C code, which FastYuv's
+            // follows (FFmpeg 8.1's x86 yadif varies from run to run with slice threads: FrameDecoderTests).
+            var ffmpegs = ShotDetection.Detect(clip, options);
             var ours = ShotDetection.Detect(clip, options with { Yadif = new Yadif() });
             Assert.True(ours.Video.DecodedInProcess);
             Assert.Equal(ffmpegs.Stats!.Csv(ffmpegs.Video.Position), ours.Stats!.Csv(ours.Video.Position));
 
-            // Turned: also the executable's yadif, then its transpose (8-bit; above 8 bits from the reference copy, as
-            // FFmpeg's SIMD yadif differs between runs there), with the scenes too.
+            // Turned: also the executable's yadif, then its transpose, with the scenes too.
             if (rotation != 0)
             {
                 Assert.Equal(rotation, ours.Video.Rotation);
                 Assert.Equal(options.Yuv420Converter is not null, VideoReader.IsYuv(ours.Video.Reader.Pipeline));
-                var executable = ShotDetection.Detect(deep ? reference : clip, options with { Decoder = VideoDecoder.FfmpegProcess, Deinterlace = deep ? DeinterlaceMode.Off : DeinterlaceMode.On });
+                var executable = ShotDetection.Detect(clip, options with { Decoder = VideoDecoder.FfmpegProcess });
                 Assert.False(executable.Video.DecodedInProcess);
                 Assert.Equal(executable.Stats!.Csv(executable.Video.Position), ours.Stats!.Csv(ours.Video.Position));
                 Assert.Equal(Shots.Csv(executable.Shots), Shots.Csv(ours.Shots));
                 Assert.Equal(Shots.Csv(ffmpegs.Shots), Shots.Csv(ours.Shots));
             }
-
-            File.Delete(reference);
         }
         finally
         {

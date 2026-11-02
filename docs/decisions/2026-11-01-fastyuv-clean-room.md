@@ -74,3 +74,7 @@ suggestions on record are these:
 - A person implements, which gives the stronger record. A Claude session's training data may include FFmpeg's source.
   If a session implements anyway, it should be a fresh session with no checkout containing the port, a prompt
   forbidding FFmpeg source, only the specification and oracle as input, and its transcript kept.
+
+Since 2026-11-02 ([2026-11-02-deterministic-yadif-at-9-16-bits.md](2026-11-02-deterministic-yadif-at-9-16-bits.md))
+deterministic deinterlacing at 9 to 16 bits no longer needs FastYuv: FFmpeg's yadif runs on one thread there, where it
+equals the C code. The yadif slice of a clean room is no longer needed for determinism.

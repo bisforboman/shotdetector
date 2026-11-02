@@ -157,9 +157,11 @@ before analysis, so there is no need to re-encode first; results equal scenedete
 copy. `DeinterlaceMode.Auto` (`--deinterlace auto`) does so only when the stream is flagged interlaced. With
 ShotDetector.FastYuv, `Yadif = new ShotDetector.FastYuv.Yadif()` deinterlaces in-process only the rows the resize
 reads (same results, about a third faster with few cores). At 9 to 16 bits (10-bit AVC-Intra, ProRes) FFmpeg 8.1's
-x86 SIMD yadif gives a slightly different picture on every run (its C code doesn't), so without FastYuv, as with
-`ffmpeg -vf yadif`, the stats of such a file can differ from run to run; FastYuv's `Yadif` follows the C code and is
-deterministic (equal to `ffmpeg -cpuflags 0 -vf yadif`).
+x86 yadif gives a slightly different picture on every run when it runs on several threads (its slices race:
+docs/ffmpeg-yadif-16bit-report.md), so there ShotDetector runs yadif on one thread (`yadif=threads=1`, in-process
+too), which is deterministic and equals its C code (`ffmpeg -cpuflags 0 -vf yadif`) and FastYuv's `Yadif`. For
+scenedetect's lossless copy of such a file, use `ffmpeg -vf yadif=threads=1`: plain `-vf yadif` varies from run to
+run.
 
 `ShotDetection.Probe(path)` / `ProbeAsync` reads a video's headers in milliseconds, without ffprobe when FFmpeg's
 libraries load: size, frame rate, frame count, duration, codec, pixel format, field order (`IsInterlaced`),

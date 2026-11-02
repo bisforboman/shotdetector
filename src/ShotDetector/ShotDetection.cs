@@ -393,8 +393,9 @@ public sealed record DetectionOptions
     /// Deinterlace with ffmpeg's yadif filter (default settings, one frame out per frame in) before analysis, for
     /// interlaced sources such as 1080i broadcast: <see cref="DeinterlaceMode.On"/> always,
     /// <see cref="DeinterlaceMode.Auto"/> when the stream is flagged interlaced. Results match scenedetect run on a
-    /// lossless copy made with <c>ffmpeg -vf yadif</c>. Only detection sees deinterlaced frames; exported images and
-    /// clips are the original's.
+    /// lossless copy made with <c>ffmpeg -vf yadif</c> (above 8 bits <c>-vf yadif=threads=1</c>: yadif runs on one thread
+    /// there, as FFmpeg 8.1's x86 yadif gives a different picture on every run with several). Only detection sees
+    /// deinterlaced frames; exported images and clips are the original's.
     /// </summary>
     public DeinterlaceMode Deinterlace { get; init; }
 
@@ -472,9 +473,8 @@ public sealed record DetectionOptions
     /// <summary>
     /// yadif for single rows (the ShotDetector.FastYuv package's <c>Yadif</c>, or any FrameReader
     /// <see cref="FrameReader.IRowDeinterlacer"/>): in-process deinterlacing then computes only the rows the resize reads,
-    /// instead of FFmpeg's yadif on whole frames. 8-bit results are identical either way. For 9 to 16 bits, FFmpeg 8.1's
-    /// x86 SIMD yadif gives a different result on every run (its C code doesn't); FastYuv's follows the C code, so it is
-    /// deterministic and equal to FFmpeg's yadif with SIMD off (-cpuflags 0).
+    /// instead of FFmpeg's yadif on whole frames. Results are identical either way: FastYuv's follows FFmpeg's C code,
+    /// which FFmpeg's yadif equals on one thread, as it runs for 9 to 16 bits.
     /// </summary>
     public FrameReader.IRowDeinterlacer? Yadif { get; init; }
 

@@ -1431,6 +1431,14 @@ internal sealed partial class VideoReader
     bool TenBit => _pixelFormat == "yuv420p10le";
 
     /// <summary>
+    /// ffmpeg's yadif for frames of <paramref name="pixelFormat"/>: above 8 bits (a format named with its byte order) on
+    /// one thread, as FrameReader's in-process yadif: FFmpeg 8.1's x86 code there gives a different picture on every run
+    /// with slice threads (docs/ffmpeg-yadif-16bit-report.md), and on one it equals the C code (`-cpuflags 0`).
+    /// </summary>
+    internal static string Yadif(string pixelFormat) =>
+        pixelFormat.EndsWith("le", StringComparison.Ordinal) || pixelFormat.EndsWith("be", StringComparison.Ordinal) ? "yadif=threads=1" : "yadif";
+
+    /// <summary>
     /// Whether swscale scales this video to BGR, interpolating the chroma from where it sits (so the chroma location
     /// matters): 10-bit, and 8-bit of an odd height (its unscaled converter needs an even one).
     /// </summary>
@@ -1763,7 +1771,7 @@ internal sealed partial class VideoReader
         // Deinterlacing first, so the frames a seek decodes early still feed yadif, as in the copy it stands for (the
         // select keeps the frame before the wanted one: keepBefore).
         if (_deinterlace)
-            select = ["-vf", "yadif" + (select.Length > 0 ? "," + select[1] : "")];
+            select = ["-vf", Yadif(_pixelFormat) + (select.Length > 0 ? "," + select[1] : "")];
 
         // yadif doubles the pts (and halves the time base): the stream's start in showinfo's units.
         long startScale = _deinterlace ? 2 : 1;

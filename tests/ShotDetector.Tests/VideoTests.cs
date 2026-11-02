@@ -115,6 +115,31 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(150, result.FrameCount);
     }
 
+    // Deinterlacing through the executable: above 8 bits yadif runs on one thread, as FFmpeg 8.1's x86 yadif gives a
+    // different picture on every run there with slice threads (320 wide: rows without padding, where slices race), and
+    // on one equals its C code (-cpuflags 0), as FrameReader's in-process yadif and FastYuv's do.
+    [Theory]
+    [InlineData("yuv420p10le", "yadif=threads=1")]
+    [InlineData("yuv422p10le", "yadif=threads=1")]
+    [InlineData("yuv420p", "yadif")]
+    public void TheExecutablesYadifIsTheSameOnEveryRun(string format, string filter)
+    {
+        Assert.Equal(filter, VideoReader.Yadif(format));
+        string clip = Path.Combine(Path.GetTempPath(), $"shotdetector-yadif-{format}-{Guid.NewGuid():N}.mkv");
+        try
+        {
+            VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", clips.Interlaced, "-pix_fmt", format, "-c:v", "ffv1", clip], default);
+            string Md5(params string[] cpu) => VideoReader.Run("ffmpeg", ["-v", "error", .. cpu, "-i", clip, "-vf", VideoReader.Yadif(format), "-f", "md5", "-"], default);
+            string c = Md5("-cpuflags", "0");
+            for (int run = 0; run < 3; run++)
+                Assert.Equal(c, Md5());
+        }
+        finally
+        {
+            File.Delete(clip);
+        }
+    }
+
     [Fact]
     public void RotatedVideoIsReadUpright()
     {

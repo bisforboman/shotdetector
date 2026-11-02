@@ -33,7 +33,7 @@ There are four things, and all of them are ports of FFmpeg source (README of `sr
 | x64, ffmpeg executable | Exact: ffmpeg converts whole frames | No, only for speed on large video |
 | ARM (Linux arm64, Apple Silicon) | Some pixels differ: FFmpeg's NEON conversion rounds differently, and no FFmpeg setting gives x86's bytes | **Yes**, for x86's results (decisions/2026-10-17-arm-results.md; `arch-diff` requires it) |
 | No FFmpeg at all (`Detect(YuvVideo, …)`, shotdetector-web in the browser) | Nothing can convert | **Yes** |
-| 9 to 16-bit interlaced | Runs, but results can change between runs | For deterministic results |
+| 9 to 16-bit interlaced | Deterministic since 2026-11-02 (yadif on one thread: decisions/2026-11-02-deterministic-yadif-at-9-16-bits.md); before, results could change between runs | No (before 2026-11-02, for deterministic results) |
 
 So "a must" means ARM, no FFmpeg, and deterministic high-bit-depth deinterlacing. On x64 with FFmpeg it is an
 optimisation at most.
