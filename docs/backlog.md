@@ -39,6 +39,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: shotdetector-web#90 (correcting cuts on the page) exports through `LoadScenes`, which, like scenedetect 0.7.2's load-scenes (checked on both samples), times cuts at frame / average rate and ends at OpenCV's frame count. On a VFR film one fixed cut moves every other cut (2.000 s becomes 2.022 s), and after an edit list that ends early the last shot runs past the end (3.0 s becomes 4.56 s). The length is nb_frames, not the frames played, on fragmented MP4 too (114 played, 122 counted); a fragmented file whose moov lists only the first 38 samples drops every cut after frame 38. docs/decisions/2026-11-02-load-scenes-keep-positions.md
   - Status: Open
 
+- SkipUnreferencedTests' "read again" assertion depends on timing
+  - Why: `FramesAreThoseOfDecodingEveryPacket` asserts that an indexed input (mp4, mkv, MPEG-TS) is read again after the short step, which happens only if read-ahead decoding gets past it during a `Thread.Sleep(50)`; on a busy runner it doesn't, and the test fails "read again 0 times" with nothing wrong (main: runs 41097253436 and 41225604504, mpeg1.mkv; PR #710: mpeg1.mkv on x64 and mpeg2.ts on ARM, a PR changing no C#). A red required check that isn't the PR's costs a re-run each time. Make it deterministic: wait until decoding ahead has passed the step (a test hook or the reader's own counters) instead of sleeping. Found 2026-11-02
+  - Status: Open
+
 ## Waiting
 
 - Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)
