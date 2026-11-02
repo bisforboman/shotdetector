@@ -492,6 +492,10 @@ internal sealed partial class VideoReader
         _fullFrames = o.FullFrames;
         _alwaysBt601 = o.AlwaysBt601;
         _decoder = o.Decoder;
+
+        // The BT.601 conversion is the executable's filter, so in-process decoding would silently become the executable.
+        if (_alwaysBt601 && _decoder == VideoDecoder.InProcess)
+            throw new ArgumentException("AlwaysBt601 (--always-bt601) decodes with the ffmpeg executable; it can't be combined with VideoDecoder.InProcess.");
         _ffmpegDirectory = o.FfmpegDirectory;
         _cancellationToken = cancellationToken;
         FfmpegExe = Executable(o.FfmpegDirectory, "ffmpeg");
