@@ -39,10 +39,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: both refuse ranges today (ShotDetection.Ranges.cs: "isn't available for ranges yet" and "freezedetect compares across them"). Every shotdetector-web page run is a range, so the page computes black spans itself (equal to `BlackSpans` on all 34 samples) and feeds FrameReader's `FreezeDetector` only in runs that read every frame in order: split and resumed runs show no freezes (reported by its session, 2026-11-01; the owner put this row in Next)
   - Status: Open
 
-- Scenes from an edited cut list that keep a run's frame times: an overload taking a `DetectionResult` and the edited cuts (frame numbers), giving the shots, scene list and exports at that run's frame times and length; `LoadScenes` stays scenedetect's
-  - Why: shotdetector-web#90 (correcting cuts on the page) exports through `LoadScenes`, which, like scenedetect 0.7.2's load-scenes (checked on both samples), times cuts at frame / average rate and ends at OpenCV's frame count. On a VFR film one fixed cut moves every other cut (2.000 s becomes 2.022 s), and after an edit list that ends early the last shot runs past the end (3.0 s becomes 4.56 s). The length is nb_frames, not the frames played, on fragmented MP4 too (114 played, 122 counted); a fragmented file whose moov lists only the first 38 samples drops every cut after frame 38. docs/decisions/2026-11-02-load-scenes-keep-positions.md
-  - Status: Open
-
 ## Waiting
 
 - Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)
