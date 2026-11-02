@@ -175,6 +175,53 @@ internal sealed partial class VideoReader
 
     byte[]? _freezePlanes; // deinterlacing: a frame's planes, deinterlaced whole, for freezedetect
 
+    bool _freezeSeeded; // a range's detector was given its still picture's first frame before the range (SeedFrozen)
+
+    /// <summary>
+    /// A range's freezedetect comparisons start from frame <paramref name="k"/>, taken before the range's frames
+    /// (<see cref="ShotDetection.ScoreRange(YuvVideo, IEnumerable{RangeScores}, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/>
+    /// inside a still): the detector's first frame, its still picture. Called once it is taken, deinterlacing once its
+    /// next is.
+    /// </summary>
+    internal void SeedFrozen(int k)
+    {
+        CompareFrozen(k, _freezeDetect ?? throw new InvalidOperationException("Seeding freezedetect without FreezeDetect."));
+        _freezeSeeded = true;
+    }
+
+    /// <summary>The frames taken from the caller so far, as the index one past the last (from <c>frameBase</c>).</summary>
+    internal int FramesTaken => _framesRead;
+
+    /// <summary>
+    /// freezedetect's comparison of each of the first <paramref name="frames"/> frames its detector was given: whether
+    /// it was within n of the still picture's first (the first frame's: false). Read off the detector's spans at d = 0,
+    /// where every frame after the first is inside a span (within n) or ends one (not): a range's detector runs at
+    /// d = 0 (ShotDetection's RangeSteps), the merge replays freezedetect with the real d over the flags.
+    /// </summary>
+    internal bool[] FrozenFlags(int frames)
+    {
+        var flags = new bool[frames];
+        foreach (var s in _freezeDetector?.Finish(frames) ?? [])
+        {
+            for (int i = s.FirstFrame + 1; i < (s.EndFrame ?? frames) && i < frames; i++)
+                flags[i] = true;
+        }
+
+        return flags;
+    }
+
+    /// <summary>The freezedetect pts' time base: YuvVideo.TimeBase, or the frame rate's for untimed frames (frame n at n).</summary>
+    internal FrameReader.Rational FreezeTimeBase => _framesTimeBase;
+
+    /// <summary>The pts freezedetect's times are counted from: the video's start pts, or 0 for untimed frames.</summary>
+    internal long FreezeOrigin => _framesTimed ? _startPts : 0;
+
+    /// <summary>
+    /// blackdetect's pts of frame <paramref name="k"/>, frames from the caller: its pts (<paramref name="pts"/>) from the
+    /// video's start, or k untimed; doubled deinterlacing (yadif's), in <see cref="BlackTimeBase"/>.
+    /// </summary>
+    internal long BlackPts(int k, long? pts) => (pts is { } p ? p - _startPts : k) * (_deinterlace ? 2 : 1);
+
     /// <summary>
     /// blackdetect's judgement of frame <paramref name="k"/> (DetectionOptions.BlackDetect): its luma as given, or
     /// deinterlaced whole when deinterlacing (yadif's doubled pts then), counted by FrameReader's
@@ -200,8 +247,8 @@ internal sealed partial class VideoReader
             black = FrameReader.BlackPixels.Count(_currentFrame.Y.Span, _currentFrame.YStride, w, h, depth, threshold);
         }
 
-        long pts = _framesTimed && k - _frameBase is >= 0 and var given && given < _framePts.Count ? _framePts[given] - _startPts : k;
-        return new BlackFrame(_deinterlace ? 2 * pts : pts, (double)black / (w * h) >= o.PictureThreshold);
+        long? framePts = _framesTimed && k - _frameBase is >= 0 and var given && given < _framePts.Count ? _framePts[given] : null;
+        return new BlackFrame(BlackPts(k, framePts), (double)black / (w * h) >= o.PictureThreshold);
     }
 
     byte[]? _blackLuma; // deinterlacing: a frame's whole luma, deinterlaced, for blackdetect

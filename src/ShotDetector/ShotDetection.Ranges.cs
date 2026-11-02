@@ -44,7 +44,7 @@ public static partial class ShotDetection
     /// </summary>
     /// <param name="video">The video's properties, the same for every range (<see cref="Merge"/> refuses ranges of another).</param>
     /// <param name="frames">
-    /// The range's frames in presentation order (<see cref="RangeFrames"/> says which), starting one frame early: frame <paramref name="firstFrame"/> - 1 (the
+    /// The range's frames in presentation order (<see cref="RangeFrames(YuvVideo, DetectionOptions?, long, long)"/> says which), starting one frame early: frame <paramref name="firstFrame"/> - 1 (the
     /// previous frame, which each score compares with), unless <paramref name="firstFrame"/> is 0; then every frame to one
     /// frame past the range's end, the first frame of the next range (its overlap frame), or to the video's end for the
     /// last range. The range ends where the frames stop: <see cref="Merge"/> takes the frames from the next range's start
@@ -72,6 +72,11 @@ public static partial class ShotDetection
     /// <see cref="DetectionOptions.RangeDuration"/> and their typed forms), <see cref="DetectionOptions.FrameSkip"/> (its
     /// phase runs across the ranges) and <see cref="DetectionMode.Parallel"/> (the host does the chunking). Deinterlacing
     /// is taken, with the frames on either side of the range (see <paramref name="frames"/>).
+    /// <see cref="DetectionOptions.BlackDetect"/> and <see cref="DetectionOptions.FreezeDetect"/> are taken: the range
+    /// keeps each frame's judgement and comparison, and <see cref="Merge"/> gives the spans Detect gives for the whole
+    /// video. freezedetect compares each frame with the still picture's first, which for a range starting inside a still
+    /// is in an earlier range: <see cref="FirstRangeToScoreAgain"/> names such a range, to score again given the ranges
+    /// before it, with the frames <see cref="RangeFrames(YuvVideo, IEnumerable{RangeScores}, DetectionOptions?, long, long)"/> gives.
     /// <see cref="DetectionOptions.Progress"/> is told the range's frames (<see cref="DetectionProgress.FramesProcessed"/>
     /// counts those from <paramref name="firstFrame"/> on; <see cref="DetectionProgress.ExpectedFrames"/> is 0, as the range
     /// ends where the frames stop; with <see cref="DetectionOptions.ProgressStep"/> set, only the first report and the last), the last report once they have.
@@ -295,10 +300,18 @@ public static partial class ShotDetection
         var before = earlier is null ? null : Earlier(video, o, earlier, firstFrame);
         int from = Math.Max(0, firstFrame - 1);
 
+        // FreezeDetect: the comparisons start from the frame before the range, or, continuing from earlier ranges
+        // inside a still picture, from that still's first frame (the frames start there: RangeFrames with them).
+        int seed = o.FreezeDetect is null || before is null ? from : FreezeSeed(video, o, earlier!, before.Value.Pts, firstFrame);
+        bool seeded = seed < from;
+
         // Deinterlacing, the frames start one earlier still: yadif's previous frame for the frame before the range.
         bool deinterlaced = VideoReader.DeinterlacesFrames(video, o);
-        int given = deinterlaced ? Math.Max(0, firstFrame - 2) : from;
-        var reader = new VideoReader(video, feed, o, given);
+        int given = deinterlaced ? Math.Max(0, (seeded ? seed : firstFrame) - (seeded ? 1 : 2)) : seeded ? seed : from;
+
+        // The range's freezedetect runs at d = 0, its spans giving each frame's comparison (VideoReader.FrozenFlags);
+        // the merge replays freezedetect with the real d over the ranges' flags joined.
+        var reader = new VideoReader(video, feed, o.FreezeDetect is { } fz ? o with { FreezeDetect = fz with { MinDuration = TimeSpan.Zero } } : o, given);
         int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, reader.Fps);
         var settings = Settings(o);
         var stats = o.CollectStats ? new Stats() : null;
@@ -316,6 +329,17 @@ public static partial class ShotDetection
         {
             yield return null;
             reader.TakeBeforeStart();
+
+            // The still's first frame, once taken (deinterlacing, once its next is: yadif's).
+            if (seeded && reader.FramesTaken == seed + 1 + (deinterlaced ? 1 : 0))
+                reader.SeedFrozen(seed);
+        }
+
+        if (seeded && reader.FramesTimed && reader.FramePts.Count > 0 && before!.Value.Pts is { Length: > 0 } earlierPts && reader.FramePts[0] != earlierPts[given])
+        {
+            throw new ShotDetectionException(ShotDetectionError.InvalidInput,
+                string.Create(CultureInfo.InvariantCulture,
+                    $"The range from frame {firstFrame} starts inside a still picture from frame {seed} (FreezeDetect): its frames start at frame {given} (RangeFrames with the earlier ranges says so), but the first one given is at pts {reader.FramePts[0]}, frame {given}'s is {earlierPts[given]}."));
         }
 
         yield return null; // the first frame is taken next
@@ -361,13 +385,188 @@ public static partial class ShotDetection
         live?.End();
         int scored = k - firstFrame;
         o.Progress?.Report(Progress(scored, scored));
+
+        // The flags of the frames from the range's first: the reads' from the frame before it (and the detector's,
+        // seeded, from the still's first before that).
+        int before1 = firstFrame - from;
+        bool[]? black = o.BlackDetect is null ? null : [.. (reader.Black?.Frames ?? []).Skip(before1).Take(scored).Select(f => f.Black)];
+        bool[]? frozen = o.FreezeDetect is null ? null : [.. reader.FrozenFlags(k - from + (seeded ? 1 : 0)).Skip(before1 + (seeded ? 1 : 0)).Take(scored)];
         yield return new RangeScores(Fingerprint(video, o),
             firstFrame,
             scored,
             reader.FramesTimed ? [.. reader.FramePts.Skip(from - given)] : [],
             [.. metrics.Select(m => m.ToArray())],
             stats?.Entries(firstFrame, int.MaxValue).ToArray(),
-            []);
+            [],
+            black,
+            frozen,
+            frozen is null || firstFrame == 0 ? -1 : seed);
+    }
+
+    /// <summary>
+    /// <see cref="RangeFrames(YuvVideo, DetectionOptions?, long, long)"/> for a range scored after
+    /// <paramref name="earlier"/> (<see cref="ScoreRange(YuvVideo, IEnumerable{RangeScores}, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/>):
+    /// the same frames, but with <see cref="DetectionOptions.FreezeDetect"/> for a range that starts inside a still
+    /// picture (the earlier ranges' frames say so), from that still's first frame (deinterlacing, the frame before it):
+    /// freezedetect compares each frame with it. This is the frames to score a range with again when
+    /// <see cref="FirstRangeToScoreAgain"/> names it.
+    /// </summary>
+    /// <param name="video">The video's properties, as the ranges are scored with.</param>
+    /// <param name="earlier">The earlier ranges' scores, in order, as <see cref="Merge"/> would take them, from frame 0.</param>
+    /// <param name="options">The detection's settings, as the ranges are scored with.</param>
+    /// <param name="firstFrame">The range's first frame (0-based).</param>
+    /// <param name="endFrame">One past the range's last frame: the next range's first frame, or the video's frame count.</param>
+    /// <returns>The first frame to give, and one past the last.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="firstFrame"/> is negative or too large, or <paramref name="endFrame"/> isn't after it.</exception>
+    /// <exception cref="ArgumentException">Invalid or unavailable options.</exception>
+    /// <exception cref="ShotDetectionException">The earlier ranges don't make up the video's frames before this range, as
+    /// ScoreRange checks them, or one of them must be scored again first (<see cref="FirstRangeToScoreAgain"/>;
+    /// <see cref="ShotDetectionError.InvalidInput"/>).</exception>
+    public static (long From, long To) RangeFrames(YuvVideo video, IEnumerable<RangeScores> earlier, DetectionOptions? options, long firstFrame, long endFrame)
+    {
+        ArgumentNullException.ThrowIfNull(earlier);
+        var (from, to) = RangeFrames(video, options, firstFrame, endFrame);
+        var o = (options ?? new DetectionOptions()).Resolved();
+        var list = earlier.ToList();
+        if (o.FreezeDetect is null || list.Count == 0)
+            return (from, to);
+        CheckRangeOptions(video, o);
+        var before = Earlier(video, o, list, (int)firstFrame);
+        int seed = FreezeSeed(video, o, list, before?.Pts ?? [], (int)firstFrame);
+        return seed < firstFrame - 1 ? (Math.Max(0, seed - (VideoReader.DeinterlacesFrames(video, o) ? 1 : 0)), to) : (from, to);
+    }
+
+    /// <summary>
+    /// The first of <paramref name="ranges"/> to score again before <see cref="Merge"/> takes them, or null when none
+    /// is (always without <see cref="DetectionOptions.FreezeDetect"/>). freezedetect compares each frame with the still
+    /// picture's first, however far back; a range scored on its own compares from the frame before its first, which is
+    /// the run's still picture there unless the range starts inside a still (one crossing its start: the frame before it is
+    /// within n of an earlier one). Such a range is scored again given the ranges before it, from the frames
+    /// <see cref="RangeFrames(YuvVideo, IEnumerable{RangeScores}, DetectionOptions?, long, long)"/> gives, and takes its
+    /// place; then the next is checked, as a still can cross more than one start.
+    /// </summary>
+    /// <param name="video">The video's properties, as every range was given them.</param>
+    /// <param name="ranges">Every range's scores, in order, as for <see cref="Merge"/>.</param>
+    /// <param name="options">The detection's settings, as every range was scored with.</param>
+    /// <returns>The index in <paramref name="ranges"/> of the first range to score again, or null.</returns>
+    /// <exception cref="ArgumentException">Invalid or unavailable options (as for ScoreRange), or no ranges.</exception>
+    /// <exception cref="ShotDetectionException">The ranges don't make up the video's frames, as <see cref="Merge"/> checks them.</exception>
+    public static int? FirstRangeToScoreAgain(YuvVideo video, IEnumerable<RangeScores> ranges, DetectionOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(video);
+        ArgumentNullException.ThrowIfNull(ranges);
+        var list = ranges.ToList();
+        if (list.Count == 0)
+            throw new ArgumentException("There are no ranges.", nameof(ranges));
+        var o = (options ?? new DetectionOptions()).Resolved();
+        CheckRangeOptions(video, o);
+        CheckFingerprints(video, o, list, nameof(ranges), "these options'");
+        if (o.FreezeDetect is not { } fd)
+            return null;
+        var final = VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list;
+        var (pts, scores) = Joined(final);
+        int stale = Replayed(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o), fd, final, pts, scores.Frames).Stale;
+        return stale < 0 ? null : stale;
+    }
+
+    /// <summary>
+    /// Where a range after <paramref name="earlier"/> starts its freezedetect comparisons: the run's still picture at the
+    /// frame before <paramref name="firstFrame"/> (that frame itself unless a still crosses the start), after the earlier
+    /// ranges' flags replayed; refuses earlier ranges of which one must be scored again first.
+    /// </summary>
+    static int FreezeSeed(YuvVideo video, DetectionOptions o, List<RangeScores> earlier, long[] pts, int firstFrame)
+    {
+        var list = VideoReader.DeinterlacesFrames(video, o) ? [.. earlier.Select(WithoutLastFrame)] : earlier;
+        var replay = Replayed(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o), o.FreezeDetect!, list, pts, firstFrame);
+        if (replay.Stale >= 0)
+            throw Rescore(replay.Stale, list[replay.Stale], replay.Reference);
+        return replay.Reference;
+    }
+
+    /// <summary>The refusal of a range whose freezedetect comparisons started from another still picture than the run's.</summary>
+    static ShotDetectionException Rescore(int index, RangeScores range, int still) => InvalidRanges(string.Create(CultureInfo.InvariantCulture,
+        $"Range {index} (from frame {range.FirstFrame}) starts inside a still picture from frame {still} (FreezeDetect), and its comparisons started from frame {range.FreezeSeed}: score it again given the ranges before it (ScoreRange with the earlier ranges), with the frames RangeFrames gives with them, from frame {still} (ShotDetection.FirstRangeToScoreAgain names such a range)."));
+
+    /// <summary>The ranges' black judgements joined, each frame from the range it belongs to, at blackdetect's pts (frames from the caller's).</summary>
+    static BlackFrames JoinedBlack(VideoReader reader, List<RangeScores> list, long[] pts, int total)
+    {
+        var joined = new BlackFrames(reader.BlackTimeBase, 0);
+        for (int i = 0; i < list.Count; i++)
+        {
+            var r = list[i];
+            int to = i + 1 < list.Count ? list[i + 1].FirstFrame : total;
+            var flags = r.Black ?? throw InvalidRanges($"Range {i} (from frame {r.FirstFrame}) has no black judgements.");
+            for (int k = r.FirstFrame; k < to; k++)
+                joined.Frames.Add(new BlackFrame(reader.BlackPts(k, pts.Length > 0 ? pts[k] : null), flags[k - r.FirstFrame]));
+        }
+
+        return joined;
+    }
+
+    /// <summary>
+    /// freezedetect (FFmpeg 8.1's activate, FrameReader's FreezeDetector) replayed over the ranges' comparisons of the
+    /// first <paramref name="frames"/> frames, each frame's from the range it belongs to: the spans as Detect's
+    /// (<see cref="VideoReader.FreezeSpans"/>), the run's still picture after the last frame (<c>Reference</c>), and
+    /// the first range whose comparisons started from another still than the run's at its start (<c>Stale</c>, -1 for none;
+    /// the replay stops there).
+    /// </summary>
+    static (List<FreezeSpan> Spans, int Stale, int Reference) Replayed(VideoReader reader, FreezeDetectOptions o, List<RangeScores> list, long[] pts, int frames)
+    {
+        var tb = reader.FreezeTimeBase;
+        double seconds = tb.Num / (double)tb.Den;
+        long origin = reader.FreezeOrigin, least = o.MinDuration.Ticks / 10;
+        var spans = new List<FreezeSpan>();
+        bool hasReference = false, still = false;
+        long referencePts = 0;
+        int reference = -1;
+        (int Frame, long Pts)? open = null;
+        for (int i = 0; i < list.Count; i++)
+        {
+            var r = list[i];
+            int to = Math.Min(frames, i + 1 < list.Count ? list[i + 1].FirstFrame : frames);
+            if (r.FirstFrame >= to)
+                break;
+            var flags = r.Frozen ?? throw InvalidRanges($"Range {i} (from frame {r.FirstFrame}) has no freeze comparisons.");
+            if (r.FirstFrame > 0 && r.FreezeSeed != reference)
+                return (spans, i, reference);
+            for (int k = r.FirstFrame; k < to; k++)
+            {
+                long p = pts.Length > 0 ? pts[k] : k;
+                bool frozen = false;
+                if (hasReference)
+                {
+                    long micros = p < referencePts ? 0 : Rescale(p - referencePts, tb.Num, tb.Den, 1, 1_000_000);
+                    frozen = flags[k - r.FirstFrame];
+                    if (micros >= least)
+                    {
+                        if (!still)
+                            open = (reference, referencePts);
+                        if (!frozen)
+                        {
+                            spans.Add(new FreezeSpan(open!.Value.Frame, k, (open.Value.Pts - origin) * seconds, (p - origin) * seconds) { Duration = micros / 1e6 });
+                            open = null;
+                        }
+
+                        still = frozen;
+                    }
+                }
+
+                if (!frozen)
+                    (hasReference, referencePts, reference) = (true, p, k);
+            }
+        }
+
+        if (open is { } running)
+            spans.Add(new FreezeSpan(running.Frame, null, (running.Pts - origin) * seconds, null) { Duration = null });
+        return (spans, -1, reference);
+    }
+
+    /// <summary>av_rescale_q(a, b, c) with AV_ROUND_NEAR_INF, as FrameReader's FreezeDetector rounds freezedetect's durations.</summary>
+    static long Rescale(long a, long bNum, long bDen, long cNum, long cDen)
+    {
+        Int128 num = (Int128)a * bNum * cDen, den = (Int128)bDen * cNum;
+        Int128 half = den / 2;
+        return (long)(num >= 0 ? (num + half) / den : -((-num + half) / den));
     }
 
     /// <summary>The options a range can't honour on its own (an <see cref="ArgumentException"/>), for <see cref="ScoreRange(YuvVideo, IEnumerable{YuvFrame}, long, DetectionOptions?, CancellationToken)"/> and <see cref="Merge"/>.</summary>
@@ -375,10 +574,6 @@ public static partial class ShotDetection
     {
         if (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null)
             throw new ArgumentException("A time range (StartTime, EndTime, Duration) isn't available for ranges: score the whole video, from frame 0, in ranges.");
-        if (o.BlackDetect is not null)
-            throw new ArgumentException("BlackDetect isn't available for ranges yet: run Detect on the frames for black spans.");
-        if (o.FreezeDetect is not null)
-            throw new ArgumentException("FreezeDetect isn't available for ranges: freezedetect compares across them; run Detect on the frames.");
         if (o.TrimReferenceTone)
             throw new ArgumentException("TrimReferenceTone isn't available for ranges: it sets a time range; score the whole video, and trim with Detect.");
         if (o.FrameSkip != 0)
@@ -441,7 +636,8 @@ public static partial class ShotDetection
             CheckRangeOptions(video, o);
             CheckOptions(o, false);
             CheckFingerprints(video, o, list, nameof(ranges), "this merge's");
-            var (pts, scores) = Joined(VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list);
+            var final = VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list;
+            var (pts, scores) = Joined(final);
             if (pts.Length > 0)
             {
                 // The sequential run's check of every frame, from frame 0's pts; at a range's first frames, says which.
@@ -474,6 +670,19 @@ public static partial class ShotDetection
 
             var warnings = list.SelectMany(r => r.Warnings).Distinct().ToList();
 
+            // Black and freeze spans over the joined flags, as Detect's over the whole run's frames; a range whose
+            // freezedetect comparisons started from another still picture than the run's is refused (scored again).
+            var spanReader = new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o);
+            var blackSpans = o.BlackDetect is { } bd ? JoinedBlack(spanReader, final, pts, scores.Frames).Spans(bd, scores.Frames) : null;
+            IReadOnlyList<FreezeSpan>? freezeSpans = null;
+            if (o.FreezeDetect is { } fd)
+            {
+                var replay = Replayed(spanReader, fd, final, pts, scores.Frames);
+                if (replay.Stale >= 0)
+                    throw Rescore(replay.Stale, final[replay.Stale], replay.Reference);
+                freezeSpans = replay.Spans;
+            }
+
             // The decisions as Detect makes them: Steps with the scores in place of the frames (the chunked file's path).
             var steps = Steps(null,
                 (options ?? new DetectionOptions()) with { Progress = null },
@@ -494,6 +703,8 @@ public static partial class ShotDetection
                 }
             }
 
+            if (blackSpans is not null || freezeSpans is not null)
+                result = result with { BlackSpans = blackSpans, FreezeSpans = freezeSpans };
             Traced(activity, result);
             return result;
         }
@@ -571,7 +782,10 @@ public static partial class ShotDetection
             r.Pts.Length > 0 ? r.Pts[..^1] : r.Pts,
             [.. r.Metrics.Select(m => m[..^1])],
             r.Stats?.Where(e => e.Frame != last).ToArray(),
-            [.. r.Warnings]);
+            [.. r.Warnings],
+            r.Black?[..^1],
+            r.Frozen?[..^1],
+            r.FreezeSeed);
     }
 
     /// <summary>
@@ -716,6 +930,7 @@ public static partial class ShotDetection
         nameof(DetectionOptions.FilterMode), nameof(DetectionOptions.AddLastScene), nameof(DetectionOptions.Downscale),
         nameof(DetectionOptions.DropShortScenes), nameof(DetectionOptions.MergeLastScene), nameof(DetectionOptions.FrameRate),
         nameof(DetectionOptions.CollectStats), nameof(DetectionOptions.Deinterlace), nameof(DetectionOptions.Yadif),
+        nameof(DetectionOptions.BlackDetect), nameof(DetectionOptions.FreezeDetect),
     ];
 
     /// <summary>
@@ -727,7 +942,7 @@ public static partial class ShotDetection
         nameof(DetectionOptions.StartTime), nameof(DetectionOptions.EndTime), nameof(DetectionOptions.RangeDuration),
         nameof(DetectionOptions.Start), nameof(DetectionOptions.End), nameof(DetectionOptions.Duration),
         nameof(DetectionOptions.FrameSkip),
-        nameof(DetectionOptions.FfmpegResize), nameof(DetectionOptions.TrimReferenceTone), nameof(DetectionOptions.ReferenceTone), nameof(DetectionOptions.BlackDetect), nameof(DetectionOptions.FreezeDetect),
+        nameof(DetectionOptions.FfmpegResize), nameof(DetectionOptions.TrimReferenceTone), nameof(DetectionOptions.ReferenceTone),
         nameof(DetectionOptions.Progress), nameof(DetectionOptions.Warnings), nameof(DetectionOptions.OnShot),
         nameof(DetectionOptions.ProgressStep), nameof(DetectionOptions.OnProbe), nameof(DetectionOptions.OnFrameTimestamps),
         nameof(DetectionOptions.FrameTimestampsFirst), nameof(DetectionOptions.Streaming),
@@ -767,6 +982,11 @@ public static partial class ShotDetection
             Line(nameof(o.Yadif), o.Yadif?.GetType().FullName);
         }
 
+        // Only when set, as deinterlacing: the ranges' fingerprints without them stay as they were.
+        if (o.BlackDetect is { } black)
+            Line(nameof(o.BlackDetect), $"{black.MinDuration.Ticks},{Text(black.PictureThreshold)},{Text(black.PixelThreshold)}");
+        if (o.FreezeDetect is { } freeze)
+            Line(nameof(o.FreezeDetect), $"{Text(freeze.Noise)},{freeze.MinDuration.Ticks}");
         if (video.ChromaLocation is { } siting)
             Line("ChromaLocation", siting); // only when set, so the scores of ranges from before it was there keep their fingerprint
         Line("TimeBase", video.TimeBase is { } tb ? $"{tb.Num}/{tb.Den}" : null);

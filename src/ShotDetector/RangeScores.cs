@@ -16,13 +16,28 @@ public sealed class RangeScores
     /// <summary>The bytes' first four: "SDRS".</summary>
     static ReadOnlySpan<byte> Magic => "SDRS"u8;
 
-    /// <summary>The byte format's version, after the magic. A reader refuses any other.</summary>
-    internal const ushort FormatVersion = 1;
+    /// <summary>
+    /// The byte format's version, after the magic: 2 with black or freeze flags (<see cref="DetectionOptions.BlackDetect"/>,
+    /// <see cref="DetectionOptions.FreezeDetect"/>), else 1, as before them. A reader takes both and refuses any other.
+    /// </summary>
+    internal const ushort FormatVersion = 2;
+
+    /// <summary>The format without black or freeze flags, which ranges scored without them still write.</summary>
+    const ushort FormatVersion1 = 1;
 
     /// <summary>The most detectors bytes may hold, so a damaged count can't allocate much.</summary>
     const int MaxDetectors = 1024;
 
-    internal RangeScores(string fingerprint, int firstFrame, int frameCount, long[] pts, double?[][] metrics, (int Frame, string Key, double Value)[]? stats, string[] warnings)
+    internal RangeScores(string fingerprint,
+        int firstFrame,
+        int frameCount,
+        long[] pts,
+        double?[][] metrics,
+        (int Frame, string Key, double Value)[]? stats,
+        string[] warnings,
+        bool[]? black = null,
+        bool[]? frozen = null,
+        int freezeSeed = -1)
     {
         Fingerprint = fingerprint;
         FirstFrame = firstFrame;
@@ -31,6 +46,9 @@ public sealed class RangeScores
         Metrics = metrics;
         Stats = stats;
         Warnings = warnings;
+        Black = black;
+        Frozen = frozen;
+        FreezeSeed = freezeSeed;
     }
 
     /// <summary>The 0-based index in the video of the range's first frame (ScoreRange's <c>firstFrame</c>).</summary>
@@ -47,7 +65,7 @@ public sealed class RangeScores
     /// when the range was deinterlaced (its last frame was deinterlaced as the video's last, with itself as yadif's next
     /// frame, so <see cref="ShotDetection.Merge"/> takes it only from the range that ends with the video). The next range,
     /// or a range continuing from this one, must start before it: at <c>EndFrame - 1</c> at the latest, the overlap
-    /// frame both compare. A range given <see cref="ShotDetection.RangeFrames"/>' span for [first, end) has an
+    /// frame both compare. A range given <see cref="ShotDetection.RangeFrames(YuvVideo, DetectionOptions?, long, long)"/>' span for [first, end) has an
     /// <c>EndFrame</c> of end + 1, deinterlaced or not, so the next range starts at end; a run whose frames stopped early
     /// resumes at <c>EndFrame - 1</c>.
     /// </summary>
@@ -72,6 +90,29 @@ public sealed class RangeScores
     internal (int Frame, string Key, double Value)[]? Stats { get; }
 
     /// <summary>
+    /// blackdetect's judgement of each frame from <see cref="FirstFrame"/> on (<see cref="FrameCount"/>), whether it is
+    /// black; null without <see cref="DetectionOptions.BlackDetect"/>. A frame's judgement is its own alone, so the
+    /// ranges' join into the whole run's and <see cref="ShotDetection.Merge"/> works the spans out over them.
+    /// </summary>
+    internal bool[]? Black { get; }
+
+    /// <summary>
+    /// freezedetect's comparison of each frame from <see cref="FirstFrame"/> on (<see cref="FrameCount"/>): whether it
+    /// was within n of the still picture's first (frame 0's: false, there is none), the range's comparisons starting
+    /// from <see cref="FreezeSeed"/>; null without <see cref="DetectionOptions.FreezeDetect"/>.
+    /// <see cref="ShotDetection.Merge"/> replays freezedetect over the joined flags.
+    /// </summary>
+    internal bool[]? Frozen { get; }
+
+    /// <summary>
+    /// The frame the range's freezedetect comparisons started from, its first still picture: the frame before
+    /// <see cref="FirstFrame"/> (-1 for a range from frame 0), or, for a range scored after earlier ones that starts inside
+    /// a still, that still's first frame. The flags are the whole run's when the run's still picture at the frame before
+    /// <see cref="FirstFrame"/> is this one (<see cref="ShotDetection.FirstRangeToScoreAgain"/>).
+    /// </summary>
+    internal int FreezeSeed { get; }
+
+    /// <summary>
     /// The scores as bytes, for <see cref="FromBytes"/> in another runtime: little-endian binary, "SDRS" and the format's
     /// version first, a checksum last; every double as its exact bits.
     /// </summary>
@@ -79,8 +120,9 @@ public sealed class RangeScores
     public byte[] ToBytes()
     {
         var w = new Writer();
+        bool flags = Black is not null || Frozen is not null;
         w.Bytes(Magic);
-        w.UInt16(FormatVersion);
+        w.UInt16(flags ? FormatVersion : FormatVersion1);
         w.String(Fingerprint);
         w.Int32(FirstFrame);
         w.Int32(FrameCount);
@@ -118,6 +160,15 @@ public sealed class RangeScores
         w.Int32(Warnings.Count);
         foreach (string warning in Warnings)
             w.String(warning);
+        if (flags)
+        {
+            // Version 2: the black flags, then the freeze flags and their seed, each after a byte saying whether it is there.
+            w.Flags(Black);
+            w.Flags(Frozen);
+            if (Frozen is not null)
+                w.Int32(FreezeSeed);
+        }
+
         w.UInt64(Checksum(w.Written));
         return w.ToArray();
     }
@@ -135,10 +186,10 @@ public sealed class RangeScores
         if (bytes.Length < Magic.Length + 2 || !bytes[..Magic.Length].SequenceEqual(Magic))
             throw Invalid("These bytes aren't RangeScores (no \"SDRS\" header).");
         ushort version = BinaryPrimitives.ReadUInt16LittleEndian(bytes[Magic.Length..]);
-        if (version != FormatVersion)
+        if (version is not (FormatVersion or FormatVersion1))
         {
             throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                $"These RangeScores bytes are format version {version}; this ShotDetector reads version {FormatVersion}: score the ranges and merge them with the same ShotDetector version."));
+                $"These RangeScores bytes are format version {version}; this ShotDetector reads versions {FormatVersion1} and {FormatVersion}: score the ranges and merge them with the same ShotDetector version."));
         }
 
         if (bytes.Length < Magic.Length + 2 + 8)
@@ -201,11 +252,28 @@ public sealed class RangeScores
         var warnings = new string[r.Count(4)];
         for (int i = 0; i < warnings.Length; i++)
             warnings[i] = r.String();
+        bool[]? black = null, frozen = null;
+        int seed = -1;
+        if (version == FormatVersion)
+        {
+            black = r.Flags(frameCount);
+            frozen = r.Flags(frameCount);
+            if (frozen is not null)
+            {
+                seed = r.Int32();
+                if (seed < -1 || seed >= firstFrame || (firstFrame > 0 && seed < 0))
+                    throw Invalid("These RangeScores bytes are inconsistent (the freeze seed).");
+            }
+
+            if (black is null && frozen is null)
+                throw Invalid("These RangeScores bytes are inconsistent (version 2 without flags).");
+        }
+
         if (!r.AtEnd)
             throw Invalid("These RangeScores bytes are inconsistent (bytes left over).");
         if (pts.Length != 0 && pts.Length != frameCount + (firstFrame > 0 ? 1 : 0))
             throw Invalid("These RangeScores bytes are inconsistent (the frame counts).");
-        return new RangeScores(fingerprint, firstFrame, frameCount, pts, metrics, stats, warnings);
+        return new RangeScores(fingerprint, firstFrame, frameCount, pts, metrics, stats, warnings, black, frozen, seed);
     }
 
     static ShotDetectionException Invalid(string message) => new(ShotDetectionError.InvalidInput, message);
@@ -264,6 +332,22 @@ public sealed class RangeScores
             _stream.Write(bytes);
         }
 
+        /// <summary>A byte, 1 when <paramref name="flags"/> are there (then each frame's, eight to a byte, the first in the lowest bit), else 0.</summary>
+        public void Flags(bool[]? flags)
+        {
+            Byte(flags is null ? (byte)0 : (byte)1);
+            if (flags is null)
+                return;
+            var packed = new byte[(flags.Length + 7) / 8];
+            for (int i = 0; i < flags.Length; i++)
+            {
+                if (flags[i])
+                    packed[i / 8] |= (byte)(1 << (i % 8));
+            }
+
+            Bytes(packed);
+        }
+
         public byte[] ToArray() => _stream.ToArray();
     }
 
@@ -301,5 +385,25 @@ public sealed class RangeScores
         }
 
         public string String() => Encoding.UTF8.GetString(Take(Count()));
+
+        /// <summary><see cref="Writer.Flags"/>' flags of <paramref name="count"/> frames, or null when they aren't there.</summary>
+        public bool[]? Flags(int count)
+        {
+            switch (Byte())
+            {
+                case 0:
+                    return null;
+                case 1:
+                    var packed = Take((int)(((long)count + 7) / 8));
+                    var flags = new bool[count];
+                    for (int i = 0; i < count; i++)
+                        flags[i] = (packed[i / 8] & (1 << (i % 8))) != 0;
+                    if (count % 8 != 0 && packed[^1] >> (count % 8) != 0)
+                        throw Invalid("These RangeScores bytes are inconsistent (bits past the last frame's flag).");
+                    return flags;
+                default:
+                    throw Invalid("These RangeScores bytes are inconsistent (a flags byte).");
+            }
+        }
     }
 }
