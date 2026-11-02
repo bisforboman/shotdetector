@@ -670,6 +670,56 @@ public sealed record DetectionResult
     /// <see cref="ShotDetection.DetectStreamAsync(string, DetectionOptions?, CancellationToken)"/>, which has no result.
     /// </summary>
     public IReadOnlyList<string> Warnings { get; init; } = [];
+
+    /// <summary>The frame the run started on (0 unless a start time was given); null for LoadScenes' result, which read no frame.</summary>
+    internal int? FirstFrame { get; init; }
+
+    /// <summary>Where the run's first shot starts and its last one ends; null when it read no frame, or for LoadScenes' result.</summary>
+    internal (FrameTime Start, FrameTime End)? Range { get; init; }
+
+    /// <summary>
+    /// <see cref="Cuts"/> as the frames the shots after them start on: 0-based frame numbers counted from the video's first
+    /// frame as decoded (<see cref="FrameOf"/>), what <see cref="ShotDetection.LoadScenes(DetectionResult, IEnumerable{int}, DetectionOptions?)"/>
+    /// takes. On a variable frame rate they differ from the cuts' <see cref="FrameTime.FrameNum"/> (time × average rate).
+    /// </summary>
+    public IReadOnlyList<int> CutFrames => FramesOf(Cuts);
+
+    /// <summary>
+    /// The frame of this run at <paramref name="position"/> (a cut's, a shot's start): the first frame it read whose
+    /// <see cref="DetectedVideo.Position(int)"/> is at or after it, as scenedetect orders positions; a 0-based frame
+    /// number counted from the video's first frame as decoded. Past the run's last frame, the one after it.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The result is LoadScenes', which has no frames' times.</exception>
+    public int FrameOf(FrameTime position)
+    {
+        if (FirstFrame is not { } first)
+            throw new InvalidOperationException("LoadScenes' result has no frames' times; a detection's result has.");
+        int last = first + FrameCount; // one past the last frame read
+        for (int frame = first; frame < last; frame++)
+        {
+            if (ShotDetection.CompareCuts(Video.Position(frame), position) >= 0)
+                return frame;
+        }
+
+        return last;
+    }
+
+    /// <summary><see cref="FrameOf"/> of sorted positions, in one pass over the frames.</summary>
+    internal IReadOnlyList<int> FramesOf(IReadOnlyList<FrameTime> sorted)
+    {
+        if (FirstFrame is not { } first)
+            throw new InvalidOperationException("LoadScenes' result has no frames' times; a detection's result has.");
+        var frames = new int[sorted.Count];
+        int frame = first, last = first + FrameCount;
+        for (int i = 0; i < sorted.Count; i++)
+        {
+            while (frame < last && ShotDetection.CompareCuts(Video.Position(frame), sorted[i]) < 0)
+                frame++;
+            frames[i] = frame;
+        }
+
+        return frames;
+    }
 }
 
 /// <summary>
@@ -906,6 +956,66 @@ public static partial class ShotDetection
         ArgumentNullException.ThrowIfNull(sceneList);
         var o = (options ?? new DetectionOptions()).Resolved();
         return Loaded(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o, converts: false), null, sceneList, column, o);
+    }
+
+    /// <summary>
+    /// The shots of an edited cut list at a detection's own frame times and length: <paramref name="run"/>'s frames, its
+    /// range and its clock, with the cuts at <paramref name="cutFrames"/> instead of the ones it found. Unlike
+    /// <see cref="LoadScenes(YuvVideo, TextReader, string, DetectionOptions?)"/> (scenedetect's load-scenes, which times a
+    /// frame number at frame / average rate and ends at OpenCV's frame count), a cut here is where the run had that
+    /// frame (<see cref="DetectedVideo.Position(int)"/>), and the last shot ends where the run's did: on a variable frame
+    /// rate, after an edit list that ends early, or on fragmented MP4, moving one cut moves no other. The run's own cuts
+    /// given back (<see cref="DetectionResult.CutFrames"/>) give the run's result: the same shots, cuts, scene list and
+    /// exports. Not in scenedetect, which has no such step. Nothing is decoded or probed.
+    /// </summary>
+    /// <param name="run">A detection's result (<see cref="Detect(string, DetectionOptions?, CancellationToken)"/>, on a
+    /// Stream, or on frames from the caller), not LoadScenes'.</param>
+    /// <param name="cutFrames">The cuts, as the frames the shots after the first start on: 0-based frame numbers counted
+    /// from the video's first frame as decoded (<see cref="DetectionResult.CutFrames"/> gives the run's), in any order,
+    /// repeats ignored. On a variable frame rate these aren't scenedetect's frame numbers (a time × the average rate,
+    /// the scene list's Start Frame - 1). Frames outside the run's range are left out, as the run's range is the result's.</param>
+    /// <param name="options">Uses MinSceneLength, DropShortScenes and MergeLastScene, in frames at the run's rate, as Detect
+    /// does; pass the run's for its shots. The time range is the run's: StartTime, EndTime and RangeDuration must be unset.</param>
+    /// <returns>The run's result with the edited cuts and their shots; its stats, spans, warnings and video are the run's.</returns>
+    /// <exception cref="ArgumentException"><paramref name="run"/> isn't a detection's result, or the options set a time range.</exception>
+    public static DetectionResult LoadScenes(DetectionResult run, IEnumerable<int> cutFrames, DetectionOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentNullException.ThrowIfNull(cutFrames);
+        if (run.Range is not { } range || run.FirstFrame is not { } firstFrame)
+        {
+            if (run.FirstFrame is not null && run.FrameCount == 0)
+                return run with { Shots = [], Cuts = [] }; // no frame read: no shot to cut
+            throw new ArgumentException("The cut list needs a detection's result (Detect's), with its frames' times; LoadScenes' has none.", nameof(run));
+        }
+
+        var o = (options ?? new DetectionOptions()).Resolved();
+        if (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null)
+            throw new ArgumentException("The cut list keeps the run's range: leave StartTime, EndTime and RangeDuration unset (detect with the range wanted instead).", nameof(options));
+        var video = run.Video;
+        int lastFrame = firstFrame + run.FrameCount - 1;
+
+        // A frame the run cut at keeps the run's cut (a fade's cut is a frame number at the average rate, not a frame's time).
+        var runCuts = run.Cuts.Zip(run.FramesOf(run.Cuts)).ToLookup(x => x.Second, x => x.First);
+        var cuts = new List<FrameTime>();
+        foreach (int frame in cutFrames.Distinct())
+        {
+            if (frame < firstFrame || frame > lastFrame)
+                continue;
+            if (runCuts.Contains(frame))
+                cuts.AddRange(runCuts[frame]);
+            else
+                cuts.Add(video.Position(frame));
+        }
+
+        cuts = Unique(cuts);
+        int minSceneLen = MinSceneLengthInFrames(o.MinSceneLength, video.FrameRate);
+        return run with
+        {
+            Shots = Scenes(cuts, range.Start, range.End, o.MergeLastScene, o.DropShortScenes ? minSceneLen : 0, minSceneLen),
+            Cuts = cuts,
+            MinSceneLengthFrames = minSceneLen,
+        };
     }
 
     /// <summary>The shots of a scene list for <paramref name="video"/>: both LoadScenes' work once the video is known.</summary>
@@ -1334,6 +1444,7 @@ public static partial class ShotDetection
         var first = start;
         int frameCount = 0, stride = o.FrameSkip + 1;
         bool readToEnd = true;
+        (FrameTime Start, FrameTime End)? runRange = null; // the first shot's start and the last one's end, once known
         long lastReport = 0;
         int lastStep = 0; // with ProgressStep: the last multiple of it reported
         DetectionProgress Progress(int done, int expected) =>
@@ -1460,6 +1571,7 @@ public static partial class ShotDetection
             // Where scenedetect finds the stream after the loop: past the end if it read until EOF,
             // otherwise at the last frame read (which may be a skipped one).
             var last = readToEnd ? video.PositionAfterDecoding(startFrame + frameCount) : video.Position(startFrame + frameCount - 1);
+            runRange = (first, last.PlusFrames(1));
             foreach (var detector in detectors)
             {
                 if (detector.PostProcess(last) is { } trailingCut)
@@ -1498,6 +1610,8 @@ public static partial class ShotDetection
             BlackSpans = o.BlackDetect is { } bd ? (video.Black ?? new BlackFrames(1, startFrame)).Spans(bd, frameCount) : null,
             FreezeSpans = o.FreezeDetect is not null ? video.FreezeSpans(frameCount) : null,
             Warnings = warnings,
+            FirstFrame = startFrame,
+            Range = runRange,
         };
     }
 

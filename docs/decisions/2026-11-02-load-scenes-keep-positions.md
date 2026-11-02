@@ -30,3 +30,18 @@ scenedetect 0.7.2's own `detect-content` and then `load-scenes` on both samples 
 
 **1, an overload that keeps the run's positions.** It goes in the backlog's Next, and shotdetector-web adopts it once
 it ships.
+
+## The overload's shape (2026-11-02, while building it)
+
+- **Frames as decoded, not scenedetect's frame numbers.** The cuts are 0-based frames counted from the video's first
+  as decoded, what `DetectedVideo.Position(int)` takes. A scene list's Start Frame is a time × the average rate: on a
+  variable frame rate several frames share one (frames 49 and 50 of the VFR sample both round to the same number),
+  so an editor couldn't name the frame it means. `DetectionResult.CutFrames` gives a run's cuts as frames and
+  `DetectionResult.FrameOf` any position's.
+- **A run's cut is kept as it was.** A frame the run cut at gives the run's cut, not the frame's position: the
+  threshold detector's cuts are bare frame numbers, which print otherwise. That makes the round trip exact.
+- **The run's range.** The shots start and end where the run's did (the run already applied its time range);
+  StartTime, EndTime and RangeDuration are refused rather than narrowing it, as narrowing would need the run's seek
+  rules again on frames it read. Frames outside the run are left out. MinSceneLength, DropShortScenes and
+  MergeLastScene apply in frames at the run's rate, as Detect's.
+- Stats, black and freeze spans, warnings and the video are the run's: they don't depend on the cuts.
