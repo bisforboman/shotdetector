@@ -1187,12 +1187,14 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
                 string untagged = Stats(plain, options);
                 Assert.NotEqual(untagged, Stats(tagged, options));
 
-                // In-process follows the tags, so even when asked for it the flag decodes with the executable.
+                // In-process follows the tags, so Auto decodes with the executable, and InProcess is refused rather than
+                // silently decoded by the executable (a Windows `compare.py --decoder inprocess` would check the wrong path).
                 string? libs = Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS");
-                var decoder = libs is null ? VideoDecoder.Auto : VideoDecoder.InProcess;
-                var bt601 = ShotDetection.Detect(tagged, options with { AlwaysBt601 = true, Decoder = decoder, FfmpegDirectory = libs });
+                var bt601 = ShotDetection.Detect(tagged, options with { AlwaysBt601 = true, Decoder = VideoDecoder.Auto, FfmpegDirectory = libs });
                 Assert.False(bt601.Video.DecodedInProcess);
                 Assert.Equal(untagged, bt601.Stats!.Csv(bt601.Video.Position));
+                var refused = Assert.Throws<ArgumentException>(() => ShotDetection.Detect(tagged, options with { AlwaysBt601 = true, Decoder = VideoDecoder.InProcess, FfmpegDirectory = libs }));
+                Assert.Contains("InProcess", refused.Message);
             }
         }
         finally
