@@ -225,6 +225,77 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(ShotDetectionError.InvalidInput, Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(video, frames, options with { StartTime = null, EndTime = null })).Reason);
     }
 
+    [Theory]
+    [InlineData(VideoDecoder.InProcess)]
+    [InlineData(VideoDecoder.FfmpegProcess)]
+    public void AStoppedRunEndsWhereTheFileStoppedThereDoes(VideoDecoder decoder)
+    {
+        if (Libs is null)
+            return;
+        FrameReader.FFmpegLibraries.Load(Libs); // the frames' decoder (Decoded)
+        var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = decoder, Yuv420Converter = new SwscaleYuv420() };
+
+        // The frames stop after 75 (a host's Stop): the file read with frame 75's time as its end reads the same 75. The
+        // last shot ends at frame 74's time plus a frame at the average rate, not at 75 over the average rate (the end of
+        // a run read to the end of its frames): on a variable frame rate, and at a constant one whose frames aren't on
+        // its grid in the time base (29.97 fps in 1/1000, 24 fps in 1/1000). Given every frame's timestamp: without them,
+        // a stop and the video's end look the same (docs/decisions/2026-11-03-stopped-frame-source-end.md).
+        string ntsc = Transcoded(clips.ThreeShots, "2997.webm", "-vf", "fps=30000/1001", "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "30", "-deadline", "realtime");
+        string film = Transcoded(clips.ThreeShots, "24.mp4", "-vf", "fps=24", "-c:v", "libx264", "-video_track_timescale", "1000");
+        foreach (var (clip, timestamps) in new[] { (VariableRateClip(clips.ThreeShots), true), (clips.ThreeShots, true), (clips.ThreeShots, false), (ntsc, true), (film, true) })
+        {
+            string end = new VideoReader(clip, options).Position(75).Seconds.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture);
+            var file = ShotDetection.Detect(clip, options with { EndTime = end });
+            var (video, frames) = Decoded(clip, timestamps);
+            var ours = ShotDetection.Detect(video, frames.Take(75), options);
+            Assert.Equal(75, file.FrameCount);
+            Assert.Equal(file.FrameCount, ours.FrameCount);
+            Assert.Equal(file.Cuts, ours.Cuts);
+            if (timestamps)
+                Assert.Equal(file.Shots, ours.Shots); // untimed, the same times as frame numbers: the CSVs equal
+            Assert.Equal(file.Range!.Value.End.Seconds, ours.Range!.Value.End.Seconds, 9);
+            Assert.Equal(Shots.Csv(file.Shots, cuts: file.Cuts), Shots.Csv(ours.Shots, cuts: ours.Cuts));
+            Assert.Equal(file.Stats!.Csv(file.Video.Position), ours.Stats!.Csv(ours.Video.Position));
+
+            // The run's own cuts given back keep its end.
+            Assert.Equal(ours.Shots, ShotDetection.LoadScenes(ours, ours.CutFrames, options).Shots);
+            Assert.Equal(file.Shots, ShotDetection.LoadScenes(file, file.CutFrames, options).Shots);
+        }
+
+        // On the variable rate, frame 74 is at 3.92 s: the last shot ends a frame at the average rate (about 15 fps) later,
+        // not at 75 frames over it (about 5 s).
+        var (vfr, vfrFrames) = Decoded(VariableRateClip(clips.ThreeShots), timestamps: true);
+        var stopped = ShotDetection.Detect(vfr, vfrFrames.Take(75), options);
+        Assert.Equal(3.92 + (1 / stopped.Video.FrameRate.Value), stopped.Shots[^1].End.Seconds, 3);
+
+        // At 29.97 fps in 1/1000 without the timestamps, the frames' end is the video's: 75 over the average rate.
+        var (untimed, untimedFrames) = Decoded(ntsc);
+        Assert.Equal(75 * 1001 / 30000.0, ShotDetection.Detect(untimed, untimedFrames.Take(75), options).Shots[^1].End.Seconds, 9);
+    }
+
+    [Fact]
+    public void FramesStoppedBeforeTheirTimestampsEndAtTheLastOnePlusAFrame()
+    {
+        // A variable rate (the average 25 fps), every frame's time given.
+        var video = Video() with { TimeBase = new(1, 100), FrameTimestamps = [0, 4, 12, 13, 30, 31, 32, 33, 60, 61] };
+        var options = new DetectionOptions { Yuv420Converter = new SwscaleYuv420() };
+        IEnumerable<YuvFrame> At(params int[] entries) => Frames(video, entries.Length).Select((f, i) => f with { Pts = video.FrameTimestamps![entries[i]] });
+
+        // Stopped after frame 4 (at 0.30 s): it plus a frame at the average rate, where a run with an end time stopped
+        // there ends (0.32 s, frame 8 at the average rate: frame 4 is the first whose time plus a frame reaches it).
+        var stopped = ShotDetection.Detect(video, At(0, 1, 2, 3, 4), options);
+        Assert.Equal(0.34, stopped.Shots[^1].End.Seconds, 9);
+        var ended = ShotDetection.Detect(video, At(0, 1, 2, 3, 4, 5, 6, 7, 8, 9), options with { EndTime = "0.32" });
+        Assert.Equal(5, ended.FrameCount);
+        Assert.Equal(ended.Shots, stopped.Shots);
+        Assert.Equal(ended.Range, stopped.Range);
+
+        // Read to the last entry: scenedetect's end of the stream, the frames over the average rate, also when a frame
+        // before it was dropped.
+        Assert.Equal(0.4, ShotDetection.Detect(video, At(0, 1, 2, 3, 4, 5, 6, 7, 8, 9), options).Shots[^1].End.Seconds, 9);
+        Assert.Equal(0.36, ShotDetection.Detect(video, At(0, 1, 2, 4, 5, 6, 7, 8, 9), options).Shots[^1].End.Seconds, 9);
+    }
+
     [Fact]
     public void FrameTimestampsAreChecked()
     {
@@ -1367,6 +1438,23 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     /// A copy of <paramref name="path"/> at a variable frame rate (issue #609's): its frames at 25 fps to frame 50, then
     /// each lasting twice as long; MPEG-4 Part 2 again, in mp4.
     /// </summary>
+    /// <summary>The clip at <paramref name="path"/> encoded again with <paramref name="args"/>, next to it, once.</summary>
+    static string Transcoded(string path, string suffix, params string[] args)
+    {
+        string to = Path.Combine(Path.GetDirectoryName(path)!, $"{Path.GetFileNameWithoutExtension(path)}-{suffix}");
+        lock (H264Lock)
+        {
+            if (!File.Exists(to))
+            {
+                string partial = Path.Combine(Path.GetDirectoryName(to)!, "partial-" + Path.GetFileName(to));
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", path, .. args, partial], default);
+                File.Move(partial, to, true);
+            }
+        }
+
+        return to;
+    }
+
     static string VariableRateClip(string path)
     {
         string vfr = Path.Combine(Path.GetDirectoryName(path)!, $"{Path.GetFileNameWithoutExtension(path)}-vfr.mp4");

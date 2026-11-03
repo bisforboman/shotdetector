@@ -58,7 +58,11 @@ public sealed record YuvVideo
     /// Given, the frames may come at any rate (variable frame rate, as a file's): each frame must be at its entry, and
     /// <see cref="DetectionOptions.StartTime"/> finds its frame from them as the file path does. A frame the decoder
     /// dropped (an entry skipped) is taken as a file's run takes it, in <see cref="ShotDetection.Detect(YuvVideo, IEnumerable{YuvFrame}, DetectionOptions?, CancellationToken)"/>;
-    /// ranges (<see cref="ShotDetection.Merge"/>) and a start time need every frame at its entry.
+    /// ranges (<see cref="ShotDetection.Merge"/>) and a start time need every frame at its entry. Frames that end before
+    /// the last entry (the host stopped) end the last shot as the file path stopped at that frame by its end time does: at
+    /// the last frame's time plus a frame at the average rate. Without them a stop can't be told from the video's end, and
+    /// the run ends as one read to the end does (the frames over the average rate), which can differ in the last digits
+    /// at a constant rate too: give them to stop a run early.
     /// </summary>
     public IReadOnlyList<long>? FrameTimestamps { get; init; }
 

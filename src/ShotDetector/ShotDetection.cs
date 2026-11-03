@@ -1569,7 +1569,10 @@ public static partial class ShotDetection
         if (frameCount > 0)
         {
             // Where scenedetect finds the stream after the loop: past the end if it read until EOF,
-            // otherwise at the last frame read (which may be a skipped one).
+            // otherwise at the last frame read (which may be a skipped one). Frames from the caller that end before
+            // their timestamps do were stopped, as a file's run is by its end time.
+            if (readToEnd && video.FramesStoppedEarly)
+                readToEnd = false;
             var last = readToEnd ? video.PositionAfterDecoding(startFrame + frameCount) : video.Position(startFrame + frameCount - 1);
             runRange = (first, last.PlusFrames(1));
             foreach (var detector in detectors)

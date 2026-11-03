@@ -394,6 +394,14 @@ internal sealed partial class VideoReader
         }
     }
 
+    /// <summary>
+    /// Whether the frames ended before the video did: the last frame taken is before <see cref="YuvVideo.FrameTimestamps"/>'
+    /// last entry (the caller stopped, or gave only some). The run then ends as a file's stopped at that frame does, at the
+    /// frame's own time plus one frame, not at scenedetect's end of the stream (the frame count over the average rate).
+    /// Without the timestamps the frames come at the constant rate, where both are the same frame.
+    /// </summary>
+    internal bool FramesStoppedEarly => _frameTimestamps is { } entries && _framePts.Count > 0 && _framePts[^1] < entries[^1];
+
     /// <summary>Every frame's pts, <see cref="YuvVideo.FrameTimestamps"/>; null when not given.</summary>
     internal IReadOnlyList<long>? GivenTimestamps => _frameTimestamps;
 
