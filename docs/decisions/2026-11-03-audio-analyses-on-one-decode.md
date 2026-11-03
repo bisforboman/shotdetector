@@ -233,4 +233,5 @@ the example; a `changes/framereader/` fragment.
 
 ## Answer
 
-Left for the owner.
+**`AudioAnalysis` with an options record**, with the chunk callback (the owner, 2026-11-03): the
+recommended design above.
