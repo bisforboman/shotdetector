@@ -10,7 +10,17 @@ namespace FrameReader;
 /// <param name="RangeHigh">The range's high end in LUFS.</param>
 /// <param name="SamplePeak">The highest sample in dBFS, over all channels; negative infinity for digital silence.</param>
 /// <param name="TruePeak">The true peak in dBTP (ebur128's: the audio resampled to 192 kHz), over all channels; negative infinity for digital silence.</param>
-public readonly record struct LoudnessResult(double Integrated, double Range, double RangeLow, double RangeHigh, double SamplePeak, double TruePeak);
+public readonly record struct LoudnessResult(double Integrated, double Range, double RangeLow, double RangeHigh, double SamplePeak, double TruePeak)
+{
+    /// <summary>
+    /// The highest momentary loudness in LUFS (M: the 400 ms block, every 100 ms, as ebur128's framelog prints it);
+    /// <see cref="LoudnessMeter"/>'s, NaN from <see cref="Loudness.Measure"/> (the filter keeps no maximum).
+    /// </summary>
+    public double MaxMomentary { get; init; } = double.NaN;
+
+    /// <summary>The highest short-term loudness in LUFS (S: the 3 s block, every 100 ms); as <see cref="MaxMomentary"/>.</summary>
+    public double MaxShortTerm { get; init; } = double.NaN;
+}
 
 /// <summary>
 /// Measures loudness with FFmpeg's own <c>ebur128</c> filter (in the FrameReader.Native libraries) over an
