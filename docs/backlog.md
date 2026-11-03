@@ -21,6 +21,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - Sequential runs with twice the decoder threads: measure again
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
+  - Status: In progress (2026-11-03)
+
+- Mutations: a test filter that matches no test fails as such, not as SURVIVED
+  - Why: `tools/mutation/Invoke-Mutations.ps1` counts `dotnet test`'s exit 0 as SURVIVED, and a `Tests` filter that matches nothing exits 0, so a renamed test turns an entry red as if the guard were untested (#733, 2026-11-03: `AnHttpOrHttpsPlaylistThroughTheExecutableWarns` renamed, mutations.psd1 left on the old name). A distinct NO TESTS result, or a check that every entry's `Tests` names an existing test, says what is wrong
   - Status: Open
 
 ## Waiting
@@ -54,6 +58,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Waiting (parked by the owner, 2026-11-01; the suggestions for picking it up again are in the decision record's "Parked" section)
 
 ## Maybe
+
+- A mutation entry for the executable's HLS warning's FFmpeg 9 gate (#733: libavformat 63 and newer check https certificates)
+  - Why: #733 covers the gate with unit cases but adds no mutations.psd1 line, so nothing proves a test fails if the version check is broken. It isn't a scenedetect quirk, so CLAUDE.md doesn't require one; cheap once #733 merges
+  - Status: Maybe
 
 - Frames from the caller in 4:1:1 and 4:4:0 (yuvj411p, yuvj440p): `YuvVideo`/`YuvFrame` and FastYuv converting them as swscale does
   - Why: ManagedCodecs 0.6.0 decodes 4:1:1 MJPEG (DV-era capture cards) and 4:4:0, and shotdetector-web refuses both because ShotDetector's frame source takes only yuv420p/yuvj420p, yuv422p/yuvj422p and yuv420p10le (asked 2026-11-02). Rare formats: the owner put it in Maybe. Samples: shotdetector-web's tools/make-samples.sh makes 320x240 MJPEG AVIs that FFmpeg reads as yuvj411p and yuvj440p, from 4:2:0 and 4:2:2 JPEGs with rewritten SOF sampling factors
