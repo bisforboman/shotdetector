@@ -7,6 +7,17 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.22.0 – 2026-11-03
+
+Deinterlacing above 8 bits gives the same picture on every run.
+
+### Fixed
+
+- Deinterlacing 9 to 16-bit video (`FrameDecoderOptions.Deinterlace`, and the readers and `Video.Transcode` that use
+  it) gives the same frames on every run. FFmpeg 8.1's x86 yadif varies from run to run there when it runs on several
+  threads (its slices race); FrameReader now runs it on one thread above 8 bits, where it equals FFmpeg's C code
+  (`ffmpeg -cpuflags 0 -vf yadif`). 8-bit deinterlacing is unchanged.
+
 ## 2.21.0 – 2026-11-01
 
 AudioReaderOptions.Stream: read any audio stream, as -map 0:a:N.
