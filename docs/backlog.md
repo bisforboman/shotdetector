@@ -57,6 +57,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: FastYuv is the only way to get x86's results on ARM and to run without FFmpeg, and it is LGPL because it ports FFmpeg's code. An MIT converter with the same bytes would let the MIT package do this itself (docs/ideas/fastyuv-optional.md; docs/decisions/2026-11-01-fastyuv-clean-room.md). Later slices: 10-bit 4:2:0, then yadif
   - Status: Waiting (parked by the owner, 2026-11-01; the suggestions for picking it up again are in the decision record's "Parked" section)
 
+- Several audio analyses on one decode (#718): `AudioAnalysis` runs reference tone, waveform, loudness and silence over one `AudioReader`, each result equal to its standalone call's
+  - Why: an ingest pipeline decodes a long programme's audio 3-4 times today, once per analysis; the design and its choices are in docs/decisions/2026-11-03-audio-analyses-on-one-decode.md
+  - Status: Waiting for the owner's choice of shape
+
 ## Maybe
 
 - Frames from the caller in 4:1:1 and 4:4:0 (yuvj411p, yuvj440p): `YuvVideo`/`YuvFrame` and FastYuv converting them as swscale does
