@@ -23,6 +23,15 @@ public sealed record AudioConvertOptions
     /// <summary>FFmpeg demuxer options, as ffmpeg's input options without the dash; a name nothing takes is an <see cref="ArgumentException"/>.</summary>
     public IReadOnlyDictionary<string, string>? InputOptions { get; init; }
 
+    /// <summary>
+    /// Which audio stream to convert, counted among the input's audio streams from 0 as ffmpeg's <c>-map 0:a:N</c> counts
+    /// them (a file with stereo and 5.1 tracks: 0 and 1); null: the best one (<c>av_find_best_stream</c>, what ffmpeg
+    /// picks without a map). As <see cref="AudioReaderOptions.Stream"/>: a number past the last audio stream is an
+    /// <see cref="FrameReaderException"/> (<see cref="FrameReaderError.InvalidInput"/>), a negative one an
+    /// <see cref="ArgumentException"/>.
+    /// </summary>
+    public int? Stream { get; init; }
+
     /// <summary>Receives progress (<see cref="MediaProgress"/>): about 10 times a second, and once at the end.</summary>
     public IProgress<MediaProgress>? Progress { get; init; }
 }
@@ -31,8 +40,8 @@ public sealed record AudioConvertOptions
 public static unsafe class Audio
 {
     /// <summary>
-    /// The file <c>ffmpeg -i INPUT -vn [-af FILTER] [-c:a ENCODER] [-b:a RATE] OUTPUT</c> writes: the input's best audio
-    /// stream decoded in its own sample format, through the filter graph, converted to the nearest sample format, rate and
+    /// The file <c>ffmpeg -i INPUT -vn [-map 0:a:N] [-af FILTER] [-c:a ENCODER] [-b:a RATE] OUTPUT</c> writes: the input's best
+    /// audio stream (or <see cref="AudioConvertOptions.Stream"/>) decoded in its own sample format, through the filter graph, converted to the nearest sample format, rate and
     /// channel layout the encoder takes (as ffmpeg inserts it; a downmix from integer samples is normalized, from float
     /// samples it isn't, as there), encoded, with the input's metadata and chapters.
     /// </summary>
@@ -46,7 +55,7 @@ public static unsafe class Audio
     public static void Convert(string input, string output, AudioConvertOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new AudioConvertOptions();
-        using var reader = new AudioReader(input, new AudioReaderOptions { InputOptions = o.InputOptions, CancellationToken = cancellationToken });
+        using var reader = new AudioReader(input, new AudioReaderOptions { InputOptions = o.InputOptions, Stream = o.Stream, CancellationToken = cancellationToken });
         AVFormatContext* fmt = null;
         Encoder? encoder = null;
         AVFrame* feed = ffmpeg.av_frame_alloc();

@@ -327,7 +327,8 @@ using (var mp3 = new AudioWriter("talk.mp3", new() { SampleRate = 44100, Channel
 
 As ffmpeg does, what the encoder can't take is converted to its nearest sample format, rate and channel layout (5.1
 into MP3 comes out stereo). For a whole file, `Audio.Convert` is `ffmpeg -i IN -vn [-af G] [-c:a E] [-b:a B] OUT` in one
-call: the decoder's own samples through the graph to the encoder, with the input's metadata, the file the command
+call (`Stream` picks another audio stream than the best one, as `-map 0:a:N` does; `InputOptions` are ffmpeg's input
+options): the decoder's own samples through the graph to the encoder, with the input's metadata, the file the command
 line writes. Including its conversion: a downmix of integer samples (PCM, FLAC) is normalized, of float ones (AAC,
 MP3) it isn't, which the read-filter-write loop above can't do (it works in float):
 

@@ -81,6 +81,68 @@ public class AudioConvertTests
         }
     }
 
+    // Two audio tracks after a video one, the second mono with its own tag (issue #716): Stream 1 is -map 0:a:1, byte for
+    // byte; a number past the last audio stream fails as AudioReaderOptions.Stream does, and writes nothing.
+    [Theory]
+    [InlineData("out.wav")]
+    [InlineData("out.m4a")]
+    public void StreamIsFfmpegsMap(string output)
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-aconvert-").FullName;
+        try
+        {
+            string input = Path.Combine(dir, "two.mkv"), expected = Path.Combine(dir, "expected-" + output), actual = Path.Combine(dir, output);
+            Ffmpeg("-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=s=160x120:r=25:d=2",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=f=440:d=2:r=48000",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=f=330:d=2:r=44100",
+                "-map",
+                "0",
+                "-map",
+                "1",
+                "-map",
+                "2",
+                "-ac:a:0",
+                "2",
+                "-c:v",
+                "mpeg4",
+                "-c:a",
+                "flac",
+                "-metadata:s:a:1",
+                "language=swe",
+                input);
+
+            Ffmpeg("-v", "error", "-y", "-i", input, "-map", "0:a:1", "-vn", "-fflags", "+bitexact", "-flags:a", "+bitexact", expected);
+            Audio.Convert(input, actual, new AudioConvertOptions { Stream = 1, Bitexact = true });
+            Assert.True(File.ReadAllBytes(expected).AsSpan().SequenceEqual(File.ReadAllBytes(actual)), $"Stream 1 -> {output} differs from -map 0:a:1");
+
+            string past = Path.Combine(dir, "past-" + output);
+            var e = Assert.Throws<FrameReaderException>(() => Audio.Convert(input, past, new AudioConvertOptions { Stream = 2 }));
+            Assert.Equal(FrameReaderError.InvalidInput, e.Reason);
+            var r = Assert.Throws<FrameReaderException>(() => new AudioReader(input, new AudioReaderOptions { Stream = 2 }));
+            Assert.Equal(r.Message, e.Message);
+            Assert.False(File.Exists(past));
+            Assert.Throws<ArgumentException>(() => Audio.Convert(input, past, new AudioConvertOptions { Stream = -1 }));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void NoAudioIsAnError()
     {
