@@ -25,3 +25,6 @@ certificates; in-process decoding (the FrameReader.Native packages) checks them.
 
 2026-10-19, 3.10.1: the sentence now says "which fetches any https segments, keys and variants", since it is given
 without reading the playlist (review of 3.10.0).
+
+Since 2026-11-03 ([2026-11-03-hls-warning-ffmpeg-9.md](2026-11-03-hls-warning-ffmpeg-9.md)) the warning is given only
+for an executable older than FFmpeg 9, which checks the segments' certificates itself.

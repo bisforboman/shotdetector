@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- The executable's HLS warning with FFmpeg 9
-  - Why: `VideoReader.ExecutableHlsWarning` says ffmpeg fetches https segments without checking certificates, whatever the executable's version; docs/decisions/2026-10-16-https-certificates-and-tls.md noted tls_verify's default is 0 "until libavformat 63", and CI's executable is FFmpeg 9.0 now. Check FFmpeg 9 against a self-signed segment server; if it checks them, warn only for libavformat 62 and older, and record it. Found in the 2026-10-31 decision review
-  - Status: Open
-
 - Sequential runs with twice the decoder threads: measure again
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
   - Status: Open
@@ -118,6 +114,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 - ShotDetector as Subtitle Edit's shot-change engine (#633)
   - Why: Subtitlers snap cues to shot changes; Subtitle Edit uses FFmpeg's scene score. Scoping: docs/ideas/subtitle-edit.md (no engine seam in SE; SE5 MIT, SE4 GPL-3.0; 3-5 PRs here plus 1 in SE)
   - Status: Maybe; first slice done 2026-10-31 (`--save-shotchanges` and `Timeline.ShotChanges`, SE's .shotchanges format); next, machine-readable progress for SE; the SE side waits on the owner
+
+- `Auto`'s http(s) fallback to an FFmpeg 9 executable
+  - Why: when the libraries fail to open an http or https URL (a format FrameReader.Native leaves out, such as DASH), `Auto` reports the failure instead of using the executable (`VideoReader.AutoHttpRefusal`), because the executable didn't check an HLS playlist's https segments. FFmpeg 9 does (docs/decisions/2026-11-03-hls-warning-ffmpeg-9.md), so with an FFmpeg 9 executable the fallback would be as safe as in-process. It would ask the executable's version before falling back, and change what `Auto` does with a URL, so it is the owner's call
+  - Status: Maybe
 
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and
 why: [decisions/](decisions/).
