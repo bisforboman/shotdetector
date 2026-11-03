@@ -6,6 +6,34 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.28.0 – 2026-11-03
+
+Edited cut lists at a run's own frame times, black and freeze spans for ranges, and the same deinterlaced picture on every run above 8 bits.
+
+### New
+
+- Ranges take `DetectionOptions.BlackDetect` and `FreezeDetect`: `ScoreRange`/`ScoreRangeAsync` keep each frame's
+  blackdetect judgement and freezedetect comparison in `RangeScores`, and `Merge` gives `BlackSpans` and `FreezeSpans`
+  equal to `Detect`'s on the whole video, however it is split. A range that starts inside a still picture is scored
+  again given the ranges before it: `ShotDetection.FirstRangeToScoreAgain(video, ranges, options)` names it, and the new
+  `ShotDetection.RangeFrames(video, earlier, options, firstFrame, endFrame)` gives its frames, from the still's first
+  frame. A resumed run's range uses the same overload. `RangeScores.ToBytes` writes format version 2 with either
+  option, and version 1, as before, without them; both are read.
+- `ShotDetection.LoadScenes(DetectionResult, cutFrames, options)`: an edited cut list at a detection's own frame times
+  and length, for exporting after correcting cuts. The cuts are frames (0-based, as decoded; a run's own are
+  `DetectionResult.CutFrames`, a position's frame `DetectionResult.FrameOf`); each cut is where the run had that frame,
+  and the last shot ends where the run's did. Unlike scenedetect's load-scenes (`LoadScenes` of a scene list, which
+  stays scenedetect's), fixing one cut on a variable frame rate, after an edit list that ends early or on fragmented MP4
+  moves no other, and a run's own cuts given back give exactly its shots, scene list and exports. MinSceneLength,
+  DropShortScenes and MergeLastScene apply; the time range is the run's. Nothing is decoded.
+
+### Fixed
+
+- Deinterlacing 9 to 16-bit video (10-bit AVC-Intra, ProRes) without ShotDetector.FastYuv gives the same stats and
+  cuts on every run, through the ffmpeg executable and in-process: yadif runs on one thread there
+  (`-vf yadif=threads=1`), as FFmpeg 8.1's x86 yadif varies from run to run with several. The frames equal FFmpeg's C
+  code and FastYuv's `Yadif`. For scenedetect's lossless copy of such a file, use `ffmpeg -vf yadif=threads=1`.
+
 ## 3.27.0 – 2026-11-02
 
 The hash detector gives the same bits on WebAssembly and Alpine as on x64, and shotdetect qc --html writes the report as one page.

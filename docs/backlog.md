@@ -59,6 +59,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 ## Maybe
 
+- Frames from the caller in 4:1:1 and 4:4:0 (yuvj411p, yuvj440p): `YuvVideo`/`YuvFrame` and FastYuv converting them as swscale does
+  - Why: ManagedCodecs 0.6.0 decodes 4:1:1 MJPEG (DV-era capture cards) and 4:4:0, and shotdetector-web refuses both because ShotDetector's frame source takes only yuv420p/yuvj420p, yuv422p/yuvj422p and yuv420p10le (asked 2026-11-02). Rare formats: the owner put it in Maybe. Samples: shotdetector-web's tools/make-samples.sh makes 320x240 MJPEG AVIs that FFmpeg reads as yuvj411p and yuvj440p, from 4:2:0 and 4:2:2 JPEGs with rewritten SOF sampling factors
+  - Status: Maybe
+
 - Frame sources: scale a frame of another size to the video's, as the file path does (port swscale's scaled 8-bit yuv420p to BGR path, x86's, to FastYuv)
   - Why: since #625 a stream whose resolution changes midway is refused through the frame source (`YuvFrame.Width`/`Height`), where Detect(path) scales such frames (bicubic, as OpenCV) and gives a result; FastYuv already has the bicubic filter set-up and the MMXEXT vertical scaler and output from its 10-bit port. Worth it once a frame-source caller meets resolution changes (adaptive streams, splices)
   - Status: Maybe (the owner chose refusing first, docs/decisions/2026-10-31-frame-source-size-change.md)
