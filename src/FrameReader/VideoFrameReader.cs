@@ -688,6 +688,9 @@ public sealed unsafe class VideoFrameReader : IDisposable
     /// <summary>Packets left out of the decoder so far (tests).</summary>
     internal long SkippedPackets => _decoder.SkippedPackets;
 
+    /// <summary>Waits until decoding ahead (<see cref="VideoFrameReaderOptions.ReadAhead"/>) has filled its queue or ended (tests).</summary>
+    internal void WaitForReadAhead() => _ahead?.WaitUntilFull();
+
     /// <summary>How many times reading ahead paused to look at the index (tests).</summary>
     internal int ReadAheadPauses => _ahead?.Pauses ?? 0;
 

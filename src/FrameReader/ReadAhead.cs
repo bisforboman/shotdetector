@@ -74,6 +74,19 @@ internal sealed class ReadAhead : IDisposable
         }
     }
 
+    /// <summary>
+    /// Waits until the thread has filled the queue, or reached the end or a pause (tests: what decoding ahead leaves out
+    /// before the next read, without depending on how fast the machine is).
+    /// </summary>
+    internal void WaitUntilFull()
+    {
+        lock (_lock)
+        {
+            while (_thread is not null && !_stop && !_pause && !_ended && _queue.Count < _depth)
+                Monitor.Wait(_lock);
+        }
+    }
+
     /// <summary>Waits for the thread to stop between frames, to look at the index; it goes on at the next <see cref="Next"/>.</summary>
     internal void Pause()
     {

@@ -263,10 +263,11 @@ public class SkipUnreferencedTests
                 continue;
             }
 
-            // Before the short step, decoding ahead (ReadAhead) has time to leave out frames past it: read again for sure,
-            // also where the decoder has no frame threads to read ahead (MPEG-1/2).
+            // Before the short step, decoding ahead (ReadAhead) fills its queue, leaving out frames past it: read again for
+            // sure, also where the decoder has no frame threads to read ahead (MPEG-1/2). Waited for, not slept on: a busy
+            // runner's decoding thread may not have got past the step in any fixed time.
             if (t == 2.04)
-                Thread.Sleep(50);
+                reader.WaitForReadAhead();
             if (t < 0 ? reader.TryRead(out var frame) : reader.TryReadForwardTo(TimeSpan.FromSeconds(t), out frame))
                 lines.Add(Line(frame));
         }
