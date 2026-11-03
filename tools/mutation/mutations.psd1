@@ -691,5 +691,11 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'for (int i = s.FirstFrame + 1; i < (s.EndFrame ?? frames)'; Replace = 'for (int i = s.FirstFrame; i < (s.EndFrame ?? frames)'; Tests = 'RangeSpansTests' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (!_freezeSeeded)'; Replace = 'if (true)'; Tests = 'RangeSpansTests' }
         @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'w.UInt16(flags ? FormatVersion : FormatVersion1);'; Replace = 'w.UInt16(FormatVersion);'; Tests = 'FrameRangeTests' }
+
+        # Frames from the caller that end before their timestamps' last entry end as a file stopped there by its end time
+        # does (the last frame's time plus a frame at the average rate, not scenedetect's end of the stream), judged by
+        # the last frame's time, so a frame dropped before the end still reads to the end
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (readToEnd && video.FramesStoppedEarly)'; Replace = 'if (false)'; Tests = 'FrameInputTests.FramesStoppedBeforeTheirTimestampsEndAtTheLastOnePlusAFrame' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_framePts.Count > 0 && _framePts[^1] < entries[^1]'; Replace = '_framePts.Count > 0 && _framePts.Count < entries.Length'; Tests = 'FrameInputTests.FramesStoppedBeforeTheirTimestampsEndAtTheLastOnePlusAFrame' }
     )
 }
