@@ -79,11 +79,12 @@ try {
     # reproduces that (IYuvOddHeightConverter), and arch-diff requires ARM to equal x64 on it.
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -vf scale=854:479 -c:v libvpx-vp9 -crf 32 -b:v 0 -row-mt 1 `
       -cpu-used 4 -chroma_sample_location left sintel_oddheight.mkv
-    New-Item -ItemType Directory -Force informational | Out-Null
     # An odd width (853x480; VP9, as libx264 refuses odd widths in subsampled formats): x86's swscale converts it as even
-    # widths. Reported on ARM until its first table is read (docs/decisions/2026-10-18-fastyuv-422.md).
+    # widths (its unscaled SSSE3 converter), FastYuv reproduces that, and arch-diff requires ARM to equal x64 on it
+    # (docs/decisions/2026-10-18-fastyuv-422.md; reported until its ARM tables read 100 %, 2026-11-02).
     ffmpeg -v error -y -i sintel_trailer-480p.mp4 -an -t 20 -vf scale=853:480 -c:v libvpx-vp9 -crf 32 -b:v 0 -row-mt 1 `
-      -cpu-used 4 informational/sintel_oddwidth.mkv
+      -cpu-used 4 sintel_oddwidth.mkv
+    New-Item -ItemType Directory -Force informational | Out-Null
     # Colour tags that change midway: two h264 halves joined, each SPS with its own (a spliced or concatenated stream).
     # OpenCV converts every frame with its own, and so does every path here (docs/decisions/2026-10-24-per-frame-tags-fastyuv.md,
     # 2026-10-27-per-frame-tags-executable.md: through the executable, FastYuv from showinfo's per-frame tags and the
