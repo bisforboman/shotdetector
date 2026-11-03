@@ -23,10 +23,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
   - Status: Open
 
-- SkipUnreferencedTests' "read again" assertion depends on timing
-  - Why: `FramesAreThoseOfDecodingEveryPacket` asserts that an indexed input (mp4, mkv, MPEG-TS) is read again after the short step, which happens only if read-ahead decoding gets past it during a `Thread.Sleep(50)`; on a busy runner it doesn't, and the test fails "read again 0 times" with nothing wrong (main: runs 41097253436 and 41225604504, mpeg1.mkv; PR #710: mpeg1.mkv on x64 and mpeg2.ts on ARM, a PR changing no C#; PR #715: mpeg2.ts on x64, run 41600042105 attempt 1, a PR changing only `.claude/` and CLAUDE.md, green on its re-run). A red required check that isn't the PR's costs a re-run each time. Make it deterministic: wait until decoding ahead has passed the step (a test hook or the reader's own counters) instead of sleeping. Found 2026-11-02
-  - Status: Open
-
 - Several audio analyses on one decode (#718): `AudioAnalysis` (an options record, plus a chunk callback) runs reference tone, waveform, loudness and silence over one `AudioReader`, each result equal to its standalone call's
   - Why: an ingest pipeline decodes a long programme's audio 3-4 times today, once per analysis; the design and its choices are in docs/decisions/2026-11-03-audio-analyses-on-one-decode.md
   - Status: Open (shape chosen 2026-11-03: the options record with a chunk callback)
@@ -47,11 +43,11 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - The owner files the FFmpeg yadif report (docs/ffmpeg-yadif-16bit-report.md)
   - Why: FFmpeg 8.1's x86 yadif at 9-16 bits races between slice threads, so every run gives another picture; ShotDetector and FrameReader now run it on one thread there (docs/decisions/2026-11-02-deterministic-yadif-at-9-16-bits.md), which a fix upstream would make unneeded. A public post from the owner's account: theirs to file, never a session's
-  - Status: Open
+  - Status: Waiting (on the owner)
 
 - The owner files the x264 AVX-512 report with VideoLAN (x264-avx512-report.md in the main checkout)
   - Why: CI's VideoWriter step needs DOTNET_TieredCompilation=0 because x264's AVX-512 code and .NET's tiered JIT differ about 1 run in 250 (CLAUDE.md); the report was written but not filed as of the 2026-10-15 reminder (it waited on a VideoLAN GitLab account). A public post from the owner's account: theirs to file, never a session's
-  - Status: Open
+  - Status: Waiting (on the owner)
 
 - After .NET 11's release (November 2026), an informational CI run of the tests and parity on net11
   - Why: Most time is in FFmpeg's native code, so .NET 11 promises little speed here (its raised hardware baseline: ReadyToRun at x86-64-v3; faster Native AOT interface dispatch); the risk is a JIT that changes results (the AVX-512 + tiered-JIT VideoWriter flake shows it can). Stay on net10.0 (LTS); run the tests and the parity comparison on net11, informational, then compare the weekly benchmark, and retarget only for a measured gain with identical results (the owner, 2026-10-22)

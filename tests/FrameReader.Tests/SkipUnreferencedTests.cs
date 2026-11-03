@@ -74,6 +74,7 @@ public class SkipUnreferencedTests
                         skipped += Same(path, options, $"{name} forward {step} s, ReadAhead {ahead}, threads {threads}", r => Forward(r, step), ref again);
                     skipped += Same(path, options, $"{name} at, ReadAhead {ahead}, threads {threads}", r => At(r, 0.7), ref again);
                     skipped += Same(path, options, $"{name} steps, ReadAhead {ahead}, threads {threads}", Steps, ref again);
+                    skipped += Same(path, options, $"{name} short step after a jump, ReadAhead {ahead}, threads {threads}", ShortStepAfterAJump, ref again);
                 }
             }
 
@@ -105,7 +106,8 @@ public class SkipUnreferencedTests
 
             // A short step after longer ones guesses the next time too late: read again where the input can go back to
             // a keyframe (mp4, mkv: their index's; MPEG-TS: one read), never guessed elsewhere (AVI, MPEG-PS: their seeks
-            // can land late).
+            // can land late). ShortStepAfterAJump reads again on every run with ReadAhead; the other reads may or may not,
+            // by how far decoding ahead got.
             bool indexed = Path.GetExtension(name) is ".mp4" or ".mkv" or ".ts";
             if (skips == true)
                 Assert.True(indexed == again > 0, $"{name}: read again {again} times");
@@ -263,11 +265,27 @@ public class SkipUnreferencedTests
                 continue;
             }
 
-            // Before the short step, decoding ahead (ReadAhead) has time to leave out frames past it: read again for sure,
-            // also where the decoder has no frame threads to read ahead (MPEG-1/2).
-            if (t == 2.04)
-                Thread.Sleep(50);
             if (t < 0 ? reader.TryRead(out var frame) : reader.TryReadForwardTo(TimeSpan.FromSeconds(t), out frame))
+                lines.Add(Line(frame));
+        }
+
+        return lines;
+    }
+
+    /// <summary>
+    /// A short step that is read again whatever the timing: two-second steps guess 6 s at 4 s, set while decoding ahead is
+    /// under a second past 2 s, so the B-frame at 4.04 s is left out rather than decoded before the guess (Steps' 2.04 s
+    /// can be either: the decoding thread may feed it before the read at 2 s guesses); waiting for decoding ahead to fill
+    /// its queue then puts it behind the read at 4.04 s, on a busy runner too.
+    /// </summary>
+    static List<string> ShortStepAfterAJump(VideoFrameReader reader)
+    {
+        var lines = new List<string>();
+        foreach (double t in new[] { 0, 2, 4, 4.04, 4.08, 4.12, 5 })
+        {
+            if (t == 4.04)
+                reader.WaitForReadAhead();
+            if (reader.TryReadForwardTo(TimeSpan.FromSeconds(t), out var frame))
                 lines.Add(Line(frame));
         }
 
