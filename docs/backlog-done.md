@@ -1128,3 +1128,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - Freeze spans through an ffmpeg executable older than FFmpeg 8
   - Why: issue #708: with ffmpeg 6.1 on PATH, `FreezeDetect` gave an empty `FreezeSpans` and no error, since 6.1 logs freezedetect's lines as `[freezedetect @` (the filter's class) and only FFmpeg 8's `[Parsed_freezedetect_` (its instance) was read; a caller can't tell that from "no still pictures". CI runs FFmpeg 8 only, so nothing caught it
   - Status: **Done (2026-11-03)**: the owner chose accepting both prefixes over refusing old executables; `FreezeLinesOfEveryFfmpeg` and a mutation guard it, and FreezeDetectTests' executable cases pass on 6.1.1
+
+- Remux DASH: set the MPD's minBufferTime
+  - Why: issue #717: with `seg_duration=6` the dash muxer's MPD says PT12.5S where Shaka Packager says 2 s, and players buffer at least that before they start, so the in-process output starts later than Shaka's. FFmpeg 8.1's muxer derives it (twice the last segment, or ldash's longest GOP) and has no option for it
+  - Status: **Done (2026-11-03)**: `RemuxOptions.MinBufferTime` rewrites it in the final MPD after the trailer (null: unchanged, ffmpeg's byte for byte); refused with `streaming`, `ldash`, `window_size`, `remove_at_exit` or a non-file output. docs/decisions/2026-11-03-dash-min-buffer-time.md

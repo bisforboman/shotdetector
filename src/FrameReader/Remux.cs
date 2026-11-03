@@ -57,6 +57,14 @@ public sealed record RemuxOptions
     /// </summary>
     public double? DisplayRotation { get; init; }
 
+    /// <summary>
+    /// DASH only: the MPD's <c>minBufferTime</c>, how much a player buffers at least before it starts (Shaka Packager
+    /// writes 2 s); null: the dash muxer's, twice the last whole segment's duration (with <c>ldash</c>, the longest
+    /// GOP). Written into the final MPD after muxing, so it can't be combined with the muxer options that serve the MPD
+    /// while it is written (<c>streaming</c>, <c>ldash</c>, <c>window_size</c>) or delete it (<c>remove_at_exit</c>).
+    /// </summary>
+    public TimeSpan? MinBufferTime { get; init; }
+
     /// <summary>Common Encryption (CENC) of an .mp4 or DASH output, optionally with Widevine signalling for DASH; null: none.</summary>
     public EncryptionOptions? Encryption { get; init; }
 
@@ -78,7 +86,8 @@ public static unsafe class Remux
     /// <exception cref="FrameReaderException">The input can't be read, nothing is selected, or the container can't hold a
     /// selected stream (<see cref="FrameReaderError.InvalidInput"/>), or writing failed.</exception>
     /// <exception cref="ArgumentException">The muxer has no option of a <see cref="RemuxOptions.MuxerOptions"/> name, or
-    /// <see cref="RemuxOptions.Encryption"/>'s key or key ID isn't 16 bytes as hex, or asks for Widevine on output other than DASH.</exception>
+    /// <see cref="RemuxOptions.Encryption"/>'s key or key ID isn't 16 bytes as hex, or asks for Widevine on output other than DASH,
+    /// or <see cref="RemuxOptions.MinBufferTime"/> is negative, not for DASH to a file, or with a muxer option it can't go with.</exception>
     public static void Copy(string input, string output, RemuxOptions? options = null, CancellationToken cancellationToken = default)
     {
         var o = options ?? new RemuxOptions();
@@ -87,6 +96,7 @@ public static unsafe class Remux
         // '\' put them in the working directory; ffmpeg needs '/' there too.
         bool dash = o.Container == "dash" || (o.Container is null && output.EndsWith(".mpd", StringComparison.OrdinalIgnoreCase));
         var muxerOptions = MuxerOptionsWithEncryption(o, dash, out byte[]? widevineKeyId);
+        string? minBufferTime = o.MinBufferTime is { } mbt ? DashMinBufferTime.Check(mbt, dash, output, o.MuxerOptions) : null;
         FFmpegLibraries.Load();
         AVFormatContext* ic = Demuxer.Open(input, o.InputOptions, cancellationToken: cancellationToken);
         AVFormatContext* oc = null;
@@ -169,6 +179,8 @@ public static unsafe class Remux
                 DashNames.Finish(output, types);
             if (widevineKeyId is not null)
                 Cenc.SignalWidevine(output, widevineKeyId, o.Encryption!.WidevinePsshData);
+            if (minBufferTime is not null)
+                DashMinBufferTime.Write(output, minBufferTime);
         }
         finally
         {
