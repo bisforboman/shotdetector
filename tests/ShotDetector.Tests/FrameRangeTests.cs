@@ -708,12 +708,6 @@ public class FrameRangeTests
 
         Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Yuv420Converter = null }));
 
-        // Black spans aren't kept with a range's scores yet: refused.
-        Assert.Contains("BlackDetect isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { BlackDetect = new() })).Message);
-        Assert.Contains("BlackDetect isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.Merge(video, [ShotDetection.ScoreRange(video, all, 0, options)], options with { BlackDetect = new() })).Message);
-
-        Assert.Contains("FreezeDetect isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { FreezeDetect = new() })).Message);
-
         // The tone trim sets a time range: refused for ranges, even with the tone given.
         var toned = video with { ReferenceTone = [] };
         Assert.Contains("isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(toned, all, 0, options with { TrimReferenceTone = true })).Message);
@@ -772,8 +766,8 @@ public class FrameRangeTests
         Assert.Contains("aren't RangeScores", Message([.. "PK\u0003\u0004 a zip file"u8]));
         Assert.Contains("aren't RangeScores", Message([]));
         var newer = bytes.ToArray();
-        newer[4] = 2;
-        Assert.Contains("format version 2; this ShotDetector reads version 1", Message(newer));
+        newer[4] = 3;
+        Assert.Contains("format version 3; this ShotDetector reads versions 1 and 2", Message(newer));
         Assert.Contains("truncated", Message(bytes[..10]));
         Assert.Contains("checksum", Message(bytes[..^1]));
         Assert.Contains("checksum", Message(bytes[..(bytes.Length / 2)]));
@@ -826,7 +820,7 @@ public class FrameRangeTests
         // Each fingerprinted one is written (the typed times inside their strings), every YuvVideo property and every
         // detector setting too.
         string text = ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());
-        foreach (string name in ShotDetection.Fingerprinted.Except(["MinSceneDuration", "MinOutDuration", "Deinterlace", "Yadif"]))
+        foreach (string name in ShotDetection.Fingerprinted.Except(["MinSceneDuration", "MinOutDuration", "Deinterlace", "Yadif", "BlackDetect", "FreezeDetect"]))
             Assert.Contains("\n" + name + "=", "\n" + text);
 
         // Deinterlacing only when it deinterlaces: the ranges scored before it was taken keep their fingerprint.
@@ -835,6 +829,13 @@ public class FrameRangeTests
         Assert.Contains("\nYadif=ShotDetector.FastYuv.Yadif\n", "\n" + deinterlaced);
         Assert.DoesNotContain("\nDeinterlace=", "\n" + text);
         Assert.Equal(text, ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)], Deinterlace = DeinterlaceMode.Auto, Yadif = new Yadif() }.Resolved()));
+
+        // Black and freeze detection only when set, as deinterlacing: the ranges scored without them keep their fingerprint.
+        string spans = ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)], BlackDetect = new(), FreezeDetect = new() }.Resolved());
+        Assert.Contains("\nBlackDetect=20000000,0.98,0.1\n", "\n" + spans);
+        Assert.Contains("\nFreezeDetect=0.001,20000000\n", "\n" + spans);
+        Assert.DoesNotContain("\nBlackDetect=", "\n" + text);
+        Assert.DoesNotContain("\nFreezeDetect=", "\n" + text);
 
         // ChromaLocation only when set: the ranges scored before it existed keep their fingerprint.
         string sited = ShotDetection.Fingerprint(Video() with { ChromaLocation = "left" }, new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());

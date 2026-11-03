@@ -1542,7 +1542,8 @@ internal sealed partial class VideoReader
     {
         Black = null;
         _freezeFrames.Clear();
-        _freezeDetector = null;
+        if (!_freezeSeeded)
+            _freezeDetector = null; // a range's seeded detector (SeedFrozen) holds its still picture already
         _freezeFirst = startFrame;
         foreach (var frame in frames)
         {
@@ -1573,7 +1574,7 @@ internal sealed partial class VideoReader
     /// The time base the black judgements' pts are in (av_q2d): blackdetect's input's, the stream's, or half of it after
     /// yadif, which doubles the pts.
     /// </summary>
-    double BlackTimeBase => (_blackTimeBase ?? (_frames is not null && !_framesTimed ? 1 / _framesRate : _timeBase)) / (_deinterlace && _blackTimeBase is null ? 2 : 1);
+    internal double BlackTimeBase => (_blackTimeBase ?? (_frames is not null && !_framesTimed ? 1 / _framesRate : _timeBase)) / (_deinterlace && _blackTimeBase is null ? 2 : 1);
 
     // The time base showinfo reports, beside blackdetect in the executable's graph.
     double? _blackTimeBase;

@@ -1214,6 +1214,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             options = options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
         await AssertSame(path, options);
         Assert.Equal(2, ShotDetection.Detect(path, options).BlackSpans!.Count);
+        AssertRangeSpans(path, options);
     }
 
     // Still pictures (DetectionOptions.FreezeDetect) from the frames given: freezedetect's comparison of each frame's planes
@@ -1256,6 +1257,39 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             options = options with { Deinterlace = DeinterlaceMode.On, Yadif = new Yadif() };
         await AssertSame(path, options);
         Assert.NotEmpty(ShotDetection.Detect(path, options).FreezeSpans!);
+        AssertRangeSpans(path, options with { BlackDetect = new BlackDetectOptions { MinDuration = TimeSpan.FromSeconds(0.2) } });
+    }
+
+    /// <summary>
+    /// The file's frames scored in ranges: every frame its own range, at every frame around its spans' edges at once, and
+    /// at each edge on its own (RangeSpansTests' splits, but for the random ones), each range on its own and those
+    /// starting inside a still scored again, and the first two also one after another as a resumed run: the merge's black
+    /// and freeze spans are the frame-source Detect's, the in-process file's and the executable's, byte for byte.
+    /// </summary>
+    static void AssertRangeSpans(string path, DetectionOptions options)
+    {
+        var file = ShotDetection.Detect(path, options);
+        var executable = ShotDetection.Detect(path, options with { Decoder = VideoDecoder.FfmpegProcess });
+        Assert.False(executable.Video.DecodedInProcess);
+        var (video, frames) = Decoded(path);
+        var all = frames.ToList();
+        var expected = ShotDetection.Detect(video, all, options);
+        Assert.Equal(file.BlackSpans, expected.BlackSpans);
+        Assert.Equal(file.FreezeSpans, expected.FreezeSpans);
+        Assert.Equal(executable.BlackSpans, expected.BlackSpans);
+        Assert.Equal(executable.FreezeSpans, expected.FreezeSpans);
+        bool deinterlaced = expected.Video.Deinterlaced;
+        var edges = expected.BlackSpans!.SelectMany(s => new[] { s.StartFrame, s.EndFrame })
+            .Concat((expected.FreezeSpans ?? []).SelectMany(s => new[] { s.StartFrame, s.EndFrame ?? all.Count - 1 }));
+        var splits = RangeSpansTests.Splits(all.Count, edges).SkipLast(6).ToList(); // the random ones left out: time
+        for (int i = 1; i < splits.Count; i++)
+        {
+            // Deinterlacing, a continuing range can't start at the video's last frame (RangeScores.EndFrame).
+            var starts = deinterlaced && splits[i].Length > 1 && splits[i][^1] == all.Count - 1 ? splits[i][..^1] : splits[i];
+            RangeSpansTests.AssertSameSpans(expected, RangeSpansTests.Split(video, all, starts, options).Merged);
+            if (i <= 2)
+                RangeSpansTests.AssertSameSpans(expected, RangeSpansTests.Resumed(video, all, starts, options));
+        }
     }
 
     /// <summary>

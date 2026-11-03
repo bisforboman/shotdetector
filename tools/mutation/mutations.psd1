@@ -321,8 +321,8 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'int BytesPerSample => TenBit ? 2 : 1;'; Replace = 'int BytesPerSample => 1;'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'int ChromaHeight => Yuv422 ? _codedSize.H : (_codedSize.H + 1) / 2;'; Replace = 'int ChromaHeight => (_codedSize.H + 1) / 2;'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line("ChromaLocation", siting);'; Replace = ';'; Tests = 'FrameRangeTests.TheFingerprintCoversEveryOption' }
-        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'int given = deinterlaced ? Math.Max(0, firstFrame - 2) : from;'; Replace = 'int given = from;'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
-        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Joined(VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list)'; Replace = 'Joined(list)'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'int given = deinterlaced ? Math.Max(0, (seeded ? seed : firstFrame) - (seeded ? 1 : 2)) : seeded ? seed : from;'; Replace = 'int given = seeded ? seed : from;'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'var final = VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list;'; Replace = 'var final = list;'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'r.FirstFrame + r.FrameCount >= end ? r : WithoutLastFrame(r)'; Replace = 'WithoutLastFrame(r)'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Joined(VideoReader.DeinterlacesFrames(video, o) ? [.. earlier.Select(WithoutLastFrame)] : earlier)'; Replace = 'Joined(earlier)'; Tests = 'FrameRangeTests.ADeinterlacedRangeTellsTheShotsDetectTells' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line(nameof(o.Deinterlace), "frames");'; Replace = ';'; Tests = 'FrameRangeTests.TheFingerprintCoversEveryOption' }
@@ -413,7 +413,7 @@
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (x != pts)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.AContinuingRangeRefusesEarlierRangesThatDontLeadToIt' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (!Equals(a, b))'; Replace = 'if (false)'; Tests = 'FrameRangeTests.AContinuingRangeRefusesEarlierRangesThatDontLeadToIt' }
         @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (bytes.Length < Magic.Length + 2 || !bytes[..Magic.Length].SequenceEqual(Magic))'; Replace = 'if (bytes.Length < Magic.Length + 2)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
-        @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (version != FormatVersion)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
+        @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (version is not (FormatVersion or FormatVersion1))'; Replace = 'if (false)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
         @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (Checksum(body) != BinaryPrimitives.ReadUInt64LittleEndian(bytes[^8..]))'; Replace = 'if (false)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
         @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (!r.AtEnd)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
         @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (detectors is < 1 or > MaxDetectors)'; Replace = 'if (detectors is < 0 or > MaxDetectors)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
@@ -672,5 +672,17 @@
         @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = 'f->height >> (plane is 1 or 2 ? d->log2_chroma_h : 0)'; Replace = '-(-f->height >> (plane is 1 or 2 ? d->log2_chroma_h : 0))'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ': o.FreezeDetect is not null ? "freeze detection'; Replace = ': false ? "freeze detection'; Tests = 'FreezeDetectTests' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'while (at > 0 && _freezeFrames[at].Mark.Time != start)'; Replace = 'while (false)'; Tests = 'FreezeDetectTests' }
+
+        # Black and freeze spans for ranges: the flags joined, freezedetect replayed over them at Merge, a range whose
+        # comparisons started from another still than the run's refused, the seeded detector kept and its seed frame's
+        # flag left out, timed frames checked to start at the still, flags read off the d = 0 spans, the options in the
+        # fingerprint, version 1 bytes without them
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (r.FirstFrame > 0 && r.FreezeSeed != reference)'; Replace = 'if (false)'; Tests = 'RangeSpansTests' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = '.Skip(before1 + (seeded ? 1 : 0))'; Replace = '.Skip(before1)'; Tests = 'RangeSpansTests' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = '&& reader.FramePts[0] != earlierPts[given])'; Replace = '&& false)'; Tests = 'RangeSpansTests.ARangeStartingInsideAStillIsRefusedUntilScoredAgain' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.FreezeDetect is { } freeze)'; Replace = 'if (false && o.FreezeDetect is { } freeze)'; Tests = 'RangeSpansTests.TheFlagsAreInTheFingerprintAndTheBytes' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'for (int i = s.FirstFrame + 1; i < (s.EndFrame ?? frames)'; Replace = 'for (int i = s.FirstFrame; i < (s.EndFrame ?? frames)'; Tests = 'RangeSpansTests' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'if (!_freezeSeeded)'; Replace = 'if (true)'; Tests = 'RangeSpansTests' }
+        @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'w.UInt16(flags ? FormatVersion : FormatVersion1);'; Replace = 'w.UInt16(FormatVersion);'; Tests = 'FrameRangeTests' }
     )
 }

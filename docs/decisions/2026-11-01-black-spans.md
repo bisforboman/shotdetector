@@ -69,3 +69,7 @@ What should `DetectionResult.BlackSpans` hold?
 - The Sintel trailer (480p, 9 spans at d=0.1) equal on the executable, in-process, in 4 chunks and with FastYuv in 3.
   The cost on the pass: about 6% more wall time on the executable path, none measurable in-process (a second
   blackdetect pass costs about 60%).
+
+Since 2026-11-02 ([2026-11-02-freeze-spans-for-ranges.md](2026-11-02-freeze-spans-for-ranges.md)), ranges take
+`BlackDetect`: `RangeScores` carries each frame's judgement, and Merge works the spans out over the joined flags, equal
+to Detect's in any split.
