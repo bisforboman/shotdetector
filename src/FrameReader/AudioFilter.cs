@@ -27,7 +27,7 @@ public sealed unsafe class AudioFilter : IDisposable
     AVFrame* _result, _feed;
     float[] _samples = [];
     readonly Dictionary<string, string> _metadata = [];
-    bool _flushed;
+    bool _flushed, _ended;
 
     /// <summary>Sets up the filter over <paramref name="audio"/>; reading reads it on (from where it is: seek it first).</summary>
     /// <param name="audio">The audio to filter; not disposed with this.</param>
@@ -84,44 +84,63 @@ public sealed unsafe class AudioFilter : IDisposable
     {
         while (true)
         {
-            if (_out != null)
-            {
-                ffmpeg.av_frame_unref(_result);
-                int got = ffmpeg.av_buffersink_get_frame(_out, _result);
-                if (got == 0)
-                {
-                    chunk = Chunk();
-                    return true;
-                }
-
-                if (got == ffmpeg.AVERROR_EOF)
-                    break;
-                if (got != ffmpeg.AVERROR(ffmpeg.EAGAIN))
-                    Check(got, "filter");
-            }
-
-            if (_flushed)
+            if (Receive(out chunk))
+                return true;
+            if (_ended || _flushed)
                 break;
             if (_audio.TryDecode(out int skip, out long position))
-            {
-                var frame = _audio.Decoded;
-                if (skip >= frame->nb_samples)
-                    continue;
-                if (_graph == null)
-                    Build(frame);
-                Feed(frame, skip, position);
-            }
+                Add(_audio.Decoded, skip, position);
+            else if (_graph == null)
+                break; // no audio at all
             else
-            {
-                if (_graph == null)
-                    break; // no audio at all
-                Check(ffmpeg.av_buffersrc_add_frame_flags(_in, null, 0), "filter");
-                _flushed = true;
-            }
+                End();
         }
 
         _metadata.Clear();
         chunk = default;
+        return false;
+    }
+
+    /// <summary>
+    /// <see cref="TryRead"/>'s feeding: the frame <see cref="AudioReader.TryDecode"/> gave into the graph (built on the
+    /// first), without its first <paramref name="skip"/> samples, at <paramref name="position"/>.
+    /// </summary>
+    internal void Add(AVFrame* frame, int skip, long position)
+    {
+        if (skip >= frame->nb_samples)
+            return;
+        if (_graph == null)
+            Build(frame);
+        Feed(frame, skip, position);
+    }
+
+    /// <summary>The end of the input into the graph (nothing when no frame came: no graph).</summary>
+    internal void End()
+    {
+        if (_graph == null || _flushed)
+            return;
+        Check(ffmpeg.av_buffersrc_add_frame_flags(_in, null, 0), "filter");
+        _flushed = true;
+    }
+
+    /// <summary>The next filtered chunk the graph has for what it was given; false when it needs more (or has ended).</summary>
+    internal bool Receive(out AudioChunk chunk)
+    {
+        chunk = default;
+        if (_out == null || _ended)
+            return false;
+        ffmpeg.av_frame_unref(_result);
+        int got = ffmpeg.av_buffersink_get_frame(_out, _result);
+        if (got == 0)
+        {
+            chunk = Chunk();
+            return true;
+        }
+
+        if (got == ffmpeg.AVERROR_EOF)
+            _ended = true;
+        else if (got != ffmpeg.AVERROR(ffmpeg.EAGAIN))
+            Check(got, "filter");
         return false;
     }
 

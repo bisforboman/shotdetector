@@ -31,6 +31,12 @@ public static class Loudness
         using var filter = new AudioFilter(audio, Graph);
         while (filter.TryRead(out _))
             cancellationToken.ThrowIfCancellationRequested();
+        return Result(filter);
+    }
+
+    /// <summary>The figures of a filter over <see cref="Graph"/> that has read its input to the end.</summary>
+    internal static LoudnessResult Result(AudioFilter filter)
+    {
         double Get(string option) => filter.Result("ebur128", option)
             ?? throw new FrameReaderException(FrameReaderError.InvalidInput, "The audio has no samples to measure.");
         return new LoudnessResult(Get("integrated"), Get("range"), Get("lra_low"), Get("lra_high"), Get("sample_peak"), Get("true_peak"));

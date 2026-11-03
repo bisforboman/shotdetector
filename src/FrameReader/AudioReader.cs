@@ -165,8 +165,11 @@ public sealed unsafe class AudioReader : IDisposable
         }
     }
 
-    /// <summary>Whether the decoder gives floating-point samples (lossy codecs, float PCM) rather than integers.</summary>
-    internal bool DecodesFloat { get; }
+    /// <summary>
+    /// Whether the decoder gives floating-point samples (lossy codecs, float PCM) rather than integers: what
+    /// <see cref="WaveformBuilder"/>'s <c>integerSamples</c> takes (its opposite), as <see cref="WaveformData.Read"/> passes it.
+    /// </summary>
+    public bool DecodesFloat { get; }
 
     /// <summary>Output samples per second.</summary>
     public int SampleRate => _outRate;
@@ -214,39 +217,65 @@ public sealed unsafe class AudioReader : IDisposable
     {
         while (true)
         {
-            int got;
-            TimeSpan time;
-            ChunkPosition = null;
             if (TryDecode(out int skip, out long position))
             {
-                long pts = _frame->best_effort_timestamp;
-                got = Convert(_frame->extended_data, _frame->nb_samples, skip, _frame->format, _frame->ch_layout.nb_channels);
-
-                // The frame's samples one for one (no resampling held any back): its place, as ffmpeg's filters get it.
-                if (_frame->sample_rate == _outRate && got == _frame->nb_samples - skip)
-                    ChunkPosition = position;
-                time = pts == ffmpeg.AV_NOPTS_VALUE
-                    ? TimeSpan.Zero
-                    : TimeSpan.FromSeconds((pts - (_fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : ffmpeg.av_rescale_q(_fmt->start_time, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase))) * (_timeBase.num / (double)_timeBase.den));
+                if (ConvertDecoded(skip, position, out chunk))
+                    return true;
             }
             else if (!_flushed)
             {
-                _flushed = true;
-                got = Convert(null, 0, 0, 0, 0); // what the resampler still holds
-                time = TimeSpan.Zero;
+                if (ConvertRest(out chunk))
+                    return true;
             }
             else
             {
+                ChunkPosition = null;
                 chunk = default;
                 return false;
             }
-
-            if (got > 0)
-            {
-                chunk = new AudioChunk(_out.AsSpan(0, got * _outChannels), _outChannels, _outRate, time);
-                return true;
-            }
         }
+    }
+
+    /// <summary>
+    /// <see cref="TryRead"/>'s conversion of the frame <see cref="TryDecode"/> gave (<paramref name="skip"/> and
+    /// <paramref name="position"/> its): false when the resampler holds every sample back for now.
+    /// </summary>
+    internal bool ConvertDecoded(int skip, long position, out AudioChunk chunk)
+    {
+        ChunkPosition = null;
+        long pts = _frame->best_effort_timestamp;
+        int got = Convert(_frame->extended_data, _frame->nb_samples, skip, _frame->format, _frame->ch_layout.nb_channels);
+
+        // The frame's samples one for one (no resampling held any back): its place, as ffmpeg's filters get it.
+        if (_frame->sample_rate == _outRate && got == _frame->nb_samples - skip)
+            ChunkPosition = position;
+        var time = pts == ffmpeg.AV_NOPTS_VALUE
+            ? TimeSpan.Zero
+            : TimeSpan.FromSeconds((pts - (_fmt->start_time == ffmpeg.AV_NOPTS_VALUE ? 0 : ffmpeg.av_rescale_q(_fmt->start_time, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, _timeBase))) * (_timeBase.num / (double)_timeBase.den));
+        return Chunk(got, time, out chunk);
+    }
+
+    /// <summary>
+    /// <see cref="TryRead"/>'s last chunk once decoding ended: what the resampler still holds (once; false when it holds
+    /// nothing, or after the first call).
+    /// </summary>
+    internal bool ConvertRest(out AudioChunk chunk)
+    {
+        ChunkPosition = null;
+        if (_flushed)
+        {
+            chunk = default;
+            return false;
+        }
+
+        _flushed = true;
+        return Chunk(Convert(null, 0, 0, 0, 0), TimeSpan.Zero, out chunk);
+    }
+
+    bool Chunk(int got, TimeSpan time, out AudioChunk chunk)
+    {
+        chunk = got > 0 ? new AudioChunk(_out.AsSpan(0, got * _outChannels), _outChannels, _outRate, time) : default;
+        return got > 0;
     }
 
     /// <summary>
@@ -341,8 +370,11 @@ public sealed unsafe class AudioReader : IDisposable
     /// <summary>The input (for its metadata and chapters) and the audio stream's index in it.</summary>
     internal AVFormatContext* Format => _fmt;
 
-    /// <summary>The container's duration; null when unknown.</summary>
-    internal TimeSpan? Duration => _fmt->duration > 0 ? TimeSpan.FromTicks(_fmt->duration * 10) : null;
+    /// <summary>
+    /// The container's duration; null when unknown: what <see cref="WaveformBuilder"/>, <see cref="ReferenceToneFinder"/>
+    /// and the progress reports take as the input's length.
+    /// </summary>
+    public TimeSpan? Duration => _fmt->duration > 0 ? TimeSpan.FromTicks(_fmt->duration * 10) : null;
 
     internal int StreamIndex => _stream;
 
@@ -413,6 +445,9 @@ public sealed unsafe class AudioReader : IDisposable
         }
     }
 
+    /// <summary>Packets read from the input so far (tests: one pass reads each once).</summary>
+    internal long PacketsRead { get; private set; }
+
     bool Decode()
     {
         while (!_decoderDone)
@@ -441,6 +476,7 @@ public sealed unsafe class AudioReader : IDisposable
                 continue;
             }
 
+            PacketsRead++;
             if (_pkt->stream_index == _stream)
                 ffmpeg.avcodec_send_packet(_dec, _pkt); // errors (damaged data) only lose that packet
             ffmpeg.av_packet_unref(_pkt);
