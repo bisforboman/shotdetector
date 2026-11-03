@@ -136,6 +136,26 @@ public sealed class FreezeDetectTests
         Assert.True(result.FreezeSpans.Count >= 2);
     }
 
+    /// <summary>
+    /// freezedetect's lines are read under FFmpeg 8's prefix (the filter's instance name) and under older ones' such as
+    /// 6.1's (its class's), which gave no spans at all before (issue #708); other lines aren't.
+    /// </summary>
+    [Theory]
+    [InlineData("[Parsed_freezedetect_0 @ 0x7f8198001d40] lavfi.freezedetect.")]
+    [InlineData("[freezedetect @ 0x558205b6d180] lavfi.freezedetect.")]
+    public void FreezeLinesOfEveryFfmpeg(string prefix)
+    {
+        string? start = null;
+        long? micros = null;
+        bool end = false;
+        Assert.True(VideoReader.FreezeLine(prefix + "freeze_start: 2", ref start, ref micros, ref end));
+        Assert.True(VideoReader.FreezeLine(prefix + "freeze_duration: 3.04", ref start, ref micros, ref end));
+        Assert.True(VideoReader.FreezeLine(prefix + "freeze_end: 5.04", ref start, ref micros, ref end));
+        Assert.Equal(("2", 3_040_000L, true), (start, micros, end));
+        Assert.False(VideoReader.FreezeLine("[Parsed_metadata_1 @ 0x55] lavfi.freezedetect.freeze_end: 5", ref start, ref micros, ref end));
+        Assert.False(VideoReader.FreezeLine("[freezedetector @ 0x55] lavfi.freezedetect.freeze_end: 5", ref start, ref micros, ref end));
+    }
+
     [Fact]
     public void OptionsAreChecked()
     {
