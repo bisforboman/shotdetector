@@ -23,12 +23,12 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: `VideoReader.ExecutableHlsWarning` says ffmpeg fetches https segments without checking certificates, whatever the executable's version; docs/decisions/2026-10-16-https-certificates-and-tls.md noted tls_verify's default is 0 "until libavformat 63", and CI's executable is FFmpeg 9.0 now. Check FFmpeg 9 against a self-signed segment server; if it checks them, warn only for libavformat 62 and older, and record it. Found in the 2026-10-31 decision review
   - Status: Open
 
-- arch-diff: require 8-bit odd widths
-  - Why: docs/decisions/2026-10-18-fastyuv-422.md left sintel_oddwidth.mkv reported, not required, "until its first ARM table is read" (tools/arch-summary.py, ci.yml's `--informational`); the same decision found 8-bit odd widths take the SSSE3 path FastYuv reproduces. Read a run's table: at 100 %, make it required; else record why not. Found in the 2026-10-31 decision review. Lead from #668 (#656): on linux-arm64 swscale never writes an odd width's last RGB column (BtbN's build and ours alike; ffmpeg's command line gets zeros from its zeroed filter pool). If ShotDetector's own BGR buffers (BgrConverter/FrameWriter) aren't zeroed, the column holds old bytes there, which would explain the difference: check it on an ARM runner, zero the buffer as #668 did, then require the sample
-  - Status: Open
-
 - Sequential runs with twice the decoder threads: measure again
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
+  - Status: Open
+
+- SkipUnreferencedTests' "read again" assertion depends on timing
+  - Why: `FramesAreThoseOfDecodingEveryPacket` asserts that an indexed input (mp4, mkv, MPEG-TS) is read again after the short step, which happens only if read-ahead decoding gets past it during a `Thread.Sleep(50)`; on a busy runner it doesn't, and the test fails "read again 0 times" with nothing wrong (main: runs 41097253436 and 41225604504, mpeg1.mkv; PR #710: mpeg1.mkv on x64 and mpeg2.ts on ARM, a PR changing no C#). A red required check that isn't the PR's costs a re-run each time. Make it deterministic: wait until decoding ahead has passed the step (a test hook or the reader's own counters) instead of sleeping. Found 2026-11-02
   - Status: Open
 
 ## Waiting
