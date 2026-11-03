@@ -235,3 +235,8 @@ the example; a `changes/framereader/` fragment.
 
 **`AudioAnalysis` with an options record**, with the chunk callback (the owner, 2026-11-03): the
 recommended design above.
+
+Built as designed (2026-11-03), with two details settled in the code: the callback is an `Action<AudioChunk>` (.NET 9's
+`Action<T>` allows a ref struct), and a call that asks for no analysis is an `ArgumentException`, like the other
+options' mistakes, rather than a pass that reads for nothing. `AudioAnalysisTests` compares every result with its
+standalone call; the packet counter is `AudioReader.PacketsRead`.

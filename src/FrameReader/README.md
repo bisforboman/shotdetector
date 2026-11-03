@@ -496,6 +496,35 @@ foreach (var s in silences.Finish())
 silencedetect compares integer samples (16 and 32-bit PCM) in their own format against the level times the format's
 largest value, truncated; the finder takes floats, as FFmpeg's decoders give AAC, MP3, Opus and float PCM.
 
+Several analyses on one decode: `AudioAnalysis.Run(audioReader, options)` runs reference tone, the waveform, loudness
+and silences (each one given its options) over one pass of the reader, each result the one its own call gives on a
+reader opened with the same options, to the bit. Loudness reads the decoded audio, as `Loudness.Measure` does; the
+others the reader's chunks, at its rate and channels. `Chunks` hands the same chunks to your own analysis. A tone search
+alone stops decoding where `ReferenceTone.Find` stops; bad options fail before reading. Conversion stays its own pass,
+since a notch for the tone needs to know where the tone is:
+
+```csharp
+using var audio = new AudioReader("programme.mxf");
+var r = await AudioAnalysis.RunAsync(audio, new()
+{
+    ReferenceTone = new() { SearchDuration = TimeSpan.FromMinutes(3) },
+    Waveform = new() { PixelsPerSecond = 100 },
+    Loudness = true,
+    Silence = new() { Level = -50, Duration = TimeSpan.FromSeconds(1) },
+    Chunks = chunk => speechModel.Feed(chunk.Samples), // your own, on the same decode
+});
+using (var dat = File.Create("programme.dat"))
+    r.Waveform!.Save(dat);
+Console.WriteLine($"{r.Loudness!.Value.Integrated:0.0} LUFS, {r.Silences!.Count} silences");
+string? notch = r.ReferenceTone is [var tone, ..]
+    ? FormattableString.Invariant($"equalizer=f=1000:t=q:w=8:g=-40:enable='between(t,{tone.Start.TotalSeconds},{tone.End.TotalSeconds})'")
+    : null;
+await Audio.ConvertAsync("programme.mxf", "programme.mp3", new() { Filter = notch });
+```
+
+`AudioReader.DecodesFloat` and `Duration` are public too, for a loop of your own that makes a `WaveformBuilder` as
+`WaveformData.Read` does.
+
 `PictureMeter` measures frames as FFmpeg's picture filters do, with nothing of FFmpeg, on planes from any decoder:
 FrameReader's own (`Add(DecodedFrame)`) or one of yours (planes with strides, more than 8 bits as 16-bit little-endian).
 It takes 8 to 16 bits in 4:2:0, 4:2:2 or 4:4:4, from a `PictureFormat` that holds the size, depth, chroma, range,
