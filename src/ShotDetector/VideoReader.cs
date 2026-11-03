@@ -1158,16 +1158,19 @@ internal sealed partial class VideoReader
         Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
 
     /// <summary>
-    /// <see cref="DetectionResult.Warnings"/>' line for an http or https HLS playlist decoded by the ffmpeg executable,
-    /// else null: the executable checks an https playlist's own certificate, but opens its segments, keys and variants
-    /// without the check (FFmpeg's HLS demuxer doesn't pass tls_verify on, and an http playlist's input has none to
-    /// pass), so any of them on https goes unchecked; in-process, FrameReader checks them too. The playlist isn't read
-    /// to see whether it names any. A local playlist can't reach https (its whitelist is file,crypto).
+    /// <see cref="DetectionResult.Warnings"/>' line for an http or https HLS playlist decoded by an ffmpeg executable
+    /// older than FFmpeg 9, else null: such an executable checks an https playlist's own certificate, but opens its
+    /// segments, keys and variants without the check (FFmpeg's HLS demuxer doesn't pass tls_verify on, and an http
+    /// playlist's input has none to pass), so any of them on https goes unchecked; in-process, FrameReader checks them
+    /// too. FFmpeg 9 (libavformat 63) checks every https connection by default, so it gets no warning
+    /// (docs/decisions/2026-11-03-hls-warning-ffmpeg-9.md); <paramref name="libavformatMajor"/> is asked only when the
+    /// rest would warn, and an unknown version (null) warns. The playlist isn't read to see whether it names any https
+    /// entry. A local playlist can't reach https (its whitelist is file,crypto).
     /// </summary>
-    internal static string? ExecutableHlsWarning(string? path, string container, bool decodedInProcess) =>
-        !decodedInProcess && container == "hls" && IsHttp(path)
-            ? "decoded by ffmpeg, which fetches any https segments, keys and variants without checking their "
-            + "certificates; in-process decoding (the FrameReader.Native packages) checks them."
+    internal static string? ExecutableHlsWarning(string? path, string container, bool decodedInProcess, Func<int?> libavformatMajor) =>
+        !decodedInProcess && container == "hls" && IsHttp(path) && !(libavformatMajor() >= 63)
+            ? "decoded by an ffmpeg older than FFmpeg 9, which fetches any https segments, keys and variants without "
+            + "checking their certificates; FFmpeg 9 and in-process decoding (the FrameReader.Native packages) check them."
             : null;
 
     /// <summary>
@@ -2429,6 +2432,44 @@ internal sealed partial class VideoReader
     }
 
     static readonly ConcurrentDictionary<string, bool> ChromaLocationByFfmpeg = new(StringComparer.Ordinal);
+
+    static readonly ConcurrentDictionary<string, int?> LibavformatByFfmpeg = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// This ffmpeg's libavformat major version (<c>ffmpeg -version</c>'s <c>libavformat 63. 1.102</c> line: 62 is
+    /// FFmpeg 8, 63 FFmpeg 9), asked once per executable; null when it doesn't say or can't be run.
+    /// </summary>
+    internal static int? LibavformatMajor(string ffmpeg, CancellationToken cancellationToken)
+    {
+        if (LibavformatByFfmpeg.TryGetValue(ffmpeg, out int? major))
+            return major;
+        try
+        {
+            major = ParseLibavformatMajor(Run(ffmpeg, ["-hide_banner", "-version"], cancellationToken, failure: ShotDetectionError.FfmpegNotFound));
+        }
+        catch (ShotDetectionException)
+        {
+            major = null;
+        }
+
+        return LibavformatByFfmpeg.GetOrAdd(ffmpeg, major);
+    }
+
+    /// <summary>The major version on <c>ffmpeg -version</c>'s libavformat line; null when there's none.</summary>
+    internal static int? ParseLibavformatMajor(string version)
+    {
+        foreach (string line in version.Split('\n'))
+        {
+            string[] words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words is ["libavformat", var number, ..] && number.Split('.')[0] is var digits
+                && int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out int major))
+            {
+                return major;
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Whether this ffmpeg's scale filter takes <c>in_chroma_loc</c> (FFmpeg 7.1 and newer), asked once per executable

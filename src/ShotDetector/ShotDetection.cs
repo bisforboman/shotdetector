@@ -1351,7 +1351,7 @@ public static partial class ShotDetection
         bool hlsWarned = false;
         void WarnHls()
         {
-            if (!hlsWarned && VideoReader.ExecutableHlsWarning(videoPath, video.Container, video.DecodesInProcess) is { } hls)
+            if (!hlsWarned && VideoReader.ExecutableHlsWarning(videoPath, video.Container, video.DecodesInProcess, () => VideoReader.LibavformatMajor(video.FfmpegExe, cancellationToken)) is { } hls)
             {
                 hlsWarned = true;
                 Warn(hls);

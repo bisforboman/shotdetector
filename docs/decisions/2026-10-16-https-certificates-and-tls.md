@@ -14,3 +14,6 @@ OpenSSL (libavformat wouldn't load without libssl.so.3), a static GnuTLS (nettle
 leaving https to the executable there (mbedTLS would have made the build LGPL-3). CA certificates on Linux:
 **SSL_CERT_FILE, else the first bundle of the usual paths** (built with --openssldir=/etc/ssl for Debian, Ubuntu,
 Alpine; /etc/pki on RHEL and Fedora), over /etc/ssl only.
+
+Since 2026-11-03 ([2026-11-03-hls-warning-ffmpeg-9.md](2026-11-03-hls-warning-ffmpeg-9.md)): FFmpeg 9 (libavformat 63)
+verifies by default, an HLS playlist's segments, keys and variants included, shown against a self-signed server.

@@ -463,9 +463,10 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
             var r = ShotDetection.Detect($"http://localhost:{port}/{name}", new() { CollectStats = true, Decoder = VideoDecoder.FfmpegProcess });
             Assert.True(r.Video.Streamed);
 
-            // An http playlist through the executable: warned once (it fetches any https segments unchecked).
-            if (name.EndsWith(".m3u8"))
-                Assert.StartsWith("decoded by ffmpeg, which fetches any https segments", Assert.Single(r.Warnings));
+            // An http playlist through an executable older than FFmpeg 9: warned once (it fetches any https segments
+            // unchecked); FFmpeg 9 checks them, so no warning.
+            if (name.EndsWith(".m3u8") && !(VideoReader.LibavformatMajor(VideoReader.Executable(null, "ffmpeg"), default) >= 63))
+                Assert.StartsWith("decoded by an ffmpeg older than FFmpeg 9, which fetches any https segments", Assert.Single(r.Warnings));
             else
                 Assert.Empty(r.Warnings);
 
@@ -543,9 +544,18 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         try
         {
             string url = $"http://localhost:{playlists.Port}/play.m3u8";
-            var process = ShotDetection.Detect(url, new() { Detector = DetectorKind.Content, Decoder = VideoDecoder.FfmpegProcess });
-            Assert.Equal([0L, 50L, 100L], process.Shots.Select(s => s.Start.FrameNum));
-            Assert.StartsWith("decoded by ffmpeg, which fetches any https segments", Assert.Single(process.Warnings));
+            if (VideoReader.LibavformatMajor(VideoReader.Executable(null, "ffmpeg"), default) >= 63)
+            {
+                // FFmpeg 9 checks the segment's certificate itself: refused (docs/decisions/2026-11-03-hls-warning-ffmpeg-9.md).
+                Assert.Throws<ShotDetectionException>(() => ShotDetection.Detect(url, new() { Detector = DetectorKind.Content, Decoder = VideoDecoder.FfmpegProcess }));
+            }
+            else
+            {
+                // An older executable reads the self-signed segment and warns that it does.
+                var process = ShotDetection.Detect(url, new() { Detector = DetectorKind.Content, Decoder = VideoDecoder.FfmpegProcess });
+                Assert.Equal([0L, 50L, 100L], process.Shots.Select(s => s.Start.FrameNum));
+                Assert.StartsWith("decoded by an ffmpeg older than FFmpeg 9, which fetches any https segments", Assert.Single(process.Warnings));
+            }
 
             if (Environment.GetEnvironmentVariable("SHOTDETECTOR_FFMPEG_LIBS") is { } libs)
             {

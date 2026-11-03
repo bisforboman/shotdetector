@@ -768,30 +768,52 @@ public class UrlOptionTests
     public void MpegAndMjpegDecodeWithTheCIdct(string codec, string expected) =>
         Assert.Equal(expected, string.Join(' ', VideoReader.IdctOptions(codec)));
 
-    // DetectionResult.Warnings: an http or https HLS playlist through the executable, whose https segments go unchecked,
-    // and nothing else (a local playlist can't reach https: its whitelist is file,crypto).
+    // DetectionResult.Warnings: an http or https HLS playlist through an executable older than FFmpeg 9 (libavformat
+    // 62 and older, or a version it doesn't tell), whose https segments go unchecked, and nothing else (a local playlist
+    // can't reach https: its whitelist is file,crypto; FFmpeg 9 checks every https connection, shown against a
+    // self-signed server: docs/decisions/2026-11-03-hls-warning-ffmpeg-9.md).
     [Theory]
-    [InlineData("https://example.com/play.m3u8", "hls", false, true)]
-    [InlineData("HTTPS://example.com/play.m3u8", "hls", false, true)]
-    [InlineData("https://example.com/play.m3u8", "hls", true, false)]
-    [InlineData("http://example.com/play.m3u8", "hls", false, true)]
-    [InlineData("HTTP://example.com/play.m3u8", "hls", false, true)]
-    [InlineData("http://example.com/play.m3u8", "hls", true, false)]
-    [InlineData("http://example.com/a.mp4", "mov,mp4,m4a,3gp,3g2,mj2", false, false)]
-    [InlineData("file:///videos/play.m3u8", "hls", false, false)]
-    [InlineData("rtsp://example.com/play.m3u8", "hls", false, false)]
-    [InlineData("https://example.com/a.mp4", "mov,mp4,m4a,3gp,3g2,mj2", false, false)]
-    [InlineData("/videos/play.m3u8", "hls", false, false)]
-    [InlineData(@"C:\videos\play.m3u8", "hls", false, false)]
-    [InlineData(null, "hls", false, false)]
-    public void AnHttpOrHttpsPlaylistThroughTheExecutableWarns(string? path, string container, bool inProcess, bool warns)
+    [InlineData("https://example.com/play.m3u8", "hls", false, 62, true)]
+    [InlineData("HTTPS://example.com/play.m3u8", "hls", false, 62, true)]
+    [InlineData("https://example.com/play.m3u8", "hls", true, 62, false)]
+    [InlineData("http://example.com/play.m3u8", "hls", false, 62, true)]
+    [InlineData("HTTP://example.com/play.m3u8", "hls", false, 62, true)]
+    [InlineData("http://example.com/play.m3u8", "hls", true, 62, false)]
+    [InlineData("http://example.com/play.m3u8", "hls", false, 61, true)]
+    [InlineData("http://example.com/play.m3u8", "hls", false, null, true)]
+    [InlineData("http://example.com/play.m3u8", "hls", false, 63, false)]
+    [InlineData("https://example.com/play.m3u8", "hls", false, 64, false)]
+    [InlineData("http://example.com/a.mp4", "mov,mp4,m4a,3gp,3g2,mj2", false, 62, false)]
+    [InlineData("file:///videos/play.m3u8", "hls", false, 62, false)]
+    [InlineData("rtsp://example.com/play.m3u8", "hls", false, 62, false)]
+    [InlineData("https://example.com/a.mp4", "mov,mp4,m4a,3gp,3g2,mj2", false, 62, false)]
+    [InlineData("/videos/play.m3u8", "hls", false, 62, false)]
+    [InlineData(@"C:\videos\play.m3u8", "hls", false, 62, false)]
+    [InlineData(null, "hls", false, 62, false)]
+    public void AnHttpOrHttpsPlaylistThroughAnExecutableOlderThanFfmpeg9Warns(string? path, string container, bool inProcess, int? libavformat, bool warns)
     {
-        var warning = VideoReader.ExecutableHlsWarning(path, container, inProcess);
+        bool asked = false;
+        var warning = VideoReader.ExecutableHlsWarning(path, container, inProcess, () =>
+        {
+            asked = true;
+            return libavformat;
+        });
         if (warns)
-            Assert.StartsWith("decoded by ffmpeg, which fetches any https segments, keys and variants without checking", warning);
+            Assert.StartsWith("decoded by an ffmpeg older than FFmpeg 9, which fetches any https segments, keys and variants without checking", warning);
         else
             Assert.Null(warning);
+
+        // The executable is asked its version only for a playlist the warning is about.
+        Assert.Equal(!inProcess && container == "hls" && path is not null && path.StartsWith("http", StringComparison.OrdinalIgnoreCase), asked);
     }
+
+    // ffmpeg -version's libavformat line (FFmpeg 8.1 and 9.0's, as BtbN's builds print them).
+    [Theory]
+    [InlineData("ffmpeg version n8.1.3\nlibavutil      60. 26.100 / 60. 26.100\nlibavformat    62. 12.103 / 62. 12.103\n", 62)]
+    [InlineData("ffmpeg version n9.0.2\r\nlibavformat    63.  1.102 / 63.  1.102\r\n", 63)]
+    [InlineData("ffmpeg version something\nconfiguration: --enable-libavformat\n", null)]
+    [InlineData("", null)]
+    public void LibavformatMajorFromVersion(string version, int? major) => Assert.Equal(major, VideoReader.ParseLibavformatMajor(version));
 
     // An image sequence is what FFmpeg's image2 reads as one (av_filename_number_test, checked against ffprobe 8.1): one
     // number, '%' then digits then 'd'; "%%" is a literal percent; any other '%' (a URL-encoded name) makes a plain file.
