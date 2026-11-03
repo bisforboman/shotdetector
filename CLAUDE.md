@@ -90,6 +90,9 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
 
 ## Before pushing
 
+- Cloud sessions: `.claude/hooks/session-start.sh` installs the .NET 10 SDK if missing, restores the tool and the
+  solution, sets `core.hooksPath`, and puts BtbN's pinned FFmpeg 8.1 gpl-shared (in `~/.cache/shotdetector`) on PATH
+  and in `SHOTDETECTOR_FFMPEG_LIBS`; scenedetect and the samples it leaves to you.
 - Prerequisites: .NET 10, ffmpeg on PATH, PowerShell (`pwsh`: tools/make-samples.ps1, Invoke-Mutations.ps1), and for
   the comparisons `pip install scenedetect==0.7.2 opencv-python-headless`.
 - `dotnet test ShotDetector.slnx` (~3 min; the video tests make clips). One class: `--filter

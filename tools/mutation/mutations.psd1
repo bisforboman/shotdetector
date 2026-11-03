@@ -677,6 +677,8 @@
         @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = 'f->height >> (plane is 1 or 2 ? d->log2_chroma_h : 0)'; Replace = '-(-f->height >> (plane is 1 or 2 ? d->log2_chroma_h : 0))'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ': o.FreezeDetect is not null ? "freeze detection'; Replace = ': false ? "freeze detection'; Tests = 'FreezeDetectTests' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'while (at > 0 && _freezeFrames[at].Mark.Time != start)'; Replace = 'while (false)'; Tests = 'FreezeDetectTests' }
+        # ... and its lines read under an older ffmpeg's prefix too (6.1's [freezedetect @, issue #708)
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' && !line.StartsWith("[freezedetect @ ", StringComparison.Ordinal)'; Replace = ''; Tests = 'FreezeDetectTests.FreezeLinesOfEveryFfmpeg' }
 
         # Black and freeze spans for ranges: the flags joined, freezedetect replayed over them at Merge, a range whose
         # comparisons started from another still than the run's refused, the seeded detector kept and its seed frame's
