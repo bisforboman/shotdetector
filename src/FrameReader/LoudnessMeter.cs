@@ -61,6 +61,7 @@ public sealed class LoudnessMeter
     float[] _channel = [];
     long _sampleCount;
     double _integrated = AbsoluteGate, _range, _rangeLow, _rangeHigh;
+    double _maxMomentary = double.NegativeInfinity, _maxShortTerm = double.NegativeInfinity;
     bool _finished;
 
     static LoudnessMeter()
@@ -175,7 +176,12 @@ public sealed class LoudnessMeter
             truePeak = Math.Max(truePeak, _truePeaks[c].Peak);
         }
 
-        return new LoudnessMeasures(new LoudnessResult(_integrated, _range, _rangeLow, _rangeHigh, Dbfs(samplePeak), Dbfs(truePeak)), channels);
+        var result = new LoudnessResult(_integrated, _range, _rangeLow, _rangeHigh, Dbfs(samplePeak), Dbfs(truePeak))
+        {
+            MaxMomentary = _maxMomentary,
+            MaxShortTerm = _maxShortTerm,
+        };
+        return new LoudnessMeasures(result, channels);
     }
 
     /// <summary>
@@ -302,6 +308,10 @@ public sealed class LoudnessMeter
     {
         double power400 = _i400.Power(_weights), power3000 = _i3000.Power(_weights);
         double loudness400 = Lufs(power400), loudness3000 = Lufs(power3000);
+
+        // The block's M and S, as ebur128's framelog prints them every 100 ms.
+        _maxMomentary = Math.Max(_maxMomentary, loudness400);
+        _maxShortTerm = Math.Max(_maxShortTerm, loudness3000);
         if (loudness400 >= AbsoluteGate)
         {
             int gate = _i400.Gate(power400, loudness400, -10);

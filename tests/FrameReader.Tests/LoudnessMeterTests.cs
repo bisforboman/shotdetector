@@ -8,14 +8,15 @@ using FrameReader;
 /// Integrated loudness, range, its ends and sample peak equal the filter's results at full precision. True peak is
 /// BS.1770-4 Annex 2's, not ebur128's (docs/decisions/2026-10-31-frame-reader-measures.md): within 0.05 dB of an ideal
 /// reconstruction (tools/true_peak_reference.py on the same clips, the numbers below) and, on audio without energy near
-/// Nyquist, within 0.1 dB of ebur128's. Needs SHOTDETECTOR_FFMPEG_LIBS (an FFmpeg 8.1 shared build's folder with ffmpeg);
+/// Nyquist, within 0.1 dB of ebur128's. The highest momentary and short-term loudness are the highest M and S its
+/// framelog prints every 100 ms (to one decimal: within 0.05 LU). Needs SHOTDETECTOR_FFMPEG_LIBS (an FFmpeg 8.1 shared build's folder with ffmpeg);
 /// without it these do nothing.
 /// </summary>
 public class LoudnessMeterTests
 {
     static readonly string? Libs = TestLibraries.Load();
 
-    static void Ffmpeg(params string[] args)
+    static string Ffmpeg(params string[] args)
     {
         var psi = new ProcessStartInfo(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg")) { RedirectStandardError = true };
         foreach (var a in args)
@@ -24,6 +25,27 @@ public class LoudnessMeterTests
         string err = p.StandardError.ReadToEnd();
         p.WaitForExit();
         Assert.True(p.ExitCode == 0, err);
+        return err;
+    }
+
+    // The highest M and S ebur128's framelog prints (every 100 ms, "M: -23.1 S: -24.0"; "-inf" for digital silence).
+    static (double M, double S) Highest(string path)
+    {
+        string log = Ffmpeg("-hide_banner", "-nostats", "-i", path, "-af", "ebur128=framelog=info", "-f", "null", "-");
+        double Parse(string v) => v == "-inf" ? double.NegativeInfinity : double.Parse(v, System.Globalization.CultureInfo.InvariantCulture);
+        var blocks = System.Text.RegularExpressions.Regex.Matches(log, @"M:\s*(-?[\d.]+|-inf)\s+S:\s*(-?[\d.]+|-inf)")
+            .Select(m => (M: Parse(m.Groups[1].Value), S: Parse(m.Groups[2].Value)))
+            .ToList();
+        Assert.NotEmpty(blocks);
+        return (blocks.Max(b => b.M), blocks.Max(b => b.S));
+    }
+
+    static void Near(double expected, double actual)
+    {
+        if (double.IsNegativeInfinity(expected))
+            Assert.Equal(double.NegativeInfinity, actual);
+        else
+            Assert.InRange(actual, expected - 0.05, expected + 0.05);
     }
 
     [Theory]
@@ -88,6 +110,10 @@ public class LoudnessMeterTests
                     Assert.InRange(r.TruePeak, ffmpeg.TruePeak - 0.1, ffmpeg.TruePeak + 0.1);
             }
 
+            var (m, s) = Highest(path);
+            Near(m, r.MaxMomentary);
+            Near(s, r.MaxShortTerm);
+            Assert.True(double.IsNaN(ffmpeg.MaxMomentary) && double.IsNaN(ffmpeg.MaxShortTerm));
             Assert.Equal(r.SamplePeak, measures.Channels.Max(c => c.SamplePeak));
             Assert.Equal(r.TruePeak, measures.Channels.Max(c => c.TruePeak));
             Assert.All(measures.Channels, c => Assert.True(c.TruePeak >= c.SamplePeak));
@@ -230,7 +256,12 @@ public class LoudnessMeterTests
         var meter = new LoudnessMeter(48000, 2);
         Assert.Throws<ArgumentException>(() => meter.Add(new float[3]));
         var empty = meter.Finish();
-        Assert.Equal(new LoudnessResult(-70, 0, 0, 0, double.NegativeInfinity, double.NegativeInfinity), empty.Loudness);
+        var nothing = new LoudnessResult(-70, 0, 0, 0, double.NegativeInfinity, double.NegativeInfinity)
+        {
+            MaxMomentary = double.NegativeInfinity,
+            MaxShortTerm = double.NegativeInfinity,
+        };
+        Assert.Equal(nothing, empty.Loudness);
         Assert.Throws<InvalidOperationException>(() => meter.Add(new float[2]));
         Assert.Throws<InvalidOperationException>(() => meter.Finish());
     }
