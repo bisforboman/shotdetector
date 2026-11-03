@@ -155,6 +155,11 @@
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '=> conversion?.ChromaRows is { } chromaRows'; Replace = '=> conversion?.ChromaRows is var chromaRows'; Tests = 'FastYuvTests.ConvertersThatDoNotSayWhichRowsGetWholePlanes' }
         @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '_rPending.Add((plane, y));'; Replace = ''; Tests = 'InProcessTests.RowWiseYadifEqualsFfmpegs' }
 
+        # Deinterlacing above 8 bits: yadif on one thread (FFmpeg 8.1's x86 yadif varies from run to run with slice threads
+        # there, docs/ffmpeg-yadif-16bit-report.md; on one it equals the C code, scenedetect's copy made the same way)
+        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'desc->comp[0].depth > 8 ? "threads=1" : null'; Replace = 'null'; Tests = 'FrameDecoderTests.DeinterlacingIsTheSameOnEveryDecode'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '? "yadif=threads=1" : "yadif"'; Replace = '? "yadif" : "yadif"'; Tests = 'VideoTests.TheExecutablesYadifIsTheSameOnEveryRun' }
+
         # Chunked runs: twice the CPUs' decoder threads (at most 16) for frame-threaded decoders up to 1080p, shared out among the chunks
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'frameThreads && pixels <= MoreThreadsMaxPixels ? Math.Clamp(2 * cpus, 1, 16)'; Replace = 'frameThreads && pixels <= MoreThreadsMaxPixels ? Math.Clamp(cpus, 1, 16)'; Tests = 'ParallelTests.ChunkedRunsGiveFrameThreadedDecodersTwiceTheCpus' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'frameThreads && pixels <= MoreThreadsMaxPixels ?'; Replace = 'frameThreads ?'; Tests = 'ParallelTests.ChunkedRunsGiveFrameThreadedDecodersTwiceTheCpus' }

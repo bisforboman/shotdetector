@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- A deterministic default for interlaced 9-16-bit video
-  - Why: FFmpeg 8.1's x86 SIMD yadif gives a slightly different picture on every run at 9 to 16 bits (its C code doesn't; docs/decisions/2026-10-08-row-wise-yadif-in-fastyuv-9-16-bits.md), so the MIT default path's stats on interlaced 10-bit (AVC-Intra, ProRes) vary from run to run, and so does the "lossless yadif copy" CI compares against; only FastYuv's LGPL `Yadif` is deterministic. Found in the 2026-10-31 decision review. First: a minimal reproduction for an FFmpeg report (the owner's to file, as the x264 one), then the options for the default (yadif with SIMD off for 9-16 bits only, if FFmpeg offers it per filter; bwdif differs from scenedetect's copy) put to the owner
-  - Status: Open
-
 - The executable's HLS warning with FFmpeg 9
   - Why: `VideoReader.ExecutableHlsWarning` says ffmpeg fetches https segments without checking certificates, whatever the executable's version; docs/decisions/2026-10-16-https-certificates-and-tls.md noted tls_verify's default is 0 "until libavformat 63", and CI's executable is FFmpeg 9.0 now. Check FFmpeg 9 against a self-signed segment server; if it checks them, warn only for libavformat 62 and older, and record it. Found in the 2026-10-31 decision review
   - Status: Open
@@ -44,6 +40,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 - Move to FFmpeg 9's libraries (FFmpeg.AutoGen 9, Native packages on 9.0.x) when opencv-python's Linux wheels bundle FFmpeg 9
   - Why: scenedetect's frames come from OpenCV's FFmpeg; moving earlier risks bytes OpenCV doesn't give, and drops system FFmpeg 8 in-process
   - Status: Waiting (2026-10-14: FFmpeg.AutoGen 9.0.1.1 is out; opencv-python 5.0.0.93 and 4.14.0.94 still bundle libavcodec 62, so the trigger hasn't fired; the user: wait for OpenCV)
+
+- The owner files the FFmpeg yadif report (docs/ffmpeg-yadif-16bit-report.md)
+  - Why: FFmpeg 8.1's x86 yadif at 9-16 bits races between slice threads, so every run gives another picture; ShotDetector and FrameReader now run it on one thread there (docs/decisions/2026-11-02-deterministic-yadif-at-9-16-bits.md), which a fix upstream would make unneeded. A public post from the owner's account: theirs to file, never a session's
+  - Status: Open
 
 - The owner files the x264 AVX-512 report with VideoLAN (x264-avx512-report.md in the main checkout)
   - Why: CI's VideoWriter step needs DOTNET_TieredCompilation=0 because x264's AVX-512 code and .NET's tiered JIT differ about 1 run in 250 (CLAUDE.md); the report was written but not filed as of the 2026-10-15 reminder (it waited on a VideoLAN GitLab account). A public post from the owner's account: theirs to file, never a session's

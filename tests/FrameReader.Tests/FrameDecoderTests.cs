@@ -191,6 +191,51 @@ public class FrameDecoderTests
         }
     }
 
+    // Above 8 bits FFmpeg 8.1's x86 yadif gives a different picture on every run with slice threads (each slice's first
+    // pixels race with the slice before, at widths whose rows have no padding: 64 and 320 do, 352 doesn't), so the
+    // decoder runs it on one thread, where it equals the C code (-cpuflags 0) on every decode. 8 bits: as ffmpeg runs it.
+    [Theory]
+    [InlineData(64, "yuv420p10le")]
+    [InlineData(320, "yuv420p10le")]
+    [InlineData(320, "yuv422p10le")]
+    [InlineData(320, "yuv420p")]
+    public void DeinterlacingIsTheSameOnEveryDecode(int width, string format)
+    {
+        if (Libs is null || !FFmpegLibraries.CanDeinterlace(Libs))
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-dec-").FullName;
+        try
+        {
+            string path = Path.Combine(dir, "interlaced.mkv"), expected = Path.Combine(dir, "c.yuv");
+            Run("ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", $"testsrc2=s={width}x240:r=25:d=1", "-vf", "setfield=tff", "-pix_fmt", format, "-c:v", "ffv1", path);
+            string[] cOnly = format.EndsWith("le", StringComparison.Ordinal) ? ["-cpuflags", "0"] : [];
+            Run("ffmpeg", ["-v", "error", "-y", .. cOnly, "-i", path, "-vf", "yadif", "-f", "rawvideo", expected]);
+            byte[] reference = File.ReadAllBytes(expected);
+            for (int run = 0; run < 3; run++)
+            {
+                using var decoder = new FrameDecoder(path, Options with { Deinterlace = true });
+                var frames = new MemoryStream();
+                while (decoder.Next())
+                {
+                    int bytes = format.EndsWith("le", StringComparison.Ordinal) ? 2 : 1, chromaW = width / 2, chromaH = format.StartsWith("yuv420", StringComparison.Ordinal) ? 120 : 240;
+                    for (int p = 0; p < 3; p++)
+                    {
+                        var plane = decoder.GetPlane(p, out int stride);
+                        int w = (p == 0 ? width : chromaW) * bytes, h = p == 0 ? 240 : chromaH;
+                        for (int y = 0; y < h; y++)
+                            frames.Write(plane.Slice(y * stride, w));
+                    }
+                }
+
+                Assert.True(reference.AsSpan().SequenceEqual(frames.ToArray()), $"decode {run + 1} differs from ffmpeg's");
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // A read that fails part way (a network reset, a Stream that throws) is an error rather than a shorter video; a
     // truncated file still just ends where its data does, as in OpenCV.
     [Fact]

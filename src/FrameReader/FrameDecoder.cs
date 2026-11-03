@@ -786,16 +786,22 @@ public sealed unsafe class FrameDecoder : IDisposable
         }
     }
 
-    /// <summary>buffer (the decoded frames' size, format, aspect and time base) -> yadif -> buffersink.</summary>
+    /// <summary>
+    /// buffer (the decoded frames' size, format, aspect and time base) -> yadif -> buffersink. Above 8 bits yadif runs on
+    /// one thread: FFmpeg 8.1's x86 code there gives a different picture on every run with slice threads (each slice's
+    /// first pixels race with the slice before; docs/ffmpeg-yadif-16bit-report.md), and on one it equals the C code.
+    /// </summary>
     void BuildGraph(AVFrame* first)
     {
         _graph = ffmpeg.avfilter_graph_alloc();
         var sar = first->sample_aspect_ratio.num > 0 ? first->sample_aspect_ratio : new AVRational { num = 0, den = 1 };
         string args = string.Create(System.Globalization.CultureInfo.InvariantCulture,
             $"video_size={first->width}x{first->height}:pix_fmt={first->format}:time_base={_timeBase.num}/{_timeBase.den}:pixel_aspect={sar.num}/{sar.den}");
+        var desc = ffmpeg.av_pix_fmt_desc_get((AVPixelFormat)first->format);
+        string? yadifArgs = desc != null && desc->comp[0].depth > 8 ? "threads=1" : null;
         AVFilterContext* source, yadif, sink;
         Check(ffmpeg.avfilter_graph_create_filter(&source, ffmpeg.avfilter_get_by_name("buffer"), "in", args, null, _graph), "deinterlace");
-        Check(ffmpeg.avfilter_graph_create_filter(&yadif, ffmpeg.avfilter_get_by_name("yadif"), "yadif", null, null, _graph), "deinterlace");
+        Check(ffmpeg.avfilter_graph_create_filter(&yadif, ffmpeg.avfilter_get_by_name("yadif"), "yadif", yadifArgs, null, _graph), "deinterlace");
         Check(ffmpeg.avfilter_graph_create_filter(&sink, ffmpeg.avfilter_get_by_name("buffersink"), "out", null, null, _graph), "deinterlace");
         Check(ffmpeg.avfilter_link(source, 0, yadif, 0), "deinterlace");
         Check(ffmpeg.avfilter_link(yadif, 0, sink, 0), "deinterlace");

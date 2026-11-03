@@ -584,8 +584,9 @@ holds its decoded buffers until disposed, after the reader or decoder too.
   own default `listen_timeout` (-1, wait forever) fails to open the input ("Numerical result out of range", on the
   command line too), so FrameReader passes `listen_timeout` = `0`, the same wait without end, when you set none (your
   own value is used as it is, in seconds; -1 fails as in FFmpeg). The options' `CancellationToken` stops the wait.
-- Deinterlacing (`FrameDecoderOptions.Deinterlace`, yadif as `-vf yadif`), the display matrix applied as ffmpeg's
-  autorotate does (a 90-degree turn of 4:2:2, which ffmpeg converts first, is refused), decoder threads.
+- Deinterlacing (`FrameDecoderOptions.Deinterlace`, yadif as `-vf yadif`; above 8 bits as `-vf yadif=threads=1`,
+  since FFmpeg 8.1's x86 yadif gives a different picture on every run there with several threads, and on one equals
+  its C code: docs/ffmpeg-yadif-16bit-report.md), the display matrix applied as ffmpeg's autorotate does (a 90-degree turn of 4:2:2, which ffmpeg converts first, is refused), decoder threads.
 - Decoder options (`FrameDecoderOptions.CodecOptions`, as ffmpeg's before `-i`): `idct` = `simple` gives x86's
   frames on ARM for MPEG-1/2 and MJPEG, whose default IDCT rounds differently there.
 - Errors as `FrameReaderException` with a `Reason`: the libraries missing, an input FFmpeg can't open (or without
