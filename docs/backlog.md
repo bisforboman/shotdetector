@@ -31,10 +31,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
   - Status: Open
 
-- Scenes from an edited cut list that keep a run's frame times: an overload taking a `DetectionResult` and the edited cuts (frame numbers), giving the shots, scene list and exports at that run's frame times and length; `LoadScenes` stays scenedetect's
-  - Why: shotdetector-web#90 (correcting cuts on the page) exports through `LoadScenes`, which, like scenedetect 0.7.2's load-scenes (checked on both samples), times cuts at frame / average rate and ends at OpenCV's frame count. On a VFR film one fixed cut moves every other cut (2.000 s becomes 2.022 s), and after an edit list that ends early the last shot runs past the end (3.0 s becomes 4.56 s). The length is nb_frames, not the frames played, on fragmented MP4 too (114 played, 122 counted); a fragmented file whose moov lists only the first 38 samples drops every cut after frame 38. docs/decisions/2026-11-02-load-scenes-keep-positions.md
-  - Status: Open
-
 ## Waiting
 
 - Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)

@@ -339,6 +339,14 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
   detecting, for re-exporting an edited list (`ShotDetection.LoadScenes`); `--load-scenes-column`
   picks the start column (`Start Frame` by default, or a timecode/seconds column). Byte-identical to
   scenedetect's load-scenes, also with time ranges, `--merge-last-scene` and `--drop-short-scenes`.
+- An edited cut list at a detection's own frame times, in the library only: `ShotDetection.LoadScenes(DetectionResult,
+  cutFrames, options)` takes a run's result and the cuts as frames (0-based, counted as decoded; the run's are
+  `DetectionResult.CutFrames`, a position's frame `FrameOf`), and gives the shots, scene list and exports at those
+  frames' times, ending where the run ended. scenedetect's load-scenes times a frame number at frame / average rate and
+  ends at OpenCV's frame count, so on a variable frame rate, after an edit list that ends early or on fragmented MP4,
+  one fixed cut would move the others; here the run's own cuts given back are exactly its result. MinSceneLength,
+  `DropShortScenes` and `MergeLastScene` apply; the time range is the run's
+  ([why](docs/decisions/2026-11-02-load-scenes-keep-positions.md)).
 - `--config <file>` reads a scenedetect config file (scenedetect.cfg): its `[global]`, `[detect-*]` and
   output sections become the defaults, which command-line options override. Keys ShotDetector doesn't
   have are listed on stderr. (`-c` stays `--min-content-val`, as in `detect-adaptive -c`.)
