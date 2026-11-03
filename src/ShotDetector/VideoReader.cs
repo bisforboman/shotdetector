@@ -2296,11 +2296,12 @@ internal sealed partial class VideoReader
     /// <summary>
     /// A line of freezedetect's in the executable's graph (<see cref="DetectionOptions.FreezeDetect"/>): its mark (the
     /// freeze_start time as printed, freeze_duration in microseconds, freeze_end) kept for the next frame. False for any
-    /// other line.
+    /// other line. FFmpeg 8 prefixes the lines with the filter's instance name (<c>[Parsed_freezedetect_0 @</c>), older
+    /// ones such as 6.1 with its class's (<c>[freezedetect @</c>); the rest of the line is the same (issue #708).
     /// </summary>
     internal static bool FreezeLine(string line, ref string? start, ref long? micros, ref bool end)
     {
-        if (!line.StartsWith("[Parsed_freezedetect_", StringComparison.Ordinal))
+        if (!line.StartsWith("[Parsed_freezedetect_", StringComparison.Ordinal) && !line.StartsWith("[freezedetect @ ", StringComparison.Ordinal))
             return false;
         int at = line.IndexOf("] lavfi.freezedetect.", StringComparison.Ordinal);
         if (at < 0)
