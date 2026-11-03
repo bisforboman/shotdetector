@@ -420,7 +420,8 @@ How it keeps up while computing exactly what OpenCV and scenedetect compute:
 - only the pixels the exact `cv2.resize` port reads are converted to BGR (in-process, the row slices that hold
   them; with the executable, ffmpeg's `remap` filter keeps just those, or whole frames when that is cheaper);
 - the resize, BGR to HSV and the frame differences are vectorised (AVX2), with the same integer arithmetic;
-- decoding overlaps scoring, with all the CPUs (at most 16) as decoder threads, as OpenCV (`--threads` to change);
+- decoding overlaps scoring, with all the CPUs (at most 16) as decoder threads, as OpenCV, or twice the CPUs (at most
+  16) for frame-threaded decoders (h264, HEVC) up to 1080p (`--threads` to change);
   HD video read sequentially in-process also converts its frames on a thread apart from the decoding one.
 
 **Parallel detection**, the default for `Detect` and the CLI from 4 CPUs on, scores a long local file in chunks on
@@ -490,8 +491,9 @@ less CPU); there its point is ARM, where it gives x86's results.
   analyses the real frames instead of reproducing that. With `DeinterlaceMode.On` or `Auto` the results equal
   scenedetect's on a deinterlaced copy, which OpenCV reads correctly (checked in CI on 1080i XDCAM HD).
 - **Damaged video (best effort):** when the decoder drops frames it can't decode, every frame still gets its own
-  time and frame number, as with OpenCV (numbers skip). Error concealment depends on the decoder's thread count, so
-  ShotDetector uses OpenCV's (the CPUs, at most 16). With several threads, FFmpeg's decoders also conceal damage
+  time and frame number, as with OpenCV (numbers skip). Error concealment depends on the decoder's thread count,
+  and ShotDetector gives frame-threaded decoders (h264, HEVC) up to 1080p twice OpenCV's (the CPUs, at most 16) for
+  speed. With several threads, FFmpeg's decoders also conceal damage
   differently from run to run, in scenedetect as in ShotDetector, so on corrupt files the stats and sometimes a cut
   can vary between runs of either tool, and a truncated stream can vary in its last frame or two.
   `--threads 1` (`DetectionOptions.DecodeThreads = 1`) narrows this but doesn't remove it: damaged MPEG-1/2 (and

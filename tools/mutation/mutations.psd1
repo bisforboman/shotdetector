@@ -161,8 +161,8 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '? "yadif=threads=1" : "yadif"'; Replace = '? "yadif" : "yadif"'; Tests = 'VideoTests.TheExecutablesYadifIsTheSameOnEveryRun' }
 
         # Chunked runs: twice the CPUs' decoder threads (at most 16) for frame-threaded decoders up to 1080p, shared out among the chunks
-        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'frameThreads && pixels <= MoreThreadsMaxPixels ? Math.Clamp(2 * cpus, 1, 16)'; Replace = 'frameThreads && pixels <= MoreThreadsMaxPixels ? Math.Clamp(cpus, 1, 16)'; Tests = 'ParallelTests.ChunkedRunsGiveFrameThreadedDecodersTwiceTheCpus' }
-        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'frameThreads && pixels <= MoreThreadsMaxPixels ?'; Replace = 'frameThreads ?'; Tests = 'ParallelTests.ChunkedRunsGiveFrameThreadedDecodersTwiceTheCpus' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'frameThreads && pixels <= MoreThreadsMaxPixels ? Math.Clamp(2 * cpus, 1, 16)'; Replace = 'frameThreads && pixels <= MoreThreadsMaxPixels ? Math.Clamp(cpus, 1, 16)'; Tests = 'ParallelTests.FrameThreadedDecodersGetTwiceTheCpus' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'frameThreads && pixels <= MoreThreadsMaxPixels ?'; Replace = 'frameThreads ?'; Tests = 'ParallelTests.FrameThreadedDecodersGetTwiceTheCpus' }
         # ... told by codec name on the executable path, whose FFmpeg libraries may not load
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'DecodesInProcess ? FrameReader.FrameDecoder.HasFrameThreads(Codec) : FrameThreadedCodecs.Contains(Codec)'; Replace = 'DecodesInProcess && FrameReader.FrameDecoder.HasFrameThreads(Codec)'; Tests = 'ParallelTests.TellsFrameThreadedDecoders' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '_codedSize.W, _codedSize.H, Turn, CropRegion.X'; Replace = '_codedSize.W, _codedSize.H, 0, CropRegion.X'; Tests = 'FastYuvTests.SameFramesAsTheDefaultPath' }

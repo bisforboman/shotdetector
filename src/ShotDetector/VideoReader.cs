@@ -1755,7 +1755,7 @@ internal sealed partial class VideoReader
 
         // Rotated as OpenCV does (Turn), not by ffmpeg's autorotate.
         string[] args = ["-v", "info", "-nostats", .. noStdin, "-y",
-            "-threads", $"{_decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount)}", .. seek, .. _inputOptions, .. IdctOptions(Codec, _xvidIdct), .. MaxPixels, "-noautorotate", "-i", _path,
+            "-threads", $"{DecodeThreads}", .. seek, .. _inputOptions, .. IdctOptions(Codec, _xvidIdct), .. MaxPixels, "-noautorotate", "-i", _path,
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
 
         // blackdetect (DetectionOptions.BlackDetect) on the frames detection reads, as decoded (deinterlaced when
@@ -2200,13 +2200,29 @@ internal sealed partial class VideoReader
         }
     }
 
+    /// <summary>OpenCV's decoder threads: the CPUs available up to 16 (Environment.ProcessorCount honours container limits).</summary>
+    internal static int OpenCvDecodeThreads(int cpus) => Math.Clamp(cpus, 1, 16);
+
     /// <summary>
-    /// The default decoder threads: OpenCV's, the CPUs available up to 16 (Environment.ProcessorCount honours container
-    /// limits), on both paths. Frame-threaded decoders conceal damaged data differently with each thread count, so only
-    /// OpenCV's gives scenedetect's frames for corrupt files (checked on Linux: exact at the CPU count, different at 1-3
-    /// and 16 on 4 CPUs); clean video decodes the same with any count (docs/decisions/, 2026-10-11; issue #12 before).
+    /// The decoder threads when the caller set none, sequential runs and the total a chunked run shares out alike:
+    /// OpenCV's (<see cref="OpenCvDecodeThreads"/>), or, for a decoder that decodes several frames at once
+    /// (<paramref name="frameThreads"/>: h264, HEVC, ...) and frames up to <see cref="MoreThreadsMaxPixels"/>, twice the
+    /// CPUs, at most 16. Such a decoder waits on the frames it has in flight, one per thread: 8 threads instead of 4
+    /// decoded sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs, and 2 chunks of 2 threads left the cores idle where 2
+    /// of 4 decoded 1.11x (8-bit) and 1.22x (10-bit) as fast in the same CPU time, for 30 MB more (2026-10-21). Clean
+    /// video decodes the same with any count; damaged video's concealment differs from run to run at any count above
+    /// one, in OpenCV too (docs/decisions/2026-10-22-damaged-files-best-effort.md,
+    /// docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md). Slice-threaded decoders (MPEG-2) gain
+    /// nothing; at 3840 x 2160 it was 1.09x for 125 MB more (each thread holds 4K frames), so larger frames keep OpenCV's.
     /// </summary>
-    internal static int DefaultDecodeThreads(int cpus) => Math.Clamp(cpus, 1, 16);
+    internal static int DefaultDecodeThreads(int cpus, bool frameThreads, long pixels) =>
+        frameThreads && pixels <= MoreThreadsMaxPixels ? Math.Clamp(2 * cpus, 1, 16) : OpenCvDecodeThreads(cpus);
+
+    /// <summary>The largest frame <see cref="DefaultDecodeThreads"/> gives a frame-threaded decoder twice the CPUs for: 1920 x 1080.</summary>
+    internal const long MoreThreadsMaxPixels = 1920L * 1080;
+
+    /// <summary>The decoder threads this reader's decoder opens with: the caller's, else <see cref="DefaultDecodeThreads"/>.</summary>
+    int DecodeThreads => _decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount, HasFrameThreads, (long)SourceWidth * SourceHeight);
 
     /// <summary>remap's maps as 16-bit PGM files in a new temp folder: x.pgm (source column) and y.pgm (source row).</summary>
     string WriteMaps(CvResize resizer)

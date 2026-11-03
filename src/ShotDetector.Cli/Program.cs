@@ -49,7 +49,7 @@ const string Usage = """
                                          or auto: when the stream is flagged interlaced
           --crop <x0> <y0> <x1> <y1>     Only analyse this part of the frame (inclusive pixel corners)
           --threads <n>                  Decoder threads (0 = FFmpeg's choice; default: the CPUs, at most 16, as
-                                         OpenCV, which damaged video needs to match). ~20 MB each at 1080p
+                                         OpenCV; twice that for h264/HEVC up to 1080p). ~20 MB each at 1080p
           --sequential                   Score the file in one pass instead of in chunks (parallel, with the
                                          same result, is the default for long local files from 4 CPUs on and
                                          for frames up to 3840x2160)

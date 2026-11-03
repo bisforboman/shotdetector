@@ -37,7 +37,7 @@ public class DecodeThreadsTests
     [InlineData(16, 16)]
     [InlineData(64, 16)]
     public void DefaultIsOpenCvs(int cpus, int threads) =>
-        Assert.Equal(threads, VideoReader.DefaultDecodeThreads(cpus));
+        Assert.Equal(threads, VideoReader.OpenCvDecodeThreads(cpus));
 }
 
 public class ContentScorerTests

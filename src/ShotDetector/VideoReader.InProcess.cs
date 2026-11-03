@@ -323,7 +323,7 @@ internal sealed partial class VideoReader
                 InProcess.Load(_ffmpegDirectory);
                 var decoderOptions = new FrameReader.FrameDecoderOptions
                 {
-                    Threads = _decodeThreads ?? DefaultDecodeThreads(Environment.ProcessorCount),
+                    Threads = DecodeThreads,
                     Deinterlace = _deinterlace,
                     RowDeinterlacer = _yadif,
                     InputOptions = InProcessProbe.Options(_inputOptions),
