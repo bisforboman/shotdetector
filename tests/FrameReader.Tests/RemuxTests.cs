@@ -362,4 +362,84 @@ public class RemuxTests
             Directory.Delete(dir, true);
         }
     }
+
+    // Issue #717: MinBufferTime replaces the muxer's minBufferTime (twice the last whole segment) in the final MPD and
+    // nothing else; null leaves the files ffmpeg's. Combinations that serve or delete the MPD while muxing are refused.
+    [Fact]
+    public void DashMinBufferTime()
+    {
+        if (Libs is null)
+            return;
+        string dir = Directory.CreateTempSubdirectory("framereader-remux-").FullName;
+        try
+        {
+            string input = Path.Combine(dir, "in.mp4");
+            Ffmpeg(["-v", "error", "-y", .. Make.Split(' '), "-map", "0", "-map", "1", "-c:v", "mpeg4", "-g", "12", "-c:a", "aac", input]);
+            var dash = new Dictionary<string, string>
+            {
+                ["seg_duration"] = "1",
+                ["use_template"] = "1",
+                ["use_timeline"] = "0",
+                ["adaptation_sets"] = "id=0,streams=v id=1,streams=a",
+            };
+            string want = Directory.CreateDirectory(Path.Combine(dir, "ffmpeg")).FullName;
+            string plain = Directory.CreateDirectory(Path.Combine(dir, "plain")).FullName, set = Directory.CreateDirectory(Path.Combine(dir, "set")).FullName;
+            Ffmpeg(["-v", "error", "-y", "-i", input, "-map", "0", "-c", "copy", "-fflags", "+bitexact", "-f", "dash",
+                .. dash.SelectMany(o => new[] { "-" + o.Key, o.Value }), Path.Combine(want, "manifest.mpd").Replace('\\', '/')]);
+            Remux.Copy(input, Path.Combine(plain, "manifest.mpd"), new RemuxOptions { Container = "dash", MuxerOptions = dash, Bitexact = true, MinBufferTime = null });
+            Remux.Copy(input, Path.Combine(set, "manifest.mpd"), new RemuxOptions { Container = "dash", MuxerOptions = dash, Bitexact = true, MinBufferTime = TimeSpan.FromSeconds(2) });
+
+            // Default: every file ffmpeg's, the MPD's minBufferTime the muxer's 2 x the last whole segment, 0.96 s
+            // (keyframes every 12 frames at 25 fps), cut to tenths.
+            string[] names = [.. Directory.GetFiles(want).Select(f => Path.GetFileName(f)).Order()];
+            Assert.Equal(names, Directory.GetFiles(plain).Select(f => Path.GetFileName(f)).Order());
+            Assert.Equal(names, Directory.GetFiles(set).Select(f => Path.GetFileName(f)).Order());
+            foreach (string name in names)
+                Assert.True(File.ReadAllBytes(Path.Combine(want, name)).AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(plain, name))), name);
+            string mpd = File.ReadAllText(Path.Combine(want, "manifest.mpd"));
+            Assert.Contains("minBufferTime=\"PT1.9S\"", mpd);
+
+            // Set: that attribute alone differs, and the MPD still parses.
+            foreach (string name in names.Where(n => n != "manifest.mpd"))
+                Assert.True(File.ReadAllBytes(Path.Combine(want, name)).AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(set, name))), name);
+            string changed = File.ReadAllText(Path.Combine(set, "manifest.mpd"));
+            Assert.Equal(mpd.Replace("minBufferTime=\"PT1.9S\"", "minBufferTime=\"PT2.0S\"", StringComparison.Ordinal), changed);
+            var root = System.Xml.Linq.XDocument.Load(Path.Combine(set, "manifest.mpd")).Root!;
+            Assert.Equal("MPD", root.Name.LocalName);
+            Assert.Equal("PT2.0S", root.Attribute("minBufferTime")?.Value);
+            Assert.Equal(TimeSpan.FromSeconds(2), System.Xml.XmlConvert.ToTimeSpan(root.Attribute("minBufferTime")!.Value));
+
+            string x = Path.Combine(dir, "x", "x.mpd");
+            RemuxOptions With(string key, string value) => new()
+            {
+                Container = "dash",
+                MinBufferTime = TimeSpan.FromSeconds(2),
+                MuxerOptions = new Dictionary<string, string>(dash) { [key] = value },
+            };
+            foreach (var (key, value) in new[] { ("streaming", "1"), ("ldash", "true"), ("window_size", "3"), ("remove_at_exit", "on") })
+                Assert.Contains(key, Assert.Throws<ArgumentException>(() => Remux.Copy(input, x, With(key, value))).Message);
+            Assert.Throws<ArgumentOutOfRangeException>(() => Remux.Copy(input, x, new RemuxOptions { Container = "dash", MinBufferTime = TimeSpan.FromSeconds(-1) }));
+            Assert.Throws<ArgumentException>(() => Remux.Copy(input, Path.Combine(dir, "x.mp4"), new RemuxOptions { MinBufferTime = TimeSpan.FromSeconds(2) }));
+            Assert.Throws<ArgumentException>(() => Remux.Copy(input, "http://localhost:1/x.mpd", new RemuxOptions { Container = "dash", MinBufferTime = TimeSpan.FromSeconds(2) }));
+            Assert.False(Directory.Exists(Path.Combine(dir, "x")));
+
+            // Off, as FFmpeg reads a bool or int: the MPD is written and set.
+            Remux.Copy(input, Path.Combine(set, "manifest.mpd"), With("streaming", "0"));
+            Assert.Contains("minBufferTime=\"PT2.0S\"", File.ReadAllText(Path.Combine(set, "manifest.mpd")));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Theory]
+    [InlineData(2.0, "PT2.0S")]
+    [InlineData(12.5, "PT12.5S")]
+    [InlineData(0.125, "PT0.125S")]
+    [InlineData(0, "PT0.0S")]
+    [InlineData(90.5, "PT1M30.5S")]
+    [InlineData(3600, "PT1H0M0.0S")]
+    public void MinBufferTimeWrittenAsTheMuxerWritesDurations(double seconds, string expected) =>
+        Assert.Equal(expected, FrameReader.DashMinBufferTime.Format(TimeSpan.FromSeconds(seconds)));
 }

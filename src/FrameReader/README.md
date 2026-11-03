@@ -378,6 +378,24 @@ with the MPD's templates to match (two streams of one type need `$Representation
 Segments end at keyframes, so `seg_duration` is a target: for exact 2.4 s segments the video needs a keyframe every
 2.4 s (`VideoWriterOptions.KeyframeEvery`).
 
+The MPD's `minBufferTime` (how much a player buffers at least before it starts) is by default the dash muxer's: twice
+the duration of the last segment that ended at a keyframe (with `ldash`, the longest GOP), cut to tenths, so
+`seg_duration=6` gives about `PT12.0S`. FFmpeg has no option for it; `MinBufferTime` sets it, in the final MPD after
+muxing, e.g. Shaka Packager's 2 s:
+
+```csharp
+Remux.Copy("film.mkv", "out/manifest.mpd", new()
+{
+    Container = "dash",
+    MuxerOptions = dashOptions, // as above
+    MinBufferTime = TimeSpan.FromSeconds(2), // minBufferTime="PT2.0S"
+});
+```
+
+It is refused (`ArgumentException`) with the muxer options for an MPD read while it is written (`streaming`, `ldash`,
+`window_size`) or deleted at the end (`remove_at_exit`), and for output that isn't a local file: only the final MPD
+gets the value (docs/decisions/2026-11-03-dash-min-buffer-time.md).
+
 `Encryption` adds Common Encryption (CENC, AES-CTR with your key ID and key): FFmpeg's mp4 muxer encrypts, the files
 ffmpeg's `-encryption_scheme cenc-aes-ctr -encryption_key K -encryption_kid I` gives (for DASH, through the dash
 muxer's `format_options`). With `Widevine = true` on DASH output, each init segment also gets Widevine's `pssh` box
