@@ -6,6 +6,23 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.29.0 – 2026-11-03
+
+A frame-source run that stops early ends where the file path does, and freeze spans through ffmpeg older than 8.
+
+### Fixed
+
+- `DetectionOptions.FreezeDetect` through an ffmpeg executable older than FFmpeg 8 (6.1, for one) gave an empty
+  `FreezeSpans`, without an error: those versions log freezedetect's lines as `[freezedetect @`, which weren't read
+  (issue #708).
+- Frames from the caller (`Detect(YuvVideo, frames)`) that stop before the video ends: the last shot ended at the
+  frames read over the average rate (4.740 s for 75 frames of a 1250/79 fps variable-rate video), not where
+  `Detect(path)` stopped at the same frame by its end time ends it (the last frame's time plus a frame at the average
+  rate, 3.5832 s); at a constant rate off its time base's grid (29.97 fps in 1/1000, 24 fps) they differed in the last
+  digits. Frames ending before `YuvVideo.FrameTimestamps`' last entry now end there, as scenedetect ends a stopped run;
+  give the timestamps to stop a run early (without them a stop looks like the video's end). Runs read to the last
+  entry are unchanged.
+
 ## 3.28.0 – 2026-11-03
 
 Edited cut lists at a run's own frame times, black and freeze spans for ranges, and the same deinterlaced picture on every run above 8 bits.

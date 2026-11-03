@@ -7,6 +7,25 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.23.0 – 2026-11-03
+
+Several audio analyses on one decode, Audio.Convert's choice of stream, and DASH's minBufferTime.
+
+### New
+
+- `AudioAnalysis.Run` / `RunAsync`: reference tone, waveform, loudness and silences over one decode of an
+  `AudioReader` (each turned on by its options in `AudioAnalysisOptions`, plus a `Chunks` callback for your own
+  analysis), each result the one its own call gives on a reader opened with the same options, to the bit. An ingest
+  pipeline that ran four analyses decodes the audio once instead of four times (issue #718).
+- `AudioReader.DecodesFloat` and `AudioReader.Duration` are public, for building a `WaveformBuilder` as
+  `WaveformData.Read` does.
+- `AudioConvertOptions.Stream`: which audio stream `Audio.Convert` converts, counted among the input's audio streams
+  from 0 as ffmpeg's `-map 0:a:N` counts them (the file `ffmpeg -i IN -map 0:a:1 -vn OUT` writes, for 1); null, as
+  before, the best one. A number past the last audio stream fails as `AudioReaderOptions.Stream` does (issue #716).
+- `Remux`: `RemuxOptions.MinBufferTime` sets the DASH MPD's `minBufferTime` (e.g. 2 s, as Shaka Packager writes),
+  which FFmpeg's dash muxer derives as twice the last segment's duration and has no option for; null keeps today's
+  output byte for byte. Refused with the muxer's `streaming`, `ldash`, `window_size` or `remove_at_exit` (issue #717).
+
 ## 2.22.0 – 2026-11-03
 
 Deinterlacing above 8 bits gives the same picture on every run.

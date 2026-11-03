@@ -73,7 +73,8 @@ needing both (black spans, #681, and freeze spans, #687: each FrameReader's dete
 detection-pass option in the same PR). 2.21.0: 0 of 1 (`AudioReaderOptions.Stream`, #697, for media-qc's every-track
 loudness: FrameReader alone). 2.22.0: 1 of 1
 needing both (yadif on one thread above 8 bits, #713: FrameReader's FrameDecoder and ShotDetector's executable path in
-the same PR).
+the same PR). 2.23.0: 0 of 3
+(`AudioAnalysis` on one decode, #718; `AudioConvertOptions.Stream`, #721; DASH's `MinBufferTime`, #722: each FrameReader alone).
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
