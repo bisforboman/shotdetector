@@ -435,7 +435,7 @@
         @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'throw new InvalidOperationException("Finish was called: start a new builder.");'; Replace = '{ }'; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
 
         # FrameReader: a whole-file job's token reaches FFmpeg's interrupt callback, so a waiting network read stops (issue #522)
-        @{ File = 'src/FrameReader/Audio.cs'; Find = 'InputOptions = o.InputOptions, CancellationToken = cancellationToken }'; Replace = 'InputOptions = o.InputOptions }'; Tests = 'CancellationTests.AudioConvertStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
+        @{ File = 'src/FrameReader/Audio.cs'; Find = 'Stream = o.Stream, CancellationToken = cancellationToken }'; Replace = 'Stream = o.Stream }'; Tests = 'CancellationTests.AudioConvertStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/Video.cs'; Find = 'new ProbeOptions { CancellationToken = cancellationToken }'; Replace = 'null'; Tests = 'CancellationTests.VideoTranscodeStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/Video.cs'; Find = 'Deinterlace = deinterlace, CancellationToken = cancellationToken }'; Replace = 'Deinterlace = deinterlace }'; Tests = 'CancellationTests.VideoTranscodeStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/FrameReader/Video.cs'; Find = 'new AudioReaderOptions { CancellationToken = cancellationToken }'; Replace = 'null'; Tests = 'CancellationTests.VideoTranscodeStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
