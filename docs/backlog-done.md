@@ -1132,3 +1132,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - Remux DASH: set the MPD's minBufferTime
   - Why: issue #717: with `seg_duration=6` the dash muxer's MPD says PT12.5S where Shaka Packager says 2 s, and players buffer at least that before they start, so the in-process output starts later than Shaka's. FFmpeg 8.1's muxer derives it (twice the last segment, or ldash's longest GOP) and has no option for it
   - Status: **Done (2026-11-03)**: `RemuxOptions.MinBufferTime` rewrites it in the final MPD after the trailer (null: unchanged, ffmpeg's byte for byte); refused with `streaming`, `ldash`, `window_size`, `remove_at_exit` or a non-file output. docs/decisions/2026-11-03-dash-min-buffer-time.md
+
+- `AudioConvertOptions.Stream`: which audio stream `Audio.Convert` converts
+  - Why: `AudioReaderOptions.Stream` (FrameReader 2.21) picks any audio stream to read, but `Audio.Convert` could only convert the best one (`av_find_best_stream`), so converting a file's second track (a commentary, another language) meant reading, filtering and writing by hand, without Convert's exact ffmpeg output. Issue #716
+  - Status: **Done (2026-11-03)**: `Stream`, counted as `-map 0:a:N` counts, through AudioReader's own stream lookup; the file `ffmpeg -i IN -map 0:a:1 -vn OUT` writes, byte for byte (tests/FrameReader.Tests/AudioConvertTests.cs); a number past the last audio stream fails as AudioReader's does
