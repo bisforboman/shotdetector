@@ -235,10 +235,14 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         FrameReader.FFmpegLibraries.Load(Libs); // the frames' decoder (Decoded)
         var options = new DetectionOptions { Detector = DetectorKind.Content, CollectStats = true, FfmpegDirectory = Libs, Decoder = decoder, Yuv420Converter = new SwscaleYuv420() };
 
-        // The frames stop after 75 (a host's Stop): the file read with frame 75's time as its end reads the same 75. On a
-        // variable frame rate the last shot ends at frame 74's time plus a frame at the average rate there, not at 75
-        // over the average rate (the end of a run read to the end of its frames); at a constant rate both are the same.
-        foreach (var (clip, timestamps) in new[] { (VariableRateClip(clips.ThreeShots), true), (clips.ThreeShots, true), (clips.ThreeShots, false) })
+        // The frames stop after 75 (a host's Stop): the file read with frame 75's time as its end reads the same 75. The
+        // last shot ends at frame 74's time plus a frame at the average rate, not at 75 over the average rate (the end of
+        // a run read to the end of its frames): on a variable frame rate, and at a constant one whose frames aren't on
+        // its grid in the time base (29.97 fps in 1/1000, 24 fps in 1/1000). Given every frame's timestamp: without them,
+        // a stop and the video's end look the same (docs/decisions/2026-11-03-stopped-frame-source-end.md).
+        string ntsc = Transcoded(clips.ThreeShots, "2997.webm", "-vf", "fps=30000/1001", "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "30", "-deadline", "realtime");
+        string film = Transcoded(clips.ThreeShots, "24.mp4", "-vf", "fps=24", "-c:v", "libx264", "-video_track_timescale", "1000");
+        foreach (var (clip, timestamps) in new[] { (VariableRateClip(clips.ThreeShots), true), (clips.ThreeShots, true), (clips.ThreeShots, false), (ntsc, true), (film, true) })
         {
             string end = new VideoReader(clip, options).Position(75).Seconds.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture);
             var file = ShotDetection.Detect(clip, options with { EndTime = end });
@@ -263,6 +267,10 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         var (vfr, vfrFrames) = Decoded(VariableRateClip(clips.ThreeShots), timestamps: true);
         var stopped = ShotDetection.Detect(vfr, vfrFrames.Take(75), options);
         Assert.Equal(3.92 + (1 / stopped.Video.FrameRate.Value), stopped.Shots[^1].End.Seconds, 3);
+
+        // At 29.97 fps in 1/1000 without the timestamps, the frames' end is the video's: 75 over the average rate.
+        var (untimed, untimedFrames) = Decoded(ntsc);
+        Assert.Equal(75 * 1001 / 30000.0, ShotDetection.Detect(untimed, untimedFrames.Take(75), options).Shots[^1].End.Seconds, 9);
     }
 
     [Fact]
@@ -1430,6 +1438,23 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     /// A copy of <paramref name="path"/> at a variable frame rate (issue #609's): its frames at 25 fps to frame 50, then
     /// each lasting twice as long; MPEG-4 Part 2 again, in mp4.
     /// </summary>
+    /// <summary>The clip at <paramref name="path"/> encoded again with <paramref name="args"/>, next to it, once.</summary>
+    static string Transcoded(string path, string suffix, params string[] args)
+    {
+        string to = Path.Combine(Path.GetDirectoryName(path)!, $"{Path.GetFileNameWithoutExtension(path)}-{suffix}");
+        lock (H264Lock)
+        {
+            if (!File.Exists(to))
+            {
+                string partial = Path.Combine(Path.GetDirectoryName(to)!, "partial-" + Path.GetFileName(to));
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", "-i", path, .. args, partial], default);
+                File.Move(partial, to, true);
+            }
+        }
+
+        return to;
+    }
+
     static string VariableRateClip(string path)
     {
         string vfr = Path.Combine(Path.GetDirectoryName(path)!, $"{Path.GetFileNameWithoutExtension(path)}-vfr.mp4");
