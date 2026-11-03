@@ -408,9 +408,10 @@ packages or the CLI's bundled ones, or a system install. It is the default whene
 (`Decoder = VideoDecoder.Auto`; from `FfmpegDirectory` / `--ffmpeg-dir`, else next to the app, else the system's
 usual places); otherwise the executable is used. `--decoder inprocess` insists on the libraries, `--decoder
 process` on the executable. A URL decodes in-process when the libraries have its protocol (FrameReader.Native: http
-and https), as a stream; other URLs use the executable. Through the executable, an http or https HLS playlist's https
-segments, keys and variants are fetched without their certificates checked (FFmpeg doesn't pass the check on to them;
-in-process, FrameReader does), so when the libraries fail to open an http or https URL (a refused certificate, or a
+and https), as a stream; other URLs use the executable. Through an executable older than FFmpeg 9, an http or https
+HLS playlist's https segments, keys and variants are fetched without their certificates checked (FFmpeg 8 doesn't pass
+the check on to them, and warns in `Warnings`; FFmpeg 9 checks every https connection; in-process, FrameReader does),
+so when the libraries fail to open an http or https URL (a refused certificate, or a
 format they lack, such as DASH in FrameReader.Native, which leaves out libxml2), `Auto` reports that failure rather
 than handing the URL to the executable: `--decoder process` (`Decoder = VideoDecoder.FfmpegProcess`) reads it there,
 and for an http or https playlist the result then says so (`DetectionResult.Warnings`; `shotdetect` prints it on stderr as soon as it is known), as does
@@ -543,8 +544,8 @@ less CPU); there its point is ARM, where it gives x86's results.
   strings (`concat:`, `subfile:`, `data:`...) are refused. A remote playlist (HLS) names further URLs. FFmpeg's own checks keep a remote playlist from reaching local files; on
   top, an http(s) URL here reads only http, https, tcp, tls and crypto (rtsp: rtsp, rtp, udp, tcp, tls), by the
   executable and in-process alike, an https URL's server certificate is checked against the system's trusted ones
-  (FFmpeg 8 doesn't by default), in-process also for the segments a playlist names (the ffmpeg executable doesn't pass
-  the check on to them),
+  (FFmpeg 8 doesn't by default), in-process also for the segments a playlist names (an ffmpeg executable older than
+  FFmpeg 9 doesn't pass the check on to them; FFmpeg 9 checks them by default),
   and a read that waits more than 30 s fails (cancellation stops it sooner). A
   playlist can still
   name other http addresses, including ones on your network. Pass untrusted URLs only where that's acceptable, and
