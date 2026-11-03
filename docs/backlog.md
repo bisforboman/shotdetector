@@ -23,10 +23,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: 8 threads instead of 4 made sequential 1080p h264 1.19-1.22x as fast on 4 vCPUs with identical results on clean files (2026-10-21), kept off for damaged files' concealment, which the next day turned out to vary from run to run in both tools anyway; chunked runs already get it (#461). A PR with twice the CPUs (at most 16) for frame-threaded decoders up to 1080p sequentially too, CI's exact set (truncated.ts included) as the guard, timings on CI's runners; the owner decides on the result (docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md)
   - Status: Open
 
-- SkipUnreferencedTests' "read again" assertion depends on timing
-  - Why: `FramesAreThoseOfDecodingEveryPacket` asserts that an indexed input (mp4, mkv, MPEG-TS) is read again after the short step, which happens only if read-ahead decoding gets past it during a `Thread.Sleep(50)`; on a busy runner it doesn't, and the test fails "read again 0 times" with nothing wrong (main: runs 41097253436 and 41225604504, mpeg1.mkv; PR #710: mpeg1.mkv on x64 and mpeg2.ts on ARM, a PR changing no C#; PR #715: mpeg2.ts on x64, run 41600042105 attempt 1, a PR changing only `.claude/` and CLAUDE.md, green on its re-run). A red required check that isn't the PR's costs a re-run each time. Make it deterministic: wait until decoding ahead has passed the step (a test hook or the reader's own counters) instead of sleeping. Found 2026-11-02
-  - Status: In progress (2026-11-03)
-
 - Several audio analyses on one decode (#718): `AudioAnalysis` (an options record, plus a chunk callback) runs reference tone, waveform, loudness and silence over one `AudioReader`, each result equal to its standalone call's
   - Why: an ingest pipeline decodes a long programme's audio 3-4 times today, once per analysis; the design and its choices are in docs/decisions/2026-11-03-audio-analyses-on-one-decode.md
   - Status: Open (shape chosen 2026-11-03: the options record with a chunk callback)
