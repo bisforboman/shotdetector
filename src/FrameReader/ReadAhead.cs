@@ -92,6 +92,19 @@ internal sealed class ReadAhead : IDisposable
         }
     }
 
+    /// <summary>
+    /// Waits until the thread has read ahead all it can for now: its queue full, the input ended (or failed) or the thread
+    /// paused (tests: what a long enough wait lets it decode, whatever else the machine runs).
+    /// </summary>
+    internal void WaitUntilIdle()
+    {
+        lock (_lock)
+        {
+            while (_thread is not null && !_stop && !_ended && !_paused && _queue.Count < _depth)
+                Monitor.Wait(_lock);
+        }
+    }
+
     /// <summary>Pauses the thread and lets go of the frames read ahead (and the current one): before a seek.</summary>
     internal void Clear()
     {
