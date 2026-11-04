@@ -84,15 +84,15 @@ one claim: a chunk's scores equal the sequential run's scores for the same frame
 - Decoder threads for frame-threaded decoders (`FrameDecoder.HasFrameThreads`: FFmpeg's frame threading, h264, HEVC,
   VP9, ProRes; not MPEG-2's slices or dav1d's own threads), 2026-10-21: a chunked run shares out twice the CPUs (at
   most 16) instead of the CPUs for frames up to 1920 x 1080, so 2 chunks on 4 CPUs get 4 threads each, OpenCV's count
-  for one decoder, rather than 2 (`ChunkedDecodeThreads`). Such a decoder decodes a frame per thread at once and waits
-  on the frames in flight: profiled on 4 vCPUs, 2 frame threads per chunk kept each 62-68% busy. Measured on this
+  for one decoder, rather than 2 (`VideoReader.DefaultDecodeThreads`). Such a decoder decodes a frame per thread at
+  once and waits on the frames in flight: profiled on 4 vCPUs, 2 frame threads per chunk kept each 62-68% busy. Measured on this
   4-vCPU container, 150 s at 1080p25, min of 3 interleaved runs, adaptive with stats: h264 8-bit 16.8 s to 15.1 s
   (1.11x), 10-bit 23.8 s to 19.5 s (1.22x), the same CPU time, ~30 MB more, identical scene and stats CSVs; MPEG-2
   unchanged. At 3840 x 2160 it gained 1.09x for 125 MB more (398 to 523 MB: each thread holds 4K frames), so larger
-  frames keep the CPUs' count. A sequential run keeps OpenCV's count too
-  (docs/decisions/2026-10-11-decoder-threads-like-opencv.md: damaged files conceal the way scenedetect's decoder does
-  only with it, though corrupt input still varies from run to run in both: 2026-10-22-damaged-files-best-effort.md),
-  although 8 threads there gave 1.19-1.22x on 1080p h264 as well.
+  frames keep the CPUs' count. Since 2026-11 a sequential run uses the same count (`VideoReader.DefaultDecodeThreads`;
+  docs/decisions/2026-10-31-sequential-decoder-threads-remeasure.md): 8 threads there gave 1.19-1.22x on 1080p h264,
+  and corrupt input varies from run to run in both tools at any count above one
+  (2026-10-22-damaged-files-best-effort.md).
 - Frame buffers (between a reader's decoding thread and the scoring): a sequential run's 8 shared out,
   `ChunkBuffers` = max(2, 8 / chunks), so 4 each in 2 chunks and 2 in 3 or 4 (2026-10-18; it was 8 each). Measured
   on this 4-CPU container, content detector, with and without stats, 3 interleaved rounds (the table below): CPU time
