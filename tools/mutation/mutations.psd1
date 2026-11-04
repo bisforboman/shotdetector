@@ -103,7 +103,7 @@
         @{ File = 'src/ShotDetector/HashDetector.cs'; Find = '(float)((float)(sorted[half - 1] + sorted[half]) / 2f)'; Replace = 'sorted[half]'; Tests = 'HashDetectorTests' }
 
         # Rotation as OpenCV's: the converted image turned by the display matrix's angle, not ffmpeg's autorotate
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '.. MaxPixels, "-noautorotate", "-i", _path,'; Replace = '.. MaxPixels, "-i", _path,'; Tests = 'InProcessTests.RotatesAsTheFfmpegExecutable' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'cancellationToken), "-noautorotate", "-i", _path,'; Replace = 'cancellationToken), "-i", _path,'; Tests = 'InProcessTests.RotatesAsTheFfmpegExecutable' }
 
         # FastYuv as x86's swscale: 4:2:2 reads its own row's chroma (YUV2RGB_LOOP's vshift), only where
         # swscale takes the unscaled converter (even decoded height), converted before turning (cv::rotate)
