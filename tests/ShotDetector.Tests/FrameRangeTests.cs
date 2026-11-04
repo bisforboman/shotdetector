@@ -708,10 +708,9 @@ public class FrameRangeTests
 
         Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Yuv420Converter = null }));
 
-        // The tone trim sets a time range: refused for ranges, even with the tone given.
-        var toned = video with { ReferenceTone = [] };
-        Assert.Contains("isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(toned, all, 0, options with { TrimReferenceTone = true })).Message);
-        Assert.Contains("isn't available for ranges", Assert.Throws<ArgumentException>(() => ShotDetection.Merge(toned, [ShotDetection.ScoreRange(toned, all, 0, options)], options with { TrimReferenceTone = true })).Message);
+        // The tone trim needs the caller's tone, as Detect's on frames (RangeToneTests has the rest).
+        Assert.Contains("YuvVideo.ReferenceTone", Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { TrimReferenceTone = true })).Message);
+        Assert.Contains("YuvVideo.ReferenceTone", Assert.Throws<ArgumentException>(() => ShotDetection.Merge(video, [ShotDetection.ScoreRange(video, all, 0, options)], options with { TrimReferenceTone = true })).Message);
 
         // Deinterlacing needs yadif; ranges scored without it don't merge with it (their fingerprints differ).
         Assert.Throws<ArgumentException>(() => ShotDetection.ScoreRange(video, all, 0, options with { Deinterlace = DeinterlaceMode.On }));
@@ -820,7 +819,7 @@ public class FrameRangeTests
         // Each fingerprinted one is written (the typed times inside their strings), every YuvVideo property and every
         // detector setting too.
         string text = ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());
-        foreach (string name in ShotDetection.Fingerprinted.Except(["MinSceneDuration", "MinOutDuration", "Deinterlace", "Yadif", "BlackDetect", "FreezeDetect"]))
+        foreach (string name in ShotDetection.Fingerprinted.Except(["MinSceneDuration", "MinOutDuration", "Deinterlace", "Yadif", "BlackDetect", "FreezeDetect", "TrimReferenceTone"]))
             Assert.Contains("\n" + name + "=", "\n" + text);
 
         // Deinterlacing only when it deinterlaces: the ranges scored before it was taken keep their fingerprint.
@@ -840,7 +839,7 @@ public class FrameRangeTests
         // ChromaLocation only when set: the ranges scored before it existed keep their fingerprint.
         string sited = ShotDetection.Fingerprint(Video() with { ChromaLocation = "left" }, new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());
 
-        // ReferenceTone isn't: ranges refuse the trim, so the tone changes no range's scores.
+        // ReferenceTone only with TrimReferenceTone (its line), as it changes no range's scores without it.
         foreach (var p in typeof(YuvVideo).GetProperties().Where(p => p.Name is not ("EqualityContract" or "ReferenceTone")))
             Assert.Contains("\n" + p.Name + "=", "\n" + sited);
         Assert.DoesNotContain("\nChromaLocation=", "\n" + text);

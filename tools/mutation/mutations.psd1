@@ -29,7 +29,17 @@
         # tone it finds; refused without it, and for ranges (a time range)
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'tone = !video.FromFrames'; Replace = 'tone = video.FromFrames'; Tests = 'FrameInputTests' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'video.GivenTone ?? throw'; Replace = 'video.GivenTone ?? Array.Empty<FrameReader.ToneSegment>() ?? throw'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
-        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.TrimReferenceTone)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.ScoringRefusesWhatARangeCantHonour' }
+        # ... for ranges with the caller's tone: the frames before the run's start score nothing, its first is the
+        # detectors' first; Merge decides from there to where the end stops the run, takes those frames' stats, replays
+        # freezedetect from there; the tone is in the fingerprint
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.TrimReferenceTone && video.ReferenceTone is null)'; Replace = 'if (false)'; Tests = 'RangeToneTests.TheToneIsInTheFingerprint' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'int from = Math.Max(lead, start);'; Replace = 'int from = lead;'; Tests = 'RangeToneTests.AnySplitIsDetects' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (firstFrame <= toneStart)'; Replace = 'if (false)'; Tests = 'RangeToneTests.AnySplitIsDetects' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'var joined = new BlackFrames(reader.BlackTimeBase, start);'; Replace = 'var joined = new BlackFrames(reader.BlackTimeBase, 0);'; Tests = 'RangeToneTests.AnySplitIsDetects' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (_reader is null && _metrics[0].Count <= _start)'; Replace = 'if (false)'; Tests = 'RangeToneTests.OnShotTellsTheRunsShots' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line(nameof(o.TrimReferenceTone), string.Join('; Replace = '_ = (nameof(o.TrimReferenceTone), string.Join('; Tests = 'RangeToneTests.TheToneIsInTheFingerprint' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (endFrame is { } e && video.Position(k).PlusFrames(1).FrameNum >= e)'; Replace = 'if (false)'; Tests = 'RangeToneTests.AnySplitIsDetects' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = '(int)Math.Min(chunkStats.To, (long)startFrame + frameCount)'; Replace = 'chunkStats.To'; Tests = 'RangeToneTests.AnySplitIsDetects' }
 
         # Timestamps that start over (two encodes joined): known before the first frame (a file's packets, MPEG-PS's
         # pass; MPEG-PS's arriving ones may), the shots are told at the end, as the sorted cuts make them
@@ -326,7 +336,7 @@
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'int BytesPerSample => TenBit ? 2 : 1;'; Replace = 'int BytesPerSample => 1;'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'int ChromaHeight => Yuv422 ? _codedSize.H : (_codedSize.H + 1) / 2;'; Replace = 'int ChromaHeight => (_codedSize.H + 1) / 2;'; Tests = 'FrameInputTests.PlanesAreCheckedForTheFormat' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line("ChromaLocation", siting);'; Replace = ';'; Tests = 'FrameRangeTests.TheFingerprintCoversEveryOption' }
-        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'int given = deinterlaced ? Math.Max(0, (seeded ? seed : firstFrame) - (seeded ? 1 : 2)) : seeded ? seed : from;'; Replace = 'int given = seeded ? seed : from;'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'int given = deinterlaced ? Math.Max(0, (seeded ? seed : firstFrame) - (seeded ? 1 : 2)) : seeded ? seed : lead;'; Replace = 'int given = seeded ? seed : lead;'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'var final = VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list;'; Replace = 'var final = list;'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'r.FirstFrame + r.FrameCount >= end ? r : WithoutLastFrame(r)'; Replace = 'WithoutLastFrame(r)'; Tests = 'FrameRangeTests.DeinterlacedRangesMergeIntoTheSequentialResult' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Joined(VideoReader.DeinterlacesFrames(video, o) ? [.. earlier.Select(WithoutLastFrame)] : earlier)'; Replace = 'Joined(earlier)'; Tests = 'FrameRangeTests.ADeinterlacedRangeTellsTheShotsDetectTells' }
@@ -685,7 +695,7 @@
         # flag left out, timed frames checked to start at the still, flags read off the d = 0 spans, the options in the
         # fingerprint, version 1 bytes without them
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (r.FirstFrame > 0 && r.FreezeSeed != reference)'; Replace = 'if (false)'; Tests = 'RangeSpansTests' }
-        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = '.Skip(before1 + (seeded ? 1 : 0))'; Replace = '.Skip(before1)'; Tests = 'RangeSpansTests' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = '+ (seeded ? 1 : 0)).Skip(seeded ? 1 : 0)'; Replace = '+ (seeded ? 1 : 0)).Skip(0)'; Tests = 'RangeSpansTests' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = '&& reader.FramePts[0] != earlierPts[given])'; Replace = '&& false)'; Tests = 'RangeSpansTests.ARangeStartingInsideAStillIsRefusedUntilScoredAgain' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.FreezeDetect is { } freeze)'; Replace = 'if (false && o.FreezeDetect is { } freeze)'; Tests = 'RangeSpansTests.TheFlagsAreInTheFingerprintAndTheBytes' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'for (int i = s.FirstFrame + 1; i < (s.EndFrame ?? frames)'; Replace = 'for (int i = s.FirstFrame; i < (s.EndFrame ?? frames)'; Tests = 'RangeSpansTests' }

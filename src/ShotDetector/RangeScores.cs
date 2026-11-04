@@ -106,7 +106,8 @@ public sealed class RangeScores
 
     /// <summary>
     /// The frame the range's freezedetect comparisons started from, its first still picture: the frame before
-    /// <see cref="FirstFrame"/> (-1 for a range from frame 0), or, for a range scored after earlier ones that starts inside
+    /// <see cref="FirstFrame"/> (-1 for a range from frame 0, or one at or before the run's start with
+    /// <see cref="DetectionOptions.TrimReferenceTone"/>: its comparisons start there), or, for a range scored after earlier ones that starts inside
     /// a still, that still's first frame. The flags are the whole run's when the run's still picture at the frame before
     /// <see cref="FirstFrame"/> is this one (<see cref="ShotDetection.FirstRangeToScoreAgain"/>).
     /// </summary>
@@ -261,7 +262,7 @@ public sealed class RangeScores
             if (frozen is not null)
             {
                 seed = r.Int32();
-                if (seed < -1 || seed >= firstFrame || (firstFrame > 0 && seed < 0))
+                if (seed < -1 || seed >= firstFrame)
                     throw Invalid("These RangeScores bytes are inconsistent (the freeze seed).");
             }
 

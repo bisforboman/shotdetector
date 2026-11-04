@@ -511,7 +511,7 @@ internal sealed partial class VideoReader
     /// The frame <see cref="FramesSeekFrame"/> starts from: round(seconds × fps), clamped to the frame count when known;
     /// with <see cref="YuvVideo.FrameTimestamps"/>, the file path's frame (<see cref="SeekFrame"/>) from them.
     /// </summary>
-    int StartEstimate(double seconds)
+    internal int StartEstimate(double seconds)
     {
         if (_frameTimestamps is { Length: > 0 } entries)
         {

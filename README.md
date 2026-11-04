@@ -217,7 +217,7 @@ timestamp given up front (`YuvVideo.FrameTimestamps`: variable frame rate, as a 
 a display rotation (`YuvVideo.Rotation`) turns the frames upright as a file's; deinterlacing takes FastYuv's `Yadif`
 (the stream's `YuvVideo.FieldOrder` for `Auto`, each frame's `Interlaced` and `TopFieldFirst` flags for its parity; not
 for ranges); `FfmpegResize` isn't available, the time range, crop, downscale, frame skip and stats
-are, and `TrimReferenceTone` with the tone given in `YuvVideo.ReferenceTone` (not for ranges) (docs/decisions/2026-10-24-managedcodecs-showcase.md). A long video can be split across runtimes with no shared
+are, and `TrimReferenceTone` with the tone given in `YuvVideo.ReferenceTone` (ranges too) (docs/decisions/2026-10-24-managedcodecs-showcase.md). A long video can be split across runtimes with no shared
 memory (Web Workers): `ShotDetection.ScoreRange` scores a range of frames (from the frame before it to one past its
 end), its `RangeScores` travel as bytes (`ToBytes`, `FromBytes`), and `ShotDetection.Merge` gives exactly `Detect`'s
 result for the whole video, refusing ranges that don't fit together (docs/parallel-detection.md, "Frame-source ranges").
