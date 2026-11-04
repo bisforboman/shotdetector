@@ -1756,9 +1756,10 @@ internal sealed partial class VideoReader
         // inputs (-loop 1) ffmpeg demuxed and decoded both files again for every frame.
         string[] mapInputs = maps is null ? [] : ["-i", Path.Combine(maps, "x.pgm"), "-i", Path.Combine(maps, "y.pgm")];
 
-        // Rotated as OpenCV does (Turn), not by ffmpeg's autorotate.
+        // Rotated as OpenCV does (Turn), not by ffmpeg's autorotate; not cropped to the container's clean aperture either.
         string[] args = ["-v", "info", "-nostats", .. noStdin, "-y",
-            "-threads", $"{DecodeThreads}", .. seek, .. _inputOptions, .. IdctOptions(Codec, _xvidIdct), .. MaxPixels, "-noautorotate", "-i", _path,
+            "-threads", $"{DecodeThreads}", .. seek, .. _inputOptions, .. IdctOptions(Codec, _xvidIdct), .. MaxPixels,
+            .. IgnoreContainerCropping(FfmpegExe, cancellationToken), "-noautorotate", "-i", _path,
             .. mapInputs, .. sampled ? Array.Empty<string>() : ["-map", "0:v:0"], "-fps_mode", "passthrough", .. limit];
 
         // blackdetect (DetectionOptions.BlackDetect) on the frames detection reads, as decoded (deinterlaced when
@@ -2448,6 +2449,27 @@ internal sealed partial class VideoReader
     }
 
     static readonly ConcurrentDictionary<string, bool> ChromaLocationByFfmpeg = new(StringComparer.Ordinal);
+
+    static readonly ConcurrentDictionary<string, bool> ContainerCroppingByFfmpeg = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The input options that keep this ffmpeg from cropping to the container's clean aperture (MOV/MP4's 'clap', which
+    /// iPhones write; Matroska's PixelCrop), as OpenCV, libavcodec alone, doesn't: <c>-apply_cropping codec</c>, which
+    /// still applies the codec's own cropping (H.264's SPS), as libavcodec does. ffmpeg's command line crops to the
+    /// container's from FFmpeg 7.1 (its <c>-apply_cropping</c>, which takes the choice); an older one has neither, and
+    /// none is needed. Asked once per executable (<c>ffmpeg -h long</c>).
+    /// </summary>
+    internal static string[] IgnoreContainerCropping(string ffmpeg, CancellationToken cancellationToken)
+    {
+        if (!ContainerCroppingByFfmpeg.TryGetValue(ffmpeg, out bool has))
+        {
+            has = Run(ffmpeg, ["-hide_banner", "-h", "long"], cancellationToken, failure: ShotDetectionError.FfmpegNotFound)
+                .Contains("-apply_cropping[", StringComparison.Ordinal);
+            has = ContainerCroppingByFfmpeg.GetOrAdd(ffmpeg, has);
+        }
+
+        return has ? ["-apply_cropping", "codec"] : [];
+    }
 
     static readonly ConcurrentDictionary<string, int?> LibavformatByFfmpeg = new(StringComparer.Ordinal);
 

@@ -32,6 +32,10 @@ Read with the library's decoding code (`VideoReader*.cs`, `ShotDetection*.cs`, `
   FastYuv takes from there too; a file is read again from each frame whose siting differs, with its own, a stream
   keeps the first frame's and warns: docs/decisions/2026-10-27-per-frame-tags-executable.md) and BgrConverter's row
   context sets swscale's position.
+- A container's clean aperture (MOV/MP4 'clap', iPhone video; FFmpeg 8 exposes it as frame-cropping side data):
+  OpenCV, libavcodec alone, decodes the whole frame, as FrameReader does; ffmpeg's command line crops to it from 7.1,
+  so the executable path passes `-apply_cropping codec` (`VideoReader.IgnoreContainerCropping`; the codec's own SPS
+  cropping still applies, as in libavcodec). Splitting (split-video) runs ffmpeg as scenedetect does, cropped.
 - Linux OpenCV can't decode AV1 at all.
 - Frame labels (0.7.1): each decoded frame's showinfo time is matched to its packet (`PacketOf`), so frames
   the decoder drops make numbers skip as in OpenCV. Files and streams both run with `-copyts` (absolute times; streams

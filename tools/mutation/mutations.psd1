@@ -10,6 +10,11 @@
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (o.FrameSkip > 0 && o.CollectStats)'; Replace = 'if (false)'; Tests = 'RangeTests' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'effective = (crop.Width + 1, crop.Height + 1);'; Replace = 'effective = (crop.Width, crop.Height);'; Tests = 'RangeTests' }
 
+        # A container's clean aperture (MOV/MP4 'clap') is ignored, as OpenCV ignores it: ffmpeg's command line crops to it
+        # from FFmpeg 7.1 unless told -apply_cropping codec (detection and save-images)
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '.. IgnoreContainerCropping(FfmpegExe, cancellationToken), "-noautorotate"'; Replace = '"-noautorotate"'; Tests = 'CleanApertureTests' }
+        @{ File = 'src/ShotDetector/Export.cs'; Find = '.. VideoReader.IgnoreContainerCropping(video.FfmpegExe, cancellationToken), "-i"'; Replace = '"-i"'; Tests = 'CleanApertureTests' }
+
         # 10-bit: chroma interpolated from where the frame says it sits, as OpenCV's sws_scale_frame does (executable
         # path: in_chroma_loc; in-process sampled rows: the position sws_scale_frame derives)
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(siting is { } cl ? ":in_chroma_loc=" + cl : "")'; Replace = '""'; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
