@@ -296,18 +296,23 @@ public static partial class ShotDetection
         cancellationToken.ThrowIfCancellationRequested();
         var o = (options ?? new DetectionOptions()).Resolved();
         CheckRangeOptions(video, o);
-        CheckOptions(o, false);
+        CheckOptions(o, true);
         var before = earlier is null ? null : Earlier(video, o, earlier, firstFrame);
-        int from = Math.Max(0, firstFrame - 1);
+        int lead = Math.Max(0, firstFrame - 1); // the frame before the range: the range's pts start there
+
+        // TrimReferenceTone: the run starts at the frame after the leading tone (ToneStart). The frames before it are
+        // taken, not converted, and score nothing; that frame is its detectors' first, as Detect's after its seek.
+        int start = ToneStart(video, o);
+        int from = Math.Max(lead, start); // the first frame read: the detectors' first
 
         // FreezeDetect: the comparisons start from the frame before the range, or, continuing from earlier ranges
         // inside a still picture, from that still's first frame (the frames start there: RangeFrames with them).
-        int seed = o.FreezeDetect is null || before is null ? from : FreezeSeed(video, o, earlier!, before.Value.Pts, firstFrame);
+        int seed = o.FreezeDetect is null || before is null || firstFrame <= start ? from : FreezeSeed(video, o, earlier!, before.Value.Pts, firstFrame, start);
         bool seeded = seed < from;
 
         // Deinterlacing, the frames start one earlier still: yadif's previous frame for the frame before the range.
         bool deinterlaced = VideoReader.DeinterlacesFrames(video, o);
-        int given = deinterlaced ? Math.Max(0, (seeded ? seed : firstFrame) - (seeded ? 1 : 2)) : seeded ? seed : from;
+        int given = deinterlaced ? Math.Max(0, (seeded ? seed : firstFrame) - (seeded ? 1 : 2)) : seeded ? seed : lead;
 
         // The range's freezedetect runs at d = 0, its spans giving each frame's comparison (VideoReader.FrozenFlags);
         // the merge replays freezedetect with the real d over the ranges' flags joined.
@@ -320,11 +325,10 @@ public static partial class ShotDetection
 
         // DetectionOptions.OnShot: the shots as the frames are scored, for a range from frame 0 or one given the earlier
         // ranges' scores (a later range on its own tells none: Merge does).
-        using var live = o.OnShot is not null && (firstFrame == 0 || before is not null) ? new LiveShots(video, options, firstFrame, before, settings.Count) : null;
+        using var live = o.OnShot is not null && (firstFrame == 0 || before is not null) ? new LiveShots(video, options, firstFrame, before, settings.Count, start) : null;
         DetectionProgress Progress(int done, int expected) => new() { FramesProcessed = done, ExpectedFrames = expected };
         o.Progress?.Report(Progress(0, 0));
         long lastReport = Environment.TickCount64;
-        int k = from;
         while (reader.TakesBeforeFrame(from))
         {
             yield return null;
@@ -334,6 +338,31 @@ public static partial class ShotDetection
             if (seeded && reader.FramesTaken == seed + 1 + (deinterlaced ? 1 : 0))
                 reader.SeedFrozen(seed);
         }
+
+        // A range's frame kept: checked against the earlier ranges' (an overlap frame), and told to OnShot's decisions.
+        void Kept(int k)
+        {
+            long? pts = reader.FramesTimed ? reader.FramePts[k - given] : null;
+            if (before is { } joined && k < joined.Scores.Frames)
+                CheckOverlap(joined, k, metrics, firstFrame, pts);
+
+            // Deinterlacing, the range's last frame is deinterlaced as the video's last (its own next), which it may
+            // not be; it is scored once the frames have ended, so OnShot is told the shots it decides at the end only,
+            // as a stopped range's last shots, which a range continuing from it tells again.
+            live?.Add(k, metrics, firstFrame, pts);
+        }
+
+        // The range's frames before the tone's end (TrimReferenceTone): taken, no scores.
+        int k = Math.Max(firstFrame, Math.Min(from, reader.FramesTaken));
+        for (int j = firstFrame; j < k; j++)
+        {
+            foreach (var m in metrics)
+                m.Add(null);
+            Kept(j);
+        }
+
+        if (reader.FramesTaken >= from)
+            k = from; // else the frames ended before it
 
         if (seeded && reader.FramesTimed && reader.FramePts.Count > 0 && before!.Value.Pts is { Length: > 0 } earlierPts && reader.FramePts[0] != earlierPts[given])
         {
@@ -354,16 +383,7 @@ public static partial class ShotDetection
             }
 
             if (k >= firstFrame)
-            {
-                long? pts = reader.FramesTimed ? reader.FramePts[k - given] : null;
-                if (before is { } joined && k < joined.Scores.Frames)
-                    CheckOverlap(joined, k, metrics, firstFrame, pts);
-
-                // Deinterlacing, the range's last frame is deinterlaced as the video's last (its own next), which it may
-                // not be; it is scored once the frames have ended, so OnShot is told the shots it decides at the end only,
-                // as a stopped range's last shots, which a range continuing from it tells again.
-                live?.Add(k, metrics, firstFrame, pts);
-            }
+                Kept(k);
 
             k++;
             if (o.Progress is not null && o.ProgressStep is null && Environment.TickCount64 - lastReport >= 100)
@@ -386,21 +406,37 @@ public static partial class ShotDetection
         int scored = k - firstFrame;
         o.Progress?.Report(Progress(scored, scored));
 
-        // The flags of the frames from the range's first: the reads' from the frame before it (and the detector's,
-        // seeded, from the still's first before that).
-        int before1 = firstFrame - from;
-        bool[]? black = o.BlackDetect is null ? null : [.. (reader.Black?.Frames ?? []).Skip(before1).Take(scored).Select(f => f.Black)];
-        bool[]? frozen = o.FreezeDetect is null ? null : [.. reader.FrozenFlags(k - from + (seeded ? 1 : 0)).Skip(before1 + (seeded ? 1 : 0)).Take(scored)];
+        // The flags of the frames from the range's first: the reads' from the first frame read (and the detector's,
+        // seeded, from the still's first before that); none before it (TrimReferenceTone's start).
+        bool[] Flags(IReadOnlyList<bool> read) => [.. Enumerable.Range(firstFrame, scored).Select(j => j >= from && j - from < read.Count && read[j - from])];
+        bool[]? black = o.BlackDetect is null ? null : Flags([.. (reader.Black?.Frames ?? []).Select(f => f.Black)]);
+        bool[]? frozen = o.FreezeDetect is null ? null : Flags([.. reader.FrozenFlags(Math.Max(0, k - from) + (seeded ? 1 : 0)).Skip(seeded ? 1 : 0)]);
         yield return new RangeScores(Fingerprint(video, o),
             firstFrame,
             scored,
-            reader.FramesTimed ? [.. reader.FramePts.Skip(from - given)] : [],
+            reader.FramesTimed ? [.. reader.FramePts.Skip(lead - given)] : [],
             [.. metrics.Select(m => m.ToArray())],
             stats?.Entries(firstFrame, int.MaxValue).ToArray(),
             [],
             black,
             frozen,
-            frozen is null || firstFrame == 0 ? -1 : seed);
+            frozen is null || firstFrame <= start ? -1 : seed);
+    }
+
+    /// <summary>
+    /// The frame a run with <see cref="DetectionOptions.TrimReferenceTone"/> starts at, after the leading tone in
+    /// <see cref="YuvVideo.ReferenceTone"/>: the frame Detect's seek to the trimmed start time lands on (its estimate,
+    /// which needs no frame; Merge's decisions seek as Detect does, and check the frame there). 0 without the option, or
+    /// without a leading tone.
+    /// </summary>
+    static int ToneStart(YuvVideo video, DetectionOptions o) => o.TrimReferenceTone ? ToneStart(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o), o) : 0;
+
+    static int ToneStart(VideoReader reader, DetectionOptions o)
+    {
+        if (!o.TrimReferenceTone || reader.GivenTone is not { } tone || TrimmedToTone(o, tone, reader.Duration).StartTime is not { } startTime)
+            return 0;
+        double seconds = TimecodeSeconds(startTime, reader.Fps, oneBasedFrames: true);
+        return seconds <= 0 ? 0 : reader.StartEstimate(seconds);
     }
 
     /// <summary>
@@ -432,7 +468,10 @@ public static partial class ShotDetection
             return (from, to);
         CheckRangeOptions(video, o);
         var before = Earlier(video, o, list, (int)firstFrame);
-        int seed = FreezeSeed(video, o, list, before?.Pts ?? [], (int)firstFrame);
+        int toneStart = ToneStart(video, o);
+        if (firstFrame <= toneStart)
+            return (from, to); // the run starts in this range: its comparisons start there
+        int seed = FreezeSeed(video, o, list, before?.Pts ?? [], (int)firstFrame, toneStart);
         return seed < firstFrame - 1 ? (Math.Max(0, seed - (VideoReader.DeinterlacesFrames(video, o) ? 1 : 0)), to) : (from, to);
     }
 
@@ -465,7 +504,8 @@ public static partial class ShotDetection
             return null;
         var finalRanges = VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list;
         var (pts, scores) = Joined(finalRanges);
-        int stale = Replayed(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o), fd, finalRanges, pts, scores.Frames).Stale;
+        var reader = new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o);
+        int stale = Replayed(reader, fd, finalRanges, pts, ToneStart(reader, o), scores.Frames).Stale;
         return stale < 0 ? null : stale;
     }
 
@@ -474,10 +514,10 @@ public static partial class ShotDetection
     /// frame before <paramref name="firstFrame"/> (that frame itself unless a still crosses the start), after the earlier
     /// ranges' flags replayed; refuses earlier ranges of which one must be scored again first.
     /// </summary>
-    static int FreezeSeed(YuvVideo video, DetectionOptions o, List<RangeScores> earlier, long[] pts, int firstFrame)
+    static int FreezeSeed(YuvVideo video, DetectionOptions o, List<RangeScores> earlier, long[] pts, int firstFrame, int start)
     {
         var list = VideoReader.DeinterlacesFrames(video, o) ? [.. earlier.Select(WithoutLastFrame)] : earlier;
-        var replay = Replayed(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o), o.FreezeDetect!, list, pts, firstFrame);
+        var replay = Replayed(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o), o.FreezeDetect!, list, pts, start, firstFrame);
         if (replay.Stale >= 0)
             throw Rescore(replay.Stale, list[replay.Stale], replay.Reference);
         return replay.Reference;
@@ -487,16 +527,19 @@ public static partial class ShotDetection
     static ShotDetectionException Rescore(int index, RangeScores range, int still) => InvalidRanges(string.Create(CultureInfo.InvariantCulture,
         $"Range {index} (from frame {range.FirstFrame}) starts inside a still picture from frame {still} (FreezeDetect), and its comparisons started from frame {range.FreezeSeed}: score it again given the ranges before it (ScoreRange with the earlier ranges), with the frames RangeFrames gives with them, from frame {still} (ShotDetection.FirstRangeToScoreAgain names such a range)."));
 
-    /// <summary>The ranges' black judgements joined, each frame from the range it belongs to, at blackdetect's pts (frames from the caller's).</summary>
-    static BlackFrames JoinedBlack(VideoReader reader, List<RangeScores> list, long[] pts, int total)
+    /// <summary>
+    /// The ranges' black judgements of the run's frames (<paramref name="start"/> to <paramref name="end"/> - 1) joined,
+    /// each frame from the range it belongs to, at blackdetect's pts (frames from the caller's).
+    /// </summary>
+    static BlackFrames JoinedBlack(VideoReader reader, List<RangeScores> list, long[] pts, int start, int end)
     {
-        var joined = new BlackFrames(reader.BlackTimeBase, 0);
+        var joined = new BlackFrames(reader.BlackTimeBase, start);
         for (int i = 0; i < list.Count; i++)
         {
             var r = list[i];
-            int to = i + 1 < list.Count ? list[i + 1].FirstFrame : total;
+            int to = Math.Min(end, i + 1 < list.Count ? list[i + 1].FirstFrame : end);
             var flags = r.Black ?? throw InvalidRanges($"Range {i} (from frame {r.FirstFrame}) has no black judgements.");
-            for (int k = r.FirstFrame; k < to; k++)
+            for (int k = Math.Max(r.FirstFrame, start); k < to; k++)
                 joined.Frames.Add(new BlackFrame(reader.BlackPts(k, pts.Length > 0 ? pts[k] : null), flags[k - r.FirstFrame]));
         }
 
@@ -505,12 +548,12 @@ public static partial class ShotDetection
 
     /// <summary>
     /// freezedetect (FFmpeg 8.1's activate, FrameReader's FreezeDetector) replayed over the ranges' comparisons of the
-    /// first <paramref name="frames"/> frames, each frame's from the range it belongs to: the spans as Detect's
-    /// (<see cref="VideoReader.FreezeSpans"/>), the run's still picture after the last frame (<c>Reference</c>), and
-    /// the first range whose comparisons started from another still than the run's at its start (<c>Stale</c>, -1 for none;
-    /// the replay stops there).
+    /// run's frames, from <paramref name="start"/> (TrimReferenceTone's start, else 0) to <paramref name="frames"/> - 1,
+    /// each frame's from the range it belongs to: the spans as Detect's (<see cref="VideoReader.FreezeSpans"/>), the run's
+    /// still picture after the last frame (<c>Reference</c>), and the first range after the start whose comparisons
+    /// started from another still than the run's at its start (<c>Stale</c>, -1 for none; the replay stops there).
     /// </summary>
-    static (List<FreezeSpan> Spans, int Stale, int Reference) Replayed(VideoReader reader, FreezeDetectOptions o, List<RangeScores> list, long[] pts, int frames)
+    static (List<FreezeSpan> Spans, int Stale, int Reference) Replayed(VideoReader reader, FreezeDetectOptions o, List<RangeScores> list, long[] pts, int start, int frames)
     {
         var tb = reader.FreezeTimeBase;
         double seconds = tb.Num / (double)tb.Den;
@@ -527,9 +570,9 @@ public static partial class ShotDetection
             if (r.FirstFrame >= to)
                 break;
             var flags = r.Frozen ?? throw InvalidRanges($"Range {i} (from frame {r.FirstFrame}) has no freeze comparisons.");
-            if (r.FirstFrame > 0 && r.FreezeSeed != reference)
+            if (r.FirstFrame > start && r.FreezeSeed != reference)
                 return (spans, i, reference);
-            for (int k = r.FirstFrame; k < to; k++)
+            for (int k = Math.Max(r.FirstFrame, start); k < to; k++)
             {
                 long p = pts.Length > 0 ? pts[k] : k;
                 bool frozen = false;
@@ -574,8 +617,8 @@ public static partial class ShotDetection
     {
         if (o.StartTime is not null || o.EndTime is not null || o.RangeDuration is not null)
             throw new ArgumentException("A time range (StartTime, EndTime, Duration) isn't available for ranges: score the whole video, from frame 0, in ranges.");
-        if (o.TrimReferenceTone)
-            throw new ArgumentException("TrimReferenceTone isn't available for ranges: it sets a time range; score the whole video, and trim with Detect.");
+        if (o.TrimReferenceTone && video.ReferenceTone is null)
+            throw new ArgumentException("TrimReferenceTone on frames from the caller needs YuvVideo.ReferenceTone: the tone in the video's audio, found with FrameReader's ReferenceToneFinder.");
         if (o.FrameSkip != 0)
             throw new ArgumentException("FrameSkip isn't available for ranges: which frames it analyses runs across them.");
         if (o.Mode == DetectionMode.Parallel)
@@ -634,7 +677,7 @@ public static partial class ShotDetection
                 throw new ArgumentException("Merge needs at least one range.", nameof(ranges));
             var o = (options ?? new DetectionOptions()).Resolved();
             CheckRangeOptions(video, o);
-            CheckOptions(o, false);
+            CheckOptions(o, true);
             CheckFingerprints(video, o, list, nameof(ranges), "this merge's");
             var final = VideoReader.DeinterlacesFrames(video, o) ? FinalFrames(list) : list;
             var (pts, scores) = Joined(final);
@@ -670,18 +713,13 @@ public static partial class ShotDetection
 
             var warnings = list.SelectMany(r => r.Warnings).Distinct().ToList();
 
-            // Black and freeze spans over the joined flags, as Detect's over the whole run's frames; a range whose
-            // freezedetect comparisons started from another still picture than the run's is refused (scored again).
+            // A range whose freezedetect comparisons started from another still picture than the run's is refused
+            // (scored again) before any decision: over every frame from the run's start, as the ranges after its end
+            // (TrimReferenceTone) are scored as without it.
             var spanReader = new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o);
-            var blackSpans = o.BlackDetect is { } bd ? JoinedBlack(spanReader, final, pts, scores.Frames).Spans(bd, scores.Frames) : null;
-            IReadOnlyList<FreezeSpan>? freezeSpans = null;
-            if (o.FreezeDetect is { } fd)
-            {
-                var replay = Replayed(spanReader, fd, final, pts, scores.Frames);
-                if (replay.Stale >= 0)
-                    throw Rescore(replay.Stale, final[replay.Stale], replay.Reference);
-                freezeSpans = replay.Spans;
-            }
+            int toneStart = ToneStart(spanReader, o);
+            if (o.FreezeDetect is { } fd && Replayed(spanReader, fd, final, pts, toneStart, scores.Frames) is { Stale: >= 0 } stale)
+                throw Rescore(stale.Stale, final[stale.Stale], stale.Reference);
 
             // The decisions as Detect makes them: Steps with the scores in place of the frames (the chunked file's path).
             var steps = Steps(null,
@@ -703,8 +741,12 @@ public static partial class ShotDetection
                 }
             }
 
-            if (blackSpans is not null || freezeSpans is not null)
-                result = result with { BlackSpans = blackSpans, FreezeSpans = freezeSpans };
+            // Black and freeze spans over the joined flags of the run's frames, as Detect's over them.
+            int runStart = result.FirstFrame ?? 0, runEnd = runStart + result.FrameCount;
+            if (o.BlackDetect is { } bd)
+                result = result with { BlackSpans = JoinedBlack(spanReader, final, pts, runStart, runEnd).Spans(bd, result.FrameCount) };
+            if (o.FreezeDetect is { } freezing)
+                result = result with { FreezeSpans = Replayed(spanReader, freezing, final, pts, runStart, runEnd).Spans };
             Traced(activity, result);
             return result;
         }
@@ -930,19 +972,20 @@ public static partial class ShotDetection
         nameof(DetectionOptions.FilterMode), nameof(DetectionOptions.AddLastScene), nameof(DetectionOptions.Downscale),
         nameof(DetectionOptions.DropShortScenes), nameof(DetectionOptions.MergeLastScene), nameof(DetectionOptions.FrameRate),
         nameof(DetectionOptions.CollectStats), nameof(DetectionOptions.Deinterlace), nameof(DetectionOptions.Yadif),
-        nameof(DetectionOptions.BlackDetect), nameof(DetectionOptions.FreezeDetect),
+        nameof(DetectionOptions.BlackDetect), nameof(DetectionOptions.FreezeDetect), nameof(DetectionOptions.TrimReferenceTone),
     ];
 
     /// <summary>
-    /// The options left out of the fingerprint: refused for ranges (the time range, frame skip, the tone,
-    /// ffmpeg's resize), callbacks, and what only decoding reads (frames from the caller ignore it).
+    /// The options left out of the fingerprint: refused for ranges (the time range, frame skip, ffmpeg's resize),
+    /// callbacks, and what only decoding reads (frames from the caller ignore it, and the tone options: the caller's tone
+    /// is in <see cref="YuvVideo.ReferenceTone"/>).
     /// </summary>
     internal static readonly string[] NotFingerprinted =
     [
         nameof(DetectionOptions.StartTime), nameof(DetectionOptions.EndTime), nameof(DetectionOptions.RangeDuration),
         nameof(DetectionOptions.Start), nameof(DetectionOptions.End), nameof(DetectionOptions.Duration),
         nameof(DetectionOptions.FrameSkip),
-        nameof(DetectionOptions.FfmpegResize), nameof(DetectionOptions.TrimReferenceTone), nameof(DetectionOptions.ReferenceTone),
+        nameof(DetectionOptions.FfmpegResize), nameof(DetectionOptions.ReferenceTone),
         nameof(DetectionOptions.Progress), nameof(DetectionOptions.Warnings), nameof(DetectionOptions.OnShot),
         nameof(DetectionOptions.ProgressStep), nameof(DetectionOptions.OnProbe), nameof(DetectionOptions.OnFrameTimestamps),
         nameof(DetectionOptions.FrameTimestampsFirst), nameof(DetectionOptions.Streaming),
@@ -987,6 +1030,12 @@ public static partial class ShotDetection
             Line(nameof(o.BlackDetect), $"{black.MinDuration.Ticks},{Text(black.PictureThreshold)},{Text(black.PixelThreshold)}");
         if (o.FreezeDetect is { } freeze)
             Line(nameof(o.FreezeDetect), $"{Text(freeze.Noise)},{freeze.MinDuration.Ticks}");
+        if (o.TrimReferenceTone)
+        {
+            // Only when set, as deinterlacing: the run's start moves with the caller's tone.
+            Line(nameof(o.TrimReferenceTone), string.Join(";", (video.ReferenceTone ?? []).Select(t => $"{t.Start.Ticks},{t.End.Ticks},{Text(t.Level)}")));
+        }
+
         if (video.ChromaLocation is { } siting)
             Line("ChromaLocation", siting); // only when set, so the scores of ranges from before it was there keep their fingerprint
         Line("TimeBase", video.TimeBase is { } tb ? $"{tb.Num}/{tb.Den}" : null);
@@ -1091,13 +1140,16 @@ public static partial class ShotDetection
         readonly IEnumerator<DetectionResult?> _steps;
         VideoReader? _reader;              // the decisions' reader, made at their first step
         int _loaded;                       // the frames it has
+        readonly int _start;               // the run's first frame (TrimReferenceTone): the decisions start once it is scored
 
         public LiveShots(YuvVideo video,
             DetectionOptions? options,
             int firstFrame,
             (long[] Pts, (List<double?>[] Metrics, int Frames, (Stats? Stats, int From, int To)[] Stats) Scores)? earlier,
-            int detectors)
+            int detectors,
+            int start)
         {
+            _start = start;
             _metrics = earlier is { } e
                 ? [.. e.Scores.Metrics.Select(m => m.Take(firstFrame).ToList())]
                 : [.. Enumerable.Range(0, detectors).Select(_ => new List<double?>())];
@@ -1136,6 +1188,10 @@ public static partial class ShotDetection
 
         void Step()
         {
+            // The decisions seek to the run's first frame as Detect does, so they start once it is here; a range whose
+            // frames end before it tells nothing.
+            if (_reader is null && _metrics[0].Count <= _start)
+                return;
             if (_reader is not null)
             {
                 for (; _loaded < _metrics[0].Count; _loaded++)

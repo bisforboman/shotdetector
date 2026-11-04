@@ -1435,9 +1435,8 @@ public static partial class ShotDetection
         // scenedetect's `time -s` seeks (1-based frame numbers); `-e`/`-d` become whole frames at the
         // average rate (FrameTimecode rounds half to even) and are compared as frame numbers.
         int startFrame = startSeconds is { } seconds ? video.SeekFrame(seconds) : 0;
-        static long Frames(string value, Fps fps) => (long)Math.Round(TimecodeSeconds(value, fps) * fps.Value);
-        long? endFrame = o.EndTime is not null ? Frames(o.EndTime, video.Fps)
-            : o.RangeDuration is not null ? Frames(o.RangeDuration, video.Fps) + startFrame
+        long? endFrame = o.EndTime is not null ? EndFrames(o.EndTime, video.Fps)
+            : o.RangeDuration is not null ? EndFrames(o.RangeDuration, video.Fps) + startFrame
             : null;
         bool startArrives = video.TimestampsArrive;
         start = startArrives ? default : video.Position(startFrame);
@@ -1507,8 +1506,10 @@ public static partial class ShotDetection
             Warn("read sequentially, from the start, as scoring in chunks fell back: " + fallback); // no notChunked then
         if (chunked is { } scored)
         {
+            // From the start frame, to where the end stops the run as it stops the frames' loop below: Merge's ranges
+            // with TrimReferenceTone (a chunked file's run has neither).
             var live = prescored?.Live;
-            for (int k = 0; ; k++)
+            for (int k = startFrame; ; k++)
             {
                 // A live range's scores: each frame's once the range has scored it, until its frames end.
                 while (live is { Ended: false } && k >= scored.Metrics[0].Count)
@@ -1521,12 +1522,18 @@ public static partial class ShotDetection
                     if (detectors[d].Decide(k, scored.Metrics[d][k]) is { } cut)
                         Cut(cut);
                 }
+
+                frameCount++;
+                if (endFrame is { } e && video.Position(k).PlusFrames(1).FrameNum >= e)
+                {
+                    readToEnd = false;
+                    break;
+                }
             }
 
             telling = true;
             foreach (var chunkStats in scored.Stats)
-                stats?.Merge(chunkStats.Stats!, chunkStats.From, chunkStats.To);
-            frameCount = live is null ? scored.Frames : scored.Metrics[0].Count;
+                stats?.Merge(chunkStats.Stats!, chunkStats.From, (int)Math.Min(chunkStats.To, (long)startFrame + frameCount));
         }
         else
         {
@@ -1641,6 +1648,12 @@ public static partial class ShotDetection
         if (o.Downscale is < 1)
             throw new ArgumentException("Downscale must be at least 1.");
     }
+
+    /// <summary>
+    /// The frame a run's end time or duration (<paramref name="value"/>) comes to: whole frames at the average rate
+    /// (FrameTimecode rounds half to even), compared as frame numbers.
+    /// </summary>
+    internal static long EndFrames(string value, Fps fps) => (long)Math.Round(TimecodeSeconds(value, fps) * fps.Value);
 
     /// <summary>
     /// The time range without a leading tone segment (starting in the first 5 s, nearer the start than the end) and a

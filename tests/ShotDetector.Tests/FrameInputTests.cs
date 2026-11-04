@@ -101,6 +101,90 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.True(where == "lead" ? trimmed.Shots[0].Start.FrameNum == 150 : trimmed.Shots[^1].End.FrameNum == 100);
     }
 
+    // Ranges with the tone trim (shotdetector-web's tone-silence-320x240-25.mp4 in shape: tone at 0-6 s and 9-15 s, the
+    // run 6-9 s): the file's tone in YuvVideo.ReferenceTone, the decoded frames split around the run's edges and every
+    // frame its own range, scored on their own and resumed, and a run stopped inside it: each merge is the frame-source
+    // Detect's, which is the in-process file's and the executable's.
+    [Fact]
+    public void RangesTrimmedToToneAreTheFiles()
+    {
+        if (Libs is null)
+            return;
+        string clip = ToneSilenceClip();
+        var options = new DetectionOptions
+        {
+            Detector = DetectorKind.Content,
+            CollectStats = true,
+            FfmpegDirectory = Libs,
+            Decoder = VideoDecoder.InProcess,
+            Yuv420Converter = new SwscaleYuv420(),
+            TrimReferenceTone = true,
+            BlackDetect = new BlackDetectOptions { MinDuration = TimeSpan.FromSeconds(0.2) },
+            FreezeDetect = new FreezeDetectOptions { MinDuration = TimeSpan.FromSeconds(0.5) },
+        };
+        var tone = ShotDetection.FindReferenceTone(clip, options);
+        Assert.Equal(2, tone.Count);
+        var file = ShotDetection.Detect(clip, options);
+        var executable = ShotDetection.Detect(clip, options with { Decoder = VideoDecoder.FfmpegProcess });
+        Assert.False(executable.Video.DecodedInProcess);
+        var (video, frames) = Decoded(clip);
+        video = video with { ReferenceTone = tone };
+        var all = frames.ToList();
+        var expected = ShotDetection.Detect(video, all, options);
+        Assert.Equal(150, expected.FirstFrame);
+        Assert.Equal(75, expected.FrameCount);
+        Assert.Equal(2, expected.Cuts.Count); // at 7.4 s and 8.5 s
+        foreach (var other in new[] { file, executable })
+        {
+            Assert.Equal(other.ReferenceTone, expected.ReferenceTone);
+            Assert.Equal(other.Shots, expected.Shots);
+            Assert.Equal(Shots.Csv(other.Shots, cuts: other.Cuts), Shots.Csv(expected.Shots, cuts: expected.Cuts));
+            Assert.Equal(other.Stats?.Csv(other.Video.Position), expected.Stats?.Csv(expected.Video.Position));
+            Assert.Equal(other.BlackSpans, expected.BlackSpans);
+            Assert.Equal(other.FreezeSpans, expected.FreezeSpans);
+        }
+
+        void Same(DetectionResult wanted, DetectionResult merged)
+        {
+            FrameRangeTests.AssertSame(wanted, merged);
+            RangeSpansTests.AssertSameSpans(wanted, merged);
+            Assert.Equal(wanted.ReferenceTone, merged.ReferenceTone);
+        }
+
+        int[][] splits = [[.. Enumerable.Range(0, all.Count)], [0, 75, 149, 150, 151, 185, 213, 224, 225, 226, 300], [0, 150], [0, 151], [0, 225], [0, 226], [0, 100, 260]];
+        foreach (var starts in splits)
+        {
+            Same(expected, RangeSpansTests.Split(video, all, starts, options).Merged);
+            Same(expected, RangeSpansTests.Resumed(video, all, starts, options));
+        }
+
+        var stopped = all.Take(200).ToList();
+        var detectStopped = ShotDetection.Detect(video, stopped, options);
+        Same(detectStopped, RangeSpansTests.Split(video, stopped, [0, 100, 160], options).Merged);
+        Same(detectStopped, RangeSpansTests.Resumed(video, stopped, [0, 100, 160], options));
+    }
+
+    /// <summary>
+    /// 15 s at 25 fps with mono AAC: 1 kHz tone at 0-6 s and 9-15 s, silence between; the picture testsrc2 to 7.4 s, a
+    /// still blue to 8.5 s, then testsrc (two cuts, a still inside the run).
+    /// </summary>
+    string ToneSilenceClip()
+    {
+        string path = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, "tone-silence.mp4");
+        if (File.Exists(path))
+            return path;
+        string temporary = path + ".part.mp4";
+        VideoReader.Run(Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"),
+            ["-v", "error", "-y",
+                "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=7.4", "-f", "lavfi", "-i", "color=c=blue:s=320x240:r=25:d=1.1", "-f", "lavfi", "-i", "testsrc=s=320x240:r=25:d=6.5",
+                "-f", "lavfi", "-i", "sine=f=1000:r=48000:d=6", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono:d=3", "-f", "lavfi", "-i", "sine=f=1000:r=48000:d=6",
+                "-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v];[3:a][4:a][5:a]concat=n=3:v=0:a=1[a]",
+                "-map", "[v]", "-map", "[a]", "-c:v", "mpeg4", "-q:v", "2", "-c:a", "aac", temporary],
+            default);
+        File.Move(temporary, path, overwrite: true);
+        return path;
+    }
+
     /// <summary>The three-part clip with stereo AAC: 6 s of bars and -18 dBFS tone before (lead) or after (trail) 4 s of programme.</summary>
     string ToneClip(string where)
     {
