@@ -757,8 +757,9 @@ jobs:
       # and two encodes joined, whose timestamps start over and whose resolution changes (frames labelled by time, cuts
       # sorted, the new size scaled in one conversion, as scenedetect gets them). Corrupt data is best effort
       # (docs/decisions/2026-10-22-damaged-files-best-effort.md): threaded decoders conceal it differently from run to
-      # run, in scenedetect as in ours, so corrupt.ts is informational and corrupt.mp4 isn't run. truncated.ts can vary
-      # in its last frame or two the same way; it hasn't on CI's sample, and if it ever does, make it informational.
+      # run, in scenedetect as in ours, so corrupt.ts is informational and corrupt.mp4 isn't run. truncated.ts too: its
+      # last frames' concealment differs from scenedetect's since sequential h264 decodes with twice the CPUs
+      # (docs/decisions/2026-11-04-truncated-ts-informational.md).
       # corrupt_copy.ts (the trailer's own bytes, other offsets) has frames whose pts goes back: in-process its cuts and
       # scene list equal scenedetect's (frames labelled by their own pts), through the executable they come a frame late
       # (ffmpeg gives each frame the best-effort timestamp; docs/decisions/2026-10-28-damaged-frame-pts.md).
@@ -769,10 +770,11 @@ jobs:
           fast=${{ matrix.path == 'fast-yuv' && '--fast-yuv' || '' }}
           # Exact.
           status=0
-          python tools/compare.py samples/broken/base.mp4 samples/broken/truncated.mp4 samples/broken/truncated.ts \
+          python tools/compare.py samples/broken/base.mp4 samples/broken/truncated.mp4 \
             samples/broken/dup_pts.mkv samples/broken/res_change.ts --detector all --stats --report broken.md $fast || status=$?
-          # Informational: scenedetect's own results on corrupt.ts vary from run to run (its threaded error concealment).
-          python tools/compare.py samples/broken/corrupt.ts samples/broken/corrupt_copy.ts --detector all --stats \
+          # Informational: scenedetect's own results on corrupt.ts vary from run to run (its threaded error concealment);
+          # truncated.ts's last frames are concealed with other decoder threads than scenedetect's.
+          python tools/compare.py samples/broken/truncated.ts samples/broken/corrupt.ts samples/broken/corrupt_copy.ts --detector all --stats \
             --report broken-info.md --informational $fast || true
           { echo "### Damaged files, ${{ matrix.path }} path, ${{ matrix.decoder }}"; cat broken.md
             echo "#### Informational"; cat broken-info.md; } >> "$GITHUB_STEP_SUMMARY"

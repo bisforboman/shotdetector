@@ -65,3 +65,5 @@ document and stay best effort; B, one thread for MPEG-1/2; C, one thread only on
 corrected; nothing else changes.
 
 The duplicate-pts frame on corrupt.ts: [2026-10-28-damaged-frame-pts.md](2026-10-28-damaged-frame-pts.md).
+
+Since 2026-11-04 ([2026-11-04-truncated-ts-informational.md](2026-11-04-truncated-ts-informational.md)) truncated.ts is informational in CI too.
