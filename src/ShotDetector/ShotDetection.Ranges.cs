@@ -77,6 +77,10 @@ public static partial class ShotDetection
     /// video. freezedetect compares each frame with the still picture's first, which for a range starting inside a still
     /// is in an earlier range: <see cref="FirstRangeToScoreAgain"/> names such a range, to score again given the ranges
     /// before it, with the frames <see cref="RangeFrames(YuvVideo, IEnumerable{RangeScores}, DetectionOptions?, long, long)"/> gives.
+    /// <see cref="DetectionOptions.TrimReferenceTone"/> is taken with <see cref="YuvVideo.ReferenceTone"/> (refused without
+    /// it, as Detect refuses it): the frames keep their numbers in the video, a range takes those before the run's start
+    /// without converting them (no scores), its first frame there is its detectors' first, and <see cref="Merge"/> gives
+    /// Detect's result with the same tone (the frames after the run's end are scored as without it, and left out there).
     /// <see cref="DetectionOptions.Progress"/> is told the range's frames (<see cref="DetectionProgress.FramesProcessed"/>
     /// counts those from <paramref name="firstFrame"/> on; <see cref="DetectionProgress.ExpectedFrames"/> is 0, as the range
     /// ends where the frames stop; with <see cref="DetectionOptions.ProgressStep"/> set, only the first report and the last), the last report once they have.

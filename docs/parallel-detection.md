@@ -176,6 +176,13 @@ there is no file to seek, so the host does what `ScoreChunked` does and ShotDete
   it, and the host scores it again given the ranges before it, with the frames `RangeFrames(video, earlier, options,
   first, end)` gives (from the still's first frame), until none is named. A resumed run's range, given the earlier
   ranges and those frames, needs nothing more.
+- **Reference tone** (2026-11-04, docs/decisions/2026-10-31-frame-source-tone.md): with `TrimReferenceTone` and the
+  caller's `YuvVideo.ReferenceTone`, frames keep their whole-video numbers. A range takes the frames before the run's
+  start (the frame Detect's seek to the trimmed start lands on) without converting them, and they score nothing; the
+  start frame is its detectors' first. Frames after the run's end are scored as without the trim. Merge's decisions
+  seek as Detect's do and stop where its end stops the run; the stats and the black and freeze spans are those frames'.
+  So the ranges past the end, and freezedetect's ranges to score again, are as without the trim. The tone is in the
+  fingerprint, only with the option.
 - **What can't be split** is refused rather than read sequentially: a time range, frame skip and
   `DetectionMode.Parallel`. Every detector works, with stats too (threshold's dedupe by position stays in Decide).
 - **Shots as they come** (`DetectionOptions.OnShot`, 2026-10-30, docs/decisions/2026-10-30-score-range-on-shot.md): a

@@ -572,7 +572,7 @@ public sealed record DetectionOptions
     /// end: detection starts after a segment that begins in the first 5 s, and stops before one that ends in the last
     /// 5 s; the segments found are in <see cref="DetectionResult.ReferenceTone"/>. Not in scenedetect. Needs a file
     /// path and FFmpeg's libraries (the audio is read in-process), or frames from the caller with
-    /// <see cref="YuvVideo.ReferenceTone"/> (the tone it found in the audio; not for ranges), and sets the time range itself: not with
+    /// <see cref="YuvVideo.ReferenceTone"/> (the tone it found in the audio; ranges too), and sets the time range itself: not with
     /// <see cref="StartTime"/>, <see cref="EndTime"/> or <see cref="RangeDuration"/>.
     /// </summary>
     public bool TrimReferenceTone { get; init; }
