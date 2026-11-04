@@ -681,6 +681,9 @@ public sealed record DetectionResult
     /// <see cref="Cuts"/> as the frames the shots after them start on: 0-based frame numbers counted from the video's first
     /// frame as decoded (<see cref="FrameOf"/>), what <see cref="ShotDetection.LoadScenes(DetectionResult, IEnumerable{int}, DetectionOptions?)"/>
     /// takes. On a variable frame rate they differ from the cuts' <see cref="FrameTime.FrameNum"/> (time × average rate).
+    /// A frame can come twice: at a variable rate, a fade cut (threshold detector) sits midway through the fade by frame
+    /// number at the average rate, as scenedetect places it, which can fall between two decoded frames, so it and the next
+    /// cut start on the same frame and the shot between them holds none. Given back, such a list still gives the run's result.
     /// </summary>
     public IReadOnlyList<int> CutFrames => FramesOf(Cuts);
 
