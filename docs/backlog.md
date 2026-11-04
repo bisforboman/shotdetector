@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- Mutations: a test filter that matches no test fails as such, not as SURVIVED
-  - Why: `tools/mutation/Invoke-Mutations.ps1` counts `dotnet test`'s exit 0 as SURVIVED, and a `Tests` filter that matches nothing exits 0, so a renamed test turns an entry red as if the guard were untested (#733, 2026-11-03: `AnHttpOrHttpsPlaylistThroughTheExecutableWarns` renamed, mutations.psd1 left on the old name). A distinct NO TESTS result, or a check that every entry's `Tests` names an existing test, says what is wrong
-  - Status: Open
-
 ## Waiting
 
 - Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)

@@ -1,7 +1,8 @@
 #!/usr/bin/env pwsh
 # Mutation testing for the guards that reproduce scenedetect's behaviour (tools/mutation/mutations.psd1): each
 # mutation breaks one guard, and the listed tests must then fail. Fails when a mutation survives (no test covers that
-# guard) or no longer applies (the code changed: update its Find text).
+# guard), no longer applies (the code changed: update its Find text) or names no test (a test renamed: update its Tests;
+# 'dotnet test' with a filter that matches nothing passes, which would read as SURVIVED).
 #
 #   ./tools/mutation/Invoke-Mutations.ps1 [-Root <checkout>] [-Shard <i> -Shards <n>] [-OnlyFiles <files> [-Base <ref>]] [-Count]
 # -Shard/-Shards: only every n-th selected mutation from the i-th (0-based), for CI's parallel jobs.
@@ -75,19 +76,34 @@ if ($Count) {
 }
 
 $mine = @(for ($i = $Shard; $i -lt $selected.Count; $i += $Shards) { $selected[$i] })
+function ProjectOf($m) { if ($m.Project) { $m.Project } else { $default } }
+# Each project's tests, as 'Class.Method' (the test classes have no namespace, so that is the name the filter sees).
+$testNames = @{}
 if ($mine.Count) {
-    foreach ($project in @($mine | ForEach-Object { if ($_.Project) { $_.Project } else { $default } } | Sort-Object -Unique)) {
+    foreach ($project in @($mine | ForEach-Object { ProjectOf $_ } | Sort-Object -Unique)) {
         dotnet build (Join-Path $Root $project) -nologo -v q | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "The unmutated build of $project fails." }
+        $listed = dotnet test (Join-Path $Root $project) -nologo -v q --no-build --list-tests 2>&1
+        if ($LASTEXITCODE -ne 0) { $listed | Out-Host; throw "Listing the tests of $project fails." }
+        $testNames[$project] = @($listed | Where-Object { $_ -match '^    \S' } | ForEach-Object { ($_.Trim() -split '\(', 2)[0] } | Sort-Object -Unique)
     }
 }
 
-$results = $stale + @(foreach ($m in $mine | Where-Object { -not $staleKeys[(Key $_)] }) {
+# An entry whose Tests filter matches no test can't be killed: say so, rather than SURVIVED.
+$noTestKeys = @{}
+$noTests = @(foreach ($m in $mine | Where-Object { -not $staleKeys[(Key $_)] }) {
+        if (-not @($testNames[(ProjectOf $m)] | Where-Object { $_.Contains($m.Tests) }).Count) {
+            $noTestKeys[(Key $m)] = $true
+            [pscustomobject]@{ Result = 'NO TESTS'; File = $m.File; Find = $m.Find; Note = "no test in $(ProjectOf $m) matches $($m.Tests)" }
+        }
+    })
+
+$results = $stale + $noTests + @(foreach ($m in $mine | Where-Object { -not $staleKeys[(Key $_)] -and -not $noTestKeys[(Key $_)] }) {
         $file = Join-Path $Root $m.File
         $text = [IO.File]::ReadAllText($file)
         [IO.File]::WriteAllText($file, $text.Replace($m.Find, $m.Replace))
         try {
-            $tests = Join-Path $Root $(if ($m.Project) { $m.Project } else { $default })
+            $tests = Join-Path $Root (ProjectOf $m)
             $out = dotnet test $tests -nologo -v q --filter "FullyQualifiedName~$($m.Tests)" 2>&1
             $result = if ($LASTEXITCODE -ne 0) { if ($out -match ' error CS') { 'KILLED (build)' } else { 'KILLED' } } else { 'SURVIVED' }
         }
@@ -104,6 +120,6 @@ if ($env:GITHUB_STEP_SUMMARY) {
     $results | ForEach-Object { "| $($_.Result) | $($_.File) | ``$($_.Find)`` |" } | Add-Content $env:GITHUB_STEP_SUMMARY
 }
 
-$bad = @($results | Where-Object { $_.Result -in 'SURVIVED', 'STALE' })
-if ($bad.Count) { throw "$($bad.Count) mutation(s) survived or no longer apply." }
+$bad = @($results | Where-Object { $_.Result -in 'SURVIVED', 'STALE', 'NO TESTS' })
+if ($bad.Count) { throw "$($bad.Count) mutation(s) survived, no longer apply or name no test." }
 Write-Host "All $($mine.Count) mutations were caught." -ForegroundColor Green
