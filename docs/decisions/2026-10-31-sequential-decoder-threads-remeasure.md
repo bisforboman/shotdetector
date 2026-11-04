@@ -26,3 +26,5 @@ same runner, minimum of 5 rounds, every output identical. tears_of_steel 1280x53
 and 1.08-1.09x on ARM (the same CPU); sintel_trailer 1920x1080 1.01-1.04x; 640x360 and smaller about 1.00x. Far below
 2026-10-21's 1.19-1.22x (150 s of 1080p; the conversion thread now overlaps more of the decode). The owner: merge it,
 a small gain with identical results and one rule for sequential and chunked runs (`VideoReader.DefaultDecodeThreads`).
+
+Since 2026-11-04 ([2026-11-04-truncated-ts-informational.md](2026-11-04-truncated-ts-informational.md)) truncated.ts is informational in CI: with twice the threads its last frames differ from scenedetect's.
