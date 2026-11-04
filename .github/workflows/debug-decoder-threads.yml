@@ -1,0 +1,93 @@
+name: Debug decoder threads
+
+# Throwaway (debug/** branch): sequential shotdetect at the new default decoder threads against --threads <CPUs>
+# (OpenCV's count, the old default), interleaved on one runner, for PR #734. Delete the branch afterwards.
+on:
+  push:
+    branches: ['debug/decoder-threads']
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    uses: ./.github/workflows/native.yml
+    with:
+      rids: '["linux-x64","linux-arm64"]'
+
+  time:
+    needs: native
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-x64, os: ubuntu-26.04, btbn: linux64 }
+          - { rid: linux-arm64, os: ubuntu-26.04-arm, btbn: linuxarm64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Install ffmpeg 9.0
+        timeout-minutes: 15
+        uses: ./.github/actions/btbn-ffmpeg
+        with:
+          version: '9.0'
+          platform: ${{ matrix.btbn }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: native-${{ matrix.rid }}
+          path: native/${{ matrix.rid }}
+
+      - name: Build
+        run: dotnet build src/ShotDetector.Cli -c Release
+
+      - name: Cache the videos
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: samples/realworld
+          key: realworld-films-${{ hashFiles('tools/realworld.py') }}
+
+      - name: Time
+        run: |
+          films="sintel_trailer_1920x1080_h264.mp4 tears_of_steel_1280x534_h264.mov bbb_640x360_h264.mp4 elephants_dream_426x240_h264.mp4"
+          python tools/realworld.py $films --download
+          exe=$(cd tools && python -c "from compare import EXE; print(EXE)")
+          n=$(nproc)
+          echo "### ${{ matrix.rid }}: $n CPUs ($(lscpu | sed -n 's/^Model name: *//p' | head -1))" >> "$GITHUB_STEP_SUMMARY"
+          echo "| film | mode | threads | wall (min of 5) | CPU (min) | peak MB (max) | output |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          for f in $films; do
+            for mode in "-d content" "-d adaptive" "-d content --stats" "-d content --decoder process"; do
+              declare -A wall cpu mem out
+              for k in new old; do wall[$k]=999999; cpu[$k]=999999; mem[$k]=0; out[$k]=; done
+              for r in 1 2 3 4 5; do
+                for k in new old; do
+                  t=$([ $k = old ] && echo "--threads $n")
+                  rm -rf o && mkdir o
+                  /usr/bin/time -f "%e %U %S %M" -o t.txt "$exe" -i samples/realworld/$f $mode --sequential $t -o o > o/stdout.txt 2>o/stderr.txt || { cat o/stderr.txt; exit 1; }
+                  read e u s m < t.txt
+                  c=$(python -c "print(round($u+$s,2))")
+                  wall[$k]=$(python -c "print(min(${wall[$k]},$e))"); cpu[$k]=$(python -c "print(min(${cpu[$k]},$c))")
+                  mem[$k]=$(python -c "print(max(${mem[$k]},$m//1024))")
+                  h=$(cat o/stdout.txt $(find o -name '*.csv' | sort) | sha256sum | cut -c1-12)
+                  [ -z "${out[$k]}" ] && out[$k]=$h
+                  [ "${out[$k]}" = "$h" ] || out[$k]="${out[$k]} varies"
+                done
+              done
+              same=$([ "${out[new]}" = "${out[old]}" ] && echo identical || echo "DIFFER ${out[new]} / ${out[old]}")
+              echo "| $f | $mode | default | ${wall[new]} s | ${cpu[new]} s | ${mem[new]} | $same |" >> "$GITHUB_STEP_SUMMARY"
+              echo "| $f | $mode | $n | ${wall[old]} s | ${cpu[old]} s | ${mem[old]} | |" >> "$GITHUB_STEP_SUMMARY"
+              echo "$f $mode new ${wall[new]} ${cpu[new]} old ${wall[old]} ${cpu[old]} $same"
+              unset wall cpu mem out
+            done
+          done
