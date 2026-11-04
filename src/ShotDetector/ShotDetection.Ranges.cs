@@ -574,7 +574,9 @@ public static partial class ShotDetection
             if (r.FirstFrame >= to)
                 break;
             var flags = r.Frozen ?? throw InvalidRanges($"Range {i} (from frame {r.FirstFrame}) has no freeze comparisons.");
-            if (r.FirstFrame > start && r.FreezeSeed != reference)
+
+            // A range at or before the start has no seed (-1), as the replay has no still picture there yet.
+            if (r.FirstFrame > 0 && r.FreezeSeed != reference)
                 return (spans, i, reference);
             for (int k = Math.Max(r.FirstFrame, start); k < to; k++)
             {

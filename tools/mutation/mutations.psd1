@@ -35,7 +35,6 @@
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.TrimReferenceTone && video.ReferenceTone is null)'; Replace = 'if (false)'; Tests = 'RangeToneTests.TheToneIsInTheFingerprint' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'int from = Math.Max(lead, start);'; Replace = 'int from = lead;'; Tests = 'RangeToneTests.AnySplitIsDetects' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (firstFrame <= toneStart)'; Replace = 'if (false)'; Tests = 'RangeToneTests.AnySplitIsDetects' }
-        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (r.FirstFrame > start && r.FreezeSeed != reference)'; Replace = 'if (r.FirstFrame > 0 && r.FreezeSeed != reference)'; Tests = 'RangeToneTests.AnySplitIsDetects' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'var joined = new BlackFrames(reader.BlackTimeBase, start);'; Replace = 'var joined = new BlackFrames(reader.BlackTimeBase, 0);'; Tests = 'RangeToneTests.AnySplitIsDetects' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (_reader is null && _metrics[0].Count <= _start)'; Replace = 'if (false)'; Tests = 'RangeToneTests.OnShotTellsTheRunsShots' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'Line(nameof(o.TrimReferenceTone), string.Join('; Replace = '_ = (nameof(o.TrimReferenceTone), string.Join('; Tests = 'RangeToneTests.TheToneIsInTheFingerprint' }
@@ -695,7 +694,7 @@
         # comparisons started from another still than the run's refused, the seeded detector kept and its seed frame's
         # flag left out, timed frames checked to start at the still, flags read off the d = 0 spans, the options in the
         # fingerprint, version 1 bytes without them
-        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (r.FirstFrame > start && r.FreezeSeed != reference)'; Replace = 'if (false)'; Tests = 'RangeSpansTests' }
+        @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (r.FirstFrame > 0 && r.FreezeSeed != reference)'; Replace = 'if (false)'; Tests = 'RangeSpansTests' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = '+ (seeded ? 1 : 0)).Skip(seeded ? 1 : 0)'; Replace = '+ (seeded ? 1 : 0)).Skip(0)'; Tests = 'RangeSpansTests' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = '&& reader.FramePts[0] != earlierPts[given])'; Replace = '&& false)'; Tests = 'RangeSpansTests.ARangeStartingInsideAStillIsRefusedUntilScoredAgain' }
         @{ File = 'src/ShotDetector/ShotDetection.Ranges.cs'; Find = 'if (o.FreezeDetect is { } freeze)'; Replace = 'if (false && o.FreezeDetect is { } freeze)'; Tests = 'RangeSpansTests.TheFlagsAreInTheFingerprintAndTheBytes' }
