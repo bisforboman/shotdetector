@@ -74,7 +74,9 @@ detection-pass option in the same PR). 2.21.0: 0 of 1 (`AudioReaderOptions.Strea
 loudness: FrameReader alone). 2.22.0: 1 of 1
 needing both (yadif on one thread above 8 bits, #713: FrameReader's FrameDecoder and ShotDetector's executable path in
 the same PR). 2.23.0: 0 of 3
-(`AudioAnalysis` on one decode, #718; `AudioConvertOptions.Stream`, #721; DASH's `MinBufferTime`, #722: each FrameReader alone).
+(`AudioAnalysis` on one decode, #718; `AudioConvertOptions.Stream`, #721; DASH's `MinBufferTime`, #722: each FrameReader alone). 2.24.0: 0 of 6
+(the loudness maxima, #732, and when they end, #746; packet sizes and keyframes, #744; `InterlaceDetector`, #745;
+`ChannelMeter`, #747; `FrameSteps`, #748: each FrameReader alone, for Noga's QC report).
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)
