@@ -29,15 +29,23 @@ public class LoudnessMeterTests
     }
 
     // The highest M and S ebur128's framelog prints (every 100 ms, "M: -23.1 S: -24.0"; "-inf" for digital silence).
-    static (double M, double S) Highest(string path)
+    // ebur128's framelog: each 100 ms block's t, M and S.
+    static List<(double T, double M, double S)> Blocks(string path)
     {
         string log = Ffmpeg("-hide_banner", "-nostats", "-i", path, "-af", "ebur128=framelog=info", "-f", "null", "-");
         double Parse(string v) => v == "-inf" ? double.NegativeInfinity : double.Parse(v, System.Globalization.CultureInfo.InvariantCulture);
-        var blocks = System.Text.RegularExpressions.Regex.Matches(log, @"M:\s*(-?[\d.]+|-inf)\s+S:\s*(-?[\d.]+|-inf)")
-            .Select(m => (M: Parse(m.Groups[1].Value), S: Parse(m.Groups[2].Value)))
+        var blocks = System.Text.RegularExpressions.Regex.Matches(log, @"t:\s*([\d.]+)\s+TARGET:.*?M:\s*(-?[\d.]+|-inf)\s+S:\s*(-?[\d.]+|-inf)")
+            .Select(m => (T: Parse(m.Groups[1].Value), M: Parse(m.Groups[2].Value), S: Parse(m.Groups[3].Value)))
             .ToList();
         Assert.NotEmpty(blocks);
-        return (blocks.Max(b => b.M), blocks.Max(b => b.S));
+        return blocks;
+    }
+
+    // ebur128's block at a time (its t is the block's last sample's, within a millisecond of the block's end).
+    static (double T, double M, double S) BlockAt(List<(double T, double M, double S)> blocks, TimeSpan? at)
+    {
+        Assert.NotNull(at);
+        return Assert.Single(blocks, b => Math.Abs(b.T - at.Value.TotalSeconds) < 0.001);
     }
 
     static void Near(double expected, double actual)
@@ -110,9 +118,15 @@ public class LoudnessMeterTests
                     Assert.InRange(r.TruePeak, ffmpeg.TruePeak - 0.1, ffmpeg.TruePeak + 0.1);
             }
 
-            var (m, s) = Highest(path);
+            var blocks = Blocks(path);
+            double m = blocks.Max(b => b.M), s = blocks.Max(b => b.S);
             Near(m, r.MaxMomentary);
             Near(s, r.MaxShortTerm);
+
+            // When: ebur128 prints the highest there.
+            Assert.Equal(m, BlockAt(blocks, r.MaxMomentaryAt).M);
+            Assert.Equal(s, BlockAt(blocks, r.MaxShortTermAt).S);
+            Assert.Null(ffmpeg.MaxMomentaryAt);
             Assert.True(double.IsNaN(ffmpeg.MaxMomentary) && double.IsNaN(ffmpeg.MaxShortTerm));
             Assert.Equal(r.SamplePeak, measures.Channels.Max(c => c.SamplePeak));
             Assert.Equal(r.TruePeak, measures.Channels.Max(c => c.TruePeak));

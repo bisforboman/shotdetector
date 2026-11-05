@@ -49,7 +49,7 @@ public sealed class LoudnessMeter
     static readonly double[] BinLoudness = new double[HistogramSize];
     internal static readonly double[] BinEnergy = new double[HistogramSize];
 
-    readonly int _channels, _step;
+    readonly int _channels, _step, _sampleRate;
     readonly bool _avxOrder;
     readonly double[] _weights;
     readonly Biquad _pre, _rlb;
@@ -62,6 +62,7 @@ public sealed class LoudnessMeter
     long _sampleCount;
     double _integrated = AbsoluteGate, _range, _rangeLow, _rangeHigh;
     double _maxMomentary = double.NegativeInfinity, _maxShortTerm = double.NegativeInfinity;
+    long _blocks, _maxMomentaryBlock, _maxShortTermBlock;
     bool _finished;
 
     static LoudnessMeter()
@@ -106,7 +107,7 @@ public sealed class LoudnessMeter
         _z = new double[channels * 3];
         _i400 = new Integrator(sampleRate * 2 / 5, channels);
         _i3000 = new Integrator(sampleRate * 3, channels);
-        _step = sampleRate / 10;
+        (_step, _sampleRate) = (sampleRate / 10, sampleRate);
         _samplePeaks = new double[channels];
         _fullScale = new long[channels];
         _truePeaks = new TruePeakMeter[channels];
@@ -180,6 +181,8 @@ public sealed class LoudnessMeter
         {
             MaxMomentary = _maxMomentary,
             MaxShortTerm = _maxShortTerm,
+            MaxMomentaryAt = BlockEnd(_maxMomentaryBlock),
+            MaxShortTermAt = BlockEnd(_maxShortTermBlock),
         };
         return new LoudnessMeasures(result, channels);
     }
@@ -259,6 +262,9 @@ public sealed class LoudnessMeter
         return TwoSum(q, r);
     }
 
+    // The end of block number n (from 1), from the first sample; null for none.
+    TimeSpan? BlockEnd(long n) => n == 0 ? null : TimeSpan.FromTicks((long)Math.Round(n * _step * (double)TimeSpan.TicksPerSecond / _sampleRate));
+
     static double Lufs(double energy) => -0.691 + (10 * Math.Log10(energy));
 
     static double Dbfs(double amplitude) => 20 * Math.Log10(amplitude);
@@ -310,8 +316,11 @@ public sealed class LoudnessMeter
         double loudness400 = Lufs(power400), loudness3000 = Lufs(power3000);
 
         // The block's M and S, as ebur128's framelog prints them every 100 ms.
-        _maxMomentary = Math.Max(_maxMomentary, loudness400);
-        _maxShortTerm = Math.Max(_maxShortTerm, loudness3000);
+        _blocks++;
+        if (loudness400 > _maxMomentary)
+            (_maxMomentary, _maxMomentaryBlock) = (loudness400, _blocks);
+        if (loudness3000 > _maxShortTerm)
+            (_maxShortTerm, _maxShortTermBlock) = (loudness3000, _blocks);
         if (loudness400 >= AbsoluteGate)
         {
             int gate = _i400.Gate(power400, loudness400, -10);
