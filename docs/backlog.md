@@ -15,6 +15,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
+- A cheap check, in a light CI job, that every mutations.psd1 entry's `Tests` names an existing test, on pull requests that change tests
+  - Why: since #739 a mutation run reports NO TESTS, but only for the entries it selects: a test renamed in a pull request that changes no mutated file (so selects none of its entries) shows up only in the nightly, as with #733's rename. Listing the tests (`dotnet test --list-tests`, seconds after a build) and matching every entry would catch it on the pull request
+  - Status: Open
+
 ## Waiting
 
 - Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)
@@ -46,10 +50,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Waiting (parked by the owner, 2026-11-01; the suggestions for picking it up again are in the decision record's "Parked" section)
 
 ## Maybe
-
-- A mutation entry for the executable's HLS warning's FFmpeg 9 gate (#733: libavformat 63 and newer check https certificates)
-  - Why: #733 covers the gate with unit cases but adds no mutations.psd1 line, so nothing proves a test fails if the version check is broken. It isn't a scenedetect quirk, so CLAUDE.md doesn't require one; cheap once #733 merges
-  - Status: Maybe
 
 - Frames from the caller in 4:1:1 and 4:4:0 (yuvj411p, yuvj440p): `YuvVideo`/`YuvFrame` and FastYuv converting them as swscale does
   - Why: ManagedCodecs 0.6.0 decodes 4:1:1 MJPEG (DV-era capture cards) and 4:4:0, and shotdetector-web refuses both because ShotDetector's frame source takes only yuv420p/yuvj420p, yuv422p/yuvj422p and yuv420p10le (asked 2026-11-02). Rare formats: the owner put it in Maybe. Samples: shotdetector-web's tools/make-samples.sh makes 320x240 MJPEG AVIs that FFmpeg reads as yuvj411p and yuvj440p, from 4:2:0 and 4:2:2 JPEGs with rewritten SOF sampling factors

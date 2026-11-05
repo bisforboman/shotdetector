@@ -1156,3 +1156,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - Mutations: a test filter that matches no test fails as such, not as SURVIVED
   - Why: `tools/mutation/Invoke-Mutations.ps1` counts `dotnet test`'s exit 0 as SURVIVED, and a `Tests` filter that matches nothing exits 0, so a renamed test turns an entry red as if the guard were untested (#733, 2026-11-03: `AnHttpOrHttpsPlaylistThroughTheExecutableWarns` renamed, mutations.psd1 left on the old name). A distinct NO TESTS result, or a check that every entry's `Tests` names an existing test, says what is wrong
   - Status: **Done (2026-11-04)**: `Invoke-Mutations.ps1` lists each test project's tests before mutating and reports an entry whose `Tests` matches none as NO TESTS, which fails the run
+
+- A mutation entry for the executable's HLS warning's FFmpeg 9 gate (#733: libavformat 63 and newer check https certificates)
+  - Why: #733 covers the gate with unit cases but adds no mutations.psd1 line, so nothing proves a test fails if the version check is broken. It isn't a scenedetect quirk, so CLAUDE.md doesn't require one; cheap once #733 merges
+  - Status: **Done (2026-11-05, #741)**: two entries break the check, dropping it and moving it to `> 63`; each fails AnHttpOrHttpsPlaylistThroughAnExecutableOlderThanFfmpeg9Warns (8 and 1 of its 17 cases)
