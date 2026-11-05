@@ -318,6 +318,9 @@
 
         # The executable's HLS warning: an http playlist too, whose https segments, keys and variants go unchecked as well
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' || url.Scheme == Uri.UriSchemeHttp)'; Replace = ')'; Tests = 'UrlOptionTests.AnHttpOrHttpsPlaylistThroughAnExecutableOlderThanFfmpeg9Warns' }
+        # ... only through an executable older than FFmpeg 9 (libavformat 63 checks every https connection)
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' && !(libavformatMajor() >= 63)'; Replace = ''; Tests = 'UrlOptionTests.AnHttpOrHttpsPlaylistThroughAnExecutableOlderThanFfmpeg9Warns' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '!(libavformatMajor() >= 63)'; Replace = '!(libavformatMajor() > 63)'; Tests = 'UrlOptionTests.AnHttpOrHttpsPlaylistThroughAnExecutableOlderThanFfmpeg9Warns' }
         # ... once, though checked again after the frames (Auto may have handed decoding to the executable meanwhile)
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (!hlsWarned && '; Replace = 'if ('; Tests = 'VideoTests.UrlInputIsStreamed' }
 
