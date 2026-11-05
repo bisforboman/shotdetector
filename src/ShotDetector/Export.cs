@@ -232,7 +232,8 @@ public static partial class Export
             File.WriteAllText(filterFile,
                 $"select='{string.Join("+", frames.Select(f => $"eq(n\\,{f})"))}',{filter}");
             VideoReader.Run(video.FfmpegExe,
-                ["-v", "error", "-nostdin", "-y", .. VideoReader.InputOptions(videoPath), .. VideoReader.MaxPixels, "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
+                ["-v", "error", "-nostdin", "-y", .. VideoReader.InputOptions(videoPath), .. VideoReader.MaxPixels,
+                    .. VideoReader.IgnoreContainerCropping(video.FfmpegExe, cancellationToken), "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
                     "-fps_mode", "passthrough", .. quality, Path.Combine(temp, $"%06d.{io.Format}")],
                 cancellationToken,
                 failure: ShotDetectionError.ExportFailed);

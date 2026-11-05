@@ -43,6 +43,10 @@ VIDEOS = {
                          "970f0daf21d82382940085e745825cf6ee34d89415492415fc1504fef78685e5"),
     "bbb_10s_av1.mp4": ("https://test-videos.co.uk/vids/bigbuckbunny/mp4/av1/720/Big_Buck_Bunny_720_10s_1MB.mp4",
                         "56ce7a65bc942fefcccbea30844d539e1aec32e8aee73a7345a01b8b9bac072b"),
+    # An iPhone video from Flickr, 3 s: 960x720 H.264 in a mov with a clean aperture ('clap', 872x653), which ffmpeg's
+    # command line crops to and OpenCV doesn't.
+    "iphone_clap_960x720_h264.mov": ("https://archive.org/download/Flickr-44309131575/IMG_6572-44309131575.mov",
+                                     "86d6e0bb2a785ebafcc3f5c89e990bb0d39eefe5c7e39658ec85c24e4a5b8f8f"),
 }
 
 # Only their audio is compared (tests/FrameReader.Tests/RealWorldAudioTests.cs): Opus and Vorbis, which none of the

@@ -10,6 +10,11 @@
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (o.FrameSkip > 0 && o.CollectStats)'; Replace = 'if (false)'; Tests = 'RangeTests' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'effective = (crop.Width + 1, crop.Height + 1);'; Replace = 'effective = (crop.Width, crop.Height);'; Tests = 'RangeTests' }
 
+        # A container's clean aperture (MOV/MP4 'clap') is ignored, as OpenCV ignores it: ffmpeg's command line crops to it
+        # from FFmpeg 7.1 unless told -apply_cropping codec (detection and save-images)
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '.. IgnoreContainerCropping(FfmpegExe, cancellationToken), "-noautorotate"'; Replace = '"-noautorotate"'; Tests = 'CleanApertureTests' }
+        @{ File = 'src/ShotDetector/Export.cs'; Find = '.. VideoReader.IgnoreContainerCropping(video.FfmpegExe, cancellationToken), "-i"'; Replace = '"-i"'; Tests = 'CleanApertureTests' }
+
         # 10-bit: chroma interpolated from where the frame says it sits, as OpenCV's sws_scale_frame does (executable
         # path: in_chroma_loc; in-process sampled rows: the position sws_scale_frame derives)
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(siting is { } cl ? ":in_chroma_loc=" + cl : "")'; Replace = '""'; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
@@ -27,7 +32,7 @@
 
         # Reference tone on frames from the caller (#629): trimmed by YuvVideo.ReferenceTone as the file path trims by the
         # tone it finds; refused without it, and for ranges (a time range)
-        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'tone = !video.FromFrames'; Replace = 'tone = video.FromFrames'; Tests = 'FrameInputTests' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'tone = !video.FromFrames'; Replace = 'tone = video.FromFrames'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'video.GivenTone ?? throw'; Replace = 'video.GivenTone ?? Array.Empty<FrameReader.ToneSegment>() ?? throw'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         # ... for ranges with the caller's tone: the frames before the run's start score nothing, its first is the
         # detectors' first; Merge decides from there to where the end stops the run, takes those frames' stats, replays
@@ -98,7 +103,7 @@
         @{ File = 'src/ShotDetector/HashDetector.cs'; Find = '(float)((float)(sorted[half - 1] + sorted[half]) / 2f)'; Replace = 'sorted[half]'; Tests = 'HashDetectorTests' }
 
         # Rotation as OpenCV's: the converted image turned by the display matrix's angle, not ffmpeg's autorotate
-        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '.. MaxPixels, "-noautorotate", "-i", _path,'; Replace = '.. MaxPixels, "-i", _path,'; Tests = 'InProcessTests.RotatesAsTheFfmpegExecutable' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'cancellationToken), "-noautorotate", "-i", _path,'; Replace = 'cancellationToken), "-i", _path,'; Tests = 'InProcessTests.RotatesAsTheFfmpegExecutable' }
 
         # FastYuv as x86's swscale: 4:2:2 reads its own row's chroma (YUV2RGB_LOOP's vshift), only where
         # swscale takes the unscaled converter (even decoded height), converted before turning (cv::rotate)
@@ -313,6 +318,9 @@
 
         # The executable's HLS warning: an http playlist too, whose https segments, keys and variants go unchecked as well
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' || url.Scheme == Uri.UriSchemeHttp)'; Replace = ')'; Tests = 'UrlOptionTests.AnHttpOrHttpsPlaylistThroughAnExecutableOlderThanFfmpeg9Warns' }
+        # ... only through an executable older than FFmpeg 9 (libavformat 63 checks every https connection)
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' && !(libavformatMajor() >= 63)'; Replace = ''; Tests = 'UrlOptionTests.AnHttpOrHttpsPlaylistThroughAnExecutableOlderThanFfmpeg9Warns' }
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '!(libavformatMajor() >= 63)'; Replace = '!(libavformatMajor() > 63)'; Tests = 'UrlOptionTests.AnHttpOrHttpsPlaylistThroughAnExecutableOlderThanFfmpeg9Warns' }
         # ... once, though checked again after the frames (Auto may have handed decoding to the executable meanwhile)
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'if (!hlsWarned && '; Replace = 'if ('; Tests = 'VideoTests.UrlInputIsStreamed' }
 
