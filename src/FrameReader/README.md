@@ -12,7 +12,7 @@ frame, and the same bytes as ffmpeg's command line, so you can check them agains
   tones.
 - **Writing**: MP3, AAC and WAV, JPEG and PNG images (`ImageEncoder`), H.264 with an FFmpeg built with x264, stream
   copy (`Remux`), synthetic test media (`TestMedia`).
-- **Probing**: streams, packets and ffprobe's JSON (`MediaProbe`).
+- **Probing**: streams, packets and ffprobe's JSON (`MediaProbe`); the gaps between frames' timestamps (`FrameSteps`).
 
 ```
 dotnet add package FrameReader
