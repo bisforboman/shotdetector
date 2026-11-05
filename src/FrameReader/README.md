@@ -578,6 +578,13 @@ lasting `d` is a `FrozenSpan`, with no end while it runs at the end (as freezede
 number of frames, for a reader that decodes ahead. Checked against FFmpeg 8.1's filter at 8 and 10 bits, 4:2:0, 4:2:2,
 gray and NV12, odd sizes.
 
+`InterlaceDetector` is FFmpeg's idet on frames of yours: each frame weighed against the frames before and after it,
+row by row over every plane, as top field first, bottom field first, progressive or undetermined, alone and through a
+four-frame history, and for a field repeated from the frame before (telecine). `Finish()` gives the totals idet prints
+at the end (`IdetTotals`); `IdetOptions` holds its thresholds. `For(decoder)` or `For(frame)` sizes it for FrameReader's
+frames, or give the planes' sizes yourself. Checked against FFmpeg's filter at 8, 10 and 16 bits, 4:2:0, 4:2:2, 4:4:4,
+gray and with alpha, odd sizes, and on interlaced H.264.
+
 Test media without the ffmpeg executable: `TestMedia.Write(path, options)` makes a synthetic clip from FFmpeg's own
 sources and encoders, in-process, for tests that need real media without committing any. Video sources are
 concatenated in order, so the cuts fall at known frames; interlaced output is flagged and coded as such.
