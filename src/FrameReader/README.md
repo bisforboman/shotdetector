@@ -497,6 +497,11 @@ foreach (var s in silences.Finish())
 silencedetect compares integer samples (16 and 32-bit PCM) in their own format against the level times the format's
 largest value, truncated; the finder takes floats, as FFmpeg's decoders give AAC, MP3, Opus and float PCM.
 
+`ChannelMeter` measures a track's channels one by one, for a delivery's channel faults: each channel's silences alone
+(as `pan=mono|c0=cN,silencedetect`), its RMS level (astats'), its samples at full scale and the runs of
+`ChannelMeterOptions.ClipRun` of them (clipping), and the first two channels' mean phase correlation (aphasemeter's:
+1 in phase, -1 inverted). A dead channel, one out of phase, clipping and dual mono, on samples you decode.
+
 Several analyses on one decode: `AudioAnalysis.Run(audioReader, options)` runs reference tone, the waveform, loudness
 and silences (each one given its options) over one pass of the reader, each result the one its own call gives on a
 reader opened with the same options, to the bit. Loudness reads the decoded audio, as `Loudness.Measure` does; the
