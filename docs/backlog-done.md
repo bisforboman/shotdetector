@@ -1160,3 +1160,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - A mutation entry for the executable's HLS warning's FFmpeg 9 gate (#733: libavformat 63 and newer check https certificates)
   - Why: #733 covers the gate with unit cases but adds no mutations.psd1 line, so nothing proves a test fails if the version check is broken. It isn't a scenedetect quirk, so CLAUDE.md doesn't require one; cheap once #733 merges
   - Status: **Done (2026-11-05, #741)**: two entries break the check, dropping it and moving it to `> 63`; each fails AnHttpOrHttpsPlaylistThroughAnExecutableOlderThanFfmpeg9Warns (8 and 1 of its 17 cases)
+
+- A cheap check, in a light CI job, that every mutations.psd1 entry's `Tests` names an existing test, on pull requests that change tests
+  - Why: since #739 a mutation run reports NO TESTS, but only for the entries it selects: a test renamed in a pull request that changes no mutated file (so selects none of its entries) shows up only in the nightly, as with #733's rename. Listing the tests (`dotnet test --list-tests`, seconds after a build) and matching every entry would catch it on the pull request
+  - Status: **Done (2026-11-05)**: `Invoke-Mutations.ps1 -CheckTests` builds and lists the test projects and fails on an entry whose `Tests` matches no test, mutating nothing; mutation.yml's `tests` job runs it on pull requests that change `tests/**.cs` or mutations.psd1 (within the `mutation` gate)

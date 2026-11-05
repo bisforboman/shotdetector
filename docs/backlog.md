@@ -15,12 +15,12 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- A cheap check, in a light CI job, that every mutations.psd1 entry's `Tests` names an existing test, on pull requests that change tests
-  - Why: since #739 a mutation run reports NO TESTS, but only for the entries it selects: a test renamed in a pull request that changes no mutated file (so selects none of its entries) shows up only in the nightly, as with #733's rename. Listing the tests (`dotnet test --list-tests`, seconds after a build) and matching every entry would catch it on the pull request
-  - Status: Open
-
 - TrimReferenceTone: put the tone's end on the video's timeline before it becomes the start time
   - Why: FrameReader's tone segments are times from the file's start (AudioReader subtracts the format's start_time, as ffmpeg's audio filters print), and TrimmedToTone uses the first one's end as StartTime, which counts from the video's start (scenedetect's frame times). Where the audio starts before the video (a fragmented MP4 with B-frames, video 2 frames late) the trim starts that much later than the tone's end, a frame more cut. Found with the black/freeze span origin fix (span-format-origin), which moved those spans to the file's start
+  - Status: Open
+
+- Check every place that uses FrameReader's file-start times beside frame times (from the video stream's start)
+  - Why: FrameReader's audio measures (tone, loudness, silence, waveform) and since #743 the black and freeze spans count from the file's start, as ffmpeg prints them, while scenedetect's frame times count from the video's start. The TrimReferenceTone bug mixed the two; other consumers may too (Timeline and the exports, the CLI's audio options, the example). Test on a file whose audio starts before the video (a fragmented MP4 with B-frames)
   - Status: Open
 
 ## Waiting
