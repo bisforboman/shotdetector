@@ -57,7 +57,7 @@ public sealed class BlackDetectTests : IDisposable
     }
 
     /// <summary>ffmpeg's blackdetect log lines on the file (the text after "] "), with the filters before it.</summary>
-    static List<string> Theirs(string path, BlackDetectOptions o, string before = "") =>
+    internal static List<string> Theirs(string path, BlackDetectOptions o, string before = "") =>
         [.. Ffmpeg(["-hide_banner", "-nostats", "-nostdin", "-i", path, "-map", "0:v:0", "-vf", before + o.Filter(o.MinDuration.TotalSeconds), "-f", "null", "-"])
             .Split('\n')
             .Where(l => l.Contains("[Parsed_blackdetect_", StringComparison.Ordinal) && l.Contains("black_start:", StringComparison.Ordinal))

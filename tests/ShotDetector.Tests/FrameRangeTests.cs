@@ -836,13 +836,14 @@ public class FrameRangeTests
         Assert.DoesNotContain("\nBlackDetect=", "\n" + text);
         Assert.DoesNotContain("\nFreezeDetect=", "\n" + text);
 
-        // ChromaLocation only when set: the ranges scored before it existed keep their fingerprint.
-        string sited = ShotDetection.Fingerprint(Video() with { ChromaLocation = "left" }, new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());
+        // ChromaLocation and FileStartPts only when set: the ranges scored before they existed keep their fingerprint.
+        string sited = ShotDetection.Fingerprint(Video() with { ChromaLocation = "left", FileStartPts = 0 }, new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());
 
         // ReferenceTone only with TrimReferenceTone (its line), as it changes no range's scores without it.
         foreach (var p in typeof(YuvVideo).GetProperties().Where(p => p.Name is not ("EqualityContract" or "ReferenceTone")))
             Assert.Contains("\n" + p.Name + "=", "\n" + sited);
         Assert.DoesNotContain("\nChromaLocation=", "\n" + text);
+        Assert.DoesNotContain("\nFileStartPts=", "\n" + text);
         foreach (var p in typeof(DetectorSettings).GetProperties().Where(p => p.Name is not ("EqualityContract" or "MinSceneDuration" or "MinOutDuration")))
             Assert.Contains("\nDetectors[0]." + p.Name + "=", "\n" + text);
         Assert.Equal(text, ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved()));

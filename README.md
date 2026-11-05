@@ -184,8 +184,9 @@ Black spans on the same pass (no second decode): `BlackDetect = new BlackDetectO
 `DetectionResult.BlackSpans`, equal to `ffmpeg -vf blackdetect`'s on the video: each `BlackSpan` has its first frame
 and black_end's frame (the numbering of the shots' frames) and blackdetect's black_start and black_end in seconds, and
 prints as blackdetect's log line. Each frame is judged as detection reads it: whole (not cropped), every frame (not
-skipped), deinterlaced when deinterlacing (blackdetect after yadif), within the time range, times from the video
-stream's start. The ffmpeg executable runs blackdetect in its own graph; in-process decoding and frames from another
+skipped), deinterlaced when deinterlacing (blackdetect after yadif), within the time range, times from the file's
+start as ffmpeg prints them (its earliest stream's, which is before the video's when the audio starts first;
+`YuvVideo.FileStartPts` for frames from another decoder). The ffmpeg executable runs blackdetect in its own graph; in-process decoding and frames from another
 decoder count the luma with FrameReader's `BlackPixels` (blackdetect's arithmetic); chunks read in parallel join
 (docs/decisions/2026-11-01-black-spans.md). Not in scenedetect, and off by default.
 

@@ -37,8 +37,8 @@ public sealed record FreezeDetectOptions
 /// </summary>
 /// <param name="StartFrame">The still picture's first frame (display order, the numbering of <see cref="Shot"/>'s frames).</param>
 /// <param name="EndFrame">The first frame that differs; null while still at the end.</param>
-/// <param name="Start">freeze_start in seconds: the first frame's pts times the time base, from the video stream's start.</param>
-/// <param name="End">freeze_end in seconds, from the video stream's start; null while still at the end.</param>
+/// <param name="Start">freeze_start in seconds: the first frame's pts times the time base, from the file's start (<see cref="YuvVideo.FileStartPts"/>), as ffmpeg prints it.</param>
+/// <param name="End">freeze_end in seconds, from the file's start; null while still at the end.</param>
 public readonly record struct FreezeSpan(int StartFrame, int? EndFrame, double Start, double? End)
 {
     /// <summary>freeze_duration in seconds (whole microseconds: the pts between the ends rescaled to them, as FFmpeg rounds); null while still at the end.</summary>

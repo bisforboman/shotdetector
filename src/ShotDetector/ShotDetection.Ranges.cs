@@ -1046,6 +1046,8 @@ public static partial class ShotDetection
             Line("ChromaLocation", siting); // only when set, so the scores of ranges from before it was there keep their fingerprint
         Line("TimeBase", video.TimeBase is { } tb ? $"{tb.Num}/{tb.Den}" : null);
         Line("StartPts", video.StartPts);
+        if (video.FileStartPts is { } fileStart)
+            Line("FileStartPts", fileStart); // only when set, as ChromaLocation: the spans' origin
         Line("FrameCount", video.FrameCount);
         Line("Duration", video.Duration?.Ticks);
         Line("Codec", video.Codec);

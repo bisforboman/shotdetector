@@ -341,6 +341,10 @@ internal sealed partial class VideoReader
 
                 // Streamed: times from the stream's start, as ffmpeg gives them without -copyts.
                 long offset = Streaming ? decoder.StartOffset : 0;
+
+                // Black and freeze spans from the file's start, streamed or not: ffmpeg's shift by the input's start
+                // (the earliest stream's, before the video's when the audio starts first), as it prints them.
+                long spanOffset = decoder.StartOffset;
                 if (convertApart)
                     converter = Task.Run(() => ConvertTaken(offset));
 
@@ -373,7 +377,7 @@ internal sealed partial class VideoReader
 
                     // blackdetect's judgement of the frame (DetectionOptions.BlackDetect), read here, before it is taken.
                     if (_blackDetect is { } bd)
-                        judgements.Enqueue(JudgeBlack(decoder, bd, Streaming ? pts + offset : pts - _startPts));
+                        judgements.Enqueue(JudgeBlack(decoder, bd, pts + spanOffset));
 
                     // freezedetect's comparison of the frame (DetectionOptions.FreezeDetect), with the frames before it here.
                     if (_freezeDetect is { } fz)
@@ -383,7 +387,7 @@ internal sealed partial class VideoReader
                             _freezeDetector = FrameReader.FreezeDetector.For(decoder, FreezeOptions(fz))
                                 ?? throw new ShotDetectionException(ShotDetectionError.InvalidInput,
                                     $"FreezeDetect: the video decodes to {decoder.PixelFormat}, which ffmpeg converts before freezedetect; read it with the ffmpeg executable (Decoder = FfmpegProcess).");
-                            (_freezeOrigin, _freezeTimeBase) = (Streaming ? -offset : _startPts, timeBase);
+                            (_freezeOrigin, _freezeTimeBase) = (-spanOffset, timeBase);
                         }
 
                         _freezeDetector.Add(decoder);

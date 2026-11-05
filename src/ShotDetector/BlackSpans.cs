@@ -40,8 +40,8 @@ public sealed record BlackDetectOptions
 /// </summary>
 /// <param name="StartFrame">The first black frame's index (display order, the numbering of <see cref="Shot"/>'s frames).</param>
 /// <param name="EndFrame">The frame black_end is at: the first frame after the run that isn't black, or the run's last frame at the end.</param>
-/// <param name="Start">blackdetect's black_start in seconds: the first black frame's pts times the time base, from the video stream's start.</param>
-/// <param name="End">blackdetect's black_end in seconds: <paramref name="EndFrame"/>'s pts times the time base, from the video stream's start.</param>
+/// <param name="Start">blackdetect's black_start in seconds: the first black frame's pts times the time base, from the file's start (<see cref="YuvVideo.FileStartPts"/>: the earliest stream's, as ffmpeg prints it).</param>
+/// <param name="End">blackdetect's black_end in seconds: <paramref name="EndFrame"/>'s pts times the time base, from the file's start.</param>
 public readonly record struct BlackSpan(int StartFrame, int EndFrame, double Start, double End)
 {
     /// <summary>
@@ -68,7 +68,7 @@ public readonly record struct BlackSpan(int StartFrame, int EndFrame, double Sta
 }
 
 /// <summary>
-/// One frame's black judgement on the detection pass: its pts (from the video stream's start, in
+/// One frame's black judgement on the detection pass: its pts (from the file's start, in
 /// <see cref="BlackFrames.TimeBase"/>) and whether it is black; through the executable with freeze detection, also
 /// freezedetect's marks on it (<see cref="FreezeMark"/>).
 /// </summary>
