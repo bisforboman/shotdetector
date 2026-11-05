@@ -7,6 +7,35 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.24.0 – 2026-11-05
+
+Packet sizes and keyframes, idet, channel faults, when loudness peaks, and dropped frames: the measures of a QC report.
+
+### New
+
+- `ChannelMeter`: a track's channels one by one, on samples you decode, without FFmpeg: each channel's silences alone
+  (silencedetect's on that channel), its RMS level (astats'), its samples at full scale and the runs of them
+  (`ChannelMeterOptions.ClipRun`), and the first two channels' mean phase correlation (aphasemeter's), as
+  `ChannelMeasures`: a dead or silent channel, one out of phase, clipping, dual mono.
+- `FrameSteps.Of(pts, timeBase, frameRate)`: the steps between a picture's frames in display order, at its frame
+  rate, from `MediaInfo.PacketTimestamps` or timestamps of yours: the steps that aren't one frame (a variable frame
+  rate), and the gaps over 1.5 frames with the frames missing in each (`FrameGap`: dropped frames).
+- `InterlaceDetector`: FFmpeg's idet on frames of yours, without FFmpeg: whether the picture is top field first,
+  bottom field first or progressive, frame by frame and through idet's four-frame history, and which fields repeat
+  (telecine), as the totals idet prints at the end (`IdetTotals`), at its thresholds (`IdetOptions`); sized for
+  FrameReader's frames (`For(decoder)`, `For(frame)`) or for planes you describe.
+- `LoudnessResult.MaxMomentaryAt` and `MaxShortTermAt`: when the loudest momentary and short-term blocks end, from
+  the first sample (the first such block; the time ebur128's framelog prints beside it, to a sample), from
+  `LoudnessMeter`: where in a programme a short-form limit is passed. Null from `Loudness.Measure`.
+- `LoudnessResult.MaxMomentary` and `MaxShortTerm`: the highest momentary (400 ms) and short-term (3 s) loudness,
+  every 100 ms as ebur128's framelog prints them, from `LoudnessMeter` (`Loudness.Measure`, FFmpeg's own filter, keeps
+  no maximum and leaves them NaN). For short-form limits such as EBU R128 s1's.
+- `MediaInfo.PacketDecodeTimestamps` and `PacketSizes`: every video packet's dts and size (ffprobe's `packet=dts`,
+  `packet=size`), read along with `PacketTimestamps` (an MP4/MOV file's from its sample tables, as its timestamps).
+- `ProbeOptions.PacketKeyframes` / `MediaInfo.PacketKeyframes`: whether each video packet is a keyframe, as the `K` in
+  ffprobe's `packet=flags`: where the keyframes are and the bitrate, from one probe. It reads the media data, also of
+  an MP4/MOV file, as FFmpeg's parser marks keyframes (an H.264 recovery point) that the sample table doesn't list.
+
 ## 2.23.0 – 2026-11-03
 
 Several audio analyses on one decode, Audio.Convert's choice of stream, and DASH's minBufferTime.
