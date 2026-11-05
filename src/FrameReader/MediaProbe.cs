@@ -65,12 +65,12 @@ public static unsafe class MediaProbe
     static MediaInfo Probe(string path, StreamInput? io, ProbeOptions? options)
     {
         FFmpegLibraries.Load();
-        bool timestamps = options?.PacketTimestamps == true, first = options?.FirstVideoPacket == true;
+        bool keyframes = options?.PacketKeyframes == true, timestamps = keyframes || options?.PacketTimestamps == true, first = options?.FirstVideoPacket == true;
         var cancellationToken = options?.CancellationToken ?? default;
 
         // An MP4/MOV file's packet timestamps come from its sample tables: the scan needn't read the media data (FileInput).
         // Where it would (another container or codec), the file is opened again as before, through FFmpeg's file protocol.
-        var file = io == null && timestamps && options?.ReadsMediaData != true ? FileInput.For(path, cancellationToken) : null;
+        var file = io == null && timestamps && !keyframes && options?.ReadsMediaData != true ? FileInput.For(path, cancellationToken) : null;
         AVFormatContext* fmt = null;
         try
         {
@@ -98,7 +98,7 @@ public static unsafe class MediaProbe
             var streams = new List<StreamInfo>();
             for (int i = 0; i < fmt->nb_streams; i++)
                 streams.Add(Stream(fmt->streams[i], i));
-            var (pts, pos, packet) = index >= 0 && (timestamps || first) ? Packets(fmt, index, timestamps, file) : (null, null, null);
+            var (packets, packet) = index >= 0 && (timestamps || first) ? Packets(fmt, index, timestamps, file) : (null, null);
             return new MediaInfo
             {
                 Container = Marshal.PtrToStringAnsi((IntPtr)fmt->iformat->name) ?? "",
@@ -106,8 +106,11 @@ public static unsafe class MediaProbe
                 Video = index < 0 ? null : Video(fmt->streams[index], index),
                 HasAudio = audio,
                 Streams = streams,
-                PacketTimestamps = pts,
-                PacketPositions = pos,
+                PacketTimestamps = packets?.Pts,
+                PacketPositions = packets?.Pos,
+                PacketDecodeTimestamps = packets?.Dts,
+                PacketSizes = packets?.Sizes,
+                PacketKeyframes = keyframes ? packets?.Keys : null,
                 FirstVideoPacket = first && packet is not null ? new ReadOnlyMemory<byte>(packet) : (ReadOnlyMemory<byte>?)null,
             };
         }
@@ -233,14 +236,14 @@ public static unsafe class MediaProbe
         && TimestampsWithoutData.Contains(fmt->streams[index]->codecpar->codec_id);
 
     /// <summary>
-    /// The video packets' pts and positions (with <paramref name="all"/>; else only the first packet is read), and the first
+    /// The video packets' pts, positions, dts, sizes and keyframe flags (with <paramref name="all"/>; else only the first packet is read), and the first
     /// one's bytes. With <paramref name="skipping"/>, the media data reads as zeros from here on (the other streams' packets
     /// aren't read at all): the first packets come whole all the same, as avformat_find_stream_info read them and keeps
     /// them for av_read_frame.
     /// </summary>
-    static (List<long?>? Pts, List<long?>? Pos, byte[]? First) Packets(AVFormatContext* fmt, int index, bool all, FileInput? skipping)
+    static (PacketLists? All, byte[]? First) Packets(AVFormatContext* fmt, int index, bool all, FileInput? skipping)
     {
-        List<long?> result = [], positions = [];
+        var lists = new PacketLists();
         byte[]? first = null;
         var pkt = ffmpeg.av_packet_alloc();
         if (skipping != null)
@@ -262,13 +265,16 @@ public static unsafe class MediaProbe
                 if (pkt->stream_index == index)
                 {
                     first ??= new ReadOnlySpan<byte>(pkt->data, pkt->size).ToArray();
-                    result.Add(Known(pkt->pts));
-                    positions.Add(pkt->pos < 0 ? null : pkt->pos);
+                    lists.Pts.Add(Known(pkt->pts));
+                    lists.Pos.Add(pkt->pos < 0 ? null : pkt->pos);
+                    lists.Dts.Add(Known(pkt->dts));
+                    lists.Sizes.Add(pkt->size);
+                    lists.Keys.Add((pkt->flags & ffmpeg.AV_PKT_FLAG_KEY) != 0);
                 }
 
                 ffmpeg.av_packet_unref(pkt);
                 if (!all && first is not null)
-                    return (null, null, first);
+                    return (null, first);
             }
 
             Demuxer.ThrowIfReadFailed(fmt, read, skipping?.Error);
@@ -278,7 +284,20 @@ public static unsafe class MediaProbe
             ffmpeg.av_packet_free(&pkt);
         }
 
-        return (all ? result : null, all ? positions : null, first);
+        return (all ? lists : null, first);
+    }
+
+    sealed class PacketLists
+    {
+        public List<long?> Pts { get; } = [];
+
+        public List<long?> Pos { get; } = [];
+
+        public List<long?> Dts { get; } = [];
+
+        public List<int> Sizes { get; } = [];
+
+        public List<bool> Keys { get; } = [];
     }
 
     static long? Known(long ts) => ts == ffmpeg.AV_NOPTS_VALUE ? null : ts;

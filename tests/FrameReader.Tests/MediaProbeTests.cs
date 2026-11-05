@@ -28,6 +28,7 @@ public class MediaProbeTests
 
     [Theory]
     [InlineData("plain.mp4", "-c:v mpeg4", "")]
+    [InlineData("h264.mp4", "-c:v libx264 -bf 3", "")] // keyframes the sample table doesn't list (recovery points)
     [InlineData("rotated.mp4", "-c:v mpeg4", "-display_rotation 90")]
     [InlineData("interlaced.mkv", "-c:v mpeg2video -flags +ilme+ildct -top 1 -c:a aac", "")]
     [InlineData("tagged.mkv", "-c:v ffv1 -pix_fmt yuv422p10le -colorspace bt709 -color_range pc", "")]
@@ -46,7 +47,7 @@ public class MediaProbeTests
             else
                 File.Move(plain, path);
 
-            var info = MediaProbe.Probe(path, new ProbeOptions { PacketTimestamps = true });
+            var info = MediaProbe.Probe(path, new ProbeOptions { PacketKeyframes = true });
             using var json = JsonDocument.Parse(Run("ffprobe",
                 "-v",
                 "error",
@@ -88,10 +89,11 @@ public class MediaProbeTests
             Assert.Equal(format.GetProperty("format_name").GetString(), info.Container);
             Assert.Equal(format.GetProperty("duration").GetString(), (info.Duration!.Value.Ticks / 10 / 1e6).ToString("F6", CultureInfo.InvariantCulture));
             Assert.Equal(streams.Any(s => s.GetProperty("codec_type").GetString() == "audio"), info.HasAudio);
-            var packets = Run("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts,pos", "-of", "csv=p=0", path)
+            var packets = Run("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts,dts,size,pos,flags", "-of", "csv=p=0", path)
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            Assert.Equal(packets, info.PacketTimestamps!.Zip(info.PacketPositions!,
-                (t, p) => $"{t?.ToString(CultureInfo.InvariantCulture) ?? "N/A"},{p?.ToString(CultureInfo.InvariantCulture) ?? "N/A"}"));
+            static string Text(long? value) => value?.ToString(CultureInfo.InvariantCulture) ?? "N/A";
+            Assert.Equal(packets.Select(p => p[..^2]), Enumerable.Range(0, info.PacketTimestamps!.Count).Select(i =>
+                $"{Text(info.PacketTimestamps[i])},{Text(info.PacketDecodeTimestamps![i])},{info.PacketSizes![i].ToString(CultureInfo.InvariantCulture)},{Text(info.PacketPositions![i])},{(info.PacketKeyframes![i] ? 'K' : '_')}"));
 
             // The same bytes as a stream (mkv: headers first): the same headers, read as from a pipe.
             if (path.EndsWith(".mkv"))

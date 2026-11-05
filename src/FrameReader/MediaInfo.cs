@@ -230,6 +230,24 @@ public sealed record MediaInfo
     public IReadOnlyList<long?>? PacketPositions { get; init; }
 
     /// <summary>
+    /// Every video packet's dts, as ffprobe's <c>packet=dts</c>, in the order of <see cref="PacketTimestamps"/> (null
+    /// entries: packets without one); read along with them.
+    /// </summary>
+    public IReadOnlyList<long?>? PacketDecodeTimestamps { get; init; }
+
+    /// <summary>
+    /// Every video packet's size in bytes, as ffprobe's <c>packet=size</c>, in the order of <see cref="PacketTimestamps"/>;
+    /// read along with them (an MP4/MOV file's from its sample tables, without reading the media data).
+    /// </summary>
+    public IReadOnlyList<int>? PacketSizes { get; init; }
+
+    /// <summary>
+    /// Whether each video packet is a keyframe, as the <c>K</c> in ffprobe's <c>packet=flags</c>, in the order of
+    /// <see cref="PacketTimestamps"/>; null unless asked for (<see cref="ProbeOptions.PacketKeyframes"/>).
+    /// </summary>
+    public IReadOnlyList<bool>? PacketKeyframes { get; init; }
+
+    /// <summary>
     /// The video stream's first packet's bytes, as ffprobe's <c>-show_entries packet=data -show_data -read_intervals
     /// %+#1</c> prints them (what a decoder reads first: an MPEG-4 Part 2 stream's headers and user data, ...); null
     /// unless asked for (<see cref="ProbeOptions.FirstVideoPacket"/>), or when there is no video packet.
@@ -240,8 +258,18 @@ public sealed record MediaInfo
 /// <summary>What <see cref="MediaProbe"/> reads besides the headers, and how it opens the input.</summary>
 public sealed record ProbeOptions
 {
-    /// <summary>Also read every video packet's pts and position (<see cref="MediaInfo.PacketTimestamps"/>, <see cref="MediaInfo.PacketPositions"/>).</summary>
+    /// <summary>
+    /// Also read every video packet's pts, position, dts and size (<see cref="MediaInfo.PacketTimestamps"/>,
+    /// <see cref="MediaInfo.PacketPositions"/>, <see cref="MediaInfo.PacketDecodeTimestamps"/>, <see cref="MediaInfo.PacketSizes"/>).
+    /// </summary>
     public bool PacketTimestamps { get; init; }
+
+    /// <summary>
+    /// Also read every video packet's keyframe flag (<see cref="MediaInfo.PacketKeyframes"/>), along with what
+    /// <see cref="PacketTimestamps"/> reads. Reads the media data, also of an MP4/MOV file: FFmpeg's parser marks
+    /// keyframes (an H.264 recovery point) that the sample table doesn't list, as ffprobe shows them.
+    /// </summary>
+    public bool PacketKeyframes { get; init; }
 
     /// <summary>Also read the first video packet's bytes (<see cref="MediaInfo.FirstVideoPacket"/>): reads up to that packet only.</summary>
     public bool FirstVideoPacket { get; init; }

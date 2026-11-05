@@ -72,6 +72,8 @@ public class PacketScanTests
             Assert.NotNull(full.PacketTimestamps);
             Assert.Equal(full.PacketTimestamps, scan.PacketTimestamps);
             Assert.Equal(full.PacketPositions, scan.PacketPositions);
+            Assert.Equal(full.PacketDecodeTimestamps, scan.PacketDecodeTimestamps);
+            Assert.Equal(full.PacketSizes, scan.PacketSizes);
             Assert.Equal((full.Container, full.Duration, full.HasAudio), (scan.Container, scan.Duration, scan.HasAudio));
             Assert.Equal(full.Video! with { ExtraData = default }, scan.Video! with { ExtraData = default });
             Assert.Equal(full.Video!.ExtraData.ToArray(), scan.Video!.ExtraData.ToArray());
