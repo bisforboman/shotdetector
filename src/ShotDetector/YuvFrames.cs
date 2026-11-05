@@ -111,7 +111,9 @@ public sealed record YuvVideo
     /// on the samples it decoded, with <see cref="DetectionOptions.ReferenceTone"/>'s options: the segments
     /// <see cref="ShotDetection.FindReferenceTone"/> gives for the file), for <see cref="DetectionOptions.TrimReferenceTone"/>,
     /// which needs it here and trims by it as the file path does; reported back in <see cref="DetectionResult.ReferenceTone"/>.
-    /// Null (the default): not searched. Ignored without the trim.
+    /// Its times count from the file's start, as FrameReader's AudioReader gives them: with <see cref="FileStartPts"/> set
+    /// the trim subtracts how much later the video starts (<see cref="StartPts"/> less it); without it they are taken as
+    /// from the video's start. Null (the default): not searched. Ignored without the trim.
     /// </summary>
     public IReadOnlyList<FrameReader.ToneSegment>? ReferenceTone { get; init; }
 }

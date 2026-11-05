@@ -570,7 +570,8 @@ public sealed record DetectionOptions
     /// <summary>
     /// Leave out reference tone (1 kHz line-up tone, <see cref="ShotDetection.FindReferenceTone"/>) at the start and
     /// end: detection starts after a segment that begins in the first 5 s, and stops before one that ends in the last
-    /// 5 s; the segments found are in <see cref="DetectionResult.ReferenceTone"/>. Not in scenedetect. Needs a file
+    /// 5 s; the segments found are in <see cref="DetectionResult.ReferenceTone"/>, timed from the file's start as FrameReader's
+    /// audio is (the trim moves them onto the video's timeline, where the audio starts before the video). Not in scenedetect. Needs a file
     /// path and FFmpeg's libraries (the audio is read in-process), or frames from the caller with
     /// <see cref="YuvVideo.ReferenceTone"/> (the tone it found in the audio; ranges too), and sets the time range itself: not with
     /// <see cref="StartTime"/>, <see cref="EndTime"/> or <see cref="RangeDuration"/>.
@@ -1373,7 +1374,7 @@ public static partial class ShotDetection
                 ? decoded!.ReferenceTone(o, cancellationToken)
                 : video.GivenTone ?? throw new ArgumentException("TrimReferenceTone on frames from the caller needs YuvVideo.ReferenceTone: "
                     + "the tone in the video's audio, found with FrameReader's ReferenceToneFinder.");
-            o = TrimmedToTone(o, tone, video.Duration);
+            o = TrimmedToTone(o, tone, video.Duration, video.ToneOrigin(cancellationToken));
         }
 
         if (o.StartTime is not null && video.Streaming)
@@ -1660,12 +1661,14 @@ public static partial class ShotDetection
 
     /// <summary>
     /// The time range without a leading tone segment (starting in the first 5 s, nearer the start than the end) and a
-    /// trailing one (ending in the last 5 s).
+    /// trailing one (ending in the last 5 s). The segments and <paramref name="duration"/> count from the file's start (as
+    /// FrameReader's audio does); the times set count from the video's (frame 0, as scenedetect's), <paramref name="origin"/>
+    /// later (<see cref="VideoReader.ToneOrigin"/>: a file whose audio starts before its video).
     /// </summary>
-    internal static DetectionOptions TrimmedToTone(DetectionOptions o, IReadOnlyList<FrameReader.ToneSegment> tone, TimeSpan? duration)
+    internal static DetectionOptions TrimmedToTone(DetectionOptions o, IReadOnlyList<FrameReader.ToneSegment> tone, TimeSpan? duration, TimeSpan origin = default)
     {
         var ends = TimeSpan.FromSeconds(5);
-        static string Seconds(TimeSpan t) => t.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture) + "s";
+        string Seconds(TimeSpan t) => Math.Max(0, (t - origin).TotalSeconds).ToString("0.###", CultureInfo.InvariantCulture) + "s";
         int first = 0;
         if (tone.Count > 0 && tone[0].Start <= ends && (duration is not { } length || tone[0].Start <= length - tone[0].End))
         {

@@ -703,6 +703,12 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ': MicrosIn(startMicros, _streamTimeBase.Num, _streamTimeBase.Den) * startScale;'; Replace = ': _startPts * startScale;'; Tests = 'FrameInputTests.SpansCountFromTheFilesStart' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'long spanOffset = decoder.StartOffset;'; Replace = 'long spanOffset = Streaming ? decoder.StartOffset : -_startPts;'; Tests = 'FrameInputTests.SpansCountFromTheFilesStart' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_spanOrigin = video.FileStartPts ?? video.StartPts;'; Replace = '_spanOrigin = video.StartPts;'; Tests = 'FrameInputTests.SpansCountFromTheFilesStart' }
+        # ... while TrimReferenceTone's times are the video's (frame 0, as scenedetect's StartTime): the tone, timed from
+        # the file's start as FrameReader's audio is, moved by how much later the video starts (the file's, and frames
+        # from the caller with YuvVideo.FileStartPts)
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'Math.Max(0, (t - origin).TotalSeconds)'; Replace = 'Math.Max(0, t.TotalSeconds)'; Tests = 'ReferenceToneTests.OnlyTheEndsAreTrimmed' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'return TimeSpan.FromSeconds((_startPts + decoder.StartOffset) * _timeBase);'; Replace = 'return TimeSpan.Zero;'; Tests = 'FrameInputTests.SameAsTheFileTrimmedToTone' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'return _framesTimed ? TimeSpan.FromSeconds((_startPts - _spanOrigin) * _timeBase) : TimeSpan.Zero;'; Replace = 'return TimeSpan.Zero;'; Tests = 'FrameInputTests.SameAsTheFileTrimmedToTone' }
 
         # Black and freeze spans for ranges: the flags joined, freezedetect replayed over them at Merge, a range whose
         # comparisons started from another still than the run's refused, the seeded detector kept and its seed frame's

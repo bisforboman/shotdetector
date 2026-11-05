@@ -55,6 +55,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     [InlineData("lead", "content")]
     [InlineData("trail", "content")]
     [InlineData("lead", "adaptive")]
+    [InlineData("late", "content")] // the video 0.5 s after the audio: the tone's end moved onto the video's timeline
     public async Task SameAsTheFileTrimmedToTone(string where, string detector)
     {
         if (Libs is null)
@@ -98,7 +99,14 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         await AssertSame(clip, options, tone: tone);
         var trimmed = ShotDetection.Detect(clip, options);
         Assert.Equal(tone, trimmed.ReferenceTone);
-        Assert.True(where == "lead" ? trimmed.Shots[0].Start.FrameNum == 150 : trimmed.Shots[^1].End.FrameNum == 100);
+        Assert.True(where != "trail" ? trimmed.Shots[0].Start.FrameNum == 150 : trimmed.Shots[^1].End.FrameNum == 100, $"{trimmed.Shots[0].Start.FrameNum}-{trimmed.Shots[^1].End.FrameNum}");
+        if (where == "late")
+        {
+            // The executable trims the same, and the tone (reported as found) ends at the file's 6.5 s.
+            Assert.InRange(tone[0].End.TotalSeconds, 6.4, 6.6);
+            var executable = ShotDetection.Detect(clip, options with { Decoder = VideoDecoder.FfmpegProcess });
+            Assert.Equal(trimmed.Shots, executable.Shots);
+        }
     }
 
     // Ranges with the tone trim (shotdetector-web's tone-silence-320x240-25.mp4 in shape: tone at 0-6 s and 9-15 s, the
@@ -185,9 +193,14 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         return path;
     }
 
-    /// <summary>The three-part clip with stereo AAC: 6 s of bars and -18 dBFS tone before (lead) or after (trail) 4 s of programme.</summary>
+    /// <summary>
+    /// The three-part clip with stereo AAC: 6 s of bars and -18 dBFS tone before (lead) or after (trail) 4 s of programme;
+    /// late: lead whose video starts 0.5 s after its audio (Matroska), with 0.5 s more tone so that both end together.
+    /// </summary>
     string ToneClip(string where)
     {
+        if (where == "late")
+            return LateToneClip();
         string path = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, $"tone-{where}.mp4");
         if (File.Exists(path))
             return path;
@@ -207,6 +220,33 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         string stderr = p.StandardError.ReadToEnd();
         p.WaitForExit();
         Assert.True(p.ExitCode == 0, stderr);
+        File.Move(temporary, path, overwrite: true);
+        return path;
+    }
+
+    /// <summary>
+    /// Bars for 6 s and tone for 6.5 s, then 4 s of programme, the video shifted 0.5 s later (-itsoffset): on the file's
+    /// timeline (the audio's, from 0) the tone ends at 6.5 s, where the programme's first frame (the video's 150th) is.
+    /// </summary>
+    string LateToneClip()
+    {
+        string path = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, "tone-late.mkv");
+        if (File.Exists(path))
+            return path;
+        string ffmpeg = Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
+        string source = path + ".source.mp4", temporary = path + ".part.mkv";
+        VideoReader.Run(ffmpeg,
+            ["-v", "error", "-y",
+                "-f", "lavfi", "-i", "smptebars=s=320x240:r=25:d=6", "-f", "lavfi", "-i", "sine=f=1000:r=48000:d=6.5",
+                "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=2", "-f", "lavfi", "-i", "anoisesrc=r=48000:a=0.1:d=2",
+                "-f", "lavfi", "-i", "mandelbrot=s=320x240:r=25", "-f", "lavfi", "-i", "anoisesrc=r=48000:a=0.1:c=pink:d=2",
+                "-filter_complex", "[4]trim=duration=2,setpts=PTS-STARTPTS[m];[0:v][2:v][m]concat=n=3:v=1:a=0[v];[1:a][3:a][5:a]concat=n=3:v=0:a=1[a]",
+                "-map", "[v]", "-map", "[a]", "-ac", "2", "-c:v", "mpeg4", "-q:v", "2", "-c:a", "aac", source],
+            default);
+        VideoReader.Run(ffmpeg,
+            ["-v", "error", "-y", "-itsoffset", "0.5", "-i", source, "-i", source, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "pcm_s16le", temporary],
+            default);
+        File.Delete(source);
         File.Move(temporary, path, overwrite: true);
         return path;
     }

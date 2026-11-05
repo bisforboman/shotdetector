@@ -409,6 +409,29 @@ internal sealed partial class VideoReader
     /// <summary>The reference tone the caller found, <see cref="YuvVideo.ReferenceTone"/>; null when not given.</summary>
     internal IReadOnlyList<FrameReader.ToneSegment>? GivenTone { get; }
 
+    /// <summary>
+    /// Where frame 0 (the video stream's start) is on a tone's timeline, which counts from the file's start as
+    /// FrameReader's audio does (AudioReader subtracts the format's start time): how much later the video starts than the
+    /// file. Frames from the caller: <see cref="YuvVideo.StartPts"/> less <see cref="YuvVideo.FileStartPts"/> (zero when
+    /// that isn't given, or the frames are untimed); a file: its video's start against the file's, from FFmpeg's libraries
+    /// (which the tone search loads anyway).
+    /// </summary>
+    internal TimeSpan ToneOrigin(CancellationToken cancellationToken)
+    {
+        if (FromFrames)
+            return _framesTimed ? TimeSpan.FromSeconds((_startPts - _spanOrigin) * _timeBase) : TimeSpan.Zero;
+        try
+        {
+            InProcess.Load(_ffmpegDirectory);
+            using var decoder = new FrameReader.FrameDecoder(_path, new() { CancellationToken = cancellationToken });
+            return TimeSpan.FromSeconds((_startPts + decoder.StartOffset) * _timeBase);
+        }
+        catch (FrameReader.FrameReaderException e)
+        {
+            throw InProcess.Map(e, _ffmpegDirectory);
+        }
+    }
+
     /// <summary>Whether the frames carry pts (<see cref="YuvVideo.TimeBase"/> set).</summary>
     internal bool FramesTimed => _framesTimed;
 
