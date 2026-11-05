@@ -6,6 +6,44 @@ What's merged but not released yet is in changes/shotdetector/ (one file per pul
 From 2.1.0 on, FrameReader has its own versions and src/FrameReader/CHANGELOG.md; until then its changes are here,
 marked "FrameReader:".
 
+## 3.30.0 – 2026-11-05
+
+Frame-source ranges take the reference-tone trim, now on the video's timeline, and black and freeze spans are timed
+as ffmpeg prints them.
+
+### New
+
+- Frame-source ranges take `DetectionOptions.TrimReferenceTone` with the caller's tone (`YuvVideo.ReferenceTone`):
+  `ScoreRange`, `ScoreRangeAsync`, `Merge`, `FirstRangeToScoreAgain` and `RangeFrames` with the earlier ranges. The merge
+  equals `Detect` with the same tone for any split (shots, cuts, scene list, the trimmed range's stats, black and freeze
+  spans, `DetectionResult.ReferenceTone`), and a stopped run's merge equals `Detect` on frames that end there. Ranges
+  scored without the option, or with another tone, don't merge with it (their fingerprints differ).
+
+### Faster
+
+- Sequential runs give frame-threaded decoders (h264, HEVC, VP9, ProRes) up to 1920 x 1080 twice the CPUs as decoder
+  threads (at most 16), as chunked runs already did: OpenCV's count left the cores waiting on frames in flight. Clean
+  video decodes the same; set `DetectionOptions.DecodeThreads` (`--threads`) for another count.
+
+### Fixed
+
+- The warning that the ffmpeg executable fetches an HLS playlist's https segments, keys and variants without checking
+  their certificates is now given only for an ffmpeg older than FFmpeg 9. FFmpeg 9 checks every https connection by
+  default, so the warning was wrong there.
+- MOV/MP4 files with a clean aperture (a `clap` box, as iPhones write) decoded through the ffmpeg executable were
+  cropped to it (FFmpeg 7.1 and newer crop by default), so stats differed from scenedetect, which reads the whole frame
+  as in-process decoding already did. The executable is now told `-apply_cropping codec` for detection and save-images.
+- `DetectionResult.BlackSpans` and `FreezeSpans` time their spans from the file's start, as `ffmpeg -vf blackdetect`
+  and `freezedetect` print them (ffmpeg subtracts the input's start time, the earliest stream's), not from the video
+  stream's: in a file whose audio starts before the video (a fragmented MP4 with B-frames and no edit list, video two
+  frames late) every time was that much early. Through the executable, in-process and for ranges; frames from the
+  caller take the file's start from the new `YuvVideo.FileStartPts` (FrameReader: `-decoder.StartOffset`), without it
+  the video stream's as before. `shotdetect qc`'s black and freeze spans move with them.
+- `DetectionOptions.TrimReferenceTone` (`--trim-tone`) starts and ends on the video's timeline: the tone is timed from
+  the file's start, as FrameReader reads the audio, so in a file whose audio starts before its video (a fragmented MP4
+  with B-frames, a Matroska file with an offset) the trim started that much after the tone's end, a frame or more cut.
+  Frames from the caller: the tone counts from `YuvVideo.FileStartPts` when it is set, as before without it.
+
 ## 3.29.0 – 2026-11-03
 
 A frame-source run that stops early ends where the file path does, and freeze spans through ffmpeg older than 8.
