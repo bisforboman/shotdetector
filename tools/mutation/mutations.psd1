@@ -697,6 +697,12 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'while (at > 0 && _freezeFrames[at].Mark.Time != start)'; Replace = 'while (false)'; Tests = 'FreezeDetectTests' }
         # ... and its lines read under an older ffmpeg's prefix too (6.1's [freezedetect @, issue #708)
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ' && !line.StartsWith("[freezedetect @ ", StringComparison.Ordinal)'; Replace = ''; Tests = 'FreezeDetectTests.FreezeLinesOfEveryFfmpeg' }
+        # ... both timed from the file's start (the earliest stream's, as ffmpeg subtracts it without -copyts), not the video
+        # stream's: the executable's from ffmpeg's Input #0 line, in-process from the decoder's StartOffset, frames from the
+        # caller from YuvVideo.FileStartPts
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = ': MicrosIn(startMicros, _streamTimeBase.Num, _streamTimeBase.Den) * startScale;'; Replace = ': _startPts * startScale;'; Tests = 'FrameInputTests.SpansCountFromTheFilesStart' }
+        @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = 'long spanOffset = decoder.StartOffset;'; Replace = 'long spanOffset = Streaming ? decoder.StartOffset : -_startPts;'; Tests = 'FrameInputTests.SpansCountFromTheFilesStart' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = '_spanOrigin = video.FileStartPts ?? video.StartPts;'; Replace = '_spanOrigin = video.StartPts;'; Tests = 'FrameInputTests.SpansCountFromTheFilesStart' }
 
         # Black and freeze spans for ranges: the flags joined, freezedetect replayed over them at Merge, a range whose
         # comparisons started from another still than the run's refused, the seeded detector kept and its seed frame's

@@ -1282,8 +1282,10 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         var decoderOptions = DecoderOptions(path);
         string colorSpace, colorRange;
         string? chromaLocation;
+        long fileStart;
         using (var first = new FrameReader.FrameDecoder(path, decoderOptions))
         {
+            fileStart = -first.StartOffset;
             Assert.True(first.Next());
             colorSpace = first.ColorSpace ?? info.ColorSpace ?? "";
             colorRange = first.ColorRange ?? info.ColorRange ?? "";
@@ -1301,6 +1303,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
             ChromaLocation = chromaLocation,
             TimeBase = info.TimeBase,
             StartPts = info.StartPts ?? 0,
+            FileStartPts = fileStart,
             FrameCount = info.FrameCount,
             Duration = info.DurationPts is { } d ? TimeSpan.FromTicks((long)Math.Round(d * 1e7 * info.TimeBase.Num / info.TimeBase.Den / 10) * 10) : probed.Duration,
             Codec = info.Codec,
@@ -1413,6 +1416,86 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         await AssertSame(path, options);
         Assert.NotEmpty(ShotDetection.Detect(path, options).FreezeSpans!);
         AssertRangeSpans(path, options with { BlackDetect = new BlackDetectOptions { MinDuration = TimeSpan.FromSeconds(0.2) } });
+    }
+
+    // Black and freeze spans count from the file's start, as ffmpeg prints them (without -copyts it subtracts the input's
+    // start_time, the earliest stream's), not the video stream's: audio starting before the video (a fragmented MP4 with
+    // B-frames and no edit list, whose video starts two frames late, as Caminandes: Gran Dillama remuxed; a Matroska file
+    // whose video starts 0.5 s late), after it, and no audio. Every path (the executable, in-process, frames from the
+    // caller with YuvVideo.FileStartPts, ranges) gives ffmpeg's lines, and LoadScenes keeps them.
+    [Theory]
+    [InlineData("audio-first.mp4")]
+    [InlineData("audio-first.mkv")]
+    [InlineData("audio-after.mkv")]
+    [InlineData("video-only.mkv")]
+    public void SpansCountFromTheFilesStart(string name)
+    {
+        if (Libs is null)
+            return;
+        string dir = Path.GetDirectoryName(clips.ThreeShots)!;
+        string video = Path.Combine(dir, "origin-video.mp4"), path = Path.Combine(dir, "origin-" + name);
+        lock (H264Lock)
+        {
+            // Black (1 s), a still (1.5 s), then moving: 25 fps H.264 with B-frames, which start the video's pts late.
+            if (!File.Exists(video))
+            {
+                VideoReader.Run("ffmpeg",
+                    ["-v", "error", "-y", "-f", "lavfi", "-i", "color=black:s=320x240:r=25:d=1", "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=0.04,tpad=stop_mode=clone:stop_duration=1.5",
+                        "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=1", "-filter_complex", "[0][1][2]concat=n=3:v=1", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-bf", "2", video + ".part.mp4"],
+                    default);
+                File.Move(video + ".part.mp4", video, true);
+            }
+
+            if (!File.Exists(path))
+            {
+                string[] audio = ["-f", "lavfi", "-i", "sine=d=4"];
+                string[] args = name switch
+                {
+                    "audio-first.mp4" => ["-i", video, .. audio, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-movflags", "frag_keyframe+empty_moov+default_base_moof"],
+                    "audio-first.mkv" => ["-itsoffset", "0.5", "-i", video, .. audio, "-map", "0:v", "-map", "1:a", "-c:v", "copy"],
+                    "audio-after.mkv" => ["-itsoffset", "0.5", "-i", video, "-itsoffset", "1", .. audio, "-map", "0:v", "-map", "1:a", "-c:v", "copy"],
+                    _ => ["-itsoffset", "0.5", "-i", video, "-c:v", "copy"],
+                };
+                string partial = path + ".part" + Path.GetExtension(path);
+                VideoReader.Run("ffmpeg", ["-v", "error", "-y", .. args, partial], default);
+                File.Move(partial, path, true);
+            }
+        }
+
+        var bd = new BlackDetectOptions { MinDuration = TimeSpan.FromSeconds(0.5) };
+        var fz = new FreezeDetectOptions { MinDuration = TimeSpan.FromSeconds(1) };
+        var options = new DetectionOptions { Detector = DetectorKind.Content, FfmpegDirectory = Libs, Decoder = VideoDecoder.InProcess, Yuv420Converter = new SwscaleYuv420(), BlackDetect = bd, FreezeDetect = fz };
+        var run = ShotDetection.Detect(path, options);
+        Assert.True(run.Video.DecodedInProcess);
+
+        // The files' starts: the video's later than the file's where the audio starts first.
+        var probed = FrameReader.MediaProbe.Probe(path);
+        var streamStart = probed.Video!.StartPts!.Value * probed.Video.TimeBase.Num / (double)probed.Video.TimeBase.Den;
+        double fileStart;
+        using (var decoder = new FrameReader.FrameDecoder(path))
+            fileStart = -decoder.StartOffset * decoder.TimeBase.Value;
+        Assert.True(name.StartsWith("audio-first", StringComparison.Ordinal) ? fileStart < streamStart : fileStart == streamStart, $"{fileStart} {streamStart}");
+
+        Assert.Equal(BlackDetectTests.Theirs(path, bd), run.BlackSpans!.Select(s => s.ToString()));
+        Assert.Equal(FreezeDetectTests.Theirs(path, fz), run.FreezeSpans!.Select(s => s.ToString()));
+        Assert.NotEmpty(run.BlackSpans!);
+        Assert.NotEmpty(run.FreezeSpans!);
+        AssertRangeSpans(path, options); // the executable, frames from the caller and ranges: the same spans
+
+        // Streamed, as from a file (the stream's start is the input's).
+        using (var stream = File.OpenRead(path))
+            Assert.Equal(run.BlackSpans, ShotDetection.Detect(stream, options with { Decoder = VideoDecoder.FfmpegProcess }).BlackSpans);
+
+        // LoadScenes keeps the run's spans.
+        var edited = ShotDetection.LoadScenes(run, [30], options);
+        Assert.Equal(run.BlackSpans, edited.BlackSpans);
+        Assert.Equal(run.FreezeSpans, edited.FreezeSpans);
+
+        // Frames from the caller without FileStartPts: from the video stream's start, as before it.
+        var (given, frames) = Decoded(path);
+        var fromStream = ShotDetection.Detect(given with { FileStartPts = null }, frames, options);
+        Assert.Equal(run.BlackSpans!.Select(s => Math.Round(s.Start - streamStart + fileStart, 9)), fromStream.BlackSpans!.Select(s => Math.Round(s.Start, 9)));
+        Assert.Equal(run.FreezeSpans!.Select(s => Math.Round(s.Start - streamStart + fileStart, 9)), fromStream.FreezeSpans!.Select(s => Math.Round(s.Start, 9)));
     }
 
     /// <summary>

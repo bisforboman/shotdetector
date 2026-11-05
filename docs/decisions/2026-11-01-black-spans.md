@@ -73,3 +73,5 @@ What should `DetectionResult.BlackSpans` hold?
 Since 2026-11-02 ([2026-11-02-freeze-spans-for-ranges.md](2026-11-02-freeze-spans-for-ranges.md)), ranges take
 `BlackDetect`: `RangeScores` carries each frame's judgement, and Merge works the spans out over the joined flags, equal
 to Detect's in any split.
+
+Since 2026-11-05 ([2026-11-05-span-origin.md](2026-11-05-span-origin.md)) black spans count from the file's start (the earliest stream's), as ffmpeg prints them, not the video stream's.

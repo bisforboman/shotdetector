@@ -123,6 +123,7 @@ internal sealed partial class VideoReader
         _framesTimed = video.TimeBase is not null;
         _timeBase = video.TimeBase is { } tb ? tb.Num / (double)tb.Den : 0;
         _startPts = video.StartPts;
+        _spanOrigin = video.FileStartPts ?? video.StartPts;
         _blackDetect = o.BlackDetect;
         _freezeDetect = o.FreezeDetect;
         _framesTimeBase = video.TimeBase is { } given ? given : new FrameReader.Rational(video.FrameRate.Den, video.FrameRate.Num);
@@ -147,7 +148,7 @@ internal sealed partial class VideoReader
             // freezedetect's plane sizes: the chroma's height shifted down (an odd height's last row left out).
             int fh = Yuv422 ? h : h >> 1;
             _freezeDetector = new FrameReader.FreezeDetector([(w, h), (cw, fh), (cw, fh)], b == 2 ? 10 : 8, _framesTimeBase, FreezeOptions(o));
-            (_freezeOrigin, _freezeTimeBase) = (_framesTimed ? _startPts : 0, _framesTimeBase.Num / (double)_framesTimeBase.Den);
+            (_freezeOrigin, _freezeTimeBase) = (_framesTimed ? _spanOrigin : 0, _framesTimeBase.Num / (double)_framesTimeBase.Den);
         }
 
         long? pts = _framesTimed && k - _frameBase is >= 0 and var given && given < _framePts.Count ? _framePts[given] : k;
@@ -213,14 +214,14 @@ internal sealed partial class VideoReader
     /// <summary>The freezedetect pts' time base: YuvVideo.TimeBase, or the frame rate's for untimed frames (frame n at n).</summary>
     internal FrameReader.Rational FreezeTimeBase => _framesTimeBase;
 
-    /// <summary>The pts freezedetect's times are counted from: the video's start pts, or 0 for untimed frames.</summary>
-    internal long FreezeOrigin => _framesTimed ? _startPts : 0;
+    /// <summary>The pts freezedetect's times are counted from: the file's start (<see cref="YuvVideo.FileStartPts"/>), or 0 for untimed frames.</summary>
+    internal long FreezeOrigin => _framesTimed ? _spanOrigin : 0;
 
     /// <summary>
     /// blackdetect's pts of frame <paramref name="k"/>, frames from the caller: its pts (<paramref name="pts"/>) from the
-    /// video's start, or k untimed; doubled deinterlacing (yadif's), in <see cref="BlackTimeBase"/>.
+    /// file's start (<see cref="YuvVideo.FileStartPts"/>), or k untimed; doubled deinterlacing (yadif's), in <see cref="BlackTimeBase"/>.
     /// </summary>
-    internal long BlackPts(int k, long? pts) => (pts is { } p ? p - _startPts : k) * (_deinterlace ? 2 : 1);
+    internal long BlackPts(int k, long? pts) => (pts is { } p ? p - _spanOrigin : k) * (_deinterlace ? 2 : 1);
 
     /// <summary>
     /// blackdetect's judgement of frame <paramref name="k"/> (DetectionOptions.BlackDetect): its luma as given, or

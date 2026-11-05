@@ -19,6 +19,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: since #739 a mutation run reports NO TESTS, but only for the entries it selects: a test renamed in a pull request that changes no mutated file (so selects none of its entries) shows up only in the nightly, as with #733's rename. Listing the tests (`dotnet test --list-tests`, seconds after a build) and matching every entry would catch it on the pull request
   - Status: Open
 
+- TrimReferenceTone: put the tone's end on the video's timeline before it becomes the start time
+  - Why: FrameReader's tone segments are times from the file's start (AudioReader subtracts the format's start_time, as ffmpeg's audio filters print), and TrimmedToTone uses the first one's end as StartTime, which counts from the video's start (scenedetect's frame times). Where the audio starts before the video (a fragmented MP4 with B-frames, video 2 frames late) the trim starts that much later than the tone's end, a frame more cut. Found with the black/freeze span origin fix (span-format-origin), which moved those spans to the file's start
+  - Status: Open
+
 ## Waiting
 
 - Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)

@@ -73,3 +73,5 @@ Since 2026-11-02 ([2026-11-02-freeze-spans-for-ranges.md](2026-11-02-freeze-span
 `FreezeDetect`: each range carries each frame's comparison and Merge replays freezedetect over them. A range that starts
 inside a still is scored again given the earlier ranges, from the still's first frame (`FirstRangeToScoreAgain`,
 `RangeFrames` with the earlier ranges), so the spans equal Detect's in any split.
+
+Since 2026-11-05 ([2026-11-05-span-origin.md](2026-11-05-span-origin.md)) freeze spans count from the file's start (the earliest stream's), as ffmpeg prints them, not the video stream's.

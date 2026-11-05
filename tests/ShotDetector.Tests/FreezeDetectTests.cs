@@ -51,7 +51,7 @@ public sealed class FreezeDetectTests
     }
 
     /// <summary>ffmpeg's freezedetect lines on the file, as one line per still picture (<see cref="FreezeSpan.ToString"/>'s).</summary>
-    static List<string> Theirs(string path, FreezeDetectOptions o, string before = "")
+    internal static List<string> Theirs(string path, FreezeDetectOptions o, string before = "")
     {
         var spans = new List<string>();
         foreach (string line in Ffmpeg(["-hide_banner", "-nostats", "-nostdin", "-i", path, "-map", "0:v:0", "-vf", before + o.Filter(), "-f", "null", "-"]).Split('\n'))

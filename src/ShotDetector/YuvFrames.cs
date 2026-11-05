@@ -69,6 +69,16 @@ public sealed record YuvVideo
     /// <summary>The stream's start time in <see cref="TimeBase"/> (FFmpeg's AVStream.start_time, ffprobe's start_pts): times count from it.</summary>
     public long StartPts { get; init; }
 
+    /// <summary>
+    /// The file's start time in <see cref="TimeBase"/> (FFmpeg's AVFormatContext.start_time, ffprobe's format start_time:
+    /// the earliest stream's start, which is before the video's when the audio starts first), which ffmpeg's command line
+    /// subtracts from every timestamp: <see cref="DetectionResult.BlackSpans"/> and <see cref="DetectionResult.FreezeSpans"/>
+    /// count from it, as <c>ffmpeg -vf blackdetect</c> and <c>freezedetect</c> print them. From FrameReader's
+    /// <see cref="FrameReader.FrameDecoder"/>: <c>-decoder.StartOffset</c>. Null: <see cref="StartPts"/>, the video
+    /// stream's start (the same for a file whose video starts first).
+    /// </summary>
+    public long? FileStartPts { get; init; }
+
     /// <summary>The frame count from the headers (ffprobe's nb_frames), which scenedetect takes as the video's length; null if unknown.</summary>
     public long? FrameCount { get; init; }
 

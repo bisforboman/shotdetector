@@ -312,7 +312,7 @@ internal sealed partial class VideoReader
 
     // freezedetect on the frames read (DetectionOptions.FreezeDetect): in-process and from the caller, FrameReader's
     // detector fed as frames are decoded (its frame 0 the read's first, pts less _freezeOrigin in _freezeTimeBase); through
-    // the executable, freezedetect's marks on each frame given, with its pts from the stream's start.
+    // the executable, freezedetect's marks on each frame given, with its pts from the file's start.
     readonly FreezeDetectOptions? _freezeDetect;
     FrameReader.FreezeDetector? _freezeDetector;
     long _freezeOrigin;
@@ -395,6 +395,11 @@ internal sealed partial class VideoReader
     readonly List<int> _livePackets = [];
     int _liveStart;
     long _startPts;
+
+    // Frames from the caller: what black and freeze spans count from, in the stream's time base (YuvVideo.FileStartPts,
+    // else StartPts). Decoded here, the file's start comes from the decoder (in-process) or ffmpeg's log (executable).
+    long _spanOrigin;
+    Fps _streamTimeBase = new(1, 1);
     double _timeBase;                  // seconds per pts unit, as OpenCV's r2d(time_base)
     readonly double _startSeconds;
     readonly string _pixelFormat;
@@ -680,6 +685,7 @@ internal sealed partial class VideoReader
 
         var tb = Fps.Parse(stream["time_base"]);
         _timeBase = tb.Num / (double)tb.Den;
+        _streamTimeBase = tb;
         _startPts = long.TryParse(stream.GetValueOrDefault("start_pts"), out var s) ? s : 0;
         _startSeconds = double.TryParse(stream.GetValueOrDefault("start_time"), NumberStyles.Float, CultureInfo.InvariantCulture, out var st) ? st : 0;
         _startsOver = probed?.StartsOver ?? (!missingPts && StartsOver(pts));
@@ -1777,7 +1783,7 @@ internal sealed partial class VideoReader
         if (_deinterlace)
             select = ["-vf", Yadif(_pixelFormat) + (select.Length > 0 ? "," + select[1] : "")];
 
-        // yadif doubles the pts (and halves the time base): the stream's start in showinfo's units.
+        // yadif doubles the pts (and halves the time base): the file's start in showinfo's units.
         long startScale = _deinterlace ? 2 : 1;
         string prefix = select.Length > 0 ? select[1] + "," : "";
 
@@ -1866,7 +1872,11 @@ internal sealed partial class VideoReader
                         long framePts = long.Parse(frame.Groups[1].Value, CultureInfo.InvariantCulture);
                         while (marks.TryPeek(out var mark) && mark.Pts <= framePts)
                             blackNow = marks.Dequeue().Black;
-                        long start = Streaming ? MicrosIn(startMicros, timeBaseNum, timeBaseDen) : _startPts * startScale;
+
+                        // Black and freeze spans from the file's start, as ffmpeg prints them without -copyts: it shifts
+                        // each packet by the input's start rescaled to the stream's time base (ts_offset), which is
+                        // before the video's when another stream starts first.
+                        long start = Streaming ? MicrosIn(startMicros, timeBaseNum, timeBaseDen) : MicrosIn(startMicros, _streamTimeBase.Num, _streamTimeBase.Den) * startScale;
                         var judged = new BlackFrame(framePts - start,
                             blackNow,
                             _freezeDetect is null ? null : new FreezeMark(BlackSpan.Time(framePts * liveTimeBase), freezeStart, freezeMicros, freezeEnd));
