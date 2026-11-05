@@ -23,6 +23,9 @@ public static partial class ShotDetection
         /// <summary><see cref="FindReferenceTone"/> on the file.</summary>
         IReadOnlyList<FrameReader.ToneSegment> ReferenceTone(DetectionOptions o, CancellationToken cancellationToken);
 
+        /// <summary><see cref="VideoReader.FileToneOrigin"/> of the file's reader.</summary>
+        TimeSpan ToneOrigin(VideoReader video, CancellationToken cancellationToken);
+
         /// <summary><see cref="ScoreChunked"/> on the file.</summary>
         (List<double?>[] Metrics, int Frames, (Stats? Stats, int From, int To)[] Stats)? ScoreChunked(DetectionOptions o,
             VideoReader video,
@@ -60,6 +63,8 @@ public static partial class ShotDetection
 
         public IReadOnlyList<FrameReader.ToneSegment> ReferenceTone(DetectionOptions o, CancellationToken cancellationToken) =>
             FindReferenceTone(path!, o, cancellationToken);
+
+        public TimeSpan ToneOrigin(VideoReader video, CancellationToken cancellationToken) => video.FileToneOrigin(cancellationToken);
 
         public (List<double?>[] Metrics, int Frames, (Stats? Stats, int From, int To)[] Stats)? ScoreChunked(DetectionOptions o,
             VideoReader video,

@@ -413,13 +413,17 @@ internal sealed partial class VideoReader
     /// Where frame 0 (the video stream's start) is on a tone's timeline, which counts from the file's start as
     /// FrameReader's audio does (AudioReader subtracts the format's start time): how much later the video starts than the
     /// file. Frames from the caller: <see cref="YuvVideo.StartPts"/> less <see cref="YuvVideo.FileStartPts"/> (zero when
-    /// that isn't given, or the frames are untimed); a file: its video's start against the file's, from FFmpeg's libraries
-    /// (which the tone search loads anyway).
+    /// that isn't given, or the frames are untimed). A file's is <see cref="FileToneOrigin"/>.
     /// </summary>
-    internal TimeSpan ToneOrigin(CancellationToken cancellationToken)
+    internal TimeSpan FramesToneOrigin => _framesTimed ? TimeSpan.FromSeconds((_startPts - _spanOrigin) * _timeBase) : TimeSpan.Zero;
+
+    /// <summary>
+    /// <see cref="FramesToneOrigin"/> for a file: its video's start against the file's, from FFmpeg's libraries (which
+    /// the tone search loads anyway). Reached only through the decoded input (ShotDetection.Decoded.cs), so frames from
+    /// the caller never reach FFmpeg's code (ci.yml's wasm-trim job).
+    /// </summary>
+    internal TimeSpan FileToneOrigin(CancellationToken cancellationToken)
     {
-        if (FromFrames)
-            return _framesTimed ? TimeSpan.FromSeconds((_startPts - _spanOrigin) * _timeBase) : TimeSpan.Zero;
         try
         {
             InProcess.Load(_ffmpegDirectory);

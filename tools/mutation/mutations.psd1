@@ -708,7 +708,7 @@
         # from the caller with YuvVideo.FileStartPts)
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'Math.Max(0, (t - origin).TotalSeconds)'; Replace = 'Math.Max(0, t.TotalSeconds)'; Tests = 'ReferenceToneTests.OnlyTheEndsAreTrimmed' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'return TimeSpan.FromSeconds((_startPts + decoder.StartOffset) * _timeBase);'; Replace = 'return TimeSpan.Zero;'; Tests = 'FrameInputTests.SameAsTheFileTrimmedToTone' }
-        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'return _framesTimed ? TimeSpan.FromSeconds((_startPts - _spanOrigin) * _timeBase) : TimeSpan.Zero;'; Replace = 'return TimeSpan.Zero;'; Tests = 'FrameInputTests.SameAsTheFileTrimmedToTone' }
+        @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'FramesToneOrigin => _framesTimed ? TimeSpan.FromSeconds((_startPts - _spanOrigin) * _timeBase) : TimeSpan.Zero;'; Replace = 'FramesToneOrigin => TimeSpan.Zero;'; Tests = 'FrameInputTests.SameAsTheFileTrimmedToTone' }
 
         # Black and freeze spans for ranges: the flags joined, freezedetect replayed over them at Merge, a range whose
         # comparisons started from another still than the run's refused, the seeded detector kept and its seed frame's

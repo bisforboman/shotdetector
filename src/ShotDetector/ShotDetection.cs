@@ -1374,7 +1374,7 @@ public static partial class ShotDetection
                 ? decoded!.ReferenceTone(o, cancellationToken)
                 : video.GivenTone ?? throw new ArgumentException("TrimReferenceTone on frames from the caller needs YuvVideo.ReferenceTone: "
                     + "the tone in the video's audio, found with FrameReader's ReferenceToneFinder.");
-            o = TrimmedToTone(o, tone, video.Duration, video.ToneOrigin(cancellationToken));
+            o = TrimmedToTone(o, tone, video.Duration, !video.FromFrames ? decoded!.ToneOrigin(video, cancellationToken) : video.FramesToneOrigin);
         }
 
         if (o.StartTime is not null && video.Streaming)
@@ -1663,7 +1663,7 @@ public static partial class ShotDetection
     /// The time range without a leading tone segment (starting in the first 5 s, nearer the start than the end) and a
     /// trailing one (ending in the last 5 s). The segments and <paramref name="duration"/> count from the file's start (as
     /// FrameReader's audio does); the times set count from the video's (frame 0, as scenedetect's), <paramref name="origin"/>
-    /// later (<see cref="VideoReader.ToneOrigin"/>: a file whose audio starts before its video).
+    /// later (<see cref="VideoReader.FramesToneOrigin"/>, <see cref="VideoReader.FileToneOrigin"/>: a file whose audio starts before its video).
     /// </summary>
     internal static DetectionOptions TrimmedToTone(DetectionOptions o, IReadOnlyList<FrameReader.ToneSegment> tone, TimeSpan? duration, TimeSpan origin = default)
     {
