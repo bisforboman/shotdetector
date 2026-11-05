@@ -4,12 +4,15 @@
 # guard), no longer applies (the code changed: update its Find text) or names no test (a test renamed: update its Tests;
 # 'dotnet test' with a filter that matches nothing passes, which would read as SURVIVED).
 #
-#   ./tools/mutation/Invoke-Mutations.ps1 [-Root <checkout>] [-Shard <i> -Shards <n>] [-OnlyFiles <files> [-Base <ref>]] [-Count]
+#   ./tools/mutation/Invoke-Mutations.ps1 [-Root <checkout>] [-Shard <i> -Shards <n>] [-OnlyFiles <files> [-Base <ref>]] [-Count] [-CheckTests]
 # -Shard/-Shards: only every n-th selected mutation from the i-th (0-based), for CI's parallel jobs.
 # -OnlyFiles: a pull request's changed files (from the root); only the mutations they concern run: those whose File is
 #   one of them, whose test class (Tests up to its first '.') one of the changed test files declares, and, with -Base, the
 #   entries mutations.psd1 has that its version at that git ref doesn't. Without it, every mutation runs (the nightly).
 # -Count: print how many mutations are selected and stop, without building.
+# -CheckTests: only check that every entry's Tests names a test (and every Find applies), mutating nothing: a build and
+#   a test listing, a few minutes, for pull requests that change tests (a renamed test otherwise shows up only in the
+#   run that selects its entries, maybe the nightly's).
 # Every entry's Find is checked first, selected or not (a stale entry fails the run), which needs no build.
 # The checkout must have no uncommitted changes to the mutated files: each mutation is undone with 'git checkout'.
 # Locally, run it in a separate worktree (git worktree add ../ShotDetector-mut HEAD) so builds don't touch your copy.
@@ -19,7 +22,8 @@ param(
     [int]$Shards = 1,
     [string[]]$OnlyFiles,
     [string]$Base,
-    [switch]$Count)
+    [switch]$Count,
+    [switch]$CheckTests)
 $ErrorActionPreference = 'Stop'
 $config = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'mutations.psd1')
 # Each mutation's tests run in its Project (a test project's folder, from the root), ShotDetector.Tests by default.
@@ -75,7 +79,7 @@ if ($Count) {
     return
 }
 
-$mine = @(for ($i = $Shard; $i -lt $selected.Count; $i += $Shards) { $selected[$i] })
+$mine = if ($CheckTests) { @($config.Mutations) } else { @(for ($i = $Shard; $i -lt $selected.Count; $i += $Shards) { $selected[$i] }) }
 function ProjectOf($m) { if ($m.Project) { $m.Project } else { $default } }
 # Each project's tests, as 'Class.Method' (the test classes have no namespace, so that is the name the filter sees).
 $testNames = @{}
@@ -97,6 +101,20 @@ $noTests = @(foreach ($m in $mine | Where-Object { -not $staleKeys[(Key $_)] }) 
             [pscustomobject]@{ Result = 'NO TESTS'; File = $m.File; Find = $m.Find; Note = "no test in $(ProjectOf $m) matches $($m.Tests)" }
         }
     })
+
+if ($CheckTests) {
+    $bad = $stale + $noTests
+    if ($bad.Count) {
+        $bad | Format-Table -AutoSize -Wrap | Out-Host
+        if ($env:GITHUB_STEP_SUMMARY) {
+            '### Mutation entries that name no test or no longer apply', '', '| Result | File | Guard | Note |', '|---|---|---|---|' | Add-Content $env:GITHUB_STEP_SUMMARY
+            $bad | ForEach-Object { "| $($_.Result) | $($_.File) | ``$($_.Find)`` | $($_.Note) |" } | Add-Content $env:GITHUB_STEP_SUMMARY
+        }
+        throw "$($bad.Count) mutation(s) name no test or no longer apply."
+    }
+    Write-Host "All $($mine.Count) mutations name a test." -ForegroundColor Green
+    return
+}
 
 $results = $stale + $noTests + @(foreach ($m in $mine | Where-Object { -not $staleKeys[(Key $_)] -and -not $noTestKeys[(Key $_)] }) {
         $file = Join-Path $Root $m.File

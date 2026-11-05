@@ -23,7 +23,7 @@ jobs:
   # at most 4, none when it selects none (a docs PR), all of them when it changes the mutation testing itself. Light PRs
   # (tools/ci-changes.sh) run theirs too: FrameReader files ShotDetector doesn't run have guards of their own. Nightly
   # and on demand: all of them in 4 shards (3 outgrew the jobs' 60 minutes on 2026-11-04). Every entry's Find is
-  # checked here either way (no build needed).
+  # checked here either way (no build needed). `tests`: whether the light `tests` job checks every entry's Tests.
   changes:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-26.04
@@ -32,6 +32,7 @@ jobs:
       shards: ${{ steps.select.outputs.shards }}
       matrix: ${{ steps.select.outputs.matrix }}
       all: ${{ steps.select.outputs.all }}
+      tests: ${{ steps.select.outputs.tests }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -53,6 +54,9 @@ jobs:
           }
           "shards=$shards" >> $env:GITHUB_OUTPUT
           "all=$($all.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          # A pull request that changes tests or mutations.psd1, and doesn't already run every mutation.
+          $tests = -not $all -and [bool]($files -match '^(tests/.*\.cs|tools/mutation/mutations\.psd1)$')
+          "tests=$($tests.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "matrix=$(ConvertTo-Json -Compress @(0..([Math]::Max(1, $shards) - 1)))" >> $env:GITHUB_OUTPUT
 
   mutate:
@@ -95,10 +99,29 @@ jobs:
           $only = if ('${{ needs.changes.outputs.all }}' -ne 'true') { @{ OnlyFiles = @(git diff --name-only HEAD^1 HEAD); Base = 'HEAD^1' } } else { @{} }
           ./tools/mutation/Invoke-Mutations.ps1 -Shard ${{ matrix.shard }} -Shards ${{ needs.changes.outputs.shards }} @only
 
+  # On a pull request that changes tests: every entry's Tests still names a test, all of them, not only the ones
+  # the shards select (a test renamed in a pull request that changes no mutated file would otherwise fail only the
+  # nightly, as #733's did). A build and a test listing, no mutations.
+  tests:
+    if: needs.changes.outputs.tests == 'true'
+    needs: changes
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Every entry names a test
+        shell: pwsh
+        run: ./tools/mutation/Invoke-Mutations.ps1 -CheckTests
+
   # The check branch protection requires ("mutation"): every job passed or was skipped (a light PR, or one whose files
   # no mutation concerns, skips the shards).
   mutation:
-    needs: [changes, mutate]
+    needs: [changes, mutate, tests]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

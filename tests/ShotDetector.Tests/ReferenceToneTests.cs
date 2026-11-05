@@ -134,5 +134,12 @@ public sealed class ReferenceToneTests : IDisposable
         t = ShotDetection.TrimmedToTone(o, [S(4, 10)], TimeSpan.FromSeconds(10));
         Assert.Equal((null, "4s"), (t.StartTime, t.EndTime));
         Assert.Same(o, ShotDetection.TrimmedToTone(o, [], TimeSpan.FromSeconds(600)));
+
+        // The video starting 0.5 s after the file (the audio first): the segments are the file's, the times the video's;
+        // which end is which is still judged on the file's timeline, and a tone ending before the video starts trims nothing of it.
+        t = ShotDetection.TrimmedToTone(o, [S(1, 31.5), S(596, 600)], TimeSpan.FromSeconds(600), TimeSpan.FromSeconds(0.5));
+        Assert.Equal(("31s", "595.5s"), (t.StartTime, t.EndTime));
+        t = ShotDetection.TrimmedToTone(o, [S(0, 0.3)], TimeSpan.FromSeconds(600), TimeSpan.FromSeconds(0.5));
+        Assert.Equal(("0s", null), (t.StartTime, t.EndTime));
     }
 }

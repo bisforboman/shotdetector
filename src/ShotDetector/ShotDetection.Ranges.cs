@@ -437,7 +437,7 @@ public static partial class ShotDetection
 
     static int ToneStart(VideoReader reader, DetectionOptions o)
     {
-        if (!o.TrimReferenceTone || reader.GivenTone is not { } tone || TrimmedToTone(o, tone, reader.Duration).StartTime is not { } startTime)
+        if (!o.TrimReferenceTone || reader.GivenTone is not { } tone || TrimmedToTone(o, tone, reader.Duration, reader.FramesToneOrigin).StartTime is not { } startTime)
             return 0;
         double seconds = TimecodeSeconds(startTime, reader.Fps, oneBasedFrames: true);
         return seconds <= 0 ? 0 : reader.StartEstimate(seconds);
