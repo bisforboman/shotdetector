@@ -20,6 +20,15 @@ public readonly record struct LoudnessResult(double Integrated, double Range, do
 
     /// <summary>The highest short-term loudness in LUFS (S: the 3 s block, every 100 ms); as <see cref="MaxMomentary"/>.</summary>
     public double MaxShortTerm { get; init; } = double.NaN;
+
+    /// <summary>
+    /// When the block of <see cref="MaxMomentary"/> ends, from the first sample (the first such block, every 100 ms; the
+    /// time ebur128's framelog prints beside it, to a sample); null from <see cref="Loudness.Measure"/>, or with no block.
+    /// </summary>
+    public TimeSpan? MaxMomentaryAt { get; init; }
+
+    /// <summary>When the block of <see cref="MaxShortTerm"/> ends; as <see cref="MaxMomentaryAt"/>.</summary>
+    public TimeSpan? MaxShortTermAt { get; init; }
 }
 
 /// <summary>

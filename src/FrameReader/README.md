@@ -288,7 +288,8 @@ Console.WriteLine($"{loudness.Integrated:0.0} LUFS, LRA {loudness.Range:0.0} LU,
 `LoudnessMeter` measures samples you decode yourself (a browser, ManagedCodecs), a chunk at a time, touching nothing of
 FFmpeg. It gives the same `LoudnessResult` plus each channel's sample peak, true peak and count of samples at full
 scale, and the highest momentary and short-term loudness (`MaxMomentary`, `MaxShortTerm`: the 400 ms and 3 s blocks
-every 100 ms, as ebur128's framelog prints them; `Loudness.Measure` leaves them NaN):
+every 100 ms, as ebur128's framelog prints them, and when each block ends: `MaxMomentaryAt`, `MaxShortTermAt`;
+`Loudness.Measure` leaves them NaN and null):
 
 ```csharp
 var meter = new LoudnessMeter(48000, 2);            // weights: FFmpeg's default layout for the count
