@@ -32,7 +32,7 @@
 
         # Reference tone on frames from the caller (#629): trimmed by YuvVideo.ReferenceTone as the file path trims by the
         # tone it finds; refused without it, and for ranges (a time range)
-        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'tone = !video.FromFrames'; Replace = 'tone = video.FromFrames'; Tests = 'FrameInputTests' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'tone = !video.FromFrames'; Replace = 'tone = video.FromFrames'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'video.GivenTone ?? throw'; Replace = 'video.GivenTone ?? Array.Empty<FrameReader.ToneSegment>() ?? throw'; Tests = 'FrameInputTests.RejectsWhatItCantReproduce' }
         # ... for ranges with the caller's tone: the frames before the run's start score nothing, its first is the
         # detectors' first; Merge decides from there to where the end stops the run, takes those frames' stats, replays

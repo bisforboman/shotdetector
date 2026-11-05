@@ -20,9 +20,10 @@ permissions:
 
 jobs:
   # Which mutations a pull request's files concern, as a matrix of shards: one per 40 selected (about 15 minutes each),
-  # at most 3, none when it selects none (a docs PR), all of them when it changes the mutation testing itself. Light PRs
+  # at most 4, none when it selects none (a docs PR), all of them when it changes the mutation testing itself. Light PRs
   # (tools/ci-changes.sh) run theirs too: FrameReader files ShotDetector doesn't run have guards of their own. Nightly
-  # and on demand: all of them in 3 shards. Every entry's Find is checked here either way (no build needed).
+  # and on demand: all of them in 4 shards (3 outgrew the jobs' 60 minutes on 2026-11-04). Every entry's Find is
+  # checked here either way (no build needed).
   changes:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-26.04
@@ -43,12 +44,12 @@ jobs:
           $all = '${{ github.event_name }}' -ne 'pull_request' -or ($files -match '^(tools/mutation/Invoke-Mutations\.ps1|\.github/workflows/mutation\.yml)$')
           if (-not $all) {
             $count = [int](./tools/mutation/Invoke-Mutations.ps1 -Count -OnlyFiles $files -Base HEAD^1)
-            $shards = [Math]::Min(3, [Math]::Ceiling($count / 40))
+            $shards = [Math]::Min(4, [Math]::Ceiling($count / 40))
             "$count of the mutations concern this pull request's files: $shards shard(s)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           }
           else {
             ./tools/mutation/Invoke-Mutations.ps1 -Count | Out-Null
-            $shards = 3
+            $shards = 4
           }
           "shards=$shards" >> $env:GITHUB_OUTPUT
           "all=$($all.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
