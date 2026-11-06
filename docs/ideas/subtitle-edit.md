@@ -1,6 +1,6 @@
 # Subtitle Edit's shot changes: scoping note (issue #633)
 
-Status: **scoping only**, 2026-10-31. No feature code. The idea (issue #633): offer ShotDetector to
+Status: **first slice built** (2026-10-31: `--save-shotchanges` and `Timeline.ShotChanges`); the rest waits (docs/backlog.md's Subtitle Edit row). This note is the 2026-10-31 scoping, kept as written. The idea (issue #633): offer ShotDetector to
 [Subtitle Edit](https://github.com/SubtitleEdit/subtitleedit) as the engine behind **Video → Generate/import shot
 changes**, which today runs FFmpeg's `scene` filter with a sensitivity slider. Subtitlers snap cue in and out times to
 shot changes, so better cuts help them every day. This note covers what exists, how Subtitle Edit would take an engine,

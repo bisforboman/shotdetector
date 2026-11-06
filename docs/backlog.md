@@ -11,12 +11,20 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 ## Next
 
+- release.yml: never skip a stable version silently
+  - Why: the `version` job reads only each changelog's newest `## X.Y.Z` and releases it if untagged. ShotDetector 3.29.0 and FrameReader 2.23.0 waited for approval from 2026-11-03 while 3.30.0 and 2.24.0 merged (#749's body); approved later than the next release PR, they would never have been tagged or published, with no warning. Release every untagged version newer than the newest tag, oldest first, or fail the step summary naming the skipped ones
+  - Status: Open
+
 - Fix every divergence the real-world check finds
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
 - Check every place that uses FrameReader's file-start times beside frame times (from the video stream's start)
   - Why: FrameReader's audio measures (tone, loudness, silence, waveform) and since #743 the black and freeze spans count from the file's start, as ffmpeg prints them, while scenedetect's frame times count from the video's start. The TrimReferenceTone bug mixed the two; other consumers may too (Timeline and the exports, the CLI's audio options, the example; the `qc` command's bars/tone check in src/ShotDetector.Cli/Qc.cs, which sets tone times beside bars timed from the video's start, was noticed with the tone fix). Test on a file whose audio starts before the video (a fragmented MP4 with B-frames)
+  - Status: Open
+
+- Find why CI's `build` job failed on main at 9adc283 (run 41849590819, 2026-11-04)
+  - Why: that push (#737) changed only docs, and later pushes to main are green, so it looks like a flaky test or step; find which (the job's logs and annotations), then fix it or record it as the VideoWriter flake was (docs/decisions/2026-10-10-videowriter-s-rare-ci-mismatch.md)
   - Status: Open
 
 ## Waiting

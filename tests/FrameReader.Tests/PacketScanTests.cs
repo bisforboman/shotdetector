@@ -134,11 +134,11 @@ public class PacketScanTests
         }
 
         (long, long)[]? Of(params byte[][] boxes) => FileInput.MediaData(new MemoryStream([.. boxes.SelectMany(b => b)]));
-        Assert.Equal([(32L, 132L), (164L, 264L)], Of(Box("ftyp", 16), Box("mdat", 100), Box("moov", 8), Box("mdat", 100, large: true)));
-        Assert.Equal([(24L, 74L)], Of(Box("moov", 8), [.. Box("mdat", 100)[..58]])); // cut short
+        Assert.Equal([(32L, 132L), (164L, 264L)], Of(Box("ftyp", 16), Box("mdat", 100), Box("moov", 8), Box("mdat", 100, large: true))!);
+        Assert.Equal([(24L, 74L)], Of(Box("moov", 8), [.. Box("mdat", 100)[..58]])!); // cut short
         byte[] toEnd = Box("mdat", 40);
         toEnd[3] = 0;
-        Assert.Equal([(8L, 48L)], Of(toEnd));
+        Assert.Equal([(8L, 48L)], Of(toEnd)!);
         Assert.Null(Of(Box("ftyp", 16), Box("moov", 8), Box("moof", 8), Box("mdat", 10)));
         Assert.Null(Of(Box("RIFF", 16)));
     }
