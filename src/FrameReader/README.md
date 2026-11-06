@@ -585,6 +585,21 @@ at the end (`IdetTotals`); `IdetOptions` holds its thresholds. `For(decoder)` or
 frames, or give the planes' sizes yourself. Checked against FFmpeg's filter at 8, 10 and 16 bits, 4:2:0, 4:2:2, 4:4:4,
 gray and with alpha, odd sizes, and on interlaced H.264.
 
+`ConstantColourDetector` finds runs of one flat colour (a slate or test colour left in, EBU QC 0016B): each frame's
+signalstats YLOW, YHIGH and YAVG for Y, U and V (`SignalStats`, vf_signalstats.c's histograms), a frame flat when every
+plane's HIGH less LOW is within `ConstantColourOptions.Spread` (8-bit codes), a run flat frames whose averages stay
+within it of its first's, kept when it lasts `MinDuration`, as a `ConstantColourSpan` with its mean Y, Cb and Cr.
+Every fourth luma row first rules out a moving picture exactly, so a moving frame costs a quarter of its luma.
+`For(format)` sizes it for a `PictureFormat`. Checked against FFmpeg 8.1's signalstats at 8 and 10 bits, 4:2:0, 4:2:2
+and 4:4:4, odd sizes.
+
+`GamutMeter` counts the pixels outside RGB gamut (EBU R 103's -5% to 105%, EBU QC 0051B), which no FFmpeg filter
+counts (its RGB conversions clip): each pixel's R, G and B from its Y and the chroma sample it is sited on, by the
+matrix's Kr and Kb (`GamutOptions.Matrix`; `Coefficients(colorSpace)` for ffprobe's color_space; else BT.709, BT.601
+under 720 lines), a frame's share of those outside `Low` to `High` in `Shares`. A table of each chroma pair's run of Y
+codes in gamut makes a pixel one lookup; 8 to 12 bits. Checked against a geq expression doing the same arithmetic per
+pixel, and signalstats' YAVG of its mask, at 8 and 10 bits, 4:2:0, 4:2:2 and 4:4:4, limited and full range.
+
 Test media without the ffmpeg executable: `TestMedia.Write(path, options)` makes a synthetic clip from FFmpeg's own
 sources and encoders, in-process, for tests that need real media without committing any. Video sources are
 concatenated in order, so the cuts fall at known frames; interlaced output is flagged and coded as such.
