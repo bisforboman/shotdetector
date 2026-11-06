@@ -26,6 +26,15 @@
          version on nuget.org (docs/decisions/, 2026-10-08). -->
     <ApiBaselineVersion>3.28.0</ApiBaselineVersion>
     <FrameReaderApiBaselineVersion>2.22.0</FrameReaderApiBaselineVersion>
+    <!-- No vulnerable package, direct or transitive, in anything this repository builds or ships: restore fails on an
+         advisory of any severity, locally, in CI, at pack and at release
+         (docs/decisions/2026-11-06-vulnerable-packages.md). Fix one by moving the package in Directory.Packages.props,
+         never by suppressing it. NU1905 (an audit source that can't be reached) stays a warning.
+         vulnerable-packages.yml checks main weekly for new advisories. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+    <WarningsAsErrors>$(WarningsAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="StyleBro.Analyzers" PrivateAssets="all" />
