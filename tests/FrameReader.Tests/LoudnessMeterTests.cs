@@ -328,6 +328,7 @@ public class LoudnessMeterTests
     }
 
     [DllImport("libm.so.6", EntryPoint = "exp2")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     static extern double Exp2(double x);
 
     static (LoudnessResult Ffmpeg, LoudnessMeasures Meter) Both(string path, int? chunk = null)
