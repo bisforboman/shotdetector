@@ -1,6 +1,6 @@
 # Delivery QC: scoping note (issue #636)
 
-Status: **scoping only**, 2026-10-31. No feature code. The idea (issue #636): one command that reports what a
+Status: **built**: `shotdetect qc` shipped in 3.26.0 and later (docs/backlog-done.md; docs/decisions/2026-11-01-delivery-qc.md); this note is the 2026-10-31 scoping, kept as written. The idea (issue #636): one command that reports what a
 broadcaster or post house checks on a file before accepting it (black and frozen spans, bars and tone at the head and
 tail, pixels outside broadcast range, loudness per EBU R128 / ITU-R BS.1770, letterbox), as HTML, JSON or CSV with an
 exit code for pipelines. This note says what exists, what the outside reference is, what is missing, a first slice,

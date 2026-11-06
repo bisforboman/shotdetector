@@ -1,6 +1,6 @@
 # Managed measures in FrameReader: scoping note (issue #646)
 
-Status: **scoping only**, 2026-10-31. No feature code. The owner chose (2026-10-31, in shotdetector-web's idea
+Status: **built**: `LoudnessMeter`, `SilenceFinder`, `PictureMeter` and `ChannelWeights` shipped in FrameReader 2.18.0 and 2.19.0 (docs/backlog-done.md); this note is the 2026-10-31 scoping, kept as written. The owner chose (2026-10-31, in shotdetector-web's idea
 review) to move shotdetector-web's managed measures into FrameReader. Then the web page's QC report
 (bisforboman/shotdetector-web#94) and this repository's delivery QC (#636, [delivery-qc.md](delivery-qc.md)) share one
 implementation, checked against FFmpeg once. This note covers what moves, the API, how closely the managed meters must
