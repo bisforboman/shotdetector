@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: Directory.Build.props still has 3.28.0 and 2.22.0, two releases behind, so packing doesn't catch a breaking change made since; the baseline-done job closes the issues once the props file has their versions
   - Status: Open
 
-- FrameReader 2.24.0: publish it late, or record that it went out only inside 2.25.0
-  - Why: its release run never reached the approval step before the 2.25.0 release PR merged, so release.yml (before the skip guard) released 2.25.0 and left 2.24.0 untagged; its CHANGELOG section reads as a release that nuget.org doesn't have. Tagging its release commit (framereader-v2.24.0) would publish it; otherwise a line under its heading says so. The owner's call
-  - Status: Open
-
 - Fix every divergence the real-world check finds
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)

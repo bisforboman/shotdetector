@@ -24,6 +24,9 @@ Constant colour and RGB gamut: the last of Noga's QC meters.
 
 ## 2.24.0 – 2026-11-05
 
+Never published: its release run didn't run before 2.25.0's release PR merged, so these changes first
+shipped in 2.25.0 (docs/decisions/2026-11-06-framereader-2-24-0.md).
+
 Packet sizes and keyframes, idet, channel faults, when loudness peaks, and dropped frames: the measures of a QC report.
 
 ### New

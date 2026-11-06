@@ -1172,3 +1172,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - release.yml: never skip a stable version silently
   - Why: the `version` job reads only each changelog's newest `## X.Y.Z` and releases it if untagged. ShotDetector 3.29.0 and FrameReader 2.23.0 waited for approval from 2026-11-03 while 3.30.0 and 2.24.0 merged (#749's body); approved later than the next release PR, they would never have been tagged or published, with no warning. Release every untagged version newer than the newest tag, oldest first, or fail the step summary naming the skipped ones
   - Status: **Done (2026-11-06)**: the version job fails, naming the version and how to release it or leave it out (tag its release commit by hand, or the newest's), when an older stable version newer than the product's newest tag is untagged; it found FrameReader 2.24.0 on the day
+
+- FrameReader 2.24.0: publish it late, or record that it went out only inside 2.25.0
+  - Why: its release run never reached the approval step before the 2.25.0 release PR merged, so release.yml (before the skip guard) released 2.25.0 and left 2.24.0 untagged; its CHANGELOG section reads as a release that nuget.org doesn't have. Tagging its release commit (framereader-v2.24.0) would publish it; otherwise a line under its heading says so. The owner's call
+  - Status: **Done (2026-11-06)**: not published; a line under its CHANGELOG heading says its changes first shipped in 2.25.0 (docs/decisions/2026-11-06-framereader-2-24-0.md)
