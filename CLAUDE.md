@@ -126,7 +126,9 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
 - `.github/workflows`: `ci.yml`, `realworld.yml` (nightly; on PRs its jobs skip and the gate reports), `mutation.yml`
   (PRs: the entries their files concern; nightly: all), `native.yml` (our FFmpeg build, which the others call),
   `release.yml`, `benchmark.yml`, `frame-reader-bench.yml`, `compare.yml` (on demand), `parity-os.yml` (Windows and
-  macOS, informational), `upstream.yml`, `codeql.yml`, `dependabot-auto-merge.yml`. Each header says the rest.
+  macOS, informational), `upstream.yml`, `codeql.yml`, `dependabot-auto-merge.yml`, `vulnerable-packages.yml`
+  (weekly: an issue when main has a package with a NuGet advisory; every restore already fails on one). Each header
+  says the rest.
 
 ## Gotchas (each cost time once)
 

@@ -1,0 +1,60 @@
+name: Vulnerable packages
+
+# Weekly on main: a NuGet advisory published since a package was last restored. Every restore already fails on a
+# vulnerable package, direct or transitive (Directory.Build.props: NuGetAudit, NU1901-NU1904 as errors), but only when
+# something runs it; this catches an advisory against what main already ships. It restores every solution and project
+# CI builds (the slnx, and benchmarks/FrameReader.Benchmarks, benchmarks/wasm/Wasm and tools/reach outside it) with the
+# audit's errors off, lists the vulnerable packages (tools/vulnerable-packages.py), and when there are any fails and
+# opens an issue or comments on the open one (tools/nightly-issue.sh): package, version, severity, advisory and the
+# projects. Not a required check (docs/decisions/2026-11-06-vulnerable-packages.md).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '43 4 * * 3'
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore and list
+        run: |
+          # benchmarks/wasm/Wasm targets browser-wasm: its restore needs the workload.
+          dotnet workload install wasm-tools
+          mkdir -p listings
+          i=0
+          for target in ShotDetector.slnx benchmarks/FrameReader.Benchmarks benchmarks/wasm/Wasm tools/reach; do
+            # The audit's own errors off, so the listing can run on what is vulnerable.
+            dotnet restore "$target" -v q -p:WarningsAsErrors=
+            dotnet list "$target" package --vulnerable --include-transitive --format json --no-restore \
+              > "listings/$i.json"
+            i=$((i + 1))
+          done
+
+      - name: Vulnerable packages
+        run: |
+          status=0
+          python3 tools/vulnerable-packages.py listings/*.json > report.md || status=$?
+          cat report.md | tee -a "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Issue
+        if: failure() && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          details=$(cat report.md 2>/dev/null || echo "The scan itself failed: see the run's log.")
+          run="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          tools/nightly-issue.sh "Vulnerable NuGet packages" "$run" "$details"

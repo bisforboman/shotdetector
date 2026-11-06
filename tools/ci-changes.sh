@@ -21,7 +21,7 @@ if echo "$files" | grep -vE '\.md$' | grep -qE '^src/(ShotDetector|ShotDetector\
   echo wasm=true
 fi
 
-rest=$(echo "$files" | grep -vE '^docs/|\.md$|^\.claude/|^\.githooks/|^\.github/workflows/(release|benchmark|frame-reader-bench|upstream|dependabot-auto-merge|parity-os|codeql|compare)\.yml$|^\.github/dependabot\.yml$|^benchmarks/|^tools/bench(_[a-z]+)?\.py$|^tools/bench-cpus\.ps1$|^tests/FrameReader\.Tests/' || true)
+rest=$(echo "$files" | grep -vE '^docs/|\.md$|^\.claude/|^\.githooks/|^\.github/workflows/(release|benchmark|frame-reader-bench|upstream|dependabot-auto-merge|parity-os|codeql|compare|vulnerable-packages)\.yml$|^tools/vulnerable-packages\.py$|^\.github/dependabot\.yml$|^benchmarks/|^tools/bench(_[a-z]+)?\.py$|^tools/bench-cpus\.ps1$|^tests/FrameReader\.Tests/' || true)
 if [ -z "$rest" ]; then echo light=true; exit 0; fi
 # Anything else but FrameReader's source runs everything.
 if echo "$rest" | grep -qvE '^src/FrameReader/[^/]*\.cs$'; then exit 0; fi
