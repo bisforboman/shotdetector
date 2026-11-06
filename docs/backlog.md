@@ -11,8 +11,12 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 ## Next
 
-- release.yml: never skip a stable version silently
-  - Why: the `version` job reads only each changelog's newest `## X.Y.Z` and releases it if untagged. ShotDetector 3.29.0 and FrameReader 2.23.0 waited for approval from 2026-11-03 while 3.30.0 and 2.24.0 merged (#749's body); approved later than the next release PR, they would never have been tagged or published, with no warning. Release every untagged version newer than the newest tag, oldest first, or fail the step summary naming the skipped ones
+- Set the API baselines to ShotDetector 3.29.0 and FrameReader 2.23.0 (issues #753, #752), then 3.30.0 and 2.25.0 once nuget.org serves them
+  - Why: Directory.Build.props still has 3.28.0 and 2.22.0, two releases behind, so packing doesn't catch a breaking change made since; the baseline-done job closes the issues once the props file has their versions
+  - Status: Open
+
+- FrameReader 2.24.0: publish it late, or record that it went out only inside 2.25.0
+  - Why: its release run never reached the approval step before the 2.25.0 release PR merged, so release.yml (before the skip guard) released 2.25.0 and left 2.24.0 untagged; its CHANGELOG section reads as a release that nuget.org doesn't have. Tagging its release commit (framereader-v2.24.0) would publish it; otherwise a line under its heading says so. The owner's call
   - Status: Open
 
 - Fix every divergence the real-world check finds
@@ -125,6 +129,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - `Auto`'s http(s) fallback to an FFmpeg 9 executable
   - Why: when the libraries fail to open an http or https URL (a format FrameReader.Native leaves out, such as DASH), `Auto` reports the failure instead of using the executable (`VideoReader.AutoHttpRefusal`), because the executable didn't check an HLS playlist's https segments. FFmpeg 9 does (docs/decisions/2026-11-03-hls-warning-ffmpeg-9.md), so with an FFmpeg 9 executable the fallback would be as safe as in-process. It would ask the executable's version before falling back, and change what `Auto` does with a URL, so it is the owner's call
+  - Status: Maybe
+
+- release.yml: a run waiting for approval and the pushes after it
+  - Why: on 2026-11-06 three release runs on main (41591db, b77de6a, 14a7c04) were cancelled: GitHub keeps one pending run per concurrency group and cancels the older pending one, whatever it would have released. Since the skip guard a lost version fails the next run instead of vanishing, but check whether a run that sits in approval for days should leave the queue (approval as its own workflow, or a tag pushed by the approved run)
   - Status: Maybe
 
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and

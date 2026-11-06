@@ -10,6 +10,8 @@ name: Release
 # (FrameReader first, as ShotDetector depends on it), and given its own GitHub release. Prereleases only (a '-' in
 # every due version) use the 'prerelease' environment, others 'release', which waits for approval. Pushing a v* or
 # framereader-v* tag by hand still releases that product at that version.
+# Only the newest version can be released from main, so the run fails when an older stable version newer than the
+# product's newest tag is untagged (a release PR merged while the one before it still waited): see the version job.
 
 on:
   push:
@@ -50,7 +52,31 @@ jobs:
             tag/v*) sd="${GITHUB_REF_NAME#v}"; sd_due=true ;;
             *)
               git ls-remote --exit-code --tags origin "refs/tags/v$sd" > /dev/null || sd_due=true
-              git ls-remote --exit-code --tags origin "refs/tags/framereader-v$fr" > /dev/null || fr_due=true ;;
+              git ls-remote --exit-code --tags origin "refs/tags/framereader-v$fr" > /dev/null || fr_due=true
+              # Never skip a stable version silently: each run releases a product's newest version only, so an older
+              # one newer than its newest tag (approved after the next release PR merged, or its run cancelled) would
+              # never be published. Fail naming it instead (2026-11-06: FrameReader 2.24.0 went out only in 2.25.0).
+              skipped() {   # changelog, tag prefix, newest version
+                local tags newest_tag
+                tags=$(git ls-remote --tags origin "refs/tags/$2*" | sed -E 's|.*refs/tags/||; s|\^\{\}$||' \
+                  | grep -E "^$2[0-9]+\.[0-9]+\.[0-9]+$" | sed "s|^$2||" | sort -uV)
+                newest_tag=$(tail -n1 <<< "$tags")
+                grep -oE '^## [0-9]+\.[0-9]+\.[0-9]+( |$)' "$1" | cut -c4- | tr -d ' ' | while read -r v; do
+                  [ "$v" != "$3" ] || continue
+                  [ -z "$newest_tag" ] || [ "$(printf '%s\n%s\n' "$newest_tag" "$v" | sort -V | tail -n1)" != "$newest_tag" ] || continue
+                  grep -qxF "$v" <<< "$tags" || echo "$v"
+                done
+              }
+              bad=0
+              for p in "CHANGELOG.md v $sd ShotDetector" "src/FrameReader/CHANGELOG.md framereader-v $fr FrameReader"; do
+                set -- $p
+                for v in $(skipped "$1" "$2" "$3"); do
+                  msg="$4 $v is in $1 but untagged and older than $3, which this run would release: $v would never be published. Tag $v's release commit by hand ($2$v) to release it first, or, to leave it out on purpose, tag $3's release commit by hand ($2$3)."
+                  echo "::error::$msg"; echo "**Skipped:** $msg" >> "$GITHUB_STEP_SUMMARY"
+                  bad=1
+                done
+              done
+              [ "$bad" = 0 ] || exit 1 ;;
           esac
           release=false; env=prerelease
           for p in "shotdetector $sd $sd_due" "framereader $fr $fr_due"; do
