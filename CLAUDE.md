@@ -84,6 +84,10 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
   `dotnet tool run bro format ShotDetector.slnx`; CI runs it with `--verify-no-changes` in ci.yml's `aot` job on
   win-x64. The tool (.config/dotnet-tools.json) and the analyzers (Directory.Packages.props) move together, by hand.
   Feedback on StyleBro goes to its GitHub issues.
+- **Security analyzers**: the SDK's Security rules (CA2xxx, CA3xxx, CA5xxx) are errors on every build
+  (Directory.Build.props; `CheckSecurityAnalyzers` in Directory.Build.targets fails a build without them). Fix a
+  real finding (the owner decides how); suppress a false positive where it is, with a justification
+  (docs/decisions/2026-11-06-security-analyzers.md).
 - **Dependabot**: patch and minor PRs auto-merge; majors wait for a look. FFmpeg.AutoGen stays on 8.x until the
   native build moves to FFmpeg 9.
 - **Commit messages**: what and why, like the history. Small commits.
