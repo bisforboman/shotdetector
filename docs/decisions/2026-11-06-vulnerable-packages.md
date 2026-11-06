@@ -29,3 +29,9 @@ What should happen when a package this repository builds or ships has a known vu
 
 The owner also turns on Dependabot alerts and Dependabot security updates (Settings, Code security), so an advisory
 gets a pull request without waiting for the weekly scan.
+
+The audit also covers the packages the SDK adds itself, such as Native AOT's `Microsoft.DotNet.ILCompiler`, whose
+version is the SDK's runtime. Those are fixed by moving the SDK: on this PR, the Alpine image pinned by digest (ci.yml's
+AOT matrix and `alpine` job, release.yml's AOT matrix) still had .NET 10.0.13, whose ILCompiler has
+GHSA-p3jp-9v83-76w9, so its AOT restore failed; the image moved to 10.0-alpine with 10.0.14. The other jobs take the
+newest 10.0.x through setup-dotnet. Without the gate, release.yml would have built the musl binaries with it.
