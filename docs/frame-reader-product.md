@@ -76,7 +76,8 @@ needing both (yadif on one thread above 8 bits, #713: FrameReader's FrameDecoder
 the same PR). 2.23.0: 0 of 3
 (`AudioAnalysis` on one decode, #718; `AudioConvertOptions.Stream`, #721; DASH's `MinBufferTime`, #722: each FrameReader alone). 2.24.0: 0 of 6
 (the loudness maxima, #732, and when they end, #746; packet sizes and keyframes, #744; `InterlaceDetector`, #745;
-`ChannelMeter`, #747; `FrameSteps`, #748: each FrameReader alone, for Noga's QC report).
+`ChannelMeter`, #747; `FrameSteps`, #748: each FrameReader alone, for Noga's QC report). 2.25.0: 0 of 2
+(`ConstantColourDetector` and `GamutMeter`, #757: FrameReader alone, Noga's last two meters of its own).
 
 ```bash
 for c in $(git rev-list framereader-vPREVIOUS..HEAD); do f=$(git show --name-only --format= $c)

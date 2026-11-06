@@ -7,6 +7,21 @@ yet is in changes/framereader/ (one file per pull request).
 Up to 2.1.0, FrameReader was released together with ShotDetector at the same version: those versions' changes are in
 ShotDetector's [CHANGELOG.md](../../CHANGELOG.md), each marked "FrameReader:".
 
+## 2.25.0 – 2026-11-06
+
+Constant colour and RGB gamut: the last of Noga's QC meters.
+
+### New
+
+- `ConstantColourDetector`: runs of one flat colour (a slate or test colour left in, EBU QC 0016B) on frames of yours,
+  without FFmpeg: each frame's signalstats YLOW, YHIGH and YAVG for Y, U and V (`SignalStats`), a frame flat when every
+  plane's HIGH less LOW is within `ConstantColourOptions.Spread`, runs kept from `MinDuration`, each a
+  `ConstantColourSpan` with its mean Y, Cb and Cr. Every fourth luma row first rules out a moving picture exactly.
+- `GamutMeter`: each frame's share of pixels outside RGB gamut (EBU R 103's -5% to 105%, EBU QC 0051B), which no
+  FFmpeg filter counts: R, G and B from Y and the chroma sample each pixel is sited on, by the matrix's Kr and Kb
+  (`GamutOptions`, `Coefficients(colorSpace)`), one table lookup a pixel; 8 to 12 bits. The same as a geq expression
+  doing that arithmetic per pixel.
+
 ## 2.24.0 – 2026-11-05
 
 Packet sizes and keyframes, idet, channel faults, when loudness peaks, and dropped frames: the measures of a QC report.
