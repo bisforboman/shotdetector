@@ -69,3 +69,8 @@ dotnet_diagnostic.BRO1515.severity = none
 # Usings: System first, one sorted group, as StyleBro's preset had it until 0.6.0 (which stopped setting these)
 dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
+
+# Security analyzers (docs/decisions/2026-11-06-security-analyzers.md): the tests make their frames and samples with a
+# seeded Random, reproducible on purpose, never for anything secret
+[tests/**.cs]
+dotnet_diagnostic.CA5394.severity = none
