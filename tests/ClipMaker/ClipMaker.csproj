@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FrameReader\FrameReader.csproj" />
+    <PackageReference Include="FrameReader" />
   </ItemGroup>
 
 </Project>

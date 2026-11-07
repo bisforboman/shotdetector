@@ -10,9 +10,13 @@
     <!-- FFmpeg 8's bindings: 9.x binds FFmpeg 9's libraries (other struct layouts), which ours aren't. -->
     <PackageVersion Include="FFmpeg.AutoGen" Version="[8.1.0, 9.0.0)" />
     <PackageVersion Include="StyleBro.Analyzers" Version="0.8.0-alpha.1" />
-    <!-- benchmarks/FrameReader.Benchmarks only -->
-    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
-    <PackageVersion Include="FFMpegCore" Version="5.5.0" />
+    <!-- FrameReader (github.com/bisforboman/FrameReader), up to its next major: ShotDetector's package declares this
+         range, so a FrameReader 3.0 can't replace the 2.x it was built against (docs/decisions/2026-11-07-shotdetector-
+         takes-the-framereader-package.md). Its FFmpeg libraries, FrameReader.Native.<rid> at the same version, come to
+         CI and the release through native-package.yml. FrameReaderPackageVersion builds against another version, such
+         as a FrameReader pull request's packed into a local feed (RestoreAdditionalProjectSources). -->
+    <PackageVersion Include="FrameReader" Version="[2.25.0, 3.0.0)" Condition="'$(FrameReaderPackageVersion)' == ''" />
+    <PackageVersion Include="FrameReader" Version="[$(FrameReaderPackageVersion), 3.0.0)" Condition="'$(FrameReaderPackageVersion)' != ''" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
   </ItemGroup>

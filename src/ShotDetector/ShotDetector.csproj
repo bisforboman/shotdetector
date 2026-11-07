@@ -35,8 +35,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- FrameReader, stable from 1.5.0: a package dependency, with its own versions since 2.1.0 (docs/frame-reader-product.md). -->
-    <ProjectReference Include="..\FrameReader\FrameReader.csproj" />
+    <!-- FrameReader, its own product in its own repository since 2026-11-07 (docs/framereader-split.md); the version
+         range is in Directory.Packages.props. -->
+    <PackageReference Include="FrameReader" />
   </ItemGroup>
 
   <ItemGroup>

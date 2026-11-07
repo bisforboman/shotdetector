@@ -1,9 +1,7 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/FrameReader/FrameReader.csproj" />
     <Project Path="src/ShotDetector.Cli/ShotDetector.Cli.csproj" />
     <Project Path="src/ShotDetector.FastYuv/ShotDetector.FastYuv.csproj" />
-    <Project Path="src/FrameReader.Native/FrameReader.Native.csproj" />
     <Project Path="src/ShotDetector/ShotDetector.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
@@ -15,8 +13,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ClipMaker/ClipMaker.csproj" />
-    <Project Path="tests/FrameReader.Tests/FrameReader.Tests.csproj" />
-    <Project Path="tests/AudioWithoutFfmpeg/AudioWithoutFfmpeg.csproj" />
     <Project Path="tests/FramesWithoutFfmpeg/FramesWithoutFfmpeg.csproj" />
     <Project Path="tests/ShotDetector.Tests/ShotDetector.Tests.csproj" />
   </Folder>
