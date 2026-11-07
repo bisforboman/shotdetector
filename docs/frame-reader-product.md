@@ -12,6 +12,8 @@ own product").
 - The FFmpeg build FrameReader needs ships as `ShotDetector.Native`.
 - Last 80 commits on main (2026-10-13): 13 FrameReader only, 20 ShotDetector only, 7 both, the rest docs/CI/release.
 
+Since 2026-11-07 FrameReader moves to its own repository: [framereader-split.md](framereader-split.md) (docs/decisions/2026-11-07-framereader-own-repository.md). Until that plan's step 6 merges, what follows still describes this repository.
+
 ## What stays
 
 One repository. Cross-cutting changes (FastYuv's resolution fix #202, the resize without the sampled copy #212)
