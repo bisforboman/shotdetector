@@ -1,5 +1,8 @@
 # FrameReader as its own product
 
+Since 2026-11-07 FrameReader has its own repository, github.com/bisforboman/FrameReader
+([framereader-split.md](framereader-split.md)); what follows is how it got there, kept as history.
+
 Status: done (2026-10-14): own versions, changelogs and releases (one PR), the native packages, CI by what a change touches, the docs. The user's choices are in `docs/decisions/` ("FrameReader as its
 own product").
 

@@ -23,10 +23,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: that push (#737) changed only docs, and later pushes to main are green, so it looks like a flaky test or step; find which (the job's logs and annotations), then fix it or record it as the VideoWriter flake was (docs/decisions/2026-10-10-videowriter-s-rare-ci-mismatch.md)
   - Status: Open
 
-- Move FrameReader to its own repository, `bisforboman/framereader` (docs/framereader-split.md)
-  - Why: the owner's call (docs/decisions/2026-11-07-framereader-own-repository.md): one repository's costs (tag prefixes, a release.yml for two products, one "Latest" release, tools/reach, the feature count) now outweigh the few crossings
-  - Status: In progress (2026-11-07: the plan; step 1, creating the repository and the nuget.org policy, waits on the owner)
-
 ## Waiting
 
 - Optional: the owner times the sequential conversion thread on the 16-thread Ryzen
@@ -39,10 +35,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - The owner files the FFmpeg yadif report (docs/ffmpeg-yadif-16bit-report.md)
   - Why: FFmpeg 8.1's x86 yadif at 9-16 bits races between slice threads, so every run gives another picture; ShotDetector and FrameReader now run it on one thread there (docs/decisions/2026-11-02-deterministic-yadif-at-9-16-bits.md), which a fix upstream would make unneeded. A public post from the owner's account: theirs to file, never a session's
-  - Status: Waiting (on the owner)
-
-- The owner files the x264 AVX-512 report with VideoLAN (x264-avx512-report.md in the main checkout)
-  - Why: CI's VideoWriter step needs DOTNET_TieredCompilation=0 because x264's AVX-512 code and .NET's tiered JIT differ about 1 run in 250 (CLAUDE.md); the report was written but not filed as of the 2026-10-15 reminder (it waited on a VideoLAN GitLab account). A public post from the owner's account: theirs to file, never a session's
   - Status: Waiting (on the owner)
 
 - After .NET 11's release (November 2026), an informational CI run of the tests and parity on net11
@@ -70,14 +62,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 - MPEG-PS chunking: long DVD/VOB rips on several cores
   - Why: Files whose packets lack timestamps (MPEG-PS) never run in chunks (`NotChunkable`: "packets without timestamps"), because chunk bounds need every frame's time up front, the pass #546 removed in-process. Long rips can't use more than one decoder. Measure the pass's cost against what chunking gains (1.3-1.5x on 4 CPUs elsewhere) before deciding whether to bring the pass back for long files
   - Status: Maybe
-
-- Segment decoders inside `ReadAhead`: several decoders on different parts of the file
-  - Why: ffmpeg caps frame threads at 16, so above that cores sit idle; issue #566's own run with 4 `ReadAt` readers (3.2 s against 3.6-4.4 s for the ffmpeg command, 22 CPUs) shows the gain. Building it into `ReadAhead` would give `TryReadForwardTo` callers the same without a time list up front, at the memory of one decoder per segment. Pays only above ~16 cores (offered 2026-10-28)
-  - Status: Maybe
-
-- FrameReader read-ahead: convert ahead too, for TryRead
-  - Why: `VideoFrameReaderOptions.ReadAhead` (#568, issue #566) decodes, deinterlaces and rotates frames ahead on a background thread but converts each frame in the read, because `TryReadForwardTo` only knows which frame it wants when asked (at 1 fps, converting ahead would waste 24 of 25 conversions). Plain `TryRead` wants every frame, so its conversion could run ahead too, hiding the conversion's share of each frame; it would need a ring of output buffers to keep the rule that a frame is valid until the next read. Measure first on a caller whose work per frame is shorter than the decode
-  - Status: Maybe (the owner, 2026-10-28)
 
 - mkv/ts: the packet scan alongside decoding on the sequential path
   - Why: A frame's label is final once the scan's latest dts is past its time, so the scan can run beside decoding: max(read, decode) instead of the sum where reading is slow and the file fits the page cache; nearly nothing on local disks. Where dts ever goes backwards (joined or corrupt files), wait for the whole scan; chunked runs keep it first. An additive incremental FrameReader API (`ProbeOptions.OnPacket`). Choice 3 of docs/decisions/2026-10-27-pre-scan.md

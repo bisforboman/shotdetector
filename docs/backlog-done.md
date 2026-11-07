@@ -1184,3 +1184,19 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - Set the API baselines to ShotDetector 3.29.0 and FrameReader 2.23.0 (issues #753, #752), then 3.30.0 and 2.25.0 once nuget.org serves them (#761)
   - Why: Directory.Build.props still has 3.28.0 and 2.22.0, two releases behind, so packing doesn't catch a breaking change made since; the baseline-done job closes the issues once the props file has their versions
   - Status: **Done (2026-11-07)**: straight to 3.30.0 and 2.25.0, both on nuget.org by then
+
+- Move FrameReader to its own repository, `bisforboman/framereader` (docs/framereader-split.md)
+  - Why: the owner's call (docs/decisions/2026-11-07-framereader-own-repository.md): one repository's costs (tag prefixes, a release.yml for two products, one "Latest" release, tools/reach, the feature count) now outweigh the few crossings
+  - Status: **Done (2026-11-07)**: FrameReader lives in github.com/bisforboman/FrameReader with its history; ShotDetector takes the FrameReader package [2.25.0, 3.0.0) and its FFmpeg libraries from FrameReader.Native through native-package.yml (docs/decisions/2026-11-07-shotdetector-takes-the-framereader-package.md). What is left is FrameReader's (its backlog): the owner's repository settings, the ShotDetector parity check on its pull requests, the issue transfer
+
+- The owner files the x264 AVX-512 report with VideoLAN (x264-avx512-report.md in the main checkout)
+  - Why: CI's VideoWriter step needs DOTNET_TieredCompilation=0 because x264's AVX-512 code and .NET's tiered JIT differ about 1 run in 250 (CLAUDE.md); the report was written but not filed as of the 2026-10-15 reminder (it waited on a VideoLAN GitLab account). A public post from the owner's account: theirs to file, never a session's
+  - Status: **Dropped (2026-11-07)**: FrameReader's alone, in its own repository's docs/backlog.md since the move
+
+- FrameReader read-ahead: convert ahead too, for TryRead
+  - Why: `VideoFrameReaderOptions.ReadAhead` (#568, issue #566) decodes, deinterlaces and rotates frames ahead on a background thread but converts each frame in the read, because `TryReadForwardTo` only knows which frame it wants when asked (at 1 fps, converting ahead would waste 24 of 25 conversions). Plain `TryRead` wants every frame, so its conversion could run ahead too, hiding the conversion's share of each frame; it would need a ring of output buffers to keep the rule that a frame is valid until the next read. Measure first on a caller whose work per frame is shorter than the decode
+  - Status: **Dropped (2026-11-07)**: FrameReader's alone, in its own repository's docs/backlog.md since the move
+
+- Segment decoders inside `ReadAhead`: several decoders on different parts of the file
+  - Why: ffmpeg caps frame threads at 16, so above that cores sit idle; issue #566's own run with 4 `ReadAt` readers (3.2 s against 3.6-4.4 s for the ffmpeg command, 22 CPUs) shows the gain. Building it into `ReadAhead` would give `TryReadForwardTo` callers the same without a time list up front, at the memory of one decoder per segment. Pays only above ~16 cores (offered 2026-10-28)
+  - Status: **Dropped (2026-11-07)**: FrameReader's alone, in its own repository's docs/backlog.md since the move

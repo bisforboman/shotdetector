@@ -1,7 +1,10 @@
 # FrameReader in its own repository
 
-Status: planned (2026-11-07). The owner's choices are in
-[decisions/2026-11-07-framereader-own-repository.md](decisions/2026-11-07-framereader-own-repository.md). This plan
+Status: done here (2026-11-07): steps 1, 2, 3 and 6, with step 8 until then. FrameReader lives in
+[github.com/bisforboman/FrameReader](https://github.com/bisforboman/FrameReader); what is left (steps 4, 5 and 7) is
+FrameReader's, in its backlog. The owner's choices are in
+[decisions/2026-11-07-framereader-own-repository.md](decisions/2026-11-07-framereader-own-repository.md) and
+[decisions/2026-11-07-shotdetector-takes-the-framereader-package.md](decisions/2026-11-07-shotdetector-takes-the-framereader-package.md). This plan
 follows [frame-reader-product.md](frame-reader-product.md), which made FrameReader a product of its own inside this
 repository.
 
@@ -56,12 +59,17 @@ A dry run on 2026-11-07 with `git filter-repo --path ...` on a full clone kept 2
    - deletes what moved, plus release.yml's FrameReader half, `--package framereader` in tools/changelog.py,
      changes/framereader, tools/reach's FrameReader classification (ci-changes.sh then has one product), and the
      feature count in frame-reader-product.md;
-   - keeps `ShotDetector.Native.<rid>`, which already only depends on `FrameReader.Native` (ask the owner in this step
-     whether to deprecate them);
    - updates README.md, CLAUDE.md (layout, release policy, the "Where things are" table), the backlog (FrameReader's
      rows move to the new repository's backlog).
    From then on Dependabot opens the FrameReader bumps here; minor and patch auto-merge once ShotDetector's checks,
    the scenedetect comparison included, pass.
+
+   Done (2026-11-07), with two choices of the owner's: ShotDetector's package keeps declaring `[2.25.0, 3.0.0)`, and
+   CI and the release take the libraries from the FrameReader.Native packages on nuget.org (native-package.yml, each
+   package's signature verified) instead of building them. `FrameReaderPackageVersion` overrides the version for
+   step 4. The mutation entries for FrameReader's files went with it (FrameReader's backlog has them), and so did the
+   nightly audio check, the FrameReader benchmark and the FFmpeg and library watches in upstream.yml.
+   `ShotDetector.Native.<rid>` needed nothing: ShotDetector 3.0 already stopped publishing it.
 7. **Issues.** Transfer the open issues labelled `framereader` (GitHub's issue transfer, by the owner or a session
    with access to both repositories). FrameReader's README and package metadata point to the new repository; the
    `framereader` label here then points there.
@@ -70,6 +78,5 @@ A dry run on 2026-11-07 with `git filter-repo --path ...` on a full clone kept 2
 
 ## Open questions (ask when the step comes)
 
-- Whether `ShotDetector.Native.<rid>` is deprecated on nuget.org, or kept as an alias (step 6).
 - Whether the parity check of step 4 is required on every FrameReader PR, or only on those that change decoding
   (assumed only those).

@@ -4,8 +4,9 @@ A C# port of PySceneDetect's shot/cut detection that gives **identical results**
 list CSVs, per-frame stats, timecodes digit for digit). It decodes through the ffmpeg executable (a subprocess) or
 in-process through FrameReader (FFmpeg 8's libraries via FFmpeg.AutoGen). Repo: `github.com/bisforboman/shotdetector`.
 NuGet: `ShotDetector` (MIT), `ShotDetector.FastYuv` (LGPL-2.1, a swscale port), `ShotDetector.Cli` (dotnet tool
-`shotdetect`, plus Native AOT binaries on releases), `FrameReader` (MIT, the frame-reader library) and
-`FrameReader.Native.<rid>` (our FFmpeg build, LGPL).
+`shotdetect`, plus Native AOT binaries on releases). FrameReader (MIT) and `FrameReader.Native.<rid>` (our FFmpeg
+build, LGPL) are a package of their own from `github.com/bisforboman/FrameReader` since 2026-11-07, which ShotDetector
+depends on (docs/framereader-split.md).
 
 ## Core idea
 
@@ -19,36 +20,33 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
 
 | Topic | Where |
 |---|---|
-| Releases and what each brought | CHANGELOG.md, src/FrameReader/CHANGELOG.md |
+| Releases and what each brought | CHANGELOG.md (FrameReader's: its own repository) |
 | Features, CLI, how parity is checked, where we differ | README.md |
-| FrameReader's types and what it handles | src/FrameReader/README.md, docs/frame-reader-library.md |
-| Two products, released separately | docs/frame-reader-product.md |
-| FrameReader moving to its own repository (in progress) | docs/framereader-split.md |
+| How FrameReader became a product of its own (history) | docs/frame-reader-product.md |
+| FrameReader in its own repository, and how ShotDetector takes it | docs/framereader-split.md |
 | Chunked detection on several cores | docs/parallel-detection.md |
 | What's next | docs/backlog.md, docs/backlog-done.md, the `backlog` skill |
 | What the owner decided and why | docs/decisions/ (its README) |
 | Light PRs, mutation shards, nightly runs | tools/ci-changes.sh, docs/decisions/2026-10-31-ci-time.md |
 | The library's decoding gotchas (seek, crop, timestamps, streams) | src/ShotDetector/CLAUDE.md |
-| FrameReader's FFmpeg interop gotchas | src/FrameReader/CLAUDE.md |
 
 ## Release policy
 
 - The owner says when to release.
-- Two products: ShotDetector (with FastYuv and the CLI; tags `vX.Y.Z`) and FrameReader (with FrameReader.Native;
-  tags `framereader-vX.Y.Z`). A change to the native build is a FrameReader release. FrameReader is a package of its
-  own, stable from 1.5.0, with its own versions from 2.1.0; ShotDetector's package depends on its current version.
-- A release PR (`python tools/changelog.py --package shotdetector|framereader X.Y.Z "summary"` folds the fragments)
-  opens once every PR going into it has merged, never stacked; one PR can release both. Release notes are the
-  version's CHANGELOG section: keep sections grouped (breaking changes, new, faster, fixed).
-- Merging it releases: release.yml (every push to main) releases each product whose newest version isn't tagged,
-  FrameReader first. A hand-pushed `v*` tag still works. Never pass `-p:Version` (it would reach FrameReader through
-  ShotDetector's reference): `-p:ShotDetectorVersion` and `-p:FrameReaderVersion`.
+- ShotDetector (with FastYuv and the CLI; tags `vX.Y.Z`). FrameReader and its native build are released from their
+  own repository; the `framereader-vX.Y.Z` tags here are its releases before the move. ShotDetector's package depends
+  on FrameReader `[X.Y.Z, next major)` (Directory.Packages.props); Dependabot opens the bump when FrameReader releases,
+  and its CI (the scenedetect comparison included) checks it. A ShotDetector change that needs something new in
+  FrameReader waits for that FrameReader release.
+- A release PR (`python tools/changelog.py X.Y.Z "summary"` folds the fragments) opens once every PR going into it
+  has merged, never stacked. Release notes are the version's CHANGELOG section: keep sections grouped (breaking
+  changes, new, faster, fixed).
+- Merging it releases: release.yml (every push to main) releases the newest version if it isn't tagged. A
+  hand-pushed `v*` tag still works. Pass `-p:ShotDetectorVersion`.
 - Prereleases (`-`) publish without approval (environment `prerelease`: `v*-*` tags, and `main` once the owner adds
   it; until then push `vX.Y.Z-pre` on the release commit); stable ones wait for the owner's approval.
-- Once a stable release is on nuget.org, set its baseline in Directory.Build.props (`ApiBaselineVersion` or
-  `FrameReaderApiBaselineVersion`; release.yml opens a reminder issue): packing then fails on a breaking change.
-- At each FrameReader release, record the count of features needing both products (docs/frame-reader-product.md,
-  "When to reconsider"); ask whether to split only when one of its conditions happens.
+- Once a stable release is on nuget.org, set `ApiBaselineVersion` in Directory.Build.props (release.yml opens a
+  reminder issue): packing then fails on a breaking change.
 - A `PySceneDetectVersion` is obsoleted two scenedetect releases back and removed at the next major
   (docs/decisions/2026-10-31-retiring-scenedetect-modes.md).
 
@@ -63,8 +61,8 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
   it to merge and branch from main after it.
 - **Worktrees**: `git worktree add .claude/worktrees/<name> -b <branch> origin/main` (ignored). Sessions working at
   the same time each use their own worktree, never one checkout.
-- **Changelog**: a PR with a change users of the packages notice adds `changes/shotdetector/<branch>.md` or
-  `changes/framereader/<branch>.md` (both when it changes both; changes/README.md), never a CHANGELOG itself.
+- **Changelog**: a PR with a change users of the packages notice adds `changes/shotdetector/<branch>.md`
+  (changes/README.md), never the CHANGELOG itself.
 - **Backlog**: take the first Next item of `docs/backlog.md`; set its status when work starts; when it is Done
   (Dropped, Won't do) move the row to the end of `docs/backlog-done.md`. Add items when something turns up, with why,
   in the shape the `backlog` skill gives (docs/decisions/2026-10-18-backlog-shape.md).
@@ -103,9 +101,10 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
 - `dotnet test ShotDetector.slnx` (~3 min; the video tests make clips). One class: `--filter
   "FullyQualifiedName~VideoTests"`.
 - `SHOTDETECTOR_FFMPEG_LIBS`: a folder of FFmpeg 8.1's shared libraries; without it the in-process tests pass without
-  checking. Locally: our build from a ci.yml or native.yml run (`gh run download <run> -n native-linux-x64`, what
-  CI's main test run uses), or BtbN's `gpl-shared` 8.1 archive from the release pinned in
-  `.github/actions/btbn-ffmpeg/action.yml`, with `lib/*.so*` copied into `bin/` as the action does.
+  checking. Locally: our build, the FrameReader.Native.<rid> package at the FrameReader version in use (its
+  `runtimes/<rid>/native/`; what CI's main test run uses, through native-package.yml), or BtbN's `gpl-shared` 8.1
+  archive from the release pinned in `.github/actions/btbn-ffmpeg/action.yml`, with `lib/*.so*` copied into `bin/` as
+  the action does.
 - For detector changes: `pwsh tools/make-samples.ps1` (once, into `samples/`), then `python tools/compare.py
   samples/*.mp4 ... --detector all --stats`; `--compat 0.7.1` with 0.7.1 installed for the previous release.
 
@@ -113,9 +112,6 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
 
 - `src/ShotDetector`: the library (`ShotDetection`, `VideoReader`, the detectors, `Shots`, `Stats`, `Export`,
   `Timeline`, ...).
-- `src/FrameReader`: the frame-reader library (tests in `tests/FrameReader.Tests`). ShotDetector depends on it one
-  way, through its public API only.
-- `src/FrameReader.Native`: our FFmpeg build (`build-ffmpeg.sh`, run by native.yml).
 - `src/ShotDetector.FastYuv`: the LGPL swscale port, its own COPYING.LGPL and README.
 - `src/ShotDetector.Cli`: `shotdetect`. `-p:WithFastYuv=true` builds a dev-only LGPL variant for `compare.py
   --fast-yuv`.
@@ -123,17 +119,17 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
   process of its own: loaded in the test process, the libraries would switch every test to in-process decoding.
   Rerun `tools/oracle.py` (`Data/oracle.txt`) when the scenedetect pin moves; CI regenerates `Data/pixels.txt`
   (`tools/pixel_oracle.py`) on Linux and diffs.
-- `tests/FramesWithoutFfmpeg`, `tests/AudioWithoutFfmpeg`: processes of their own that fail if detection on the
-  caller's frames, or FrameReader's audio measures, load anything of FFmpeg.
+- `tests/FramesWithoutFfmpeg`: a process of its own that fails if detection on the caller's frames loads anything of
+  FFmpeg.
 - `examples/ShotDetector.Example`: ShotDetector and FrameReader end to end.
 - `tools/`: `compare.py` (scenedetect against shotdetect), `make-samples.ps1`, `realworld.py` (whole films pinned by
   SHA-256), `mutation/`, `ci-changes.sh`.
 - `.github/workflows`: `ci.yml`, `realworld.yml` (nightly; on PRs its jobs skip and the gate reports), `mutation.yml`
-  (PRs: the entries their files concern; nightly: all), `native.yml` (our FFmpeg build, which the others call),
-  `release.yml`, `benchmark.yml`, `frame-reader-bench.yml`, `compare.yml` (on demand), `parity-os.yml` (Windows and
-  macOS, informational), `upstream.yml`, `codeql.yml`, `dependabot-auto-merge.yml`, `vulnerable-packages.yml`
-  (weekly: an issue when main has a package with a NuGet advisory; every restore already fails on one). Each header
-  says the rest.
+  (PRs: the entries their files concern; nightly: all), `native-package.yml` (our FFmpeg build from the
+  FrameReader.Native packages, which the others call), `release.yml`, `benchmark.yml`, `compare.yml` (on demand),
+  `parity-os.yml` (Windows and macOS, informational), `upstream.yml`, `codeql.yml`, `dependabot-auto-merge.yml`,
+  `vulnerable-packages.yml` (weekly: an issue when main has a package with a NuGet advisory; every restore already
+  fails on one). Each header says the rest.
 
 ## Gotchas (each cost time once)
 
@@ -156,8 +152,7 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
   benchmarks/micro times the resize and edge detector alone.
 - NuGet trusted publishing: the policy's workflow must be `release.yml`, package glob `ShotDetector*`.
 - Runners are pinned to an image version (ubuntu-26.04, windows-2025, macos-15); move a pin after a do-not-merge PR
-  runs CI on the new one. native.yml's glibc and Windows builds stay on ubuntu-22.04 (glibc baseline); musl builds in
-  Alpine on 26.04, osx-arm64 on macos-15.
+  runs CI on the new one.
 - A failure on only some runners: GitHub's mix CPUs, some with AVX-512; log `/proc/cpuinfo`
   (docs/decisions/2026-10-10-videowriter-s-rare-ci-mismatch.md).
 - GitHub Actions queues can stall; re-run rather than diagnose when every job was cancelled at ~15 min.
