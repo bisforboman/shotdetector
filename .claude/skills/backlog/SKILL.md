@@ -12,7 +12,7 @@ grouped by the old sections they were in; rows finished since 2026-10-18 go at i
 (create the heading the first time). Each item is a list entry, `- What` with `  - Why: ...` and `  - Status: ...`
 under it and a blank line before the next (so edits to neighbouring items merge cleanly). Design answers live in
 `docs/decisions/` (docs/decisions/2026-10-18-backlog-shape.md for this shape); larger plans in their own docs (e.g.
-`docs/frame-reader-library.md`).
+`docs/parallel-detection.md`).
 
 ## 1. Gather (read-only, in parallel)
 

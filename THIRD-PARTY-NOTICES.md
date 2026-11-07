@@ -94,7 +94,8 @@ https://ffmpeg.org, license: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.
 ## FFmpeg libraries (GNU LGPL 2.1 or later), FrameReader.Native.<rid> and the shotdetect CLI
 
 libavcodec, libavformat, libavutil, libswscale, libswresample and libavfilter (yadif, fps, aspectralstats and the audio filters listed in the Native README only) from FFmpeg 8.1.3
-(https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz), built with `tools/native/build-ffmpeg.sh` for decoding plus
+(https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz), built with FrameReader's `tools/native/build-ffmpeg.sh`
+(github.com/bisforboman/FrameReader) for decoding plus
 the AAC, MP3 and PCM encoders, the image encoders (PNG, JPEG, WebP), FrameReader's test encoders and common
 muxers: no other video encoders, devices or GPL parts, and only the http(s)
 network protocols; zlib, dav1d, LAME, libwebp and, on Linux, OpenSSL (below) linked in. Each package and

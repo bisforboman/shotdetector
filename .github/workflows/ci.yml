@@ -31,11 +31,6 @@ jobs:
         if: github.event_name == 'pull_request'
         with:
           fetch-depth: 2
-      # FrameReader's assemblies are built when only FrameReader source changed (tools/ci-changes.sh).
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        if: github.event_name == 'pull_request'
-        with:
-          dotnet-version: 10.0.x
       - id: diff
         if: github.event_name == 'pull_request'
         run: tools/ci-changes.sh >> "$GITHUB_OUTPUT"
@@ -67,11 +62,11 @@ jobs:
           done < <(git diff --numstat HEAD^1 HEAD)
           exit $bad
 
-  # Our FFmpeg build for linux-x64 (native.yml, cached by the build script's hash): the in-process tests and the
-  # AOT binary use it.
+  # Our FFmpeg build for linux-x64 (FrameReader.Native's, native-package.yml): the in-process tests and the AOT binary
+  # use it.
   native:
     needs: changes
-    uses: ./.github/workflows/native.yml
+    uses: ./.github/workflows/native-package.yml
     with:
       rids: '["linux-x64"]'
 
@@ -107,22 +102,13 @@ jobs:
           name: native-linux-x64
           path: native/linux-x64
 
-      # The package release.yml packs from these: the libraries under runtimes/, configure.txt and the SBOM at the root.
-      - name: Pack FrameReader.Native
-        if: needs.changes.outputs.docs_only != 'true'
-        run: |
-          dotnet pack src/FrameReader.Native -p:Rid=linux-x64 --output "$RUNNER_TEMP/native-pack"
-          unzip -l "$RUNNER_TEMP"/native-pack/*.nupkg | tee "$RUNNER_TEMP/native-pack.txt"
-          grep -q " sbom.spdx.json$" "$RUNNER_TEMP/native-pack.txt" && grep -q " configure.txt$" "$RUNNER_TEMP/native-pack.txt" &&
-            grep -q " runtimes/linux-x64/native/libavcodec.so.62$" "$RUNNER_TEMP/native-pack.txt"
-
       - name: FFmpeg 8.1 executables beside our libraries
         if: needs.changes.outputs.docs_only != 'true'
         run: |
           cp "${{ steps.ffmpeg.outputs.bin }}/ffmpeg" "${{ steps.ffmpeg.outputs.bin }}/ffprobe" native/linux-x64/
           echo "SHOTDETECTOR_FFMPEG_LIBS=$PWD/native/linux-x64" >> "$GITHUB_ENV"
 
-      # BBC's audiowaveform, the reference for FrameReader's WaveformData (its test is skipped without it). Ubuntu
+      # BBC's audiowaveform, the reference for the CLI's --waveform (its step below is skipped without it). Ubuntu
       # doesn't package it; its maintainer's PPA, as its README says, has a build for each Ubuntu release.
       - name: Install audiowaveform
         if: needs.changes.outputs.docs_only != 'true'
@@ -132,25 +118,8 @@ jobs:
             audiowaveform --version
             echo "AUDIOWAVEFORM=$(command -v audiowaveform)" >> "$GITHUB_ENV"
           else
-            echo "::warning::audiowaveform didn't install: WaveformData's comparison with it is skipped"
+            echo "::warning::audiowaveform didn't install: the CLI's --waveform comparison with it is skipped"
           fi
-
-      # Widevine's pssh box from Shaka Packager's pssh-box.py (what issue #171's service used), for
-      # RemuxTests.EncryptedAsFfmpegWithWidevineSignalling to compare ours with, byte for byte.
-      - name: pssh-box.py's Widevine pssh
-        if: needs.changes.outputs.docs_only != 'true'
-        run: |
-          curl -fsSL --retry 5 --retry-all-errors -o pssh-box.tar.gz https://github.com/shaka-project/shaka-packager/releases/download/v3.9.3/pssh-box.py.tar.gz
-          echo "277f88fc3a1bcf295f7dbe9c98cc88fbf98308c9adce48256fa74af872326932  pssh-box.tar.gz" | sha256sum -c
-          mkdir pssh-box && tar xzf pssh-box.tar.gz -C pssh-box
-          script=$(find pssh-box -name pssh-box.py | head -1)
-          pssh=$(python3 "$script" --widevine-system-id --key-id a1b2c3d4e5f60718293a4b5c6d7e8f90 --base64)
-          echo "pssh-box.py: $pssh"
-          echo "SHOTDETECTOR_WIDEVINE_PSSH=$pssh" >> "$GITHUB_ENV"
-          # A DRM provider's own WidevinePsshData (issue #185): key ID, provider "conax", content_id "content-0001".
-          from_data=$(python3 "$script" --widevine-system-id --pssh-data EhChssPU5fYHGCk6S1xtfo+QGgVjb25heCIMY29udGVudC0wMDAx --base64)
-          echo "pssh-box.py --pssh-data: $from_data"
-          echo "SHOTDETECTOR_WIDEVINE_PSSH_FROM_DATA=$from_data" >> "$GITHUB_ENV"
 
       - name: Test
         if: needs.changes.outputs.docs_only != 'true'
@@ -236,9 +205,10 @@ jobs:
           rows=$(($(wc -l < live.csv) - 1))   # 200 frames; the first has no score
           echo "looped source, --duration 8s: $rows stats rows"; test "$rows" -eq 199
 
-      # FrameReader's VideoWriter (H.264) against ffmpeg -c:v libx264, byte for byte: x264's output depends on how it
-      # was compiled, so libraries and executable from one build, BtbN's shared GPL one (ours has no executables).
-      - name: FFmpeg 8.1 with x264, shared
+      # save-images in-process against the executable's, byte for byte: only with an executable of the libraries' own
+      # build (the main test run has BtbN's static ffmpeg beside our libraries, so it skips them), here BtbN's shared
+      # one.
+      - name: FFmpeg 8.1, shared
         id: gpl
         if: needs.changes.outputs.docs_only != 'true'
         timeout-minutes: 15
@@ -247,45 +217,18 @@ jobs:
           build: gpl-shared
           add-to-path: 'false'
 
-      - name: Test VideoWriter with x264
-        if: needs.changes.outputs.docs_only != 'true'
-        env:
-          SHOTDETECTOR_FFMPEG_LIBS: ${{ steps.gpl.outputs.bin }}
-          SHOTDETECTOR_REQUIRE_X264: '1'
-          SHOTDETECTOR_KEEP_DIFFERING: ${{ runner.temp }}/differing
-          # x264's AVX-512 code and .NET's tiered JIT in one process differ from ffmpeg about 1 run in 250 on AVX-512
-          # runners; either alone is exact (0 in 3,200 and 0 in 2,000 runs; FrameReader's README, backlog).
-          DOTNET_TieredCompilation: '0'
-        # Five times: run-to-run differences (uninitialised padding once) showed up in 1 run in 8.
-        run: |
-          mkdir -p "$RUNNER_TEMP/differing"
-          dotnet build tests/FrameReader.Tests -v q > /dev/null
-          for i in 1 2 3 4 5; do dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~VideoWriter" --logger GitHubActions; done
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: failure()
-        with:
-          name: videowriter-differing
-          path: ${{ runner.temp }}/differing/
-
-      # ImageEncoder's files byte for byte against ffmpeg's, and ShotDetector's save-images in-process against the
-      # executable's: only with an executable of the libraries' own build (the main test run has BtbN's static ffmpeg
-      # beside our libraries, so it skips them), here BtbN's shared one.
-      - name: Test ImageEncoder and save-images against its own build's ffmpeg
+      - name: Test save-images against its own build's ffmpeg
         if: needs.changes.outputs.docs_only != 'true'
         env:
           SHOTDETECTOR_FFMPEG_LIBS: ${{ steps.gpl.outputs.bin }}
           SHOTDETECTOR_REQUIRE_SAME_BUILD: '1'
-        run: |
-          dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~ImageEncoder" --logger GitHubActions
-          dotnet test tests/ShotDetector.Tests --filter "FullyQualifiedName~SaveImagesInProcess" --logger GitHubActions
+        run: dotnet test tests/ShotDetector.Tests --filter "FullyQualifiedName~SaveImagesInProcess" --logger GitHubActions
 
       - name: Pack
         if: needs.changes.outputs.docs_only != 'true'
         run: |
           dotnet pack src/ShotDetector --output artifacts
           dotnet pack src/ShotDetector.FastYuv --output artifacts
-          dotnet pack src/FrameReader --output artifacts
           dotnet pack src/ShotDetector.Cli --output artifacts
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -357,7 +300,7 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true'
         run: |
           dotnet publish src/ShotDetector.Cli -c Release -r ${{ matrix.rid }} -p:PublishAot=true \
-            -p:ShotDetectorVersion=$VERSION -p:FrameReaderVersion=$VERSION -o out
+            -p:ShotDetectorVersion=$VERSION -o out
 
       - name: Starts
         if: needs.changes.outputs.docs_only != 'true'
@@ -367,8 +310,8 @@ jobs:
           version=$(./out/shotdetect --version | tr -d '\r') && echo "$version"
           echo "$version" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?'
 
-      # The binary loads on macOS 14, as the bundled libraries (native.yml's MACOSX_DEPLOYMENT_TARGET): an image move
-      # can't raise it unannounced.
+      # The binary loads on macOS 14, as the bundled libraries (FrameReader's native.yml sets MACOSX_DEPLOYMENT_TARGET):
+      # an image move can't raise it unannounced.
       - name: Oldest macOS
         if: needs.changes.outputs.docs_only != 'true' && startsWith(matrix.rid, 'osx-')
         run: |
@@ -393,12 +336,11 @@ jobs:
           cat https.txt
           grep -q "48 frames" https.txt
 
-  # Our FFmpeg build for the platforms whose AOT binary only `aot` runs (native.yml; cache hits unless its build
-  # script changed).
+  # Our FFmpeg build for the platforms whose AOT binary only `aot` runs (FrameReader.Native's, native-package.yml).
   native-aot:
     needs: changes
     if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
-    uses: ./.github/workflows/native.yml
+    uses: ./.github/workflows/native-package.yml
     with:
       rids: '["linux-musl-x64","win-x64","osx-arm64"]'
 
@@ -433,7 +375,7 @@ jobs:
   native-arm:
     needs: changes
     if: (github.event_name == 'pull_request') && needs.changes.outputs.light != 'true'
-    uses: ./.github/workflows/native.yml
+    uses: ./.github/workflows/native-package.yml
     with:
       rids: '["linux-arm64"]'
 
@@ -505,7 +447,7 @@ jobs:
   # so a trimmed app on them alone (browser WebAssembly: shotdetector-web) ships no FFmpeg.AutoGen (issue #597):
   # benchmarks/wasm, which calls each of them, published trimmed (as AOT trims, without compiling ahead of time) must
   # have no FFmpeg.AutoGen in its bundle. When it has, the trimmer's dependency dump says why (tools/trim_path.py: the
-  # chain from Main). On pull requests touching the library, FastYuv, FrameReader, benchmarks/wasm or this check
+  # chain from Main). On pull requests touching the library, FastYuv, the packages' versions, benchmarks/wasm or this check
   # (tools/ci-changes.sh's `wasm`).
   wasm-trim:
     needs: changes

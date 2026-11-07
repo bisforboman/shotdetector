@@ -18,7 +18,6 @@
         # 10-bit: chroma interpolated from where the frame says it sits, as OpenCV's sws_scale_frame does (executable
         # path: in_chroma_loc; in-process sampled rows: the position sws_scale_frame derives)
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(siting is { } cl ? ":in_chroma_loc=" + cl : "")'; Replace = '""'; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
-        @{ File = 'src/FrameReader/BgrConverter.cs'; Find = 'ffmpeg.av_opt_set_int(_toRows, "src_h_chr_pos", hPos, 0);'; Replace = ''; Tests = 'InProcessTests.SameAsTheFfmpegExecutableForEachFormat' }
 
         # ... each frame's, where the siting changes midway: the executable reads a file again from the change with the
         # new in_chroma_loc (its scale filter takes one), dropping the earlier encode's frames that share the later one's
@@ -168,11 +167,9 @@
         @{ File = 'src/ShotDetector.FastYuv/SwscaleYuv420P10.cs'; Find = 'return (plan.V.Pos[y], plan.V.Size);'; Replace = 'return (plan.V.Pos[y], 1);'; Tests = 'FastYuvTests.RowsOutsideTheRowsReadChangeNothing' }
         @{ File = 'src/ShotDetector/CvResize.cs'; Find = 'TurnedPixels(width, height, turn, cropX, cropY).Select(p => p.Y)'; Replace = 'TurnedPixels(width, height, turn, cropX, cropY).Select(p => p.X)'; Tests = 'FastYuvTests.RowsOutsideTheRowsReadChangeNothing' }
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '=> conversion?.ChromaRows is { } chromaRows'; Replace = '=> conversion?.ChromaRows is var chromaRows'; Tests = 'FastYuvTests.ConvertersThatDoNotSayWhichRowsGetWholePlanes' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '_rPending.Add((plane, y));'; Replace = ''; Tests = 'InProcessTests.RowWiseYadifEqualsFfmpegs' }
 
         # Deinterlacing above 8 bits: yadif on one thread (FFmpeg 8.1's x86 yadif varies from run to run with slice threads
         # there, docs/ffmpeg-yadif-16bit-report.md; on one it equals the C code, scenedetect's copy made the same way)
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'desc->comp[0].depth > 8 ? "threads=1" : null'; Replace = 'null'; Tests = 'FrameDecoderTests.DeinterlacingIsTheSameOnEveryDecode'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '? "yadif=threads=1" : "yadif"'; Replace = '? "yadif" : "yadif"'; Tests = 'VideoTests.TheExecutablesYadifIsTheSameOnEveryRun' }
 
         # Chunked runs: twice the CPUs' decoder threads (at most 16) for frame-threaded decoders up to 1080p, shared out among the chunks
@@ -310,9 +307,6 @@
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = '(codec == "mpeg4" && xvidIdct == false)'; Replace = '(codec == "mpeg4")'; Tests = 'Mpeg4IdctTests' }
         @{ File = 'src/ShotDetector/Mpeg4Idct.cs'; Find = 's.XvidBuild == -1 && s.DivxVersion == -1 && s.LavcBuild == -1 && '; Replace = ''; Tests = 'Mpeg4IdctTests' }
 
-        # FrameReader: an InputOptions name nothing took is an ArgumentException (FrameReader's own defaults never count)
-        @{ File = 'src/FrameReader/Demuxer.cs'; Find = 'string? unused = ret >= 0 ? UnusedOption(options, listenTimeout) : null;'; Replace = 'string? unused = null;'; Tests = 'InProcessTests.UnknownInputOptionsFailAndShotDetectorsAreTaken' }
-
         # DetectionOptions.Warnings: each warning told as soon as it is known, so DetectStreamAsync's callers get them too
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'o.Warnings?.Report(warning);'; Replace = ''; Tests = 'ParallelTests.StreamingCallersGetTheWarningsBeforeTheFirstShot' }
 
@@ -442,150 +436,11 @@
         @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (detectors is < 1 or > MaxDetectors)'; Replace = 'if (detectors is < 0 or > MaxDetectors)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
         @{ File = 'src/ShotDetector/RangeScores.cs'; Find = 'if (frameCount > int.MaxValue - 1 - firstFrame)'; Replace = 'if (false)'; Tests = 'FrameRangeTests.FromBytesRefusesBytesItCantRead' }
 
-        # FrameReader: the tone and waveform from samples refuse what they can't take (issue #494)
-        @{ File = 'src/FrameReader/ReferenceToneFinder.cs'; Find = 'ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);'; Replace = ''; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ReferenceToneFinder.cs'; Find = 'ArgumentOutOfRangeException.ThrowIfNegativeOrZero(channels);'; Replace = ''; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ReferenceToneFinder.cs'; Find = 'if (interleaved.Length % _channels != 0)'; Replace = 'if (false)'; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ReferenceToneFinder.cs'; Find = 'throw new InvalidOperationException("Finish was called: start a new finder.");'; Replace = '{ }'; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);'; Replace = ''; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'ArgumentOutOfRangeException.ThrowIfNegativeOrZero(channels);'; Replace = ''; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'if (interleaved.Length % _inChannels != 0)'; Replace = 'if (false)'; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/WaveformBuilder.cs'; Find = 'throw new InvalidOperationException("Finish was called: start a new builder.");'; Replace = '{ }'; Tests = 'AudioFromSamplesTests.Refusals'; Project = 'tests/FrameReader.Tests' }
-
-        # FrameReader: a whole-file job's token reaches FFmpeg's interrupt callback, so a waiting network read stops (issue #522)
-        @{ File = 'src/FrameReader/Audio.cs'; Find = 'Stream = o.Stream, CancellationToken = cancellationToken }'; Replace = 'Stream = o.Stream }'; Tests = 'CancellationTests.AudioConvertStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/Video.cs'; Find = 'new ProbeOptions { CancellationToken = cancellationToken }'; Replace = 'null'; Tests = 'CancellationTests.VideoTranscodeStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/Video.cs'; Find = 'Deinterlace = deinterlace, CancellationToken = cancellationToken }'; Replace = 'Deinterlace = deinterlace }'; Tests = 'CancellationTests.VideoTranscodeStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/Video.cs'; Find = 'new AudioReaderOptions { CancellationToken = cancellationToken }'; Replace = 'null'; Tests = 'CancellationTests.VideoTranscodeStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/MediaProbe.cs'; Find = 'options = (options ?? new ProbeOptions()) with { CancellationToken = cancellationToken };'; Replace = '{ }'; Tests = 'CancellationTests.ProbeJsonStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/Demuxer.cs'; Find = 'if (cancellationToken.IsCancellationRequested)'; Replace = 'if (false)'; Tests = 'CancellationTests.ProbeJsonStopsWhileWaitingForANetworkRead'; Project = 'tests/FrameReader.Tests' }
-        # An MP4/MOV packet scan reads the sample tables, not the media data (FileInput): only for codecs whose packets come out
-        # the same without their data, not fragmented files, nothing past the file's end
-        @{ File = 'src/FrameReader/MediaProbe.cs'; Find = '&& TimestampsWithoutData.Contains(fmt->streams[index]->codecpar->codec_id);'; Replace = '&& true;'; Tests = 'PacketScanTests.TimestampsWithoutMediaDataAreTheSame'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FileInput.cs'; Find = 'if (type is "moof" or "mfra" or "sidx")'; Replace = 'if (false)'; Tests = 'PacketScanTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FileInput.cs'; Find = 'result.Add((at + headerSize, Math.Min(at + size, length)));'; Replace = 'result.Add((at + headerSize, at + size));'; Tests = 'PacketScanTests'; Project = 'tests/FrameReader.Tests' }
-        # FrameReader: MaxWidth is ffmpeg's scale='min(N,iw)':-2 (issue #542): never upscaled, the height rounded to the
-        # nearest even number (ties up), 0 filled in with the input's; not with Width and Height
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'int outWidth = Math.Min(max, width);'; Replace = 'int outWidth = max;'; Tests = 'VideoFrameReaderTests.MaxWidthIsFfmpegsMinWidthAndEvenHeight'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'int outHeight = (int)((outWidth * (long)height + twice / 2) / twice * 2);'; Replace = 'int outHeight = (int)(outWidth * (long)height / twice * 2);'; Tests = 'VideoFrameReaderTests.MaxWidthIsFfmpegsMinWidthAndEvenHeight'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'return (outWidth, outHeight == 0 ? height : outHeight);'; Replace = 'return (outWidth, outHeight);'; Tests = 'VideoFrameReaderTests.MaxWidthIsFfmpegsMinWidthAndEvenHeight'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '(max <= 0 || _options.Width is not null)'; Replace = '(max <= 0)'; Tests = 'VideoFrameReaderTests.FrameTimesStartAtZeroAndSizesMustComeInPairs'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '(max <= 0 || _options.Width is not null)'; Replace = '(_options.Width is not null)'; Tests = 'VideoFrameReaderTests.FrameTimesStartAtZeroAndSizesMustComeInPairs'; Project = 'tests/FrameReader.Tests' }
-
         # save-images in-process: the executable's one pass (select's n, the same filters, one encoder) through FrameReader;
         # WebP names libwebp, as libwebp_anim (ffmpeg's default where built) wrote one animation for several images
         @{ File = 'src/ShotDetector/Export.cs'; Find = 'byte[] image = encoder.Encode(decoded, vf);'; Replace = 'byte[] image = encoder.Encode(decoded);'; Tests = 'SaveImagesInProcessTests.SameFilesAsTheExecutable'; Project = 'tests/ShotDetector.Tests' }
         @{ File = 'src/ShotDetector/Export.cs'; Find = 'while (more && n <= frame)'; Replace = 'while (more && n < frame)'; Tests = 'SaveImagesInProcessTests.SameFilesAsTheExecutable'; Project = 'tests/ShotDetector.Tests' }
         @{ File = 'src/ShotDetector/Export.cs'; Find = '["-c:v", "libwebp", "-quality",'; Replace = '["-quality",'; Tests = 'VideoTests.WebPImagesThroughTheExecutableAreStills'; Project = 'tests/ShotDetector.Tests' }
-
-        # FrameReader's ImageEncoder (issue #542): the file ffmpeg writes from the same raw frame and tags; JPEG's rate control
-        # afresh for each image; options only for their format; the frame's aspect ratio and tags as ffmpeg's frame has them
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (_o.Format == ImageFormat.Jpg && _o.JpegQscale is null)'; Replace = 'if (false)'; Tests = 'ImageEncoderTests.EachFrameOfASequenceIsAOneFrameRun'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (_graph == null || !input.SameGraph(_graphFor))'; Replace = 'if (_graph == null)'; Tests = 'ImageEncoderTests.EachFrameOfASequenceIsAOneFrameRun'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '_filtered->quality = q * ffmpeg.FF_QP2LAMBDA;'; Replace = '{ }'; Tests = 'ImageEncoderTests.EachFrameOfASequenceIsAOneFrameRun'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '_enc->compression_level = c;'; Replace = ''; Tests = 'ImageEncoderTests.BytesAreFfmpegsFromTheRawFrame'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '_enc->thread_count = 1;'; Replace = '_enc->thread_count = 4;'; Tests = 'ImageEncoderTests.EachFrameOfASequenceIsAOneFrameRun'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '_frame->color_primaries = input.Primaries;'; Replace = ''; Tests = 'ImageEncoderTests.BytesAreFfmpegsFromTheRawFrame'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'Check(ffmpeg.av_opt_set_double(_enc->priv_data, "quality", wq, 0), "quality");'; Replace = '{ }'; Tests = 'ImageEncoderTests.BytesAreFfmpegsFromTheRawFrame'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'Check(ffmpeg.av_opt_set_int(_enc->priv_data, "lossless", 1, 0), "lossless");'; Replace = '{ }'; Tests = 'ImageEncoderTests.WritesWithTheseLibraries'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '_enc->compression_level = wc;'; Replace = '{ }'; Tests = 'ImageEncoderTests.BytesAreFfmpegsFromTheRawFrame'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.WebP || !(wq >= 0 && wq <= 100))'; Replace = '(!(wq >= 0 && wq <= 100))'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.WebP || !(wq >= 0 && wq <= 100))'; Replace = '(_o.Format != ImageFormat.WebP)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.WebP || !(wq >= 0 && wq <= 100))'; Replace = '(_o.Format != ImageFormat.WebP || wq is < 0 or > 100)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (_o.WebPLossless && _o.Format != ImageFormat.WebP)'; Replace = 'if (false)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.WebP || wc is < 0 or > 6)'; Replace = '(wc is < 0 or > 6)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.WebP || wc is < 0 or > 6)'; Replace = '(_o.Format != ImageFormat.WebP)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.Jpg || q is < 2 or > 31)'; Replace = '(q is < 2 or > 31)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.Jpg || q is < 2 or > 31)'; Replace = '(_o.Format != ImageFormat.Jpg)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.Png || c is < 0 or > 9)'; Replace = '(c is < 0 or > 9)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(_o.Format != ImageFormat.Png || c is < 0 or > 9)'; Replace = '(_o.Format != ImageFormat.Png)'; Tests = 'ImageEncoderTests.RefusesWhatItCantWrite'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '? ffmpeg.av_mul_q(new AVRational { num = height * src->width, den = width * src->height }, sar)'; Replace = '? sar'; Tests = 'ImageEncoderTests.TagsAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'var tags = _options.FrameFormat == FrameFormat.Gray8'; Replace = 'var tags = false'; Tests = 'ImageEncoderTests.TagsAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'into->sample_aspect_ratio = _sar;'; Replace = '{ }'; Tests = 'ImageEncoderTests.TagsAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
-
-        # ImageEncoder from a decoded frame: ffmpeg's one command's graph (the -vf before the conversion), the decoder's bits per
-        # raw sample only through a metadata-only graph (else a 10-bit PNG gains an sBIT chunk), and the filter options' rules
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'OpenEncoder(_filtered, _metaOnly ? decoded?.BitsPerRawSample ?? 0 : 0);'; Replace = 'OpenEncoder(_filtered, decoded?.BitsPerRawSample ?? 0);'; Tests = 'ImageEncoderTests.DecodedFramesAreFfmpegsOneCommand'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'filter = input.Filter + "," + filter;'; Replace = 'filter = "null," + filter;'; Tests = 'ImageEncoderTests.DecodedFramesAreFfmpegsOneCommand'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(max <= 0 || Width is not null)'; Replace = '(Width is not null)'; Tests = 'ImageEncoderTests.RefusesFiltersThatDontGoTogether'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (Width is null != Height is null || Width <= 0 || Height <= 0)'; Replace = 'if (Width <= 0 || Height <= 0)'; Tests = 'ImageEncoderTests.RefusesFiltersThatDontGoTogether'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = '(string.IsNullOrWhiteSpace(Filter) || Width is not null || MaxWidth is not null)'; Replace = '(string.IsNullOrWhiteSpace(Filter))'; Tests = 'ImageEncoderTests.RefusesFiltersThatDontGoTogether'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ImageEncoder.cs'; Find = 'if (parsed < 0 && input.Filter is not null)'; Replace = 'if (false)'; Tests = 'ImageEncoderTests.RefusesFiltersThatDontGoTogether'; Project = 'tests/FrameReader.Tests' }
-
-        # FrameReader: VideoFrameReader's ReadAhead gives the frames reading in the read gives (issue #566): what was read
-        # ahead goes at a seek or a jump, every frame taken is let go, and a picture a second never stops the thread
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_ahead?.Clear(); // the frames read ahead are the old position''s'; Replace = ''; Tests = 'ReadAheadTests.FramesAreThoseWithout'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_ahead?.Clear(); // what was read ahead is before the jump'; Replace = ''; Tests = 'ReadAheadTests.FramesAreThoseWithout'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (target > from && Pause()'; Replace = 'if (Pause()'; Tests = 'ReadAheadTests.ReadingEverySecondDoesntStopTheThread'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (_options.ReadAhead < 0)'; Replace = 'if (false)'; Tests = 'ReadAheadTests.ReadAheadIsZeroOrMore'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ReadAhead.cs'; Find = 'DropFrames(); // those from before the seek'; Replace = ''; Tests = 'ReadAheadTests.FramesAreThoseWithout'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ReadAhead.cs'; Find = 'DropFrames(); // all, the thread gone'; Replace = ''; Tests = 'ReadAheadTests.DisposeStopsTheThreadMidFrame'; Project = 'tests/FrameReader.Tests' }
-
-        # FrameReader: VideoFrameReader's takes (issue #574): a taken frame is the caller's own reference (read ahead, not
-        # the queue's, which the next read lets go), its time is the reads' (shifted by the start), and FrameRate refuses them
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'return _ahead.Current.Frame.Reference(Pts, time);'; Replace = 'return _ahead.Current.Frame;'; Tests = 'VideoFrameReaderTakeTests.TakenFramesOutliveReadsAndTheReader'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'TimeSpan.FromSeconds((pts + StartOffset) * TimeBase.Value);'; Replace = 'TimeSpan.FromSeconds(pts * TimeBase.Value);'; Tests = 'VideoFrameReaderTakeTests.TakesAreTheDecodersFramesWhereTheReadsAre'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'NoFrameRate(nameof(TryTakeForwardTo));'; Replace = ''; Tests = 'VideoFrameReaderTakeTests.FrameRateTakesAreTheFpsFiltersFrames'; Project = 'tests/FrameReader.Tests' }
-
-        # ... with FrameRate, TryTake gives the fps filter's frames (issue #574's follow-up)
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'frame = NextFps() ? TakeFps(rate) : null;'; Replace = 'frame = Advance() ? Take() : null;'; Tests = 'VideoFrameReaderTakeTests.FrameRateTakesAreTheFpsFiltersFrames'; Project = 'tests/FrameReader.Tests' }
-
-        # FrameReader: a frame without a timestamp (MPEG-PS's and AVI's last) gets ffmpeg's made-up one, the previous frame's
-        # plus its duration; a 90-degree turn of 4:2:2 (not 4:2:2 once transposed) is refused, as CanRotate says
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'pts = _lastPts == ffmpeg.AV_NOPTS_VALUE ? 0 : _lastPts + _lastDuration;'; Replace = '{ }'; Tests = 'VideoFrameReaderTests.AFrameWithoutATimestampGetsFfmpegsTime'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (duration > 0 && !unreliable && !(duration == 1 && diff > 2))'; Replace = 'if (false)'; Tests = 'VideoFrameReaderTests.AFrameWithoutATimestampGetsFfmpegsTime'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '|| (t && desc->log2_chroma_w != desc->log2_chroma_h)'; Replace = ''; Tests = 'FrameDecoderTests.DeinterlacesRotatesAndReadsStreams'; Project = 'tests/FrameReader.Tests' }
-
-        # FrameReader: packets of frames nothing references, before the wanted frame, are left out of the decoder, and every
-        # frame given is the full decode's: only such packets; after a seek H.264 only from an IDR; an SPS that's
-        # field-coded or without a reorder depth, DivX packed B-frames, interlaced MPEG-2, packets without a pts turn it off;
-        # HEVC's only of the top temporal layer; the seek's and ReadAt's next targets
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '|| !u.Unreferenced(new ReadOnlySpan<byte>(pkt->data, pkt->size))'; Replace = ''; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/UnreferencedPackets.cs'; Find = '&& _h264Ready && _afterIdr;'; Replace = '&& _h264Ready;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/UnreferencedPackets.cs'; Find = '_off |= !(_h264Ready = ready);'; Replace = '_h264Ready = true;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/UnreferencedPackets.cs'; Find = "if (p[j] == 'p')"; Replace = 'if (false)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/UnreferencedPackets.cs'; Find = '&& tid == _hevcTopLayer'; Replace = ''; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/UnreferencedPackets.cs'; Find = 'AVCodecID.AV_CODEC_ID_MPEG2VIDEO when progressive'; Replace = 'AVCodecID.AV_CODEC_ID_MPEG2VIDEO'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (pkt->pts == ffmpeg.AV_NOPTS_VALUE)'; Replace = 'if (false)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_decoder.SkipBefore = -_keepFrom.Value;'; Replace = '_decoder.SkipBefore = long.MaxValue;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'i + 1 < to ? times[i + 1] : null'; Replace = 'i + 1 < to ? times[^1] : null'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (!_decoder.LeftOut(wanted, got ? Pts : long.MaxValue))'; Replace = 'if (true)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (_current && _guessed)'; Replace = 'if (false)'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        # MPEG-TS reads again (its keyframes read, by pts), by the byte position of the one at or before the time (its seeks
-        # by timestamp land a GOP late), and from the one before that when the check fails
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '_keyframes = format == "mpegts" && io == null ? [] : null;'; Replace = '_keyframes = null;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'Check(TrySeek(pos, ffmpeg.AVSEEK_FLAG_BYTE), "seek");'; Replace = 'Seek(pts);'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'return i >= 0 ? i : ~i - 1;'; Replace = 'return i >= 0 ? i : ~i;'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_decoder.ReadAgainFrom(Math.Max(0, key - 1)); // MPEG-TS'; Replace = '_decoder.Seek(Math.Max(0, key - 1)); //'; Tests = 'SkipUnreferencedTests'; Project = 'tests/FrameReader.Tests' }
-
-        # FrameReader: no keyframe jumps reading forward in MPEG-PS (its index marks every PES as a keyframe), AVI with
-        # B-frames (I- and P-frames timed by libavcodec's guess) or raw streams; a seek the container refuses reads from the
-        # start; raw streams timed as ffmpeg (their timestamps dropped), seeks there decode from the start (or on), and
-        # taken frames carry the reader's times; a jump that lands past the time (an index by dts) from the keyframe before
-        # (AVI's guard has no line: a jump there that goes wrong lands past the time, so the check after it catches it too)
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'format == "mpeg" || '; Replace = ''; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (!TrySeekMicroseconds(point))'; Replace = 'if (false)'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'if (!TrySeekMicroseconds(start) && _started)'; Replace = 'if (_started)'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = '_noTimestamps = (_fmt->iformat->flags & ffmpeg.AVFMT_NOTIMESTAMPS) != 0 && wallclock == 0;'; Replace = '_noTimestamps = false;'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = ' || _noTimestamps;'; Replace = ';'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'long pts = _decoder.TimestampsUnreliable ? ffmpeg.AV_NOPTS_VALUE : _ahead?.Current.Pts ?? _decoder.Pts;'; Replace = 'long pts = _ahead?.Current.Pts ?? _decoder.Pts;'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'if (_decoder.TimestampsUnreliable)'; Replace = 'if (false)'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = '_decoder.Rewind();'; Replace = ''; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'bool past = first && Pts + keep > 0;'; Replace = 'bool past = false;'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'return taken.Reference(Pts, time);'; Replace = 'return taken.Reference();'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FrameDecoder.cs'; Find = 'long point = Demuxer.SeekPoint(_fmt, timestamp);'; Replace = 'long point = Demuxer.SeekPoint(_fmt, timestamp); SeekMicroseconds(point);'; Tests = 'SeekDemuxerTests'; Project = 'tests/FrameReader.Tests' }
-
-        # LoudnessMeter: ebur128's arithmetic without FFmpeg. Each block in a 0.01 LU bin, truncated; the relative gate's
-        # bin; the 95th percentile's rank rounded; the bins' energies correctly rounded (Math.Pow and glibc are off by an ulp);
-        # the LFE weighted 0; true peak 4 times oversampled below 192 kHz (Annex 2). Not guarded by a test: the AVX kernel's
-        # order of one sum, which the histogram hides unless a block sits within about 1e-13 LU of a bin's edge
-        @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'Math.Clamp((int)((loudness - AbsoluteGate) * Grain), 0, HistogramSize - 1)'; Replace = 'Math.Clamp((int)Math.Round((loudness - AbsoluteGate) * Grain), 0, HistogramSize - 1)'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'return Bin(Lufs(mean) + below);'; Replace = 'return Bin(Lufs(mean) + below + 0.005);'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'wanted = (ulong)((95 * powers * 0.01) + 0.5);'; Replace = 'wanted = (ulong)(95 * powers * 0.01);'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/LoudnessMeter.cs'; Find = 'static double Energy(int bin) => Exp2(Log2Of10'; Replace = 'static double Energy(int bin) => Math.Pow(2, Log2Of10'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ChannelWeights.cs'; Find = 'channel is Lfe or Lfe2 ? 0 :'; Replace = 'channel is Lfe2 ? 0 :'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/ChannelWeights.cs'; Find = 'return count < 0 || count == weights.Count ?'; Replace = 'return true ?'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/TruePeakMeter.cs'; Find = '_factor = sampleRate < 192000 ? 4 : 1;'; Replace = '_factor = sampleRate < 96000 ? 4 : sampleRate < 192000 ? 2 : 1;'; Tests = 'LoudnessMeterTests'; Project = 'tests/FrameReader.Tests' }
 
         # --loudness: integrated loudness judged on both sides of the target, true peak against its maximum, exit 3 out
         # of range; FrameReader's figures from the filter's own results, which have the last partial 100 ms block's peaks
@@ -621,29 +476,6 @@
         @{ File = 'src/ShotDetector.Cli/QcHtml.cs'; Find = 'WebUtility.HtmlEncode(text)'; Replace = 'text'; Tests = 'CliTests.QcWrites' }
         @{ File = 'src/ShotDetector.Cli/QcHtml.cs'; Find = '(s.Judged ? " judged" : "")'; Replace = '""'; Tests = 'CliTests.QcWrites' }
         @{ File = 'src/ShotDetector.Cli/QcHtml.cs'; Find = 'Math.Clamp(t, 0, duration) / duration * Inner'; Replace = 'Math.Clamp(t, 0, duration) / duration * Width'; Tests = 'CliTests.QcWrites' }
-        @{ File = 'src/FrameReader/Loudness.cs'; Find = 'Get("sample_peak"), Get("true_peak")'; Replace = 'Get("sample_peak") - 0.05, Get("true_peak")'; Tests = 'LoudnessTests'; Project = 'tests/FrameReader.Tests' }
-
-        # PictureMeter: FFmpeg's picture filters at any depth without FFmpeg. blackdetect's pixel_black_th_i truncated (37,
-        # full range 25, 151 at 10 bits); signalstats' broadcast range scaled by 2^(depth - 8), BRNG counting a luma pixel
-        # once (its chroma sample, at its own subsampling, adds only luma in range); EBU 100/0/75/0 bars (100% white);
-        # cropdetect's bottom line past max(y2, y1), x and y rounded up to even, its first two frames skipped; blackdetect's
-        # span at the end ending at the last frame's pts
-        @{ File = 'src/FrameReader/BlackPixels.cs'; Find = 'return (uint)(fullRange ? pixelThreshold * max : (16 * factor) + (pixelThreshold * (235 - 16) * factor));'; Replace = 'return (uint)Math.Round(fullRange ? pixelThreshold * max : (16 * factor) + (pixelThreshold * (235 - 16) * factor));'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'int under = 16 * _factor, over = 235 * _factor;'; Replace = 'int under = 16, over = 235;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'ChromaSubsampling.Yuv422 => (1, 0),'; Replace = 'ChromaSubsampling.Yuv422 => (1, 1),'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'if (q >= under && q <= over)'; Replace = 'if (true)'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/PictureMeter.cs'; Find = 'is var i and >= 0 ? i : Nearest(_white, y[c], u[c], v[c]);'; Replace = 'is var i and >= 0 ? i : (sbyte)-1;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'if (bottom > Math.Max(_y2, _y1))'; Replace = 'if (bottom > _y2)'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'int x = (_x1 + 1) & ~1, y = (_y1 + 1) & ~1;'; Replace = 'int x = _x1 & ~1, y = _y1 & ~1;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'const int skip = 2;'; Replace = 'const int skip = 0;'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = '? new FrameSpan(FirstFrame + start, FirstFrame + last, _pts[start], _pts[last])'; Replace = '? new FrameSpan(FirstFrame + start, FirstFrame + last, _pts[start], (2 * _pts[last]) - _pts[Math.Max(last - 1, 0)])'; Tests = 'PictureMeterTests'; Project = 'tests/FrameReader.Tests' }
-
-        # SilenceFinder: silencedetect's counting, sample by sample: strictly under the level as a float, the duration
-        # rounded to the nearest instant, a count of every channel's samples in turn (not of instants), the start's arithmetic
-        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = 's < noise && s > -noise'; Replace = 's <= noise && s >= -noise'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '+ 500000) / 1000000'; Replace = ') / 1000000'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '_notify = _instants * channels;'; Replace = '_notify = (_instants * channels) - channels + 1;'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/SilenceFinder.cs'; Find = '(_position / _channels) + 1 - _instants'; Replace = '(_position / _channels) - _instants'; Tests = 'SilenceFinderTests'; Project = 'tests/FrameReader.Tests' }
 
         # --save-shotchanges: Subtitle Edit reads a plain list as seconds only when it has a '.', so whole seconds keep theirs
         @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'result.Cuts.Select(c => c.SecondsText())'; Replace = 'result.Cuts.Select(c => c.Seconds.ToString(CultureInfo.InvariantCulture))'; Tests = 'ShotChangesTests' }
@@ -664,11 +496,6 @@
         @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = '3 => (a + b) / 2,'; Replace = '3 => (a + b + 1) / 2,'; Tests = 'ContactSheetTests' }
         @{ File = 'src/ShotDetector/ContactSheet.cs'; Find = 'if (pages[^1].Count > 0 && used + heights[r] > room)'; Replace = 'if (pages[^1].Count > 0 && used + heights[r] > room * 10)'; Tests = 'ContactSheetTests' }
 
-        # VideoFrameReader at odd sizes (#656): aligned output rows (swscale's unaligned paths differ at an odd width), and a
-        # frame already in the output's format and size passed through as the scale filter does (swscale's copy drops a row)
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'Check(ffmpeg.av_frame_get_buffer(_out, 0), "frame buffer");'; Replace = 'Check(ffmpeg.av_frame_get_buffer(_out, 1), "frame buffer");'; Tests = 'VideoFrameReaderTests.OddSizesAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/VideoFrameReader.cs'; Find = 'bool passThrough = src->format == (int)_format && (src->width, src->height) == (width, height);'; Replace = 'bool passThrough = false;'; Tests = 'VideoFrameReaderTests.OddSizesAreFfmpegs'; Project = 'tests/FrameReader.Tests' }
-
         # Black spans on the detection pass, as blackdetect gives them: its minimum duration in time-base units truncated
         # (check_black_end), a run still black at the end ending at its last frame, its time strings
         # (av_ts_make_time_string2), pic_th as at least; the executable's marks applied to the frame they're on, chunks
@@ -680,19 +507,10 @@
         @{ File = 'src/ShotDetector/VideoReader.InProcess.cs'; Find = '_deinterlace ? 2 * pts : pts, '; Replace = 'pts, '; Tests = 'BlackDetectTests' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'mark.Pts <= framePts'; Replace = 'mark.Pts < framePts'; Tests = 'BlackDetectTests' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'int skip = bounds[i] - c.FirstFrame,'; Replace = 'int skip = 0,'; Tests = 'BlackDetectTests' }
-        @{ File = 'src/FrameReader/BlackPixels.cs'; Find = '(16 * factor) + (pixelThreshold'; Replace = '16 + (pixelThreshold'; Tests = 'PictureMeterTests.BlackPixelThresholdsAreBlackdetects'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = '(double)_black[i] / Pixels >= pictureThreshold;'; Replace = '(double)_black[i] / Pixels > pictureThreshold;'; Tests = 'PictureMeterTests.ThresholdsAreBlackdetects'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'bool threshold = BlackPixelThreshold != DefaultBlackPixelThreshold;'; Replace = 'bool threshold = true;'; Tests = 'PictureMeterTests.ThresholdsAreBlackdetects'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/PictureMeasures.cs'; Find = 'range.BitDepth, range.BlackPixelThreshold) != (joined.Width, joined.Height, joined.FullRange, joined.BitDepth, joined.BlackPixelThreshold)'; Replace = 'range.BitDepth, 0.0) != (joined.Width, joined.Height, joined.FullRange, joined.BitDepth, 0.0)'; Tests = 'PictureMeterTests.ThresholdsAreBlackdetects'; Project = 'tests/FrameReader.Tests' }
 
         # Freeze spans on the detection pass, as freezedetect gives them: mafd at most n, d reached in microseconds rounded
         # as av_rescale_q does, a start once (the frozen state kept), chroma heights shifted down, one pass; the executable's
         # freeze_start matched to its frame by time
-        @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = 'frozen = mafd <= _noise;'; Replace = 'frozen = mafd < _noise;'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = 'if (micros >= _minMicros)'; Replace = 'if (micros > _minMicros)'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = '_frozen = frozen;'; Replace = ';'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = '(num + half) / den'; Replace = 'num / den'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
-        @{ File = 'src/FrameReader/FreezeDetector.cs'; Find = 'f->height >> (plane is 1 or 2 ? d->log2_chroma_h : 0)'; Replace = '-(-f->height >> (plane is 1 or 2 ? d->log2_chroma_h : 0))'; Tests = 'FreezeDetectorTests'; Project = 'tests/FrameReader.Tests' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = ': o.FreezeDetect is not null ? "freeze detection'; Replace = ': false ? "freeze detection'; Tests = 'FreezeDetectTests' }
         @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'while (at > 0 && _freezeFrames[at].Mark.Time != start)'; Replace = 'while (false)'; Tests = 'FreezeDetectTests' }
         # ... and its lines read under an older ffmpeg's prefix too (6.1's [freezedetect @, issue #708)

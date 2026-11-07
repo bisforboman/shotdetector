@@ -3,7 +3,7 @@ using FrameReader;
 namespace ShotDetector;
 
 /// <summary>
-/// FrameReader as ShotDetector uses it (docs/frame-reader-library.md): loading FFmpeg's libraries, and FrameReader's
+/// FrameReader (its package) as ShotDetector uses it: loading FFmpeg's libraries, and FrameReader's
 /// failures as ShotDetector's reasons and messages.
 /// </summary>
 internal static class InProcess

@@ -18,9 +18,9 @@ detection logic is plain C#.
 - `src/ShotDetector.Cli`: the `shotdetect` command-line tool, as the .NET tool `ShotDetector.Cli` and
   as self-contained Native AOT binaries on each GitHub release (core only, MIT).
 
-ShotDetector reads video with [FrameReader](src/FrameReader/README.md), a library of its own in this repository:
-frames, audio, writing and probing in-process through FFmpeg's libraries, for any .NET app (NuGet `FrameReader`, MIT,
-with its own versions and changelog; FFmpeg's libraries in `FrameReader.Native`).
+ShotDetector reads video with [FrameReader](https://github.com/bisforboman/FrameReader), a library of its own (in
+this repository until 2026-11-07): frames, audio, writing and probing in-process through FFmpeg's libraries, for any
+.NET app (NuGet `FrameReader`, MIT, with its own versions and changelog; FFmpeg's libraries in `FrameReader.Native`).
 
 ## Install
 

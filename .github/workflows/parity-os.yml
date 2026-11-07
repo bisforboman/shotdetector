@@ -22,9 +22,9 @@ permissions:
   contents: read
 
 jobs:
-  # Our FFmpeg build for these platforms (native.yml, cached), for the in-process parallel check.
+  # Our FFmpeg build for these platforms (FrameReader.Native's, native-package.yml), for the in-process parallel check.
   native:
-    uses: ./.github/workflows/native.yml
+    uses: ./.github/workflows/native-package.yml
     with:
       rids: '["win-x64","osx-arm64"]'
 

@@ -1,0 +1,59 @@
+name: Native libraries
+
+# Our FFmpeg build's shared libraries for the given platforms, from the FrameReader.Native.<rid> packages on nuget.org
+# at the FrameReader version this repository builds against (Directory.Packages.props), as artifacts native-<rid>:
+# the libraries, configure.txt, sbom.spdx.json and the licences, in one folder. The CLI bundles them
+# (ShotDetector.Cli.csproj, from native/<rid>/), the in-process tests load them (SHOTDETECTOR_FFMPEG_LIBS). The build
+# itself lives with FrameReader (github.com/bisforboman/FrameReader: tools/native/build-ffmpeg.sh, native.yml) since
+# 2026-11-07 (docs/decisions/2026-11-07-shotdetector-takes-the-framereader-package.md). Each package's nuget.org
+# signature is verified before it's unpacked.
+on:
+  workflow_call:
+    inputs:
+      rids:
+        description: JSON array of the platforms to fetch (default all)
+        type: string
+        default: '["win-x64","linux-x64","linux-arm64","linux-musl-x64","osx-arm64"]'
+
+# The token only reads the repository.
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: ${{ fromJSON(inputs.rids) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: FrameReader.Native.${{ matrix.rid }}
+        env:
+          RID: ${{ matrix.rid }}
+        run: |
+          # The lower bound of FrameReader's range ([X.Y.Z, 3.0.0)) in Directory.Packages.props: the version restored.
+          v=$(grep -oP 'Include="FrameReader" Version="\[\K[0-9][^,]*' Directory.Packages.props | head -1)
+          [ -n "$v" ] || { echo "::error::No FrameReader version in Directory.Packages.props"; exit 1; }
+          id="framereader.native.$RID"
+          echo "FrameReader.Native.$RID $v" | tee -a "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/pkg"
+          pkg="$RUNNER_TEMP/pkg/$id.$v.nupkg"
+          curl -fsSL --retry 5 --retry-all-errors -o "$pkg" "https://api.nuget.org/v3-flatcontainer/$id/$v/$id.$v.nupkg"
+          # nuget.org's repository signature: the package is the one nuget.org published, unaltered.
+          dotnet nuget verify "$pkg" --all
+          mkdir -p "native/$RID"
+          unzip -q -j -o "$pkg" "runtimes/$RID/native/*" -d "native/$RID"
+          unzip -q -j -o "$pkg" configure.txt sbom.spdx.json 'COPYING.*' -d "native/$RID"
+          ls -l "native/$RID"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: native-${{ matrix.rid }}
+          path: native/${{ matrix.rid }}/

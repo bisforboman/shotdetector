@@ -8,9 +8,9 @@ set -euo pipefail
 rid=$1 version=$2
 name=shotdetect-v$version-$rid
 rm -f out/*.pdb out/*.dbg
-cp LICENSE THIRD-PARTY-NOTICES.md src/FrameReader.Native/COPYING.LGPL src/FrameReader.Native/COPYING.dav1d src/FrameReader.Native/COPYING.libwebp \
-  "native/$rid/configure.txt" "native/$rid/sbom.spdx.json" out/
-case "$rid" in linux-*) cp src/FrameReader.Native/COPYING.openssl out/ ;; esac
+# The FFmpeg build's licences, configure line and SBOM come with it (the FrameReader.Native.<rid> package's root):
+# COPYING.LGPL, .dav1d and .libwebp everywhere, .openssl on Linux.
+cp LICENSE THIRD-PARTY-NOTICES.md "native/$rid"/COPYING.* "native/$rid/configure.txt" "native/$rid/sbom.spdx.json" out/
 if [ "$rid" = win-x64 ]; then
   rm -f "$name.zip"
   (cd out && 7z a "../$name.zip" . > /dev/null) && echo "$name.zip"

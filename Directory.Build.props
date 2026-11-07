@@ -15,17 +15,13 @@
     <Copyright>Copyright (c) Jakob Boman</Copyright>
     <PackageProjectUrl>https://github.com/bisforboman/shotdetector</PackageProjectUrl>
     <RepositoryUrl>https://github.com/bisforboman/shotdetector</RepositoryUrl>
-    <!-- Two products, each with its own version from its CHANGELOG (release.yml passes them; these are for local
-         builds): ShotDetector (with FastYuv and the CLI) and FrameReader (with FrameReader.Native), which sets its own
-         Version from FrameReaderVersion (docs/frame-reader-product.md). Never pass -p:Version: as a global property
-         it would reach FrameReader too, through ShotDetector's reference. -->
+    <!-- ShotDetector's version (with FastYuv and the CLI), from CHANGELOG.md: release.yml passes it, this is for local
+         builds. FrameReader, a package from its own repository, has its own (Directory.Packages.props). -->
     <ShotDetectorVersion>0.1.0-alpha.1</ShotDetectorVersion>
-    <FrameReaderVersion>0.1.0-alpha.1</FrameReaderVersion>
     <Version>$(ShotDetectorVersion)</Version>
-    <!-- Each product's API guard (SDK package validation): packing fails on a breaking change against its last stable
-         version on nuget.org (docs/decisions/, 2026-10-08). -->
+    <!-- The API guard (SDK package validation): packing fails on a breaking change against the last stable version on
+         nuget.org (docs/decisions/, 2026-10-08). -->
     <ApiBaselineVersion>3.30.0</ApiBaselineVersion>
-    <FrameReaderApiBaselineVersion>2.25.0</FrameReaderApiBaselineVersion>
     <!-- No vulnerable package, direct or transitive, in anything this repository builds or ships: restore fails on an
          advisory of any severity, locally, in CI, at pack and at release
          (docs/decisions/2026-11-06-vulnerable-packages.md). Fix one by moving the package in Directory.Packages.props,

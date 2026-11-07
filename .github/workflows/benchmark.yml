@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   native:
-    uses: ./.github/workflows/native.yml
+    uses: ./.github/workflows/native-package.yml
     with:
       rids: '["linux-x64","linux-arm64"]'
 
