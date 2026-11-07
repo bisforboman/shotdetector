@@ -1180,3 +1180,7 @@ The plan, with why and what stays: docs/frame-reader-product.md. One repository;
 - Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)
   - Why: The feature count (docs/frame-reader-product.md, "When to reconsider") was met four times by 2.17.0, each answered "don't split" for reasons it doesn't measure; since docs/decisions/2026-10-31-split-trigger-criteria.md each FrameReader release records the count as information only
   - Status: **Done (2026-11-07)**: the owner chose to split, for a simpler repository and CI (docs/decisions/2026-11-07-framereader-own-repository.md); the move is a row of its own
+
+- Set the API baselines to ShotDetector 3.29.0 and FrameReader 2.23.0 (issues #753, #752), then 3.30.0 and 2.25.0 once nuget.org serves them (#761)
+  - Why: Directory.Build.props still has 3.28.0 and 2.22.0, two releases behind, so packing doesn't catch a breaking change made since; the baseline-done job closes the issues once the props file has their versions
+  - Status: **Done (2026-11-07)**: straight to 3.30.0 and 2.25.0, both on nuget.org by then
