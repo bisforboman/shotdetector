@@ -1,8 +1,8 @@
 name: Real world
 
 # ShotDetector and scenedetect on real public videos (tools/realworld.py: whole Blender open movies and short
-# clips in every common codec): cuts, scene lists and per-frame stats must be identical for every detector. And
-# FrameReader's audio on the films' soundtracks, identical to ffmpeg's.
+# clips in every common codec): cuts, scene lists and per-frame stats must be identical for every detector.
+# (FrameReader's audio on the films' soundtracks is checked nightly in its own repository, realworld-audio.yml.)
 # Nightly only (and on demand: workflow_dispatch on a branch), so a new ffmpeg/scenedetect/OpenCV release that changes a
 # result is noticed the next morning; a failed night opens an issue (or comments on the open one). On pull requests the
 # jobs are skipped and "Real world passed" reports alone (docs/decisions/2026-10-31-ci-time.md).
@@ -141,86 +141,11 @@ jobs:
           { echo "### Parallel against sequential through the ffmpeg executable, --parallel ($(nproc) CPUs)"; cat process.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
 
-  # FrameReader's AudioReader and SpectralStats on the films' own audio (AAC at 44.1 and 48 kHz, MP3, Opus, Vorbis) against
-  # ffmpeg's command line (tests/FrameReader.Tests/RealWorldAudioTests.cs), one file after another in one job (five
-  # jobs before, each mostly setup). Libraries and executable from one FFmpeg 8.1 build.
-  audio:
-    if: github.event_name != 'pull_request'
-    name: Real world audio
-    runs-on: ubuntu-26.04
-    timeout-minutes: 40
-    env:
-      FILMS: bbb_640x360_h264.mp4 elephants_dream_426x240_h264.mp4 tears_of_steel_1280x534_h264.mov   # AAC 44.1 and 48 kHz, MP3
-      OPUS: elephants_dream_1920x1080_vp9.webm going_some_1909.opus maple_leaf_rag.ogg   # 5.1 Opus (Commons' copy, Matroska's ms timestamps); stereo Opus; stereo Vorbis
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        with:
-          dotnet-version: 10.0.x
-
-      - name: FFmpeg 8.1, shared
-        id: ffmpeg
-        timeout-minutes: 15
-        uses: ./.github/actions/btbn-ffmpeg
-        with:
-          build: gpl-shared
-          add-to-path: 'false'
-
-      # The Opus files, cached here (restored and saved before the films join the folder); the films from the caches the
-      # jobs above keep (downloaded on a miss, not saved again here).
-      - id: opus
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: samples/realworld
-          key: realworld-opus-${{ hashFiles('tools/realworld.py') }}
-
-      - name: Download the Opus files
-        if: steps.opus.outputs.cache-hit != 'true'
-        run: python3 tools/realworld.py $OPUS --download
-
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: steps.opus.outputs.cache-hit != 'true'
-        with:
-          path: samples/realworld
-          key: ${{ steps.opus.outputs.cache-primary-key }}
-
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: samples/realworld
-          key: realworld-bbb_640x360_h264.mp4-${{ hashFiles('tools/realworld.py') }}
-
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: samples/realworld
-          key: realworld-elephants_dream_426x240_h264.mp4-${{ hashFiles('tools/realworld.py') }}
-
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: samples/realworld
-          key: realworld-tears_of_steel_1280x534_h264.mov-${{ hashFiles('tools/realworld.py') }}
-
-      - name: Compare with ffmpeg
-        env:
-          SHOTDETECTOR_FFMPEG_LIBS: ${{ steps.ffmpeg.outputs.bin }}
-        run: |
-          dotnet build tests/FrameReader.Tests -v q > /dev/null
-          status=0
-          for f in $FILMS $OPUS; do
-            echo "::group::$f"
-            export SHOTDETECTOR_REALWORLD_AUDIO=$(python3 tools/realworld.py "$f" --download | tail -1)
-            if dotnet test tests/FrameReader.Tests --no-build --filter "FullyQualifiedName~RealWorldAudio" --logger GitHubActions; then r=identical; else r=DIFFERS; status=1; fi
-            echo "::endgroup::"
-            echo "| $f | $r |" >> results.md
-          done
-          { echo "### Real world audio"; echo; echo "| File | AudioReader, SpectralStats vs ffmpeg |"; echo "|---|---|"; cat results.md; } >> "$GITHUB_STEP_SUMMARY"
-          exit $status
-
   # The one check branch protection requires from this workflow: every job above passed or was skipped (a pull request
   # skips them all; a skipped matrix job doesn't report its per-matrix check names, which nothing requires).
   passed:
     name: Real world passed
-    needs: [realworld, audio, parallel]
+    needs: [realworld, parallel]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

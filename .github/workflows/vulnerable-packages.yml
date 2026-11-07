@@ -3,7 +3,7 @@ name: Vulnerable packages
 # Weekly on main: a NuGet advisory published since a package was last restored. Every restore already fails on a
 # vulnerable package, direct or transitive (Directory.Build.props: NuGetAudit, NU1901-NU1904 as errors), but only when
 # something runs it; this catches an advisory against what main already ships. It restores every solution and project
-# CI builds (the slnx, and benchmarks/FrameReader.Benchmarks, benchmarks/wasm/Wasm and tools/reach outside it) with the
+# CI builds (the slnx, and benchmarks/wasm/Wasm outside it) with the
 # audit's errors off, lists the vulnerable packages (tools/vulnerable-packages.py), and when there are any fails and
 # opens an issue or comments on the open one (tools/nightly-issue.sh): package, version, severity, advisory and the
 # projects. Not a required check (docs/decisions/2026-11-06-vulnerable-packages.md).
@@ -35,7 +35,7 @@ jobs:
           dotnet workload install wasm-tools
           mkdir -p listings
           i=0
-          for target in ShotDetector.slnx benchmarks/FrameReader.Benchmarks benchmarks/wasm/Wasm tools/reach; do
+          for target in ShotDetector.slnx benchmarks/wasm/Wasm; do
             # The audit's own errors off, so the listing can run on what is vulnerable.
             dotnet restore "$target" -v q -p:WarningsAsErrors=
             dotnet list "$target" package --vulnerable --include-transitive --format json --no-restore \

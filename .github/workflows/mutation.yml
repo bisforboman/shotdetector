@@ -21,7 +21,7 @@ permissions:
 jobs:
   # Which mutations a pull request's files concern, as a matrix of shards: one per 40 selected (about 15 minutes each),
   # at most 4, none when it selects none (a docs PR), all of them when it changes the mutation testing itself. Light PRs
-  # (tools/ci-changes.sh) run theirs too: FrameReader files ShotDetector doesn't run have guards of their own. Nightly
+  # (tools/ci-changes.sh) run theirs too. Nightly
   # and on demand: all of them in 4 shards (3 outgrew the jobs' 60 minutes on 2026-11-04). Every entry's Find is
   # checked here either way (no build needed). `tests`: whether the light `tests` job checks every entry's Tests.
   changes:

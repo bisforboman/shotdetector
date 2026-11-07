@@ -1,22 +1,18 @@
 name: Release
 
-# Merging a release PR releases. Two products, released separately (docs/frame-reader-product.md):
-# - ShotDetector: CHANGELOG.md's newest version ("## X.Y.Z – date"), tag vX.Y.Z; ShotDetector, ShotDetector.FastYuv,
-#   the ShotDetector.Cli tool and its Native AOT binaries (ShotDetector.Native, aliases of FrameReader.Native, ended
-#   with 2.x).
-# - FrameReader: src/FrameReader/CHANGELOG.md's newest version, tag framereader-vX.Y.Z; FrameReader and
-#   FrameReader.Native.<rid> (and the meta-package).
-# On every push to main, each product whose newest version isn't tagged yet is released: built, published to nuget.org
-# (FrameReader first, as ShotDetector depends on it), and given its own GitHub release. Prereleases only (a '-' in
-# every due version) use the 'prerelease' environment, others 'release', which waits for approval. Pushing a v* or
-# framereader-v* tag by hand still releases that product at that version.
+# Merging a release PR releases: CHANGELOG.md's newest version ("## X.Y.Z – date"), tag vX.Y.Z, as ShotDetector,
+# ShotDetector.FastYuv, the ShotDetector.Cli tool and its Native AOT binaries, with a GitHub release. On every push to
+# main, the newest version is released if it isn't tagged yet. A prerelease (a '-' in the version) uses the
+# 'prerelease' environment, others 'release', which waits for approval. Pushing a v* tag by hand still releases that
+# version. FrameReader, which ShotDetector depends on, is released from its own repository
+# (github.com/bisforboman/FrameReader); its framereader-v* tags here are the releases made before the move.
 # Only the newest version can be released from main, so the run fails when an older stable version newer than the
-# product's newest tag is untagged (a release PR merged while the one before it still waited): see the version job.
+# newest tag is untagged (a release PR merged while the one before it still waited): see the version job.
 
 on:
   push:
     branches: [main]
-    tags: ['v*', 'framereader-v*']
+    tags: ['v*']
 
 # One release at a time, never cancelled half way.
 concurrency:
@@ -28,15 +24,13 @@ permissions:
   contents: read
 
 jobs:
-  # Each product's version, and which still need releasing (most pushes to main: none, and nothing else runs).
+  # The version, and whether it still needs releasing (most pushes to main: no, and nothing else runs).
   version:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       shotdetector: ${{ steps.version.outputs.shotdetector }}
-      framereader: ${{ steps.version.outputs.framereader }}
       shotdetector-due: ${{ steps.version.outputs.shotdetector-due }}
-      framereader-due: ${{ steps.version.outputs.framereader-due }}
       release: ${{ steps.version.outputs.release }}
       environment: ${{ steps.version.outputs.environment }}
     steps:
@@ -44,57 +38,35 @@ jobs:
 
       - id: version
         run: |
-          newest() { grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+[^ ]*' "$1" | cut -c4-; }
-          sd=$(newest CHANGELOG.md); fr=$(newest src/FrameReader/CHANGELOG.md)
-          sd_due=false; fr_due=false
+          sd=$(grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+[^ ]*' CHANGELOG.md | cut -c4-)
+          sd_due=false
           case "$GITHUB_REF_TYPE/$GITHUB_REF_NAME" in
-            tag/framereader-v*) fr="${GITHUB_REF_NAME#framereader-v}"; fr_due=true ;;
             tag/v*) sd="${GITHUB_REF_NAME#v}"; sd_due=true ;;
             *)
               git ls-remote --exit-code --tags origin "refs/tags/v$sd" > /dev/null || sd_due=true
-              git ls-remote --exit-code --tags origin "refs/tags/framereader-v$fr" > /dev/null || fr_due=true
-              # Never skip a stable version silently: each run releases a product's newest version only, so an older
-              # one newer than its newest tag (approved after the next release PR merged, or its run cancelled) would
-              # never be published. Fail naming it instead (2026-11-06: FrameReader 2.24.0 went out only in 2.25.0).
-              skipped() {   # changelog, tag prefix, newest version
-                local tags newest_tag
-                tags=$(git ls-remote --tags origin "refs/tags/$2*" | sed -E 's|.*refs/tags/||; s|\^\{\}$||' \
-                  | grep -E "^$2[0-9]+\.[0-9]+\.[0-9]+$" | sed "s|^$2||" | sort -uV)
-                newest_tag=$(tail -n1 <<< "$tags")
-                grep -oE '^## [0-9]+\.[0-9]+\.[0-9]+( |$)' "$1" | cut -c4- | tr -d ' ' | while read -r v; do
-                  [ "$v" != "$3" ] || continue
-                  [ -z "$newest_tag" ] || [ "$(printf '%s\n%s\n' "$newest_tag" "$v" | sort -V | tail -n1)" != "$newest_tag" ] || continue
-                  grep -qxF "$v" <<< "$tags" || echo "$v"
-                done
-              }
+              # Never skip a stable version silently: each run releases the newest version only, so an older one newer
+              # than the newest tag (approved after the next release PR merged, or its run cancelled) would never be
+              # published. Fail naming it instead (2026-11-06: FrameReader 2.24.0 went out only in 2.25.0).
+              tags=$(git ls-remote --tags origin 'refs/tags/v*' | sed -E 's|.*refs/tags/||; s|\^\{\}$||' \
+                | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed 's|^v||' | sort -uV)
+              newest_tag=$(tail -n1 <<< "$tags")
               bad=0
-              for p in "CHANGELOG.md v $sd ShotDetector" "src/FrameReader/CHANGELOG.md framereader-v $fr FrameReader"; do
-                set -- $p
-                for v in $(skipped "$1" "$2" "$3"); do
-                  msg="$4 $v is in $1 but untagged and older than $3, which this run would release: $v would never be published. Tag $v's release commit by hand ($2$v) to release it first, or, to leave it out on purpose, tag $3's release commit by hand ($2$3)."
-                  echo "::error::$msg"; echo "**Skipped:** $msg" >> "$GITHUB_STEP_SUMMARY"
-                  bad=1
-                done
+              for v in $(grep -oE '^## [0-9]+\.[0-9]+\.[0-9]+( |$)' CHANGELOG.md | cut -c4- | tr -d ' '); do
+                [ "$v" != "$sd" ] || continue
+                [ -z "$newest_tag" ] || [ "$(printf '%s\n%s\n' "$newest_tag" "$v" | sort -V | tail -n1)" != "$newest_tag" ] || continue
+                grep -qxF "$v" <<< "$tags" && continue
+                msg="ShotDetector $v is in CHANGELOG.md but untagged and older than $sd, which this run would release: $v would never be published. Tag $v's release commit by hand (v$v) to release it first, or, to leave it out on purpose, tag $sd's release commit by hand (v$sd)."
+                echo "::error::$msg"; echo "**Skipped:** $msg" >> "$GITHUB_STEP_SUMMARY"
+                bad=1
               done
               [ "$bad" = 0 ] || exit 1 ;;
           esac
-          release=false; env=prerelease
-          for p in "shotdetector $sd $sd_due" "framereader $fr $fr_due"; do
-            set -- $p
-            if [ "$3" = true ]; then
-              release=true
-              [[ "$2" == *-* ]] || env=release
-              echo "Releasing $1 $2" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "$1 $2 is already released" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
-          { echo "shotdetector=$sd"; echo "framereader=$fr"; echo "shotdetector-due=$sd_due"; echo "framereader-due=$fr_due"
-            echo "release=$release"; echo "environment=$env"; } >> "$GITHUB_OUTPUT"
+          env=release; [[ "$sd" == *-* ]] && env=prerelease
+          if [ "$sd_due" = true ]; then echo "Releasing ShotDetector $sd" >> "$GITHUB_STEP_SUMMARY"; else echo "ShotDetector $sd is already released" >> "$GITHUB_STEP_SUMMARY"; fi
+          { echo "shotdetector=$sd"; echo "shotdetector-due=$sd_due"; echo "release=$sd_due"; echo "environment=$env"; } >> "$GITHUB_OUTPUT"
 
-  # The baseline issues (see `baseline` below) close themselves once Directory.Build.props has that version: on every
-  # push to main, an open "Set ApiBaselineVersion to X" (ShotDetector) or "Set FrameReaderApiBaselineVersion to X" issue
-  # is closed when X is that property's value.
+  # The baseline issue (see `baseline` below) closes itself once Directory.Build.props has that version: on every push
+  # to main, an open "Set ApiBaselineVersion to X" issue is closed when X is that property's value.
   baseline-done:
     if: github.ref_type == 'branch'
     runs-on: ubuntu-26.04
@@ -107,7 +79,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for prop in ApiBaselineVersion FrameReaderApiBaselineVersion; do
+          for prop in ApiBaselineVersion; do
             v=$(grep -oP "(?<=<$prop>)[^<]+" Directory.Build.props || true)
             [ -n "$v" ] || continue
             title="Set $prop to $v"
@@ -117,12 +89,12 @@ jobs:
             done
           done
 
-  # Our FFmpeg build for every platform (native.yml, cached): the FrameReader.Native.<rid> packages, and bundled in
-  # the CLI tool and binaries.
+  # Our FFmpeg build for every platform (FrameReader.Native's, native-package.yml), bundled in the CLI tool and
+  # binaries.
   native:
     needs: version
     if: needs.version.outputs.release == 'true'
-    uses: ./.github/workflows/native.yml
+    uses: ./.github/workflows/native-package.yml
 
   # The tests, with BtbN's ffmpeg (a third-party build) for the video tests: in a job of their own with read-only
   # permissions, so no third-party binary runs where the NuGet publishing token and write access are (security review,
@@ -148,7 +120,8 @@ jobs:
       - name: Test
         run: dotnet test ShotDetector.slnx --logger GitHubActions
 
-  # Packs, attests and publishes: only our own code and our FFmpeg build (native.yml, from pinned sources) run here.
+  # Packs, attests and publishes: only our own code and our FFmpeg build (FrameReader.Native's, signature-checked) run
+  # here.
   release:
     needs: [version, native, test]
     runs-on: ubuntu-26.04
@@ -167,30 +140,20 @@ jobs:
 
       - name: Versions
         run: |
-          { echo "SD=${{ needs.version.outputs.shotdetector }}"; echo "FR=${{ needs.version.outputs.framereader }}"
-            echo "SD_DUE=${{ needs.version.outputs.shotdetector-due }}"; echo "FR_DUE=${{ needs.version.outputs.framereader-due }}"; } >> "$GITHUB_ENV"
+          echo "SD=${{ needs.version.outputs.shotdetector }}" >> "$GITHUB_ENV"
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-*
           path: native
 
-      # Each product at its own version (never -p:Version: through ShotDetector's reference it would stamp FrameReader
-      # too). ShotDetector's package depends on FrameReader at $FR: the one released now, or the newest one before.
-      # Only the due products' packages go to artifacts/ (the others' land in unused/).
+      # The CLI bundles native/<rid>/ (ShotDetector.Cli.csproj).
       - name: Pack
         run: |
           for d in native/native-*; do mv "$d" "native/${d#native/native-}"; done
-          versions="-p:ShotDetectorVersion=$SD -p:FrameReaderVersion=$FR"
-          fr_out=unused; [ "$FR_DUE" = true ] && fr_out=artifacts
-          rids="win-x64 linux-x64 linux-arm64 linux-musl-x64 osx-arm64 all"   # all: the meta-package
-          dotnet pack src/FrameReader --configuration Release $versions --output $fr_out
-          for rid in $rids; do dotnet pack src/FrameReader.Native -p:Rid=$rid $versions --output $fr_out; done
-          if [ "$SD_DUE" = true ]; then
-            dotnet pack src/ShotDetector --configuration Release $versions --output artifacts
-            dotnet pack src/ShotDetector.FastYuv --configuration Release $versions --output artifacts
-            dotnet pack src/ShotDetector.Cli --configuration Release $versions --output artifacts
-          fi
+          for p in src/ShotDetector src/ShotDetector.FastYuv src/ShotDetector.Cli; do
+            dotnet pack $p --configuration Release -p:ShotDetectorVersion=$SD --output artifacts
+          done
 
       # Signed provenance (built by this workflow from this commit): gh attestation verify <file> --repo bisforboman/shotdetector
       - name: Attest the packages
@@ -213,9 +176,7 @@ jobs:
         # symbols of a package that is already there (--skip-duplicate skips both together otherwise).
         run: |
           failed=0
-          # FrameReader first: ShotDetector's package depends on it.
-          for f in $(ls artifacts/FrameReader.*.nupkg artifacts/FrameReader.*.snupkg 2>/dev/null) \
-                   $(ls artifacts/*.nupkg artifacts/*.snupkg | grep -v '/FrameReader\.'); do
+          for f in artifacts/*.nupkg artifacts/*.snupkg; do
             case "$f" in *.nupkg) only=--no-symbols ;; *) only= ;; esac   # a package's symbols get their own turn
             for try in 1 2 3; do
               if dotnet nuget push "$f" $only --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate; then
@@ -230,29 +191,19 @@ jobs:
           done
           exit $failed
 
-      - name: GitHub releases
+      - name: GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        # One per due product: its tag on this commit (unless pushed by hand), its CHANGELOG section ("## X.Y.Z – date"
-        # up to the next "## ") as the notes, else GitHub's PR list, and its packages. GitHub's "Latest" stays
-        # ShotDetector's (the repository's front page and the CLI binaries): FrameReader's are never marked latest.
+        # Its tag on this commit (unless pushed by hand), its CHANGELOG section ("## X.Y.Z – date" up to the next "## ")
+        # as the notes, else GitHub's PR list, and its packages.
         run: |
-          release() {   # tag, title, version, changelog, packages...
-            local tag=$1 title=$2 v=$3 log=$4; shift 4
-            local prerelease=""; [[ "$v" == *-* ]] && prerelease="--prerelease"
-            awk -v v="## $v " 'index($0, v) == 1 { on = 1; next } on && /^## / { exit } on' "$log" > notes.md
-            if [ -s notes.md ]; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
-            gh release create "$tag" "$@" --target "$GITHUB_SHA" --title "$title" "${notes[@]}" $prerelease ${latest:-}
-          }
-          if [ "$FR_DUE" = true ]; then
-            latest=--latest=false release "framereader-v$FR" "FrameReader $FR" "$FR" src/FrameReader/CHANGELOG.md artifacts/FrameReader.*.nupkg
-          fi
-          if [ "$SD_DUE" = true ]; then
-            release "v$SD" "ShotDetector $SD" "$SD" CHANGELOG.md $(ls artifacts/*.nupkg | grep -v '/FrameReader\.')
-          fi
+          prerelease=""; [[ "$SD" == *-* ]] && prerelease="--prerelease"
+          awk -v v="## $SD " 'index($0, v) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > notes.md
+          if [ -s notes.md ]; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
+          gh release create "v$SD" artifacts/*.nupkg --target "$GITHUB_SHA" --title "ShotDetector $SD" "${notes[@]}" $prerelease
 
-  # A stable release: an issue per product to make it the API baseline (Directory.Build.props), once nuget.org serves
-  # it, since package validation downloads the baseline. An issue rather than a PR: a PR opened with this token gets no
+  # A stable release: an issue to make it the API baseline (Directory.Build.props), once nuget.org serves it, since
+  # package validation downloads the baseline. An issue rather than a PR: a PR opened with this token gets no
   # CI runs.
   baseline:
     needs: [version, release]
@@ -266,9 +217,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           SD: ${{ needs.version.outputs.shotdetector }}
-          FR: ${{ needs.version.outputs.framereader }}
           SD_DUE: ${{ needs.version.outputs.shotdetector-due }}
-          FR_DUE: ${{ needs.version.outputs.framereader-due }}
         run: |
           issue() {   # due, version, package id (lower case), property
             local due=$1 v=$2 id=$3 prop=$4
@@ -289,7 +238,6 @@ jobs:
 
           Opened by release.yml after publishing."
           }
-          issue "$FR_DUE" "$FR" framereader FrameReaderApiBaselineVersion
           issue "$SD_DUE" "$SD" shotdetector ApiBaselineVersion
 
   # Standalone shotdetect binaries (no .NET needed, FFmpeg's libraries next to them; the ffmpeg executable only for the
@@ -348,7 +296,7 @@ jobs:
       - name: Publish
         run: |
           dotnet publish src/ShotDetector.Cli -c Release -r ${{ matrix.rid }} -p:PublishAot=true \
-            -p:ShotDetectorVersion=${{ needs.version.outputs.shotdetector }} -p:FrameReaderVersion=${{ needs.version.outputs.framereader }} -o out
+            -p:ShotDetectorVersion=${{ needs.version.outputs.shotdetector }} -o out
 
       - name: Archive
         run: echo "ARCHIVE=$(tools/archive-binary.sh ${{ matrix.rid }} ${{ needs.version.outputs.shotdetector }})" >> "$GITHUB_ENV"
