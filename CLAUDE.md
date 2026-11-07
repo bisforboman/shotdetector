@@ -23,6 +23,7 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
 | Features, CLI, how parity is checked, where we differ | README.md |
 | FrameReader's types and what it handles | src/FrameReader/README.md, docs/frame-reader-library.md |
 | Two products, released separately | docs/frame-reader-product.md |
+| FrameReader moving to its own repository (in progress) | docs/framereader-split.md |
 | Chunked detection on several cores | docs/parallel-detection.md |
 | What's next | docs/backlog.md, docs/backlog-done.md, the `backlog` skill |
 | What the owner decided and why | docs/decisions/ (its README) |

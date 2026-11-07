@@ -24,3 +24,5 @@ from outside the project; FrameReader needing a release pace of its own; a consu
 surface on its own (a package split inside this repository, a different question; shotdetector-web already uses
 FrameReader's FFmpeg-free `ReferenceToneFinder` and `WaveformBuilder`, #494, without asking for a package). A FrameReader
 release still records the feature count in docs/frame-reader-product.md, as information.
+
+Since 2026-11-07 ([2026-11-07-framereader-own-repository.md](2026-11-07-framereader-own-repository.md)) FrameReader moves to its own repository, on the owner's call (a simpler repository and CI), not on one of these conditions.

@@ -20,3 +20,5 @@ FrameReader).
 
 Since 2026-10-31 ([2026-10-31-split-trigger-criteria.md](2026-10-31-split-trigger-criteria.md)) the question comes back
 on named conditions, not a count.
+
+Since 2026-11-07 ([2026-11-07-framereader-own-repository.md](2026-11-07-framereader-own-repository.md)) FrameReader moves to its own repository, on the owner's call (a simpler repository and CI), not on one of these conditions.

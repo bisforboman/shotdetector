@@ -27,11 +27,11 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: that push (#737) changed only docs, and later pushes to main are green, so it looks like a flaky test or step; find which (the job's logs and annotations), then fix it or record it as the VideoWriter flake was (docs/decisions/2026-10-10-videowriter-s-rare-ci-mismatch.md)
   - Status: Open
 
-## Waiting
+- Move FrameReader to its own repository, `bisforboman/framereader` (docs/framereader-split.md)
+  - Why: the owner's call (docs/decisions/2026-11-07-framereader-own-repository.md): one repository's costs (tag prefixes, a release.yml for two products, one "Latest" release, tools/reach, the feature count) now outweigh the few crossings
+  - Status: In progress (2026-11-07: the plan; step 1, creating the repository and the nuget.org policy, waits on the owner)
 
-- Ask the owner whether to split FrameReader into its own repository, when one of these happens: a FrameReader issue or pull request from outside the project; FrameReader needing a release pace of its own; a consumer wanting an FFmpeg-free FrameReader surface on its own (a package question)
-  - Why: The feature count (docs/frame-reader-product.md, "When to reconsider") was met four times by 2.17.0, each answered "don't split" for reasons it doesn't measure; since docs/decisions/2026-10-31-split-trigger-criteria.md each FrameReader release records the count as information only
-  - Status: Waiting (on an outside event; none so far: shotdetector-web uses FrameReader's FFmpeg-free tone and waveform code, #494, without asking for a package)
+## Waiting
 
 - Optional: the owner times the sequential conversion thread on the 16-thread Ryzen
   - Why: docs/decisions/2026-10-22-decode-split.md made the conversion thread the default for sequential HD from 4-vCPU measurements, "unless [the desktop check] shows a slowdown"; the 2026-10-17 conversion-worker trial there was 1.04-1.07x slower. The commands are in that PR's body. Work on the owner's computer is theirs to start
