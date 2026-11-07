@@ -127,5 +127,9 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: on 2026-11-06 three release runs on main (41591db, b77de6a, 14a7c04) were cancelled: GitHub keeps one pending run per concurrency group and cancels the older pending one, whatever it would have released. Since the skip guard a lost version fails the next run instead of vanishing, but check whether a run that sits in approval for days should leave the queue (approval as its own workflow, or a tag pushed by the approved run)
   - Status: Maybe
 
+- FrameReader: each decoded frame's timecode (`DecodedFrame`/`FrameDecoder`), from the frame's S12M or GOP timecode side data
+  - Why: drop-frame timecode (29.97/59.94) is only a label; files that carry it per frame and not in a container tag (MPEG-2 GOP headers, H.264/HEVC timecode SEI, DV, MPEG-TS with no `timecode` tag) show it only in the frames: around a minute boundary not divisible by 10 the labels jump `;29` to `;02`. `MediaProbe.ProbeJson`'s `timecode` tag covers MOV/MP4/MXF; today only `ffprobe -show_frames` reads the per-frame ones (checked 2026-11-05 on generated MPEG-2 TS, which has no tag). FFmpeg's `av_timecode_make_smpte_tc_string2` gives the string with the DF flag; asked for by the owner
+  - Status: Maybe
+
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and
 why: [decisions/](decisions/).
