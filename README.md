@@ -287,7 +287,9 @@ pictures of `--freeze-min` seconds (2) from the same pass (`DetectionOptions.Fre
 as black and not inside black spans or colour bars, which are still by design. `--checks
 loudness,range,bars-tone,black,freeze` picks some (issue #636). `--html <file>` writes the report as one page with no
 scripts: the checks table and a timeline (black, freeze, bars and tone lanes with judged spans in red, each frame's
-BRNG against its limit, the audio's waveform). `--preset`
+BRNG against its limit, the audio's waveform). Every time in the report counts from the file's start, as ffmpeg prints
+them and the audio is timed, so in a file whose video starts after its audio the pictures' times are that much later,
+and the head and tail are the video's own. `--preset`
 picks the limits: `ebu-r128` (the default: -23 LUFS ±0.5 LU, true peak -1 dBTP), `atsc-a85` (-24 LKFS ±2 LU,
 -2 dBTP), `streaming-14` and `streaming-16` (±1 LU, -1 dBTP); `--loudness-target`, `--loudness-tolerance` and
 `--true-peak-max` override them, and `--loudness-preset` gives `--loudness` the same presets
