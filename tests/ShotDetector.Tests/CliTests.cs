@@ -488,6 +488,11 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
             var lateSpans = System.Text.Json.JsonDocument.Parse(lateOutput).RootElement.GetProperty("checks")[0].GetProperty("spans").EnumerateArray().ToList();
             Assert.Equal(expected.Select(e => (Math.Round(e.Item1 + 5, 6), Math.Round(e.Item2 + 5, 6))), lateSpans.Select(b => (Math.Round(b.GetProperty("start").GetDouble(), 6), Math.Round(b.GetProperty("end").GetDouble(), 6))));
             Assert.Equal([false, true, false], lateSpans.Select(b => b.GetProperty("judged").GetBoolean()));
+
+            // Within --edge of the video's first frame, though past it from the file's start: the head.
+            var (_, edgeOutput, edgeErr) = Run("qc", "-i", late, "--ffmpeg-dir", libs, "--checks", "black", "--edge", "4", "--json", "-");
+            var edgeSpans = System.Text.Json.JsonDocument.Parse(edgeOutput).RootElement.GetProperty("checks")[0].GetProperty("spans").EnumerateArray();
+            Assert.True(edgeSpans.Select(b => b.GetProperty("judged").GetBoolean()).SequenceEqual([false, true, false]), edgeErr + edgeOutput);
         }
         finally
         {
