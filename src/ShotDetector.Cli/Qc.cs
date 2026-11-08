@@ -41,7 +41,8 @@ sealed record QcCheck(string Name, bool? Pass, string Measured, string Limit, Ac
 /// <c>--json</c>, exit code 3 when any judged check fails (docs/decisions/2026-11-01-delivery-qc.md): loudness (FFmpeg's
 /// ebur128 through FrameReader, as <c>--loudness</c>), broadcast range (signalstats' BRNG, YMIN and YMAX through
 /// FrameReader's <c>PictureMeter</c>), bars and tone (<c>PictureMeter</c>'s colour bars, <c>ReferenceTone</c>); black and
-/// freeze follow.
+/// freeze follow. Every time in the report counts from the file's start, as ffmpeg prints them and FrameReader's audio
+/// gives them: in a file whose video starts later than its audio, the video's frames are that much later.
 /// </summary>
 static class Qc
 {
@@ -198,10 +199,13 @@ static class Qc
 
             bool range = checks.Contains("range"), barsTone = checks.Contains("bars-tone"), freeze = checks.Contains("freeze");
             List<(TimeSpan Start, TimeSpan End)> bars = [];
+            TimeSpan? videoStart = null;
             if ((range || barsTone || freeze) && info.Video is { } video)
             {
                 var (measures, timeBase, first) = Measure(input, (int)Math.Round(video.Rotation ?? 0));
-                TimeSpan Time(long pts) => TimeSpan.FromSeconds((double)(pts - first) * timeBase.Num / timeBase.Den);
+                long offset = StartOffset(input);
+                TimeSpan Time(long pts) => TimeSpan.FromSeconds((double)(pts + offset) * timeBase.Num / timeBase.Den);
+                videoStart = Time(first);
                 bars = [.. measures.BarsSpans().Select(b => (Time(b.StartPts), Time(b.EndPts)))];
                 if (htmlPath is not null && range)
                 {
@@ -250,12 +254,15 @@ static class Qc
                     BlackDetect = new() { MinDuration = TimeSpan.FromSeconds(blackMin) },
                     FreezeDetect = freeze ? new() { MinDuration = TimeSpan.FromSeconds(freezeMin) } : null,
                 });
-                double end = result.Shots[^1].End.Seconds;
+
+                // The shots count from the video's first frame, the spans from the file's start: the video's own span on
+                // the spans' timeline, for the head and tail.
+                double start = (videoStart ?? VideoStart(input)).TotalSeconds, end = start + result.Shots[^1].End.Seconds;
                 timeline.Duration = Math.Max(timeline.Duration, end);
                 if (black)
-                    report.Add(BlackCheck(result.BlackSpans ?? [], end, blackMin, edge));
+                    report.Add(BlackCheck(result.BlackSpans ?? [], start, end, blackMin, edge));
                 if (freeze)
-                    report.Add(FreezeCheck(result.FreezeSpans ?? [], result.BlackSpans ?? [], bars, end, freezeMin, edge));
+                    report.Add(FreezeCheck(result.FreezeSpans ?? [], result.BlackSpans ?? [], bars, start, end, freezeMin, edge));
             }
         }
         catch (Exception e) when (e is FrameReader.FrameReaderException or InvalidOperationException or ShotDetector.ShotDetectionException)
@@ -325,6 +332,33 @@ static class Qc
         }
 
         return meter is null ? throw new InvalidOperationException("The video has no frames.") : (meter.Measures, reader.TimeBase, first);
+    }
+
+    /// <summary>
+    /// What turns the video's pts into time from the file's start (FrameDecoder's StartOffset: less the format's start
+    /// time), as ShotDetector's black and freeze spans and FrameReader's audio count; ShotDetector's reference-tone trim
+    /// places the video's first frame with it too (VideoReader.FileToneOrigin).
+    /// </summary>
+    static long StartOffset(string input)
+    {
+        using var decoder = new FrameReader.FrameDecoder(input, new());
+        return decoder.StartOffset;
+    }
+
+    /// <summary>
+    /// Where the video's first frame (the shots' 0) is from the file's start: its own pts, not the stream's start_pts,
+    /// which FFmpeg's Matroska demuxer can give as 0 when the first packets carry no dts.
+    /// </summary>
+    static TimeSpan VideoStart(string input)
+    {
+        using var reader = new FrameReader.VideoFrameReader(input);
+        if (!reader.TryTake(out var frame))
+            return TimeSpan.Zero;
+        using (frame)
+        {
+            var tb = reader.TimeBase;
+            return TimeSpan.FromSeconds((double)(frame.Pts + StartOffset(input)) * tb.Num / tb.Den);
+        }
     }
 
     static string Clock(TimeSpan t) => t.ToString(@"hh\:mm\:ss\.fff", CultureInfo.InvariantCulture);
@@ -418,12 +452,13 @@ static class Qc
 
     /// <summary>
     /// Black: blackdetect's spans of <paramref name="blackMin"/> seconds or more, each judged only mid-programme, when it
-    /// starts at least <paramref name="edge"/> seconds after the start and ends at least that long before the video's
-    /// <paramref name="end"/>; spans at the head and tail (slates, fades) are listed, not judged.
+    /// starts at least <paramref name="edge"/> seconds after the video's <paramref name="start"/> and ends at least that
+    /// long before its <paramref name="end"/> (both on the spans' timeline, from the file's start); spans at the head and
+    /// tail (slates, fades) are listed, not judged.
     /// </summary>
-    internal static QcCheck BlackCheck(IReadOnlyList<ShotDetector.BlackSpan> spans, double end, double blackMin, double edge)
+    internal static QcCheck BlackCheck(IReadOnlyList<ShotDetector.BlackSpan> spans, double start, double end, double blackMin, double edge)
     {
-        bool Judged(ShotDetector.BlackSpan b) => b.Start >= edge && b.End <= end - edge;
+        bool Judged(ShotDetector.BlackSpan b) => b.Start >= start + edge && b.End <= end - edge;
         var mid = spans.Where(Judged).ToList();
         static string Span(ShotDetector.BlackSpan b) => $"{Clock(TimeSpan.FromSeconds(b.Start))}-{Clock(TimeSpan.FromSeconds(b.End))}";
         string measured = spans.Count == 0 ? "none"
@@ -458,13 +493,14 @@ static class Qc
 
     /// <summary>
     /// Freeze: freezedetect's still pictures of <paramref name="freezeMin"/> seconds or more, each judged only
-    /// mid-programme (at least <paramref name="edge"/> seconds from the start and from the video's
-    /// <paramref name="end"/>; one still at the end runs to it) and not inside a black span or colour bars, which are
-    /// still by design.
+    /// mid-programme (at least <paramref name="edge"/> seconds from the video's <paramref name="start"/> and from its
+    /// <paramref name="end"/>, both from the file's start; one still at the end runs to it) and not inside a black span or
+    /// colour bars, which are still by design.
     /// </summary>
     internal static QcCheck FreezeCheck(IReadOnlyList<ShotDetector.FreezeSpan> spans,
         IReadOnlyList<ShotDetector.BlackSpan> black,
         IReadOnlyList<(TimeSpan Start, TimeSpan End)> bars,
+        double start,
         double end,
         double freezeMin,
         double edge)
@@ -473,7 +509,7 @@ static class Qc
         bool Inside(ShotDetector.FreezeSpan f) =>
             black.Any(b => f.Start >= b.Start && End(f) <= b.End)
             || bars.Any(b => f.Start >= b.Start.TotalSeconds && End(f) <= b.End.TotalSeconds);
-        bool Judged(ShotDetector.FreezeSpan f) => f.Start >= edge && End(f) <= end - edge && !Inside(f);
+        bool Judged(ShotDetector.FreezeSpan f) => f.Start >= start + edge && End(f) <= end - edge && !Inside(f);
         var mid = spans.Where(Judged).ToList();
         bool pass = mid.Count == 0;
         string Span(ShotDetector.FreezeSpan f) => $"{Clock(TimeSpan.FromSeconds(f.Start))}-{(f.End is { } e ? Clock(TimeSpan.FromSeconds(e)) : "end")}";

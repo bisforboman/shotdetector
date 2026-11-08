@@ -367,6 +367,22 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
             Assert.InRange(tone.GetProperty("end").GetDouble(), 5.5, 6.5);
             Assert.Equal("pass", Check(Qc(lineUp, "--checks", "bars-tone", "--require-bars-tone").Json, "bars-tone").GetProperty("status").GetString());
 
+            // The video 0.5 s after the audio: every time counts from the file's start, the bars and the worst frame
+            // too, so they stay where the tone is (FrameReader's audio counts from there).
+            string late = Path.Combine(dir, "late.mkv");
+            Ffmpeg("-itsoffset", "0.5", "-i", lineUp, "-i", lineUp, "-map", "0:v", "-map", "1:a", "-c", "copy", late);
+            var lateReport = Qc(late, "--checks", "range,bars-tone").Json;
+            Assert.Equal(7.34, Check(lateReport, "broadcast-range").GetProperty("at").GetDouble(), 6);
+            var lateBars = Assert.Single(Check(lateReport, "bars-tone").GetProperty("bars").EnumerateArray());
+            Assert.Equal((0.5, 6.5), (lateBars.GetProperty("start").GetDouble(), lateBars.GetProperty("end").GetDouble()));
+            Assert.InRange(Assert.Single(Check(lateReport, "bars-tone").GetProperty("tone").EnumerateArray()).GetProperty("start").GetDouble(), 0, 0.5);
+
+            // MPEG-TS starts its timestamps at 1.4 s: the file's start is subtracted, as ffmpeg does.
+            string ts = Path.Combine(dir, "lineup.ts");
+            Ffmpeg("-i", lineUp, "-map", "0:v", "-c", "copy", ts);
+            var tsBars = Assert.Single(Check(Qc(ts, "--checks", "bars-tone").Json, "bars-tone").GetProperty("bars").EnumerateArray());
+            Assert.Equal((0.0, 6.0), (Math.Round(tsBars.GetProperty("start").GetDouble(), 6), Math.Round(tsBars.GetProperty("end").GetDouble(), 6)));
+
             // A file without line-up passes the range and fails only when bars and tone are required; no audio, no loudness.
             var (plainExit, plainReport) = Qc(plain);
             Assert.Equal(0, plainExit);
@@ -449,6 +465,29 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
             Assert.Equal(0, longer);
             Assert.Empty(none.GetProperty("spans").EnumerateArray());
             Assert.Equal(2, Run("qc", "-i", clip, "--edge", "-1").ExitCode);
+
+            // The video 5 s after a silent track that starts the file: the spans count from the file's start (5-8,
+            // 19-22, 32-35 s) and the head and tail from the video's (5 and 35 s), so the middle span is still judged.
+            string late = Path.Combine(dir, "late.mkv");
+            var mux = new ProcessStartInfo("ffmpeg") { RedirectStandardError = true };
+            foreach (string a in (string[])["-v", "error", "-y", "-itsoffset", "5", "-i", clip, "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono", "-t", "36",
+                "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "pcm_s16le", late])
+            {
+                mux.ArgumentList.Add(a);
+            }
+
+            using (var p = Process.Start(mux)!)
+            {
+                string err = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+                Assert.True(p.ExitCode == 0, err);
+            }
+
+            var (lateExit, lateOutput, lateErr) = Run("qc", "-i", late, "--ffmpeg-dir", libs, "--checks", "black", "--json", "-");
+            Assert.True(lateExit == 3, lateErr + lateOutput);
+            var lateSpans = System.Text.Json.JsonDocument.Parse(lateOutput).RootElement.GetProperty("checks")[0].GetProperty("spans").EnumerateArray().ToList();
+            Assert.Equal(expected.Select(e => (Math.Round(e.Item1 + 5, 6), Math.Round(e.Item2 + 5, 6))), lateSpans.Select(b => (Math.Round(b.GetProperty("start").GetDouble(), 6), Math.Round(b.GetProperty("end").GetDouble(), 6))));
+            Assert.Equal([false, true, false], lateSpans.Select(b => b.GetProperty("judged").GetBoolean()));
         }
         finally
         {

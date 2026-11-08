@@ -462,16 +462,21 @@
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'require ? lineUp : null'; Replace = 'require ? true : null'; Tests = 'CliTests.QcChecks' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'o.Start < LineUpWindow'; Replace = 'o.Start >= LineUpWindow'; Tests = 'CliTests.QcChecks' }
         # ... black: --black-min given to blackdetect, spans judged only away from the first and last --edge seconds
-        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'b.Start >= edge && b.End <= end - edge'; Replace = 'b.Start >= 0 && b.End <= end'; Tests = 'CliTests.QcJudgesBlack' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'b.Start >= start + edge && b.End <= end - edge'; Replace = 'b.Start >= 0 && b.End <= end'; Tests = 'CliTests.QcJudgesBlack' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = '            mid.Count == 0,'; Replace = '            true,'; Tests = 'CliTests.QcJudgesBlack' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'MinDuration = TimeSpan.FromSeconds(blackMin)'; Replace = 'MinDuration = TimeSpan.FromSeconds(2)'; Tests = 'CliTests.QcJudgesBlack' }
         # ... freeze: --freeze-min given to freezedetect, judged only away from the edges and not inside black or bars, a
         # still running to the end judged to the video's end
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'black.Any(b => f.Start >= b.Start && End(f) <= b.End)'; Replace = 'false'; Tests = 'CliTests.QcJudgesFreezes' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = '|| bars.Any(b => f.Start >= b.Start.TotalSeconds && End(f) <= b.End.TotalSeconds)'; Replace = '|| false'; Tests = 'CliTests.QcJudgesFreezes' }
-        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'f.Start >= edge && End(f) <= end - edge && !Inside(f)'; Replace = '!Inside(f)'; Tests = 'CliTests.QcJudgesFreezes' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'f.Start >= start + edge && End(f) <= end - edge && !Inside(f)'; Replace = '!Inside(f)'; Tests = 'CliTests.QcJudgesFreezes' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'MinDuration = TimeSpan.FromSeconds(freezeMin)'; Replace = 'MinDuration = TimeSpan.FromSeconds(2)'; Tests = 'CliTests.QcJudgesFreezes' }
         @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'f.End ?? end'; Replace = 'f.End ?? double.PositiveInfinity'; Tests = 'CliTests.QcJudgesFreezes' }
+        # ... every time from the file's start: the frames' pts with the decoder's StartOffset, the head and tail from the
+        # video's first frame
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = '(double)(pts + offset) * timeBase.Num'; Replace = '(double)pts * timeBase.Num'; Tests = 'CliTests.QcChecks' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = 'BlackSpan b) => b.Start >= start + edge'; Replace = 'BlackSpan b) => b.Start >= edge'; Tests = 'CliTests.QcJudgesBlack' }
+        @{ File = 'src/ShotDetector.Cli/Qc.cs'; Find = '(videoStart ?? VideoStart(input)).TotalSeconds'; Replace = '0.0'; Tests = 'CliTests.QcJudgesBlack' }
         # ... --html: names escaped (the page parses as XML), judged spans marked, times placed on the timeline
         @{ File = 'src/ShotDetector.Cli/QcHtml.cs'; Find = 'WebUtility.HtmlEncode(text)'; Replace = 'text'; Tests = 'CliTests.QcWrites' }
         @{ File = 'src/ShotDetector.Cli/QcHtml.cs'; Find = '(s.Judged ? " judged" : "")'; Replace = '""'; Tests = 'CliTests.QcWrites' }
