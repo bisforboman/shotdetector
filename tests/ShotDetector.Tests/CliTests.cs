@@ -6,7 +6,7 @@ using ShotDetector;
 /// <summary>The shotdetect CLI, run as a process (built with the tests, like ClipMaker).</summary>
 public class CliTests(Clips clips) : IClassFixture<Clips>
 {
-    static (int ExitCode, string Out, string Err) Run(params string[] args)
+    internal static (int ExitCode, string Out, string Err) Run(params string[] args)
     {
         var bin = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
         string tests = bin.Parent!.Parent!.Parent!.Parent!.FullName;

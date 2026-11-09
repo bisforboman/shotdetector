@@ -33,6 +33,9 @@ internal sealed class HashDetector(
     /// <inheritdoc/>
     public Stats? Stats { get; set; }
 
+    /// <summary>Told each frame's shrunk picture (<see cref="DetectorSettings.OnShrunk"/>).</summary>
+    internal Action<int, byte[]>? OnShrunk { get; set; }
+
     /// <inheritdoc/>
     public FrameTime? ProcessFrame(int frame, byte[] bgr) => Decide(frame, Metric(frame, bgr));
 
@@ -42,6 +45,7 @@ internal sealed class HashDetector(
         if (_width == 0)
             throw new InvalidOperationException("Call SetFrameSize first.");
         var hash = Hash(bgr);
+        OnShrunk?.Invoke(frame, _small);
         double? normalized = null;
         if (_lastHash is not null)
         {

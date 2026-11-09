@@ -297,6 +297,22 @@ picks the limits: `ebu-r128` (the default: -23 LUFS ±0.5 LU, true peak -1 dBTP)
 `--true-peak-max` override them, and `--loudness-preset` gives `--loudness` the same presets
 ([why](docs/decisions/2026-11-01-delivery-qc.md)). Not in scenedetect.
 
+`shotdetect diff <old> <new>` compares two cuts of the same programme shot by shot: which shots of the old cut are
+unchanged, moved, trimmed, added or removed in the new one (issue #771). A table on standard output, `--json <file>`
+(or `-`) with each cut, the changes counted and a row per shot in the new cut's order (removed shots where they stood):
+its status, its frames and timecodes in both cuts as `--json` gives a shot list's (`startFrame` 1-based, `endFrame`
+the last frame), and `headTrim` and `tailTrim`, the frames of the old shot missing at the new one's head and tail
+(negative: the new one has more). Exit code 3 when anything changed, 0 when nothing did. Shots are found in both cuts
+by `-d` (adaptive by default, `-t`, `-m`) and matched by a perceptual hash of each frame's middle (the edges, where
+logos, burnt-in timecodes and subtitles sit, left out), so re-encoding, scaling, a new grade or a logo don't count as
+changes; trims come from where the frames' small pictures correlate best. Limits: a shot found as one in one cut and
+as two in the other (a cut the detector sees in only one) is matched to the old shot with most of its frames, the rest
+read as trims; a still shot trimmed at its head reads as trimmed at its tail; bars that vary only across and flat or
+graded colour fields hash as noise, so such a shot can read as removed and added. `tools/recut.py` measures it: it
+makes a new cut with known edits from any video and scores the report
+([why](docs/decisions/2026-11-09-shotdetect-diff.md)). ShotDetector's own, not in scenedetect: the exactness promise
+doesn't cover it.
+
 ## Using the shot list
 
 ```
@@ -457,6 +473,9 @@ less CPU); there its point is ARM, where it gives x86's results.
 
 - **Reference tone:** scenedetect has nothing like `TrimReferenceTone` / `--trim-tone`; with it, results equal
   scenedetect's with `-s`/`-e` at the tone's end and start. Off by default.
+
+- **`shotdetect diff`:** scenedetect has nothing like it. Its shots are scenedetect's (the detector's), but which
+  shots match and their trims are ShotDetector's own, not covered by the exactness promise.
 
 - **Downscaling:** by default ffmpeg sends full-size frames and `CvResize.cs` replicates
   `cv2.resize(INTER_LINEAR)` bit for bit, at the size PySceneDetect picks (`max(w,h)/256`). That's
