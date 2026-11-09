@@ -7,7 +7,7 @@
 [![NuGet](https://img.shields.io/nuget/v/FrameReader.svg?label=FrameReader)](https://www.nuget.org/packages/FrameReader)
 
 Shot/cut detection for video in C#: a faithful port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s
-detectors (scenedetect 0.7.2: adaptive, content, threshold, histogram and hash) that gives identical
+detectors (scenedetect 0.7.3: adaptive, content, threshold, histogram and hash) that gives identical
 results, faster and lighter than scenedetect ([Performance](#performance)). Video is decoded in-process by FFmpeg's
 libraries (the `FrameReader.Native` packages carry them) or by the [ffmpeg](https://ffmpeg.org) executable; all
 detection logic is plain C#.
@@ -232,11 +232,16 @@ Each detection is an OpenTelemetry-ready span: `.AddSource(ShotDetection.Activit
 
 Runs wherever .NET 10 and ffmpeg do, including Alpine (`apk add ffmpeg`), which CI tests.
 
-ShotDetector reproduces scenedetect 0.7.2 (`Compatibility = PySceneDetectVersion.V0_7_2`, the default) and 0.7.1
-(`V0_7_1`, `--compat 0.7.1`): 0.7.2 changed detect-hist's and detect-hash's defaults, compares a minimum length in
-frames as a frame count, measures AdaptiveDetector's from the frame it cuts at, and ignores fade-outs shorter than
-0.1 s in detect-threshold (`MinOutLength`). When the default moves to a newer scenedetect, the previous release stays
-available there (see "Versions"). The scenedetect 0.6.4 mode was dropped in 0.9.0; use ShotDetector 0.8 for it.
+ShotDetector reproduces scenedetect 0.7.3 (`Compatibility = PySceneDetectVersion.V0_7_3`, the default) and 0.7.2
+(`V0_7_2`, `--compat 0.7.2`). 0.7.3 detects as 0.7.2 does; what it changed is where a run that reads to the end ends
+its last shot (a frame after the last frame's own time, which moves the end on variable frame rate video and where
+frames start late), the scene list CSV's first row without cuts ("Timecode List:" alone, where 0.7.2 left the row
+blank), the EDL's timecodes at 23.976/29.97/59.94 fps (frames counted at the nominal 24/30/60 a second, as
+non-drop-frame timecode is), the OTIO export's available range (the video's length instead of 1980 frames) and
+`$VIDEO_NAME` of a URL (its path's last segment, without the query). 0.7.1 (`V0_7_1`, `--compat 0.7.1`) is obsolete:
+it still works, but CI no longer checks it and the next major version removes it. When the default moves to a newer
+scenedetect, the previous release stays available there (see "Versions"). The scenedetect 0.6.4 mode was dropped in
+0.9.0; use ShotDetector 0.8 for it.
 
 `Shot.Start`/`End` are `FrameTime`s: `FrameNum` (0-based; `End` is exclusive), `Seconds`,
 `Timecode()` (also what `ToString()` gives). They print exactly as scenedetect prints them.
@@ -322,8 +327,9 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
 - `--save-edl`, `--save-fcp` (`--fcp-format fcpx|fcp7`), `--save-otio` and `--save-qp` write scenedetect's
   timeline exports for editors and encoders (CMX 3600 EDL, Final Cut Pro XML, OpenTimelineIO, x264 QP
   keyframes), byte-identical to scenedetect's except the EDL's comment line, which names ShotDetector.
-  Like scenedetect, the OTIO clips declare an available range of 1980 frames whatever the video's
-  length. In the library: `Timeline.Edl`, `Fcpx`, `Fcp7`, `Otio`, `Qp`.
+  As scenedetect 0.7.3, the OTIO clips' available range is the video's length (0.7.2: 1980 frames whatever the
+  length) and the EDL counts frames at the nominal rate (24 a timecode second at 23.976 fps). In the library:
+  `Timeline.Edl`, `Fcpx`, `Fcp7`, `Otio`, `Qp`.
 - `--save-shotchanges <file>` writes the cuts for [Subtitle Edit](https://github.com/SubtitleEdit/subtitleedit) (not a
   scenedetect output): each cut's time in seconds, one per line (`12.480`), the format of SE's own `.shotchanges`
   files. In SE: Video, Generate/import shot changes, Import, then the file; SE4 and SE5 read it as seconds (the `.`
@@ -364,7 +370,7 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
 
 ## Verifying against PySceneDetect
 
-CI (`.github/workflows/ci.yml`) checks every pull request on Linux against scenedetect 0.7.2 and 0.7.1 (each in its
+CI (`.github/workflows/ci.yml`) checks every pull request on Linux against scenedetect 0.7.3 and 0.7.2 (each in its
 compatibility mode), for the core path
 and the FastYuv path, with the latest stable
 ffmpeg. On every sample clip and every detector:
@@ -377,7 +383,7 @@ The comparison table is in each run's job summary. The same check runs locally:
 ```
 pwsh tools/make-samples.ps1
 python tools/compare.py samples/*.mp4 [--detector adaptive|content|threshold|both|all] [--stats] [--fast-yuv]
-    [--compat 0.7.1 --scenedetect-python path/to/python] [--weights 1 1 1 1] [--report table.md]
+    [--compat 0.7.2 --scenedetect-python path/to/python] [--weights 1 1 1 1] [--report table.md]
 dotnet test
 ```
 

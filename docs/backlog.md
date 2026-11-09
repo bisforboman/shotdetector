@@ -19,6 +19,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: that push (#737) changed only docs, and later pushes to main are green, so it looks like a flaky test or step; find which (the job's logs and annotations), then fix it or record it as the VideoWriter flake was (docs/decisions/2026-10-10-videowriter-s-rare-ci-mismatch.md)
   - Status: Open
 
+- save-images `-i/--interval` with `--min-images`/`--max-images` (scenedetect 0.7.3, its #280): images per shot by its length (floor(length / interval) + 1, picked as with `-n`), the HTML page's rows then of differing lengths
+  - Why: new in scenedetect 0.7.3, which the default mode now follows (#768); the rest of 0.7.3 that ShotDetector has is reproduced, this option is missing. `ImageOptions` and the CLI's `--num-images`; check the picks against scenedetect's as the thumbnails were (byte-identical names, the same frames)
+  - Status: Open
+
 ## Waiting
 
 - Optional: the owner times the sequential conversion thread on the 16-thread Ryzen
