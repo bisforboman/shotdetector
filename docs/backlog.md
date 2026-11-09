@@ -15,10 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- A video stream whose start_pts FFmpeg gives as 0 while its first frame is later (Matroska, the first packets without a dts)
-  - Why: found in the clock audit: `VideoReader` takes frame 0's place on the file's timeline from ffprobe's start_pts (`_startPts`), so `TrimReferenceTone` (`FileToneOrigin`) would trim that much early. A 30 s H.264 clip (lossless x264, B-frames) remuxed with `-itsoffset 5` after an `anullsrc` track and `-t 35` probes as video start_pts 0 (duration 35 s, 350 frames by OpenCV's count) while its first packet and frame are at 5 s; with `-t 36` on a 3 s clip it probes 5 s. Find what FFmpeg does there, what OpenCV gives (its frame count, CAP_PROP_POS_MSEC), and whether a real file does it, before taking frame 0's own pts instead; `qc` already does (CliTests.QcJudgesBlackOnlyMidProgramme)
-  - Status: Open
-
 - Find why CI's `build` job failed on main at 9adc283 (run 41849590819, 2026-11-04)
   - Why: that push (#737) changed only docs, and later pushes to main are green, so it looks like a flaky test or step; find which (the job's logs and annotations), then fix it or record it as the VideoWriter flake was (docs/decisions/2026-10-10-videowriter-s-rare-ci-mismatch.md)
   - Status: Open

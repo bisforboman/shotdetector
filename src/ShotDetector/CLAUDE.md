@@ -37,6 +37,10 @@ Read with the library's decoding code (`VideoReader*.cs`, `ShotDetection*.cs`, `
   so the executable path passes `-apply_cropping codec` (`VideoReader.IgnoreContainerCropping`; the codec's own SPS
   cropping still applies, as in libavcodec). Splitting (split-video) runs ffmpeg as scenedetect does, cropped.
 - Linux OpenCV can't decode AV1 at all.
+- A video whose first packet is past libavformat's probe (about 5 s into the file) gets the format's start time as its
+  start_pts. OpenCV's frame times count from that, its seek from its first frame (`first_frame_number`), so
+  `SeekFrame` counts from `FirstFrameNumber`, and the tone trim's start moves with it (`SeekShift`;
+  docs/decisions/2026-11-09-start-pts-past-the-probe.md).
 - Frame labels (0.7.1): each decoded frame's showinfo time is matched to its packet (`PacketOf`), so frames
   the decoder drops make numbers skip as in OpenCV. Files and streams both run with `-copyts` (absolute times; streams
   since docs/decisions/2026-10-29-stream-timestamp-reset.md): a stream's showinfo times have the input's start
