@@ -1,0 +1,203 @@
+diff --git a/src/ui/Features/Main/MainViewModel.cs b/src/ui/Features/Main/MainViewModel.cs
+index c10ce86..e0b6ccd 100644
+--- a/src/ui/Features/Main/MainViewModel.cs
++++ b/src/ui/Features/Main/MainViewModel.cs
+@@ -31962,6 +31962,27 @@ public partial class MainViewModel :
+ 
+         WaveformGeneratingText = Se.Language.Main.ExtractingShotChanges;
+ 
++        if (ShotDetectorShotChanges.IsSelected)
++        {
++            // Published once, when the whole file is done (the ffmpeg route below publishes as cuts arrive).
++            // Prototype: ShotDetector's ffmpeg processes run at normal priority, not below normal.
++            var token = _videoOpenTokenSource.Token;
++            _ = Task.Run(async () =>
++            {
++                try
++                {
++                    var cuts = await ShotDetectorShotChanges.DetectAsync(videoFileName, Se.Settings.Waveform.ShotChangesSensitivity, null, token);
++                    PublishShotChanges(cuts, 0);
++                    ShotChangesHelper.SaveShotChanges(videoFileName, cuts, audioTrackNumber);
++                }
++                catch
++                {
++                    // As the ffmpeg route: a cancelled or failed silent run leaves the shot changes as they were.
++                }
++            });
++            return;
++        }
++
+         var threshold = Math.Round(Se.Settings.Waveform.ShotChangesSensitivity, 2).ToString(CultureInfo.InvariantCulture);
+         var argumentsFormat = Se.Settings.Video.ShowChangesFFmpegArguments;
+         var arguments = string.Format(argumentsFormat, videoFileName, threshold);
+diff --git a/src/ui/Features/Video/ShotChanges/ShotChangesViewModel.cs b/src/ui/Features/Video/ShotChanges/ShotChangesViewModel.cs
+index 7a4d7e9..dfd330d 100644
+--- a/src/ui/Features/Video/ShotChanges/ShotChangesViewModel.cs
++++ b/src/ui/Features/Video/ShotChanges/ShotChangesViewModel.cs
+@@ -51,6 +51,7 @@ public partial class ShotChangesViewModel : ObservableObject, IClosingCleanup
+ 
+     private string _videoFileName = string.Empty;
+     private Process? _ffmpegProcess;
++    private CancellationTokenSource? _shotDetectorCancel;
+     private FfmpegProgressTracker? _progressTracker;
+     private readonly System.Timers.Timer _timerGenerate;
+     private bool _doAbort;
+@@ -158,6 +159,12 @@ public partial class ShotChangesViewModel : ObservableObject, IClosingCleanup
+ 
+         IsGenerating = true;
+ 
++        if (ShotDetectorShotChanges.IsSelected)
++        {
++            GenerateShotChangesShotDetector();
++            return;
++        }
++
+         // Tick snapping leaves float noise (0.30000000000000004); ffmpeg gets the two decimals the label shows.
+         var threshold = Math.Round(Sensitivity, 2).ToString(CultureInfo.InvariantCulture);
+         var argumentsFormat = Se.Settings.Video.ShowChangesFFmpegArguments;
+@@ -185,6 +192,62 @@ public partial class ShotChangesViewModel : ObservableObject, IClosingCleanup
+         _timerGenerate.Start();
+     }
+ 
++    private void GenerateShotChangesShotDetector()
++    {
++        ProgressValue = 0;
++        ProgressText = Se.Language.General.StartingDotDotDot;
++        var cancel = _shotDetectorCancel = new CancellationTokenSource();
++        var progress = new Progress<double>(percent => Dispatcher.UIThread.Post(() =>
++        {
++            if (IsGenerating)
++            {
++                ProgressValue = percent;
++                ProgressText = $"{percent:0}%";
++            }
++        }));
++
++        _ = Task.Run(async () =>
++        {
++            List<double> cuts;
++            try
++            {
++                cuts = await ShotDetectorShotChanges.DetectAsync(_videoFileName, Sensitivity, progress, cancel.Token);
++            }
++            catch (Exception exception)
++            {
++                if (exception is not OperationCanceledException)
++                {
++                    Log.AppendLine(exception.Message);
++                }
++
++                Dispatcher.UIThread.Post(() =>
++                {
++                    _doAbort = false; // Cancel's flag is for the ffmpeg route's timer, which isn't running
++                    IsGenerating = false;
++                    ProgressValue = 0;
++                    ProgressText = exception is OperationCanceledException ? string.Empty : exception.Message;
++                });
++                return;
++            }
++
++            Dispatcher.UIThread.Invoke(() =>
++            {
++                foreach (var seconds in cuts)
++                {
++                    FfmpegLines.Add(new TimeItem(seconds, FfmpegLines.Count));
++                }
++
++                LastSeconds = cuts.Count > 0 ? cuts[^1] : 0;
++                IsGenerating = false;
++            });
++
++            if (cuts.Count > 0)
++            {
++                Ok();
++            }
++        });
++    }
++
+     private void OutputHandler(object sendingProcess, DataReceivedEventArgs outLine)
+     {
+         if (string.IsNullOrWhiteSpace(outLine.Data))
+@@ -311,6 +374,7 @@ public partial class ShotChangesViewModel : ObservableObject, IClosingCleanup
+         if (IsGenerating)
+         {
+             _doAbort = true;
++            _shotDetectorCancel?.Cancel();
+             return;
+         }
+ 
+diff --git a/src/ui/Logic/Config/SeVideo.cs b/src/ui/Logic/Config/SeVideo.cs
+index 23919b9..4960672 100644
+--- a/src/ui/Logic/Config/SeVideo.cs
++++ b/src/ui/Logic/Config/SeVideo.cs
+@@ -40,6 +40,8 @@ public class SeVideo
+     public List<string> RecentFiles { get; set; } = new();
+     public string CutType { get; set; }
+     public string ShowChangesFFmpegArguments { get; set; }
++    /// <summary>"FFmpeg" (the scene filter) or "ShotDetector" (PySceneDetect's adaptive detector).</summary>
++    public string ShotChangesEngine { get; set; } = "FFmpeg";
+     public bool VideoPlayerDisplayTimeLeft { get; set; }
+     public string CutDefaultVideoExtension { get; set; }
+     public bool CutAlsoCutSubtitle { get; set; }
+diff --git a/src/ui/Logic/Media/ShotDetectorShotChanges.cs b/src/ui/Logic/Media/ShotDetectorShotChanges.cs
+new file mode 100644
+index 0000000..ec395f8
+--- /dev/null
++++ b/src/ui/Logic/Media/ShotDetectorShotChanges.cs
+@@ -0,0 +1,43 @@
++﻿using Nikse.SubtitleEdit.Logic.Config;
++using ShotDetector;
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Threading;
++using System.Threading.Tasks;
++
++namespace Nikse.SubtitleEdit.Logic.Media;
++
++/// <summary>
++/// Shot changes from ShotDetector (a C# port of PySceneDetect, same results): its adaptive detector, which compares
++/// each frame's change with its neighbours' and so ignores camera moves and flashes that FFmpeg's scene score flags.
++/// </summary>
++public static class ShotDetectorShotChanges
++{
++    public static bool IsSelected => Se.Settings.Video.ShotChangesEngine == "ShotDetector";
++
++    /// <summary>
++    /// The slider's 0.05-0.95 onto adaptive's threshold, linearly: SE's default 0.4 is adaptive's default 3, and higher
++    /// means fewer cuts in both. Adaptive's other floor (content_val 15) still applies at the low end.
++    /// </summary>
++    public static double AdaptiveThreshold(double sensitivity) => Math.Round(sensitivity, 2) * 7.5;
++
++    public static async Task<List<double>> DetectAsync(string videoFileName, double sensitivity, IProgress<double>? progress, CancellationToken cancellationToken)
++    {
++        var ffmpeg = FfmpegHelper.GetFfmpegLocation();
++        var result = await ShotDetection.DetectAsync(videoFileName, new DetectionOptions
++        {
++            Detector = DetectorKind.Adaptive,
++            Threshold = AdaptiveThreshold(sensitivity),
++            // SE loads FFmpeg 9 through FFmpeg.AutoGen 9; ShotDetector's in-process decoding is FFmpeg 8's, so it
++            // runs the ffmpeg executable (and ffprobe, which must be next to it or on PATH).
++            Decoder = VideoDecoder.FfmpegProcess,
++            FfmpegDirectory = Path.IsPathRooted(ffmpeg) ? Path.GetDirectoryName(ffmpeg) : null,
++            Progress = progress == null ? null : new Progress<DetectionProgress>(p => { if (p.Fraction is double f) { progress.Report(f * 100); } }),
++        }, cancellationToken).ConfigureAwait(false);
++
++        // As the ffmpeg route: nothing at 0.2 s or before.
++        return result.Cuts.Select(c => c.Seconds).Where(s => s > 0.2).ToList();
++    }
++}
+diff --git a/src/ui/UI.csproj b/src/ui/UI.csproj
+index da8dfa2..8c2d232 100644
+--- a/src/ui/UI.csproj
++++ b/src/ui/UI.csproj
+@@ -32,6 +32,8 @@
+ 		</PackageReference>
+ 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+ 		<PackageReference Include="FFmpeg.AutoGen" Version="9.0.1.1" />
++		<!-- Shot changes (prototype). Its in-process decoding needs FFmpeg.AutoGen 8 (NU1608 here), so it decodes with the ffmpeg executable. -->
++		<PackageReference Include="ShotDetector" Version="3.30.0" />
+ 		<PackageReference Include="Google.Cloud.TextToSpeech.V1" Version="3.18.0" />
+ 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0-rc.3.26522.148" />
+ 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="11.0.0-rc.3.26522.148" />
