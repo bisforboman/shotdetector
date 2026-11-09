@@ -942,10 +942,54 @@ public class ShotsTests
         string csv = Shots.Csv([S(1, 0, 50), S(2, 50, 100), S(3, 100, 150)]);
         Assert.StartsWith("Timecode List:,00:00:02.000,00:00:04.000\nScene Number,", csv);
 
-        // No cuts: scenedetect's fallback row is empty, so the file starts with a blank line.
-        Assert.StartsWith("\nScene Number,", Shots.Csv([S(1, 0, 150)]));
+        // No cuts: scenedetect's fallback row, the shot starts after the first; 0.7.3 labels it as it does the cuts, so a
+        // video without cuts has "Timecode List:" alone, and 0.7.2's file starts with a blank line.
+        Assert.StartsWith("Timecode List:\nScene Number,", Shots.Csv([S(1, 0, 150)]));
+        Assert.StartsWith("Timecode List:\nScene Number,", Shots.Csv([S(1, 0, 150)], PySceneDetectVersion.V0_7_3, cuts: []));
+        Assert.StartsWith("\nScene Number,", Shots.Csv([S(1, 0, 150)], PySceneDetectVersion.V0_7_2));
+        Assert.StartsWith("Timecode List:,00:00:02.000\nScene Number,", Shots.Csv([S(1, 0, 50), S(2, 50, 100)], PySceneDetectVersion.V0_7_3, cuts: []));
+        Assert.StartsWith("00:00:02.000\nScene Number,", Shots.Csv([S(1, 0, 50), S(2, 50, 100)], PySceneDetectVersion.V0_7_2, cuts: []));
         Assert.StartsWith("Scene Number,", Shots.Csv([S(1, 0, 50), S(2, 50, 100)], includeCutList: false));
     }
+
+    // $VIDEO_NAME: from 0.7.3 a URL is named by its path's last segment (#197), so the query stays out of file names.
+    [Theory]
+    [InlineData("/videos/clip.mp4", "clip", "clip")]
+    [InlineData("frames/img%04d.png", "img", "img")]
+    [InlineData("https://host/videos/clip.mp4?token=1.2", "clip", "clip.mp4?token=1")]
+    [InlineData("https://host/videos/my%20clip.mp4#t=3", "my clip", "my")]
+    [InlineData("https://host/videos/clip.mp4/", "clip", "")]
+    [InlineData("rtsp://user:pw@Camera.local:554", "camera.local_554", "user:pw@Camera")]
+    [InlineData("rtsp://192.168.0.1", "192.168.0.1", "192.168.0")]
+    [InlineData("http://[::1]:8080?x", "::1_8080", "[::1]:8080?x")]
+    public void VideoNameOfAUrlIsItsPathsLastSegmentFrom073(string path, string v073, string v072)
+    {
+        Assert.Equal(v073, Timeline.VideoName(path, PySceneDetectVersion.V0_7_3));
+        Assert.Equal(v072, Timeline.VideoName(path, PySceneDetectVersion.V0_7_2));
+    }
+
+    // Output file names take a URL's name from 0.7.3 on; a file's stays its name without the extension.
+    [Fact]
+    public void OutputFileNamesOfAUrlLeaveTheQueryOutFrom073()
+    {
+        Assert.Equal("clip", Timeline.FileNameOf("https://host/clip.mp4?token=1.2", PySceneDetectVersion.V0_7_3));
+        Assert.Equal("clip.mp4?token=1", Timeline.FileNameOf("https://host/clip.mp4?token=1.2", PySceneDetectVersion.V0_7_2));
+        Assert.Equal("a.b", Timeline.FileNameOf("/videos/a.b.mp4", PySceneDetectVersion.V0_7_3));
+    }
+
+    // save-edl from 0.7.3 counts frames at the nominal rate (#593): 24 a timecode second at 23.976 fps, 30 at 29.97; a
+    // rate that is neither whole nor N * 1000/1001 has none and keeps the wall-clock seconds.
+    [Theory]
+    [InlineData(24000, 1001, 24)]
+    [InlineData(30000, 1001, 30)]
+    [InlineData(60000, 1001, 60)]
+    [InlineData(25, 1, 25)]
+    [InlineData(7000, 1001, null)] // 1000/143: Fraction reduces it, so not N/1001
+    [InlineData(25, 2, null)]
+    [InlineData(2997, 100, 30)] // 29.97 as a float is NTSC to framerate_to_fraction
+    [InlineData(30010, 1001, null)] // over 1001, but not N * 1000
+    public void EdlNominalRateIsScenedetects(int num, int den, int? expected) =>
+        Assert.Equal(expected, Timeline.EdlNominalRate(new Fps(num, den)));
 
     static readonly Fps Ntsc = new(30000, 1001);
 

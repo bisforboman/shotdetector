@@ -50,19 +50,27 @@ public static class Shots
     /// <param name="shots">The shots.</param>
     /// <param name="includeCutList">Write the first row (list-scenes --skip-cuts leaves it out).</param>
     /// <param name="cuts">The cut list for that row (<see cref="DetectionResult.Cuts"/>); default the shot starts after the first.</param>
-    public static string Csv(IEnumerable<Shot> shots, bool includeCutList = true, IEnumerable<FrameTime>? cuts = null)
+    public static string Csv(IEnumerable<Shot> shots, bool includeCutList = true, IEnumerable<FrameTime>? cuts = null) =>
+        Csv(shots, PySceneDetectVersion.V0_7_3, includeCutList, cuts);
+
+    /// <summary>PySceneDetect's scene list CSV as the given release writes it (<see cref="DetectedVideo.Compatibility"/>).</summary>
+    /// <param name="shots">The shots.</param>
+    /// <param name="compatibility">The release: before 0.7.3, the row without cuts has no "Timecode List:" label.</param>
+    /// <param name="includeCutList">Write the first row (list-scenes --skip-cuts leaves it out).</param>
+    /// <param name="cuts">The cut list for that row (<see cref="DetectionResult.Cuts"/>); default the shot starts after the first.</param>
+    public static string Csv(IEnumerable<Shot> shots, PySceneDetectVersion compatibility, bool includeCutList = true, IEnumerable<FrameTime>? cuts = null)
     {
         var list = shots.ToList();
         var sb = new StringBuilder();
 
         // scenedetect's first row: "Timecode List:" and the cuts; without cuts, its fallback row of the shot starts
-        // after the first (empty for one shot). list-scenes --skip-cuts leaves it out.
+        // after the first (empty for one shot), labelled from 0.7.3 on. list-scenes --skip-cuts leaves it out.
         if (includeCutList)
         {
             var cutList = (cuts ?? list.Skip(1).Select(s => s.Start)).ToList();
-            sb.Append(cutList.Count > 0
-                ? "Timecode List:," + string.Join(',', cutList.Select(c => c.Timecode()))
-                : string.Join(',', list.Skip(1).Select(s => s.Start.Timecode()))).Append('\n');
+            var row = cutList.Count > 0 ? cutList : list.Skip(1).Select(s => s.Start).ToList();
+            bool label = cutList.Count > 0 || compatibility >= PySceneDetectVersion.V0_7_3;
+            sb.AppendJoin(',', (label ? ["Timecode List:"] : Array.Empty<string>()).Concat(row.Select(c => c.Timecode()))).Append('\n');
         }
 
         sb.Append(

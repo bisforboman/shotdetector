@@ -1377,9 +1377,9 @@ internal sealed partial class VideoReader
     internal TimeSpan SeekShift => _frames is not null || Streaming ? TimeSpan.Zero : TimeSpan.FromSeconds(FirstFrameNumber / Fps.Value);
 
     /// <summary>
-    /// The position PySceneDetect reads once decoding has stopped. OpenCV reports CAP_PROP_POS_MSEC
+    /// The position PySceneDetect 0.7.2 reads once decoding has stopped. OpenCV reports CAP_PROP_POS_MSEC
     /// as 0 at that point, so it is always the frame-number fallback for the last frame.
-    /// The last scene ends one frame after it.
+    /// The last scene ends one frame after it. 0.7.3 keeps the last frame's own position instead (#561).
     /// </summary>
     internal FrameTime PositionAfterDecoding(int frameCount) => FrameTime.Pts((long)(frameCount - 1) * Fps.Den, Fps.Num, Fps);
 

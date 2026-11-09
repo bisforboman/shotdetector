@@ -93,7 +93,7 @@ public sealed class Clips : IDisposable
     // mpeg4 is built into every ffmpeg, unlike libx264.
     static void Make(string path, string input) => Run($"-v error -y {input} -r 25 -c:v mpeg4 -q:v 3 {path}");
 
-    static void Run(string args)
+    internal static void Run(string args)
     {
         var psi = new ProcessStartInfo("ffmpeg", args) { RedirectStandardError = true };
         using var p = Process.Start(psi)!;
@@ -983,6 +983,30 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         Assert.Contains("\"name\": \"Video 1\"", otio);
         Assert.DoesNotContain("Audio 1", otio);
         Assert.Contains("\"value\": 50.0", otio);
+
+        // 0.7.3's available range is the video's 150 frames (#580); 0.7.2's 1980 whatever its length.
+        Assert.Matches("\"available_range\": \\{\\s+\"OTIO_SCHEMA\": \"TimeRange.1\",\\s+\"duration\": \\{\\s+\"OTIO_SCHEMA\": \"RationalTime.1\",\\s+\"rate\": 25.0,\\s+\"value\": 150.0\\s", otio);
+        Assert.DoesNotContain("1980.0", otio);
+        var before = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content, Compatibility = PySceneDetectVersion.V0_7_2 });
+        Assert.Contains("\"value\": 1980.0", Timeline.Otio(before, audio: false));
+    }
+
+    // save-edl at 29.97 fps: 0.7.3 counts 30 frames a timecode second (#593), so the end, frame 1859 (62.03 s), is
+    // 00:01:01:29; 0.7.2 took the wall-clock seconds, 00:01:02:00. A start timecode is read the same way.
+    [Fact]
+    public void EdlCountsFramesAtTheNominalRateFrom073()
+    {
+        string ntsc = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, "ntsc.mp4");
+        Clips.Run($"-v error -y -f lavfi -i testsrc2=s=160x120:r=30000/1001:d=62 -c:v mpeg4 -q:v 5 {ntsc}");
+        var o = new DetectionOptions { Detector = DetectorKind.Content, Threshold = 255 };
+        var now = ShotDetection.Detect(ntsc, o);
+        Assert.Equal(1859, now.Shots[^1].End.FrameNum);
+        Assert.EndsWith("00:00:00:00 00:01:01:29 00:00:00:00 00:01:01:29\n", Timeline.Edl(now));
+        Assert.EndsWith("01:00:00:00 01:01:01:29 01:00:00:00 01:01:01:29\n", Timeline.Edl(now, startTimecode: "01:00:00:00"));
+        Assert.Throws<ArgumentException>(() => Timeline.Edl(now, startTimecode: "01:00:00:30"));
+
+        var before = ShotDetection.Detect(ntsc, o with { Compatibility = PySceneDetectVersion.V0_7_2 });
+        Assert.EndsWith("00:00:00:00 00:01:02:00 00:00:00:00 00:01:02:00\n", Timeline.Edl(before));
     }
 
     [Fact]

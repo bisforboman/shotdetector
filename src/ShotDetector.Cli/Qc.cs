@@ -255,9 +255,12 @@ static class Qc
                     FreezeDetect = freeze ? new() { MinDuration = TimeSpan.FromSeconds(freezeMin) } : null,
                 });
 
-                // The shots count from the video's first frame, the spans from the file's start: the video's own span on
-                // the spans' timeline, for the head and tail.
-                double start = (videoStart ?? VideoStart(input)).TotalSeconds, end = start + result.Shots[^1].End.Seconds;
+                // The spans count from the file's start; the shots from the video's start_pts, which is the format's
+                // start when the video's first packet is past the probe (the first shot then starts at the video's
+                // offset): the video's own span on the spans' timeline is its start plus the shots' length, for the head
+                // and tail.
+                double start = (videoStart ?? VideoStart(input)).TotalSeconds;
+                double end = start + result.Shots[^1].End.Seconds - result.Shots[0].Start.Seconds;
                 timeline.Duration = Math.Max(timeline.Duration, end);
                 if (black)
                     report.Add(BlackCheck(result.BlackSpans ?? [], start, end, blackMin, edge));

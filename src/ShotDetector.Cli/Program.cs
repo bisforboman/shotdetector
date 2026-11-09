@@ -14,7 +14,7 @@ const string Usage = """
       --filter-mode <merge|suppress>     content: how min-scene-len is enforced (default merge)
       --drop-short-scenes                Detect without min-scene-len, then drop shots shorter than it
       --merge-last-scene                 Merge the last shot into the previous one if shorter than min-scene-len
-      --downscale <n>                    Downscale frames by n (scenedetect -d); default automatic, 1 = none
+      --downscale <n>                    Downscale frames by n (scenedetect -d); default (or 0) automatic, 1 = none
       -t, --threshold <n>                content: content_val threshold (default 27)
                                          adaptive: adaptive ratio threshold (default 3)
                                          threshold: mean pixel level of a fade (default 12)
@@ -33,7 +33,7 @@ const string Usage = """
           --hash-lowpass <n>             hash: shrink frames to size*n pixels per side first (default 2)
       -f, --fade-bias <-1..1>            threshold: cut position between fade-out (-1) and fade-in (+1)
           --min-out-length <time>        threshold: ignore fade-outs shorter than this (default 0.1s; none with --compat 0.7.1)
-          --compat <0.7.2|0.7.1>         Which PySceneDetect release to reproduce (default 0.7.2)
+          --compat <0.7.3|0.7.2|0.7.1>   Which PySceneDetect release to reproduce (default 0.7.3; 0.7.1 is obsolete)
           --frame-rate <fps>             Override the detected frame rate (scenedetect -f); also the
                                          rate of an image sequence such as frames/%04d.png (default 25)
           --ffmpeg-dir <dir>             Folder containing ffmpeg and ffprobe (default: found on PATH)
@@ -206,7 +206,7 @@ try
                 options = options with { MergeLastScene = true };
                 break;
             case "--downscale":
-                options = options with { Downscale = NextInt() };
+                options = options with { Downscale = NextInt() is var factor and not 0 ? factor : null }; // 0: automatic, as -d 0 (0.7.3)
                 break;
             case "-m" or "--min-scene-len":
                 if (detectorList.Count > 0)
@@ -290,9 +290,12 @@ try
                 {
                     Compatibility = Next() switch
                     {
+                        "0.7.3" => PySceneDetectVersion.V0_7_3,
                         "0.7.2" => PySceneDetectVersion.V0_7_2,
+#pragma warning disable CS0618 // obsolete until the next major version removes it
                         "0.7.1" => PySceneDetectVersion.V0_7_1,
-                        var v => throw new ArgumentException($"Unknown --compat version '{v}' (0.7.2 or 0.7.1; 0.6.4 was dropped in 0.9.0)"),
+#pragma warning restore CS0618
+                        var v => throw new ArgumentException($"Unknown --compat version '{v}' (0.7.3, 0.7.2 or 0.7.1; 0.6.4 was dropped in 0.9.0)"),
                     },
                 };
                 break;
@@ -714,7 +717,7 @@ try
     var video = result.Video;
 
     // Output paths: $VIDEO_NAME expanded, relative ones under -o.
-    string videoName = input == "-" ? "stdin" : Path.GetFileNameWithoutExtension(input);
+    string videoName = input == "-" ? "stdin" : Timeline.FileNameOf(input, video.Compatibility);
     string? Out(string? path) => path is null
         ? null
         : Path.Combine(outputDir ?? "", path.Replace("$VIDEO_NAME", videoName).Replace("${VIDEO_NAME}", videoName));
@@ -743,7 +746,7 @@ try
     if (!quiet)
         Console.WriteLine(Shots.Table(result.Shots));
     if (csvPath is not null)
-        File.WriteAllText(csvPath, Shots.Csv(result.Shots, includeCutList: !skipCuts, result.Cuts));
+        File.WriteAllText(csvPath, Shots.Csv(result.Shots, result.Video.Compatibility, includeCutList: !skipCuts, result.Cuts));
     if (jsonPath is not null)
         File.WriteAllText(jsonPath, Shots.Json(result.Shots));
     if (statsPath is not null)
