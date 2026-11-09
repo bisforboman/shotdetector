@@ -1,6 +1,8 @@
 """Measure `shotdetect diff` (issue #771): make a new cut of a video with known edits, compare the two, and score the
-report against the edits made: precision and recall of the changes, exact (status, shots and trims to the frame) and
-by status alone.
+report against the edits made: precision and recall of the changes by shot, exact (status, shots and trims to the
+frame) and by status alone; and frame by frame (the new cut's frames mapped to the right old frame, the old cut's
+frames left out and the new cut's added), which doesn't depend on the detector cutting the new cut where it was
+joined.
 
 The old cut's shots are shotdetect's own. The new cut takes them in another order with seeded random edits: shots
 removed, moved, trimmed at the head or the tail, and one added from an ffmpeg test source; then a new grade, a
@@ -123,10 +125,45 @@ def render(video: Path, old: list[tuple[int, int]], pieces, out: Path, work: Pat
     listing.write_text("".join(f"file '{f.as_posix()}'\n" for f in files))
     filters = {"grade": GRADE, "logo": LOGO, "scale": "scale=trunc(iw*0.9/2)*2:trunc(ih*0.9/2)*2"}
     run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", listing, "-vf",
-         ",".join([*(filters[c] for c in changes), "setsar=1"]), "-r", str(rate), "-c:v", "mpeg4", "-q:v", "5", out])
+         ",".join([f"setpts=N/({rate}*TB)", *(filters[c] for c in changes), "setsar=1"]), "-fps_mode", "passthrough",
+         "-c:v", "mpeg4", "-q:v", "5", out])
 
 
-def score(report: dict, truth: list) -> dict:
+def mapping(old: list[tuple[int, int]], pieces) -> list:
+    """The truth frame by frame: the old cut's frame each frame of the new cut shows (None: an added one)."""
+    out = []
+    for p in pieces:
+        out += list(range(old[p[1]][0] + p[2], old[p[1]][1] - p[3])) if p[0] == "old" else [None] * p[1]
+    return out
+
+
+def frames(report: dict, truth: list) -> dict:
+    """The report frame by frame, against the truth: the new cut's frames mapped to the right old frame (or rightly to
+    none), and precision and recall of the old cut's frames left out and the new cut's frames added. Unlike the shots'
+    scores, these don't depend on the detector cutting the new cut where the edits joined it: in continuous action it
+    can cut elsewhere (Elephants Dream's strobe is cut every min-scene-len frames, from wherever it starts)."""
+    got = [None] * len(truth)
+    for r in report["shots"]:
+        if not r["b"] or not r["a"]:
+            continue
+        a0, a_len = r["a"]["startFrame"] - 1, r["a"]["endFrame"] - r["a"]["startFrame"] + 1
+        for k in range(r["b"]["startFrame"] - 1, min(r["b"]["endFrame"], len(truth))):
+            v = r["headTrim"] + k - (r["b"]["startFrame"] - 1)
+            got[k] = a0 + v if 0 <= v < a_len else None
+
+    def pr(reported: set, wanted: set) -> tuple[float, float]:
+        hit = len(reported & wanted)
+        return (hit / len(reported) if reported else 1.0, hit / len(wanted) if wanted else 1.0)
+
+    every = set(range(report["a"]["frames"]))
+    return {
+        "mapped": sum(g == t for g, t in zip(got, truth)) / len(truth),
+        "left out": pr(every - set(got), every - set(truth)),
+        "added": pr({k for k, g in enumerate(got) if g is None}, {k for k, t in enumerate(truth) if t is None}),
+    }
+
+
+def score(report: dict, truth: list, truth_frames: list) -> dict:
     def key(r):
         return (r["status"], r["a"]["shot"] if r["a"] else None, r["b"]["startFrame"] if r["b"] else None,
                 r["headTrim"], r["tailTrim"])
@@ -138,6 +175,7 @@ def score(report: dict, truth: list) -> dict:
         want = {cut(k) for k in truth if k[0] != "unchanged"}
         hit = len(got & want)
         out[name] = (hit / len(got) if got else 1.0, hit / len(want) if want else 1.0)
+    out["frames"] = frames(report, truth_frames)
     out["missed"] = sorted((k for k in truth if k[0] != "unchanged" and k not in reported), key=str)
     out["wrong"] = sorted((k for k in reported if k[0] != "unchanged" and k not in truth), key=str)
     return out
@@ -173,10 +211,14 @@ def main() -> None:
         new = work / "recut.mp4"
         render(video, old, pieces, new, work, [c for c in a.changes.split(",") if c and c != "none"])
         run([EXE, "diff", video, new, "--json", work / "diff.json"], ok=(0, 3))
-        s = score(json.loads((work / "diff.json").read_text()), truth)
+        s = score(json.loads((work / "diff.json").read_text()), truth, mapping(old, pieces))
         print(f"{video.name}: {len(old)} shots, seed {a.seed}, {sum(k[0] != 'unchanged' for k in truth)} changes")
         for name in ("exact", "status"):
-            print(f"  {name:6}  precision {s[name][0]:.3f}  recall {s[name][1]:.3f}")
+            print(f"  shots, {name:6}      precision {s[name][0]:.3f}  recall {s[name][1]:.3f}")
+        f = s["frames"]
+        print(f"  frames mapped right {f['mapped']:.3f}")
+        for name in ("left out", "added"):
+            print(f"  frames {name:12} precision {f[name][0]:.3f}  recall {f[name][1]:.3f}")
         for k in s["missed"]:
             print(f"  missed: {k}")
         for k in s["wrong"]:
