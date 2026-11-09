@@ -96,6 +96,16 @@
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'v072 ? 128 : 256'; Replace = '256'; Tests = 'VideoTests.HistogramAndHashDefaultsFollowTheCompatibilityRelease' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'v072 ? 8 : 16'; Replace = '16'; Tests = 'VideoTests.HistogramAndHashDefaultsFollowTheCompatibilityRelease' }
 
+        # scenedetect 0.7.3: the last shot ends after the last frame's own time (#561), the CSV's cut-list row labelled
+        # without cuts, the EDL at the nominal rate (#593), OTIO's available range the video's length (#580), URL names (#197)
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'readToEnd && o.Compatibility < PySceneDetectVersion.V0_7_3'; Replace = 'readToEnd'; Tests = 'KeepPositionsTests.TheLastShotEndsAfterTheLastFramesOwnTimeFrom073' }
+        @{ File = 'src/ShotDetector/Shots.cs'; Find = 'cutList.Count > 0 || compatibility >= PySceneDetectVersion.V0_7_3'; Replace = 'cutList.Count > 0'; Tests = 'ShotsTests.CsvStartsWithTheCutListLikeScenedetect' }
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'result.Video.Compatibility >= PySceneDetectVersion.V0_7_3 ? EdlNominalRate(result.Video.Reader.Fps) : null'; Replace = 'null'; Tests = 'VideoTests.EdlCountsFramesAtTheNominalRateFrom073' }
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'canonical.Den == 1001 && canonical.Num % 1000 == 0'; Replace = 'canonical.Den == 1001'; Tests = 'ShotsTests.EdlNominalRateIsScenedetects' }
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'nominal is { } rate ? (seconds * rate) + n[3] : '; Replace = ''; Tests = 'VideoTests.EdlCountsFramesAtTheNominalRateFrom073' }
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'result.Video.Compatibility < PySceneDetectVersion.V0_7_3 ? 1980.0'; Replace = 'true ? 1980.0'; Tests = 'VideoTests.TimelineExportsPlaceTheCuts' }
+        @{ File = 'src/ShotDetector/Timeline.cs'; Find = 'if (compatibility >= PySceneDetectVersion.V0_7_3 && path.Contains'; Replace = 'if (false && path.Contains'; Tests = 'ShotsTests.VideoNameOfAUrlIsItsPathsLastSegmentFrom073' }
+
         # Hash detector: the same bits on every runtime (near-flat frames, whose DCT is noise around the median): the
         # defaults' cosine tables checked in (Math.Cos differs on browser-wasm), numpy's median of the two middle values
         @{ File = 'src/ShotDetector/HashDetector.cs'; Find = 'HashCosines.For(n, rows) ?? '; Replace = ''; Tests = 'HashDetectorTests' }
