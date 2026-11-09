@@ -222,6 +222,13 @@ public sealed record DetectorSettings(DetectorKind Kind)
     /// <summary><see cref="MinOutLength"/> as a time; not both.</summary>
     public TimeSpan? MinOutDuration { get; init; }
 
+    /// <summary>
+    /// Hash: told each frame's grayscale picture shrunk to size × lowpass pixels a side (the hash's first step; the array
+    /// is valid during the call), for <see cref="ShotDiff"/>'s fingerprints. Chunks call it from their own threads, and
+    /// the frame where two chunks meet twice.
+    /// </summary>
+    internal Action<int, byte[]>? OnShrunk { get; init; }
+
     /// <summary>The settings with the typed times written into their strings.</summary>
     internal DetectorSettings Resolved() => this with
     {
@@ -1941,7 +1948,11 @@ public static partial class ShotDetection
         };
         detector.Stats = stats;
         if (detector is HashDetector hash)
+        {
             hash.SetFrameSize(video.Width, video.Height);
+            hash.OnShrunk = st.OnShrunk;
+        }
+
         return detector;
     }
 
