@@ -63,7 +63,7 @@ jobs:
         run: brew install ffmpeg > /dev/null && ffmpeg -hide_banner -version | head -1
 
       - name: Install scenedetect
-        run: pip install scenedetect==0.7.2 opencv-python-headless==5.0.0.93
+        run: pip install scenedetect==0.7.3 opencv-python-headless==5.0.0.93
 
       # main's samples job's clips (made on Linux), else made here.
       - id: samples
@@ -83,7 +83,7 @@ jobs:
         run: |
           python tools/compare.py samples/*.mp4 samples/*.mov samples/*.m4v samples/*.ogg samples/*.mkv samples/*.avi samples/*.mpg \
             --detector all --stats --report parity.md --informational || true
-          { echo "### scenedetect 0.7.2 on ${{ matrix.os }} (informational)"; cat parity.md 2>/dev/null || echo "No report."; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### scenedetect 0.7.3 on ${{ matrix.os }} (informational)"; cat parity.md 2>/dev/null || echo "No report."; } >> "$GITHUB_STEP_SUMMARY"
 
       # Outside native/, so the comparison above keeps its decoder; only the parallel check gets them (--ffmpeg-dir).
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

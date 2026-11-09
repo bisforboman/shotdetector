@@ -104,7 +104,7 @@ def main():
     sd_stats, sh_stats = (["-s", str(stats)], ["--stats", str(stats)]) if a.stats else ([], [])
     suffix = " --stats" if a.stats else ""
     tools = [
-        (f"scenedetect 0.7.2{suffix}",
+        (f"scenedetect 0.7.3{suffix}",
          [sys.executable, "-m", "scenedetect", "-q", "-i", "{v}", *sd_stats, sd_cmd, "list-scenes", "-n"]),
         (f"shotdetect{suffix}", [exe, "-i", "{v}", "-d", a.detector, *sh_stats, *threads, *fast]),
         (f"shotdetect --parallel{suffix}", [exe, "-i", "{v}", "-d", a.detector, "--parallel", *sh_stats, *threads, *fast]),
