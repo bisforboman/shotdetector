@@ -306,7 +306,7 @@ public static partial class ShotDetection
 
         // TrimReferenceTone: the run starts at the frame after the leading tone (ToneStart). The frames before it are
         // taken, not converted, and score nothing; that frame is its detectors' first, as Detect's after its seek.
-        int start = ToneStart(video, o);
+        int start = ToneStartResolved(video, o);
         int from = Math.Max(lead, start); // the first frame read: the detectors' first
 
         // FreezeDetect: the comparisons start from the frame before the range, or, continuing from earlier ranges
@@ -430,10 +430,26 @@ public static partial class ShotDetection
     /// <summary>
     /// The frame a run with <see cref="DetectionOptions.TrimReferenceTone"/> starts at, after the leading tone in
     /// <see cref="YuvVideo.ReferenceTone"/>: the frame Detect's seek to the trimmed start time lands on (its estimate,
-    /// which needs no frame; Merge's decisions seek as Detect does, and check the frame there). 0 without the option, or
-    /// without a leading tone.
+    /// which needs no frame; Merge's decisions seek as Detect does, and check the frame there). The frames before it score
+    /// nothing, so a run stopped before it has no frames of its own: Merge, like Detect on a video that ends inside its
+    /// tone, refuses it (<see cref="ArgumentException"/>, "StartTime is after the last frame"). A host that stops runs
+    /// (a Stop button, workers that stop) holds the stop until this frame. Nothing here loads FFmpeg.
     /// </summary>
-    static int ToneStart(YuvVideo video, DetectionOptions o) => o.TrimReferenceTone ? ToneStart(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o), o) : 0;
+    /// <param name="video">The video's properties, as the ranges are scored with (its <see cref="YuvVideo.ReferenceTone"/>).</param>
+    /// <param name="options">The detection's settings, as the ranges are scored with.</param>
+    /// <returns>The run's first frame (0-based): 0 without <see cref="DetectionOptions.TrimReferenceTone"/>, or without a
+    /// leading tone.</returns>
+    /// <exception cref="ArgumentException">Invalid or unavailable options (as for ScoreRange), or TrimReferenceTone
+    /// without <see cref="YuvVideo.ReferenceTone"/>.</exception>
+    public static int ToneStart(YuvVideo video, DetectionOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(video);
+        var o = (options ?? new DetectionOptions()).Resolved();
+        CheckRangeOptions(video, o);
+        return ToneStartResolved(video, o);
+    }
+
+    static int ToneStartResolved(YuvVideo video, DetectionOptions o) => o.TrimReferenceTone ? ToneStart(new VideoReader(video, Enumerable.Empty<YuvFrame>().GetEnumerator(), o), o) : 0;
 
     static int ToneStart(VideoReader reader, DetectionOptions o)
     {
@@ -472,7 +488,7 @@ public static partial class ShotDetection
             return (from, to);
         CheckRangeOptions(video, o);
         var before = Earlier(video, o, list, (int)firstFrame);
-        int toneStart = ToneStart(video, o);
+        int toneStart = ToneStartResolved(video, o);
         if (firstFrame <= toneStart)
             return (from, to); // the run starts in this range: its comparisons start there
         int seed = FreezeSeed(video, o, list, before?.Pts ?? [], (int)firstFrame, toneStart);

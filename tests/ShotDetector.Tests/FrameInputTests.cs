@@ -188,6 +188,17 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         var detectStopped = ShotDetection.Detect(video, stopped, options);
         Same(detectStopped, RangeSpansTests.Split(video, stopped, [0, 100, 160], options).Merged);
         Same(detectStopped, RangeSpansTests.Resumed(video, stopped, [0, 100, 160], options));
+
+        // ToneStart: the frame the trimmed run starts at, with no frame read, so a host holds a stop until it. Stopped
+        // before it, the run has no frames of its own and Merge refuses it as Detect does; one frame past it merges.
+        Assert.Equal(expected.FirstFrame, ShotDetection.ToneStart(video, options));
+        Assert.Equal(0, ShotDetection.ToneStart(video, options with { TrimReferenceTone = false }));
+        Assert.Throws<ArgumentException>(() => ShotDetection.ToneStart(video with { ReferenceTone = null }, options));
+        var early = all.Take(128).ToList();
+        Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video, early, options));
+        Assert.Throws<ArgumentException>(() => RangeSpansTests.Split(video, early, [0, 100], options));
+        var justPast = all.Take(ShotDetection.ToneStart(video, options) + 1).ToList();
+        Same(ShotDetection.Detect(video, justPast, options), RangeSpansTests.Split(video, justPast, [0, 100], options).Merged);
     }
 
     /// <summary>

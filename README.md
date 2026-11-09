@@ -223,7 +223,9 @@ memory (Web Workers): `ShotDetection.ScoreRange` scores a range of frames (from 
 end), its `RangeScores` travel as bytes (`ToBytes`, `FromBytes`), and `ShotDetection.Merge` gives exactly `Detect`'s
 result for the whole video, refusing ranges that don't fit together (docs/parallel-detection.md, "Frame-source ranges").
 A range from frame 0 tells `OnShot` its shots as `Detect` would, and one scored after the earlier ranges' `RangeScores`
-(a run resumed where it stopped) tells the rest of the whole video's.
+(a run resumed where it stopped) tells the rest of the whole video's. With `TrimReferenceTone`,
+`ShotDetection.ToneStart` gives the frame the run starts at, after the leading tone: a run stopped before it has no
+frames of its own, which `Merge` refuses as `Detect` does, so a host holds a stop until then.
 
 Each detection is an OpenTelemetry-ready span: `.AddSource(ShotDetection.ActivitySourceName)` shows
 "ShotDetection.Detect" with the video's size, frame rate, pipeline, frames and shots.
