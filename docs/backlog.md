@@ -18,6 +18,9 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 - Find why CI's `build` job failed on main at 9adc283 (run 41849590819, 2026-11-04)
   - Why: that push (#737) changed only docs, and later pushes to main are green, so it looks like a flaky test or step; find which (the job's logs and annotations), then fix it or record it as the VideoWriter flake was (docs/decisions/2026-10-10-videowriter-s-rare-ci-mismatch.md)
   - Status: Open
+- `shotdetect diff`: match a new shot to a run of old ones (and an old shot to a run of new ones), for a cut the detector sees in only one of the two cuts
+  - Why: measuring the first slice (#771) on the Sintel trailer with `tools/recut.py`, a 16-frame black interstitial cut in the old cut was joined to the next shot in the new one (its grade lifts the black): the joined shot matched one old shot, the black part read as a negative trim and the black shot as removed. Matching runs would report those as unchanged; docs/decisions/2026-11-09-shotdetect-diff.md
+  - Status: Open
 
 ## Waiting
 
@@ -42,6 +45,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Waiting (parked by the owner, 2026-11-01; the suggestions for picking it up again are in the decision record's "Parked" section)
 
 ## Maybe
+
+- `shotdetect diff`'s outputs beyond the report: a change EDL, and SRT/WebVTT retimed to the new cut (cues in unchanged or moved shots shifted, in trimmed or removed shots flagged), then a public API
+  - Why: issue #771's later slices, which stay open there: sound editors re-conform to new cuts, subtitlers retime by hand. Unchecked: which change-EDL form editors' tools take, and whether Subtitle Edit or another tool already retimes to a new cut (#633). The public API waits for these, so its shape settles first (docs/decisions/2026-11-09-shotdetect-diff.md)
+  - Status: Maybe
 
 - Frames from the caller in 4:1:1 and 4:4:0 (yuvj411p, yuvj440p): `YuvVideo`/`YuvFrame` and FastYuv converting them as swscale does
   - Why: ManagedCodecs 0.6.0 decodes 4:1:1 MJPEG (DV-era capture cards) and 4:4:0, and shotdetector-web refuses both because ShotDetector's frame source takes only yuv420p/yuvj420p, yuv422p/yuvj422p and yuv420p10le (asked 2026-11-02). Rare formats: the owner put it in Maybe. Samples: shotdetector-web's tools/make-samples.sh makes 320x240 MJPEG AVIs that FFmpeg reads as yuvj411p and yuvj440p, from 4:2:0 and 4:2:2 JPEGs with rewritten SOF sampling factors
