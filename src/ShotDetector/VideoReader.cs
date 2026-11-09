@@ -1341,10 +1341,13 @@ internal sealed partial class VideoReader
             throw new NotSupportedException("A streamed input can't be seeked; StartTime isn't available.");
         if (seconds <= 0 || Pts.Length == 0)
             return 0;
+
+        // OpenCV counts a seek's frames from its first frame (first_frame_number), the frames' times from start_time.
+        double first = FirstFrameNumber / Fps.Value;
         int estimate = Math.Clamp(FrameAt(seconds), 0, Pts.Length - 1);
-        if (Math.Abs(Position(estimate).Seconds - seconds) <= 1.0 / Fps.Value)
+        if (Math.Abs(Position(estimate).Seconds - first - seconds) <= 1.0 / Fps.Value)
             return estimate;
-        double target = seconds - 0.5 / Fps.Value;
+        double target = seconds + first - 0.5 / Fps.Value;
         int lo = 0, hi = Pts.Length - 1;
         while (lo < hi)
         {
@@ -1357,6 +1360,21 @@ internal sealed partial class VideoReader
 
         return lo;
     }
+
+    /// <summary>
+    /// OpenCV's first_frame_number: the first frame's number counted from the stream's start time (dts_to_frame_number:
+    /// seconds after start_time times the rate, plus 0.5, truncated), from which its seek counts frames while the frames'
+    /// times count from start_time. 0 unless ffprobe's start_pts is before the first frame, as when the video's first
+    /// packet is past libavformat's probe (a video 5 s after the audio): FFmpeg then gives the stream the format's start
+    /// (docs/decisions/2026-11-09-start-pts-past-the-probe.md).
+    /// </summary>
+    int FirstFrameNumber => Pts.Length == 0 ? 0 : (int)(Fps.Value * ((Pts[0] - _startPts) * _timeBase) + 0.5);
+
+    /// <summary>
+    /// How much later a start time lands than the frames' times say (<see cref="FirstFrameNumber"/> frames): the seek
+    /// counts from the first frame, the times from start_time. Zero for frames from the caller and streams.
+    /// </summary>
+    internal TimeSpan SeekShift => _frames is not null || Streaming ? TimeSpan.Zero : TimeSpan.FromSeconds(FirstFrameNumber / Fps.Value);
 
     /// <summary>
     /// The position PySceneDetect reads once decoding has stopped. OpenCV reports CAP_PROP_POS_MSEC
