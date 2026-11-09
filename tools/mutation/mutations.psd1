@@ -532,6 +532,10 @@
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'Math.Max(0, (t - origin).TotalSeconds)'; Replace = 'Math.Max(0, t.TotalSeconds)'; Tests = 'ReferenceToneTests.OnlyTheEndsAreTrimmed' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'return TimeSpan.FromSeconds((_startPts + decoder.StartOffset) * _timeBase);'; Replace = 'return TimeSpan.Zero;'; Tests = 'FrameInputTests.SameAsTheFileTrimmedToTone' }
         @{ File = 'src/ShotDetector/VideoReader.Frames.cs'; Find = 'FramesToneOrigin => _framesTimed ? TimeSpan.FromSeconds((_startPts - _spanOrigin) * _timeBase) : TimeSpan.Zero;'; Replace = 'FramesToneOrigin => TimeSpan.Zero;'; Tests = 'FrameInputTests.SameAsTheFileTrimmedToTone' }
+        # ... a start time seeks as OpenCV does, counting frames from its first_frame_number (the video's start_pts past the
+        # probe: docs/decisions/2026-11-09-start-pts-past-the-probe.md), and the tone's start is set that much earlier
+        @{ File = 'src/ShotDetector/VideoReader.cs'; Find = 'int FirstFrameNumber => Pts.Length == 0 ? 0 : (int)(Fps.Value * ((Pts[0] - _startPts) * _timeBase) + 0.5);'; Replace = 'int FirstFrameNumber => 0;'; Tests = 'FrameInputTests.SameAsTheFileTrimmedToTone' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = 'StartTime = Seconds(tone[0].End - seekShift)'; Replace = 'StartTime = Seconds(tone[0].End)'; Tests = 'FrameInputTests.SameAsTheFileTrimmedToTone' }
 
         # Black and freeze spans for ranges: the flags joined, freezedetect replayed over them at Merge, a range whose
         # comparisons started from another still than the run's refused, the seeded detector kept and its seed frame's

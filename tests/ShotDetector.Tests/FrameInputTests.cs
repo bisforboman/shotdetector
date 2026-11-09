@@ -56,6 +56,7 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     [InlineData("trail", "content")]
     [InlineData("lead", "adaptive")]
     [InlineData("late", "content")] // the video 0.5 s after the audio: the tone's end moved onto the video's timeline
+    [InlineData("late6", "content")] // 6 s after: past the probe, so start_pts is 0 and the seek counts from the first frame
     public async Task SameAsTheFileTrimmedToTone(string where, string detector)
     {
         if (Libs is null)
@@ -96,16 +97,33 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
 
         var tone = finder.Finish();
         Assert.Equal(expected, tone);
-        await AssertSame(clip, options, tone: tone);
+
+        // 6 s late the probe has no pixel format either, which the frames' description here comes from: the file only.
+        if (where != "late6")
+            await AssertSame(clip, options, tone: tone);
         var trimmed = ShotDetection.Detect(clip, options);
         Assert.Equal(tone, trimmed.ReferenceTone);
-        Assert.True(where != "trail" ? trimmed.Shots[0].Start.FrameNum == 150 : trimmed.Shots[^1].End.FrameNum == 100, $"{trimmed.Shots[0].Start.FrameNum}-{trimmed.Shots[^1].End.FrameNum}");
-        if (where == "late")
+
+        // 6 s late, frames are labelled from start_pts (0), as scenedetect's: the 150th frame is the 300th.
+        int programme = where == "late6" ? 300 : 150;
+        Assert.True(where != "trail" ? trimmed.Shots[0].Start.FrameNum == programme : trimmed.Shots[^1].End.FrameNum == 100, $"{trimmed.Shots[0].Start.FrameNum}-{trimmed.Shots[^1].End.FrameNum}");
+        if (where is "late" or "late6")
         {
-            // The executable trims the same, and the tone (reported as found) ends at the file's 6.5 s.
-            Assert.InRange(tone[0].End.TotalSeconds, 6.4, 6.6);
+            // The executable trims the same, and the tone (reported as found) ends at the file's 6.5 s (12 s).
+            Assert.InRange(tone[0].End.TotalSeconds, where == "late6" ? 11.9 : 6.4, where == "late6" ? 12.1 : 6.6);
             var executable = ShotDetection.Detect(clip, options with { Decoder = VideoDecoder.FfmpegProcess });
             Assert.Equal(trimmed.Shots, executable.Shots);
+            if (where == "late6")
+            {
+                // A start time lands where scenedetect's does: OpenCV's seek counts frames from its first (the 150th is
+                // frame 7.2 x 25 = 180 after it, labelled 330), its frames' times from start_pts (scenedetect 0.7.2 on
+                // this clip: 331, 1-based, at 13.2 s).
+                foreach (var decoder in (VideoDecoder[])[VideoDecoder.InProcess, VideoDecoder.FfmpegProcess])
+                {
+                    var seeked = ShotDetection.Detect(clip, options with { TrimReferenceTone = false, StartTime = "7.2s", Decoder = decoder });
+                    Assert.Equal((330, 13.2), (seeked.Shots[0].Start.FrameNum, seeked.Shots[0].Start.Seconds));
+                }
+            }
         }
     }
 
@@ -199,8 +217,8 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     /// </summary>
     string ToneClip(string where)
     {
-        if (where == "late")
-            return LateToneClip();
+        if (where is "late" or "late6")
+            return LateToneClip(where == "late6" ? 6 : 0.5);
         string path = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, $"tone-{where}.mp4");
         if (File.Exists(path))
             return path;
@@ -225,26 +243,29 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
     }
 
     /// <summary>
-    /// Bars for 6 s and tone for 6.5 s, then 4 s of programme, the video shifted 0.5 s later (-itsoffset): on the file's
-    /// timeline (the audio's, from 0) the tone ends at 6.5 s, where the programme's first frame (the video's 150th) is.
+    /// Bars for 6 s and tone for 6 s more than <paramref name="late"/>, then 4 s of programme, the video shifted that much
+    /// later (-itsoffset): on the file's timeline (the audio's, from 0) the tone ends where the programme's first frame
+    /// (the video's 150th) is. 6 s late, the video's first packet is past libavformat's probe, which then gives the video
+    /// stream the format's start time (0: start_pts), as OpenCV sees it too.
     /// </summary>
-    string LateToneClip()
+    string LateToneClip(double late)
     {
-        string path = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, "tone-late.mkv");
+        string name = late == 0.5 ? "tone-late.mkv" : "tone-late6.mkv", shift = late.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string path = Path.Combine(Path.GetDirectoryName(clips.ThreeShots)!, name);
         if (File.Exists(path))
             return path;
         string ffmpeg = Path.Combine(Libs!, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
         string source = path + ".source.mp4", temporary = path + ".part.mkv";
         VideoReader.Run(ffmpeg,
             ["-v", "error", "-y",
-                "-f", "lavfi", "-i", "smptebars=s=320x240:r=25:d=6", "-f", "lavfi", "-i", "sine=f=1000:r=48000:d=6.5",
+                "-f", "lavfi", "-i", "smptebars=s=320x240:r=25:d=6", "-f", "lavfi", "-i", $"sine=f=1000:r=48000:d={(6 + late).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                 "-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=2", "-f", "lavfi", "-i", "anoisesrc=r=48000:a=0.1:d=2",
                 "-f", "lavfi", "-i", "mandelbrot=s=320x240:r=25", "-f", "lavfi", "-i", "anoisesrc=r=48000:a=0.1:c=pink:d=2",
                 "-filter_complex", "[4]trim=duration=2,setpts=PTS-STARTPTS[m];[0:v][2:v][m]concat=n=3:v=1:a=0[v];[1:a][3:a][5:a]concat=n=3:v=0:a=1[a]",
                 "-map", "[v]", "-map", "[a]", "-ac", "2", "-c:v", "mpeg4", "-q:v", "2", "-c:a", "aac", source],
             default);
         VideoReader.Run(ffmpeg,
-            ["-v", "error", "-y", "-itsoffset", "0.5", "-i", source, "-i", source, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "pcm_s16le", temporary],
+            ["-v", "error", "-y", "-itsoffset", shift, "-i", source, "-i", source, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "pcm_s16le", temporary],
             default);
         File.Delete(source);
         File.Move(temporary, path, overwrite: true);

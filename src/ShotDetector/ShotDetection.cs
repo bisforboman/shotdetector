@@ -1374,7 +1374,7 @@ public static partial class ShotDetection
                 ? decoded!.ReferenceTone(o, cancellationToken)
                 : video.GivenTone ?? throw new ArgumentException("TrimReferenceTone on frames from the caller needs YuvVideo.ReferenceTone: "
                     + "the tone in the video's audio, found with FrameReader's ReferenceToneFinder.");
-            o = TrimmedToTone(o, tone, video.Duration, !video.FromFrames ? decoded!.ToneOrigin(video, cancellationToken) : video.FramesToneOrigin);
+            o = TrimmedToTone(o, tone, video.Duration, !video.FromFrames ? decoded!.ToneOrigin(video, cancellationToken) : video.FramesToneOrigin, video.SeekShift);
         }
 
         if (o.StartTime is not null && video.Streaming)
@@ -1664,15 +1664,17 @@ public static partial class ShotDetection
     /// trailing one (ending in the last 5 s). The segments and <paramref name="duration"/> count from the file's start (as
     /// FrameReader's audio does); the times set count from the video's (frame 0, as scenedetect's), <paramref name="origin"/>
     /// later (<see cref="VideoReader.FramesToneOrigin"/>, <see cref="VideoReader.FileToneOrigin"/>: a file whose audio starts before its video).
+    /// The start time lands <paramref name="seekShift"/> later than that (<see cref="VideoReader.SeekShift"/>), so it is set that much earlier.
     /// </summary>
-    internal static DetectionOptions TrimmedToTone(DetectionOptions o, IReadOnlyList<FrameReader.ToneSegment> tone, TimeSpan? duration, TimeSpan origin = default)
+    internal static DetectionOptions TrimmedToTone(DetectionOptions o, IReadOnlyList<FrameReader.ToneSegment> tone, TimeSpan? duration, TimeSpan origin = default, TimeSpan seekShift = default)
     {
         var ends = TimeSpan.FromSeconds(5);
         string Seconds(TimeSpan t) => Math.Max(0, (t - origin).TotalSeconds).ToString("0.###", CultureInfo.InvariantCulture) + "s";
         int first = 0;
         if (tone.Count > 0 && tone[0].Start <= ends && (duration is not { } length || tone[0].Start <= length - tone[0].End))
         {
-            o = o with { StartTime = Seconds(tone[0].End) };
+            // The start seeks, which counts from the first frame (VideoReader.SeekShift); the end compares the frames' times.
+            o = o with { StartTime = Seconds(tone[0].End - seekShift) };
             first = 1;
         }
 
