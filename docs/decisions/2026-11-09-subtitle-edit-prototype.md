@@ -24,5 +24,15 @@ The outcome is in [docs/subtitle-edit-prototype.md](../subtitle-edit-prototype.m
 MIT, SE4 is GPL-3.0, and FastYuv must stay out of SE's single-file build). The NuGet route works only through the
 ffmpeg executable plus ffprobe, because SE's FFmpeg.AutoGen 9 breaks our in-process decoding. At SE's default,
 adaptive finds many more cuts than `scene` (81 % against 50 %), but it also flags many more false cuts on material with
-repeated frames (telecined film, low-bitrate encodes). Whether to approach SE with these numbers was put to the owner
-next.
+repeated frames (telecined film, low-bitrate encodes).
+
+### Follow-up: approach Subtitle Edit with these numbers?
+
+Choices:
+
+1. Not yet: fix adaptive's repeated-frame weakness first and measure again. *Recommended.*
+2. Yes: draft a discussion on SubtitleEdit/subtitleedit with the numbers as they stand.
+3. No: drop the SE side and keep `--save-shotchanges` only.
+
+The owner, 2026-11-10: **1, not yet.** SE stays parked until the backlog row "Adaptive: ignore repeated frames" is
+decided and done. Then the comparison runs again on the same labels (docs/subtitle-edit-prototype/).

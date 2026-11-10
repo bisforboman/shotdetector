@@ -1,7 +1,8 @@
 # Subtitle Edit's shot changes: the prototype and the numbers (issue #633)
 
-Status: **prototype done, numbers in (2026-11-09); nothing sent to Subtitle Edit.** Whether to approach Subtitle Edit
-is the owner's call ([decisions/2026-11-09-subtitle-edit-prototype.md](decisions/2026-11-09-subtitle-edit-prototype.md)).
+Status: **prototype done, numbers in (2026-11-09); nothing sent to Subtitle Edit.** On 2026-11-10 the owner chose not to
+approach Subtitle Edit yet. Adaptive's repeated-frame weakness comes first, then a new measurement
+([decisions/2026-11-09-subtitle-edit-prototype.md](decisions/2026-11-09-subtitle-edit-prototype.md)).
 This follows the scoping note [ideas/subtitle-edit.md](ideas/subtitle-edit.md) (2026-10-31), which shipped
 `--save-shotchanges` and parked the Subtitle Edit (SE) side until numbers showed a gain.
 
