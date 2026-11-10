@@ -19,3 +19,7 @@ without the timestamps tell that it was stopped?
 
 **Answer**: 1, hosts give timestamps. `FrameInputTests.AStoppedRunEndsWhereTheFileStoppedThereDoes` covers the variable
 rate, 25 fps, 29.97 fps in 1/1000 (VP9 WebM) and 24 fps in 1/1000 (H.264), in-process and through the executable.
+
+Since scenedetect 0.7.3 (the default compatibility mode from #768), the end of the stream is the last frame's time plus
+one frame as well (its #561), so in that mode a stop and the end give the same end; the distinction above holds for
+`PySceneDetectVersion.V0_7_2`.

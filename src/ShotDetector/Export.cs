@@ -187,7 +187,7 @@ public static partial class Export
         if (shots.Count == 0)
             return [];
         Directory.CreateDirectory(outputDir);
-        string name = Path.GetFileNameWithoutExtension(videoPath);
+        string name = Timeline.FileNameOf(videoPath, video.Compatibility);
         string imageFormat = new('0', (int)Math.Floor(Math.Log10(numImages)) + 2);
 
         // (frame index, file name) for every image; a frame may be wanted twice.
@@ -350,7 +350,7 @@ public static partial class Export
         }
 
         Directory.CreateDirectory(outputDir);
-        string name = Path.GetFileNameWithoutExtension(videoPath);
+        string name = Timeline.FileNameOf(videoPath, video.Compatibility);
 
         // As the CLI: ".mp4" unless the template ends in a 2-4 character extension.
         int dot = so.FileName.LastIndexOf('.');

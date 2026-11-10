@@ -14,15 +14,26 @@ namespace ShotDetector;
 public enum PySceneDetectVersion
 {
     /// <summary>scenedetect 0.7.1: real frame timestamps (handles variable frame rate), fractional downscale.</summary>
+    [Obsolete("scenedetect 0.7.1 is two releases back: this mode is no longer checked against it and goes at the next major version. Use V0_7_3 (the default) or V0_7_2.")]
     V0_7_1,
 
     /// <summary>
-    /// scenedetect 0.7.2 (the default): detect-hist's defaults are threshold 0.20 and 128 bins, detect-hash's 0.35 and
-    /// size 8; a minimum length given in frames is compared as a frame count in ContentDetector's flash filter (#577);
+    /// scenedetect 0.7.2: detect-hist's defaults are threshold 0.20 and 128 bins, detect-hash's 0.35 and size 8; a
+    /// minimum length given in frames is compared as a frame count in ContentDetector's flash filter (#577);
     /// AdaptiveDetector measures it from the frame it cuts at (#408); detect-threshold ignores fade-outs shorter than
     /// <see cref="DetectionOptions.MinOutLength"/> (0.1 s by default).
     /// </summary>
     V0_7_2,
+
+    /// <summary>
+    /// scenedetect 0.7.3 (the default): detection is 0.7.2's. A run that reads to the end of the video ends its last
+    /// shot one frame after the last frame's own time, not after the frame number's (#561: what differs on variable
+    /// frame rate or a start offset); the scene list CSV's first row starts with "Timecode List:" also without cuts;
+    /// the EDL counts frames at the nominal rate (24 a timecode second at 23.976 fps, #593); the OTIO export's
+    /// available range is the video's length (OpenCV's frame count) instead of 1980 frames (#580); $VIDEO_NAME of a
+    /// URL is its path's last segment (#197).
+    /// </summary>
+    V0_7_3,
 }
 
 /// <summary>Which PySceneDetect detector to run.</summary>
@@ -242,8 +253,8 @@ public sealed record DetectorSettings(DetectorKind Kind)
 /// <summary>Detection settings. Defaults match the scenedetect CLI.</summary>
 public sealed record DetectionOptions
 {
-    /// <summary>Which PySceneDetect release to reproduce (default 0.7.2, the newest).</summary>
-    public PySceneDetectVersion Compatibility { get; init; } = PySceneDetectVersion.V0_7_2;
+    /// <summary>Which PySceneDetect release to reproduce (default 0.7.3, the newest).</summary>
+    public PySceneDetectVersion Compatibility { get; init; } = PySceneDetectVersion.V0_7_3;
 
     /// <summary>Which detector to run (default adaptive).</summary>
     public DetectorKind Detector { get; init; } = DetectorKind.Adaptive;
@@ -926,7 +937,7 @@ public static partial class ShotDetection
     /// <see cref="DetectionOptions.DropShortScenes"/>/<see cref="DetectionOptions.MergeLastScene"/>, apply as in scenedetect.
     /// </summary>
     /// <param name="videoPath">The video the list is for.</param>
-    /// <param name="sceneListCsv">A scene list CSV, e.g. from <see cref="Shots.Csv"/> or scenedetect's list-scenes.</param>
+    /// <param name="sceneListCsv">A scene list CSV, e.g. from <see cref="Shots.Csv(IEnumerable{Shot}, bool, IEnumerable{FrameTime})"/> or scenedetect's list-scenes.</param>
     /// <param name="column">The column with each shot's start.</param>
     /// <param name="options">Uses the time range, MinSceneLength, DropShortScenes, MergeLastScene, Compatibility and FfmpegDirectory.</param>
     /// <param name="cancellationToken">Cancels the probe.</param>
@@ -945,7 +956,7 @@ public static partial class ShotDetection
     /// <summary>
     /// load-scenes for frames the caller decodes: <see cref="LoadScenes(string, string, string, DetectionOptions?, CancellationToken)"/>
     /// with the video's properties from <paramref name="video"/> instead of a probe, and the scene list as text (e.g. a
-    /// <see cref="StringReader"/> over <see cref="Shots.Csv"/>'s output, a list edited in a browser). No frame is given
+    /// <see cref="StringReader"/> over <see cref="Shots.Csv(IEnumerable{Shot}, bool, IEnumerable{FrameTime})"/>'s output, a list edited in a browser). No frame is given
     /// or converted, so no converter is needed. The result is a file's for the same list (shots, cuts, positions and the
     /// exports made from them, byte for byte) when <paramref name="video"/> has the file's values, its positions from
     /// <see cref="YuvVideo.FrameTimestamps"/> as a file's are from its packets (without them, frame n is at n / rate, as
@@ -1588,10 +1599,15 @@ public static partial class ShotDetection
         {
             // Where scenedetect finds the stream after the loop: past the end if it read until EOF,
             // otherwise at the last frame read (which may be a skipped one). Frames from the caller that end before
-            // their timestamps do were stopped, as a file's run is by its end time.
+            // their timestamps do were stopped, as a file's run is by its end time (which matters for 0.7.2 only).
             if (readToEnd && video.FramesStoppedEarly)
                 readToEnd = false;
-            var last = readToEnd ? video.PositionAfterDecoding(startFrame + frameCount) : video.Position(startFrame + frameCount - 1);
+
+            // 0.7.2 read the position after the failed read (OpenCV's 0, so the frame-number fallback); 0.7.3 keeps the
+            // last frame's own (#561).
+            var last = readToEnd && o.Compatibility < PySceneDetectVersion.V0_7_3
+                ? video.PositionAfterDecoding(startFrame + frameCount)
+                : video.Position(startFrame + frameCount - 1);
             runRange = (first, last.PlusFrames(1));
             foreach (var detector in detectors)
             {

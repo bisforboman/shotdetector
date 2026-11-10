@@ -19,12 +19,13 @@ public static class Timeline
     public static string Edl(DetectionResult result, string? title = null, string reel = "AX", string? startTimecode = null)
     {
         var shots = result.Shots;
-        int offset = startTimecode is { } tc && tc.Trim().Length > 0 && shots.Count > 0 ? ParseSmpte(tc, result.Video.Reader.Fps) : 0;
+        int? nominal = result.Video.Compatibility >= PySceneDetectVersion.V0_7_3 ? EdlNominalRate(result.Video.Reader.Fps) : null;
+        int offset = startTimecode is { } tc && tc.Trim().Length > 0 && shots.Count > 0 ? ParseSmpte(tc, result.Video.Reader.Fps, nominal) : 0;
         var sb = new StringBuilder($"* CREATED WITH SHOTDETECTOR {Version}\n");
         sb.Append($"TITLE: {Template(title ?? "$VIDEO_NAME", result)}\nFCM: NON-DROP FRAME\n\n");
         for (int i = 0; i < shots.Count; i++)
         {
-            string a = EdlTimecode(shots[i].Start.PlusFrames(offset)), b = EdlTimecode(shots[i].End.PlusFrames(offset));
+            string a = EdlTimecode(shots[i].Start.PlusFrames(offset), nominal), b = EdlTimecode(shots[i].End.PlusFrames(offset), nominal);
             sb.Append(CultureInfo.InvariantCulture, $"{i + 1:000}  {reel} V     C        {a} {b} {a} {b}\n");
         }
 
@@ -140,7 +141,8 @@ public static class Timeline
 
     /// <summary>
     /// save-otio: an OpenTimelineIO Timeline.1 JSON document with a video track (and an audio track) of one clip per
-    /// shot. As scenedetect writes it, each clip's available range is 1980 frames, whatever the video's length.
+    /// shot. Each clip's available range is the video's length (OpenCV's frame count; null when unknown), as scenedetect
+    /// 0.7.3 writes it; before 0.7.3 (<see cref="DetectedVideo.Compatibility"/>) it is 1980 frames, whatever the length.
     /// </summary>
     /// <param name="result">The detection result; needs the video's path.</param>
     /// <param name="name">The timeline's name; default "{video} (PySceneDetect)", scenedetect's.</param>
@@ -150,6 +152,11 @@ public static class Timeline
         string path = Path.GetFullPath(PathOf(result)), file = Path.GetFileName(path);
         double fps = result.Video.Reader.Fps.Value;
         string rate = Stats.PyFloat(fps);
+
+        // write_scene_list_otio's source_duration: base timecode + trunc(CAP_PROP_FRAME_COUNT), round(seconds * fps, 6).
+        double? available = result.Video.Compatibility < PySceneDetectVersion.V0_7_3 ? 1980.0
+            : result.Video.OpenCvFrameCount is { } count ? Round6(FrameTime.Frame(count, result.Video.Reader.Fps).Seconds * fps)
+            : null;
         string Time(double value, int indent)
         {
             string pad = new(' ', indent);
@@ -171,16 +178,19 @@ public static class Timeline
             {{pad}}        "DEFAULT_MEDIA": {
             {{pad}}            "OTIO_SCHEMA": "ExternalReference.1",
             {{pad}}            "name": {{Json(file)}},
-            {{pad}}            "available_range": {
-            {{pad}}                "OTIO_SCHEMA": "TimeRange.1",
-            {{pad}}                "duration": {{Time(1980.0, pad.Length + 16)}},
-            {{pad}}                "start_time": {{Time(0.0, pad.Length + 16)}}
-            {{pad}}            },
+            {{pad}}            "available_range": {{AvailableRange(pad + "            ")}},
             {{pad}}            "available_image_bounds": null,
             {{pad}}            "target_url": {{Json(path)}}
             {{pad}}        }
             {{pad}}    },
             {{pad}}    "active_media_reference_key": "DEFAULT_MEDIA"
+            {{pad}}}
+            """.Replace("\r\n", "\n");
+        string AvailableRange(string pad) => available is not { } duration ? "null" : $$"""
+            {
+            {{pad}}    "OTIO_SCHEMA": "TimeRange.1",
+            {{pad}}    "duration": {{Time(duration, pad.Length + 4)}},
+            {{pad}}    "start_time": {{Time(0.0, pad.Length + 4)}}
             {{pad}}}
             """.Replace("\r\n", "\n");
         string Track(string trackName, string kind)
@@ -345,26 +355,110 @@ public static class Timeline
         result.VideoPath ?? throw new InvalidOperationException("This export needs the video as a file path; the input was a Stream.");
 
     /// <summary>The video's name as scenedetect gives it: the file name without extension, cut at an image sequence's '%'.</summary>
-    internal static string VideoName(DetectionResult result)
+    internal static string VideoName(DetectionResult result) =>
+        result.VideoPath is { } path ? VideoName(path, result.Video.Compatibility) : "stream";
+
+    /// <summary>
+    /// $VIDEO_NAME in output file names (split-video, save-images, the CLI's paths): the file name without its extension,
+    /// and from 0.7.3 a URL's name as <see cref="VideoName(string, PySceneDetectVersion)"/> gives it.
+    /// </summary>
+    internal static string FileNameOf(string path, PySceneDetectVersion compatibility) =>
+        compatibility >= PySceneDetectVersion.V0_7_3 && path.Contains("://", StringComparison.Ordinal)
+            ? VideoName(path, compatibility)
+            : Path.GetFileNameWithoutExtension(path);
+
+    /// <summary>
+    /// VideoStreamCv2.name: get_file_name(path) without the extension (from the last '.'), cut at an image sequence's
+    /// last '%'. From 0.7.3 a URL (anything with "://") is named by its path's last non-empty segment, percent-decoded,
+    /// so the query and fragment stay out; with no path, by its host (and "_port"), extension kept (#197).
+    /// </summary>
+    internal static string VideoName(string path, PySceneDetectVersion compatibility)
     {
-        if (result.VideoPath is not { } path)
-            return "stream";
-        string name = Path.GetFileName(path);
+        string name;
+        if (compatibility >= PySceneDetectVersion.V0_7_3 && path.Contains("://", StringComparison.Ordinal))
+        {
+            var (host, urlPath) = SplitUrl(path);
+            string? segment = urlPath.Split('/').LastOrDefault(seg => seg.Length > 0);
+            if (segment is null)
+                return Sequence(host);
+            name = Uri.UnescapeDataString(segment);
+        }
+        else
+        {
+            name = Path.GetFileName(path);
+        }
+
         int dot = name.LastIndexOf('.');
-        if (dot > 0)
+        if (dot >= 0)
             name = name[..dot];
-        int seq = name.IndexOf('%');
-        return seq >= 0 ? name[..seq] : name;
+        return Sequence(name);
+
+        static string Sequence(string n) => n.LastIndexOf('%') is var seq and >= 0 ? n[..seq] : n;
     }
 
-    /// <summary>_edl_timecode: HH:MM:SS:FF from the float seconds, frames as int((seconds * fps) % fps).</summary>
-    static string EdlTimecode(FrameTime t)
+    /// <summary>urllib.parse.urlsplit's path, and its hostname (lower case, no userinfo) with "_port" when there is one.</summary>
+    static (string Host, string Path) SplitUrl(string url)
     {
+        string rest = url;
+        int colon = url.IndexOf(':', StringComparison.Ordinal);
+        if (colon > 0 && char.IsAsciiLetter(url[0]) && url[..colon].All(c => char.IsAsciiLetterOrDigit(c) || c is '+' or '-' or '.'))
+            rest = url[(colon + 1)..];
+        string netloc = "";
+        if (rest.StartsWith("//", StringComparison.Ordinal))
+        {
+            int end = rest.IndexOfAny(['/', '?', '#'], 2);
+            netloc = end < 0 ? rest[2..] : rest[2..end];
+            rest = end < 0 ? "" : rest[end..];
+        }
+
+        int stop = rest.IndexOfAny(['?', '#']);
+        string urlPath = stop < 0 ? rest : rest[..stop];
+        string hostPort = netloc[(netloc.LastIndexOf('@') + 1)..], host = hostPort, port = "";
+        if (hostPort.StartsWith('[') && hostPort.IndexOf(']', StringComparison.Ordinal) is var close and > 0)
+            (host, port) = (hostPort[1..close], hostPort[(close + 1)..].StartsWith(':') ? hostPort[(close + 2)..] : "");
+        else if (hostPort.IndexOf(':', StringComparison.Ordinal) is var c and >= 0)
+            (host, port) = (hostPort[..c], hostPort[(c + 1)..]);
+        host = host.ToLowerInvariant();
+        bool hasPort = port.Length > 0 && port.All(char.IsAsciiDigit) && int.TryParse(port, NumberStyles.None, CultureInfo.InvariantCulture, out int n) && n > 0;
+        return (host.Length > 0 && hasPort ? $"{host}_{int.Parse(port, CultureInfo.InvariantCulture)}" : host, urlPath);
+    }
+
+    /// <summary>
+    /// _edl_nominal_rate (0.7.3): frames per timecode second for non-drop-frame timecode, the whole rate for whole
+    /// rates and N for N * 1000/1001 (framerate_to_fraction of the float rate); null for any other rate.
+    /// </summary>
+    internal static int? EdlNominalRate(Fps fps)
+    {
+        var canonical = Fps.FromFloat(fps.Value);
+        return canonical.Den == 1 ? canonical.Num
+            : canonical.Den == 1001 && canonical.Num % 1000 == 0 ? canonical.Num / 1000
+            : null;
+    }
+
+    /// <summary>
+    /// _edl_timecode: with a nominal rate (0.7.3), HH:MM:SS:FF counting the frame number at that rate; otherwise from
+    /// the float seconds, frames as int((seconds * fps) % fps).
+    /// </summary>
+    static string EdlTimecode(FrameTime t, int? nominal)
+    {
+        if (nominal is { } rate)
+        {
+            long frameNum = t.FrameNum, total = PyFloorDiv(frameNum, rate);
+            return string.Create(CultureInfo.InvariantCulture,
+                $"{PyFloorDiv(total, 3600):00}:{PyMod(PyFloorDiv(total, 60), 60):00}:{PyMod(total, 60):00}:{PyMod(frameNum, rate):00}");
+        }
+
         double s = t.Seconds, fps = t.Fps.Value;
         int hours = (int)PyFloorDiv(s, 3600), minutes = (int)PyFloorDiv(PyMod(s, 3600), 60), seconds = (int)PyMod(s, 60);
         int frames = (int)PyMod(s * fps, fps);
         return string.Create(CultureInfo.InvariantCulture, $"{hours:00}:{minutes:00}:{seconds:00}:{frames:00}");
     }
+
+    /// <summary>Python's int //: floored.</summary>
+    static long PyFloorDiv(long a, long b) => (long)Math.Floor((decimal)a / b);
+
+    /// <summary>Python's int %: the divisor's sign.</summary>
+    static long PyMod(long a, long b) => a - (b * PyFloorDiv(a, b));
 
     /// <summary>Python's float %: fmod, moved into the divisor's sign.</summary>
     static double PyMod(double a, double b)
@@ -387,8 +481,11 @@ public static class Timeline
         return div - floor > 0.5 ? floor + 1.0 : floor;
     }
 
-    /// <summary>_parse_edl_start_timecode: SMPTE HH:MM:SS:FF or HHMMSSFF to a frame count.</summary>
-    static int ParseSmpte(string value, Fps fps)
+    /// <summary>
+    /// _parse_edl_start_timecode: SMPTE HH:MM:SS:FF or HHMMSSFF to a frame count; with a nominal rate (0.7.3), the
+    /// seconds count that many frames each.
+    /// </summary>
+    static int ParseSmpte(string value, Fps fps, int? nominal)
     {
         string v = value.Trim();
         string[] parts = v.Contains(':') ? v.Split(':')
@@ -397,10 +494,11 @@ public static class Timeline
         if (parts.Length != 4 || !parts.All(p => p.Length > 0 && p.All(char.IsDigit)))
             throw new ArgumentException($"Invalid start timecode '{value}': expected HH:MM:SS:FF or 8 digits (HHMMSSFF).");
         int[] n = parts.Select(p => int.Parse(p, CultureInfo.InvariantCulture)).ToArray();
-        int maxFrames = (int)Math.Ceiling(fps.Value);
+        int maxFrames = nominal ?? (int)Math.Ceiling(fps.Value);
         if (n[1] >= 60 || n[2] >= 60 || n[3] >= maxFrames)
             throw new ArgumentException($"Invalid start timecode '{value}': MM<60, SS<60, FF<{maxFrames} required.");
-        return (int)Math.Round((n[0] * 3600 + n[1] * 60 + n[2]) * fps.Value) + n[3];
+        int seconds = (n[0] * 3600) + (n[1] * 60) + n[2];
+        return nominal is { } rate ? (seconds * rate) + n[3] : (int)Math.Round(seconds * fps.Value) + n[3];
     }
 
     /// <summary>Python's round() to an integer (half to even), as text.</summary>

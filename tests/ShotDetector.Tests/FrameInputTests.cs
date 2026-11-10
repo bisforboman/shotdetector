@@ -424,9 +424,14 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         var stopped = ShotDetection.Detect(vfr, vfrFrames.Take(75), options);
         Assert.Equal(3.92 + (1 / stopped.Video.FrameRate.Value), stopped.Shots[^1].End.Seconds, 3);
 
-        // At 29.97 fps in 1/1000 without the timestamps, the frames' end is the video's: 75 over the average rate.
+        // At 29.97 fps in 1/1000 without the timestamps, the frames' end is the video's: in 0.7.3 its last frame's own
+        // time (2.469 s) plus a frame, as a file read to its end (#561); in 0.7.2, 75 over the average rate.
         var (untimed, untimedFrames) = Decoded(ntsc);
-        Assert.Equal(75 * 1001 / 30000.0, ShotDetection.Detect(untimed, untimedFrames.Take(75), options).Shots[^1].End.Seconds, 9);
+        var untimedRun = ShotDetection.Detect(untimed, untimedFrames.Take(75), options);
+        Assert.Equal(2.469 + (1001 / 30000.0), untimedRun.Shots[^1].End.Seconds, 6); // the frame added in whole µs
+        (untimed, untimedFrames) = Decoded(ntsc);
+        var untimed072 = ShotDetection.Detect(untimed, untimedFrames.Take(75), options with { Compatibility = PySceneDetectVersion.V0_7_2 });
+        Assert.Equal(75 * 1001 / 30000.0, untimed072.Shots[^1].End.Seconds, 9);
     }
 
     [Fact]
@@ -446,10 +451,17 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(ended.Shots, stopped.Shots);
         Assert.Equal(ended.Range, stopped.Range);
 
-        // Read to the last entry: scenedetect's end of the stream, the frames over the average rate, also when a frame
-        // before it was dropped.
-        Assert.Equal(0.4, ShotDetection.Detect(video, At(0, 1, 2, 3, 4, 5, 6, 7, 8, 9), options).Shots[^1].End.Seconds, 9);
-        Assert.Equal(0.36, ShotDetection.Detect(video, At(0, 1, 2, 4, 5, 6, 7, 8, 9), options).Shots[^1].End.Seconds, 9);
+        // Read to the last entry: scenedetect 0.7.3's end of the stream, the last frame (0.61 s) plus a frame, also when a
+        // frame before it was dropped (#561); 0.7.2's, the frames over the average rate.
+        Assert.Equal(0.65, ShotDetection.Detect(video, At(0, 1, 2, 3, 4, 5, 6, 7, 8, 9), options).Shots[^1].End.Seconds, 9);
+        Assert.Equal(0.65, ShotDetection.Detect(video, At(0, 1, 2, 4, 5, 6, 7, 8, 9), options).Shots[^1].End.Seconds, 9);
+        var v072 = options with { Compatibility = PySceneDetectVersion.V0_7_2 };
+
+        // 0.7.2 ended a run read to its end where reading failed, so frames stopped early must not count as read to the end
+        // (0.7.3 ends both at the last frame plus a frame).
+        Assert.Equal(0.34, ShotDetection.Detect(video, At(0, 1, 2, 3, 4), v072).Shots[^1].End.Seconds, 9);
+        Assert.Equal(0.4, ShotDetection.Detect(video, At(0, 1, 2, 3, 4, 5, 6, 7, 8, 9), v072).Shots[^1].End.Seconds, 9);
+        Assert.Equal(0.36, ShotDetection.Detect(video, At(0, 1, 2, 4, 5, 6, 7, 8, 9), v072).Shots[^1].End.Seconds, 9);
     }
 
     [Fact]

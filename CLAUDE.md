@@ -97,7 +97,7 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
   solution, sets `core.hooksPath`, and puts BtbN's pinned FFmpeg 8.1 gpl-shared (in `~/.cache/shotdetector`) on PATH
   and in `SHOTDETECTOR_FFMPEG_LIBS`; scenedetect and the samples it leaves to you.
 - Prerequisites: .NET 10, ffmpeg on PATH, PowerShell (`pwsh`: tools/make-samples.ps1, Invoke-Mutations.ps1), and for
-  the comparisons `pip install scenedetect==0.7.2 opencv-python-headless`.
+  the comparisons `pip install scenedetect==0.7.3 opencv-python-headless`.
 - `dotnet test ShotDetector.slnx` (~3 min; the video tests make clips). One class: `--filter
   "FullyQualifiedName~VideoTests"`.
 - `SHOTDETECTOR_FFMPEG_LIBS`: a folder of FFmpeg 8.1's shared libraries; without it the in-process tests pass without
@@ -106,7 +106,7 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
   archive from the release pinned in `.github/actions/btbn-ffmpeg/action.yml`, with `lib/*.so*` copied into `bin/` as
   the action does.
 - For detector changes: `pwsh tools/make-samples.ps1` (once, into `samples/`), then `python tools/compare.py
-  samples/*.mp4 ... --detector all --stats`; `--compat 0.7.1` with 0.7.1 installed for the previous release.
+  samples/*.mp4 ... --detector all --stats`; `--compat 0.7.2` with 0.7.2 installed for the previous release.
 
 ## Layout
 

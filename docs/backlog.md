@@ -22,6 +22,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: measuring the first slice (#771) on the Sintel trailer with `tools/recut.py`, a 16-frame black interstitial cut in the old cut was joined to the next shot in the new one (its grade lifts the black): the joined shot matched one old shot, the black part read as a negative trim and the black shot as removed. Matching runs would report those as unchanged; docs/decisions/2026-11-09-shotdetect-diff.md
   - Status: Open
 
+- save-images `-i/--interval` with `--min-images`/`--max-images` (scenedetect 0.7.3, its #280): images per shot by its length (floor(length / interval) + 1, picked as with `-n`), the HTML page's rows then of differing lengths
+  - Why: new in scenedetect 0.7.3, which the default mode now follows (#768); the rest of 0.7.3 that ShotDetector has is reproduced, this option is missing. `ImageOptions` and the CLI's `--num-images`; check the picks against scenedetect's as the thumbnails were (byte-identical names, the same frames)
+  - Status: Open
+
 ## Waiting
 
 - Optional: the owner times the sequential conversion thread on the 16-thread Ryzen

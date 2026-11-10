@@ -76,6 +76,36 @@ public class KeepPositionsTests(KeepPositionsClips clips) : IClassFixture<KeepPo
 {
     static readonly DetectionOptions Content = new() { Detector = DetectorKind.Content };
 
+    // scenedetect 0.7.3 (#561): a run that reads to the end ends its last shot a frame after the last frame's own time.
+    // 0.7.2 read the position after the failed read, OpenCV's 0, so the frame-number fallback: 150 frames at the
+    // average rate, not the last frame's 9.52 s plus one frame (frames 60 on are 12.5 fps).
+    [Fact]
+    public void TheLastShotEndsAfterTheLastFramesOwnTimeFrom073()
+    {
+        var run = ShotDetection.Detect(clips.Paths["vfr"], Content);
+        var last = run.Video.Position(run.FrameCount - 1);
+        Assert.Equal(150, run.FrameCount);
+        Assert.Equal(9.52, last.Seconds, 6);
+        Assert.Equal(last.PlusFrames(1).Seconds, run.Shots[^1].End.Seconds);
+        Assert.Equal(last.PlusFrames(1).Timecode(), run.Shots[^1].End.Timecode());
+
+        var before = ShotDetection.Detect(clips.Paths["vfr"], Content with { Compatibility = PySceneDetectVersion.V0_7_2 });
+        var fps = before.Video.Reader.Fps;
+        Assert.Equal(150.0 * fps.Den / fps.Num, before.Shots[^1].End.Seconds, 6);
+        Assert.NotEqual(run.Shots[^1].End.Timecode(), before.Shots[^1].End.Timecode());
+        Assert.Equal(run.Cuts.Select(c => c.Seconds), before.Cuts.Select(c => c.Seconds));
+    }
+
+    // A time range that stops before the end ends at the last frame read, in both releases.
+    [Fact]
+    public void ARunStoppedBeforeTheEndEndsAtItsLastFrameInBothReleases()
+    {
+        var o = Content with { EndTime = "6s" };
+        var now = ShotDetection.Detect(clips.Paths["vfr"], o);
+        var before = ShotDetection.Detect(clips.Paths["vfr"], o with { Compatibility = PySceneDetectVersion.V0_7_2 });
+        Assert.Equal(now.Shots[^1].End.Seconds, before.Shots[^1].End.Seconds);
+    }
+
     /// <summary>What a result gives: its shots and cuts as positions, its scene list, and the exports that need no file.</summary>
     static string[] Outputs(DetectionResult r) =>
     [

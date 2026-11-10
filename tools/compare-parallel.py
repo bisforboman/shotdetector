@@ -2,7 +2,7 @@
 
 Usage: python tools/compare-parallel.py <video>... [--chunks N] [--require-chunks] [--report summary.md] [--fast-yuv]
 
-Each video runs with all five detectors at once and --stats, in 0.7.2 and 0.7.1 mode, once with --sequential and once
+Each video runs with all five detectors at once and --stats, in 0.7.3 and 0.7.2 mode, once with --sequential and once
 with --chunks N (default: --parallel, the automatic count from 4 CPUs on, like the CLI's default but at any frame
 size, and with a warning when it can't chunk). A run that fell back to sequential (the CLI's summary doesn't
 say "in N chunks") is reported; with --require-chunks it fails. Extra shotdetect options: SHOTDETECTOR_OURS_ARGS.
@@ -57,7 +57,7 @@ def main() -> int:
     rows, failed = [], False
     with tempfile.TemporaryDirectory() as tmp:
         for video in a.videos:
-            for compat in ("0.7.2", "0.7.1"):
+            for compat in ("0.7.3", "0.7.2"):
                 mode = ["--compat", compat]
                 ref, _ = run(exe, video, mode + ["--sequential"], Path(tmp) / "seq")
                 got, summary = run(exe, video, mode + parallel, Path(tmp) / "par")

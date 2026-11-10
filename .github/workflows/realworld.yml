@@ -57,7 +57,7 @@ jobs:
           version: ${{ env.FFMPEG }}
 
       - name: Install scenedetect
-        run: pip install scenedetect==0.7.2 opencv-python-headless==5.0.0.93
+        run: pip install scenedetect==0.7.3 opencv-python-headless==5.0.0.93
 
       - name: Build
         run: dotnet build src/ShotDetector.Cli -c Release

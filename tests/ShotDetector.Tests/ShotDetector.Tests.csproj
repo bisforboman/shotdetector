@@ -4,6 +4,8 @@
     <IsPackable>false</IsPackable>
     <!-- Real source paths (not CI's /_/), so a failed test's annotation points at its file (GitHubActions logger). -->
     <ContinuousIntegrationBuild>false</ContinuousIntegrationBuild>
+    <!-- The tests keep checking PySceneDetectVersion.V0_7_1, obsolete until the next major version removes it. -->
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
