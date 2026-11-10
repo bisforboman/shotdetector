@@ -1592,7 +1592,7 @@ public static partial class ShotDetection
         {
             // Where scenedetect finds the stream after the loop: past the end if it read until EOF,
             // otherwise at the last frame read (which may be a skipped one). Frames from the caller that end before
-            // their timestamps do were stopped, as a file's run is by its end time.
+            // their timestamps do were stopped, as a file's run is by its end time (which matters for 0.7.2 only).
             if (readToEnd && video.FramesStoppedEarly)
                 readToEnd = false;
 

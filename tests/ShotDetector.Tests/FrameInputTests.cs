@@ -456,6 +456,10 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.Equal(0.65, ShotDetection.Detect(video, At(0, 1, 2, 3, 4, 5, 6, 7, 8, 9), options).Shots[^1].End.Seconds, 9);
         Assert.Equal(0.65, ShotDetection.Detect(video, At(0, 1, 2, 4, 5, 6, 7, 8, 9), options).Shots[^1].End.Seconds, 9);
         var v072 = options with { Compatibility = PySceneDetectVersion.V0_7_2 };
+
+        // 0.7.2 ended a run read to its end where reading failed, so frames stopped early must not count as read to the end
+        // (0.7.3 ends both at the last frame plus a frame).
+        Assert.Equal(0.34, ShotDetection.Detect(video, At(0, 1, 2, 3, 4), v072).Shots[^1].End.Seconds, 9);
         Assert.Equal(0.4, ShotDetection.Detect(video, At(0, 1, 2, 3, 4, 5, 6, 7, 8, 9), v072).Shots[^1].End.Seconds, 9);
         Assert.Equal(0.36, ShotDetection.Detect(video, At(0, 1, 2, 4, 5, 6, 7, 8, 9), v072).Shots[^1].End.Seconds, 9);
     }
