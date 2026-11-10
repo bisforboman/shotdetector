@@ -18,6 +18,9 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 - Find why CI's `build` job failed on main at 9adc283 (run 41849590819, 2026-11-04)
   - Why: that push (#737) changed only docs, and later pushes to main are green, so it looks like a flaky test or step; find which (the job's logs and annotations), then fix it or record it as the VideoWriter flake was (docs/decisions/2026-10-10-videowriter-s-rare-ci-mismatch.md)
   - Status: Open
+- `shotdetect diff`: match a new shot to a run of old ones (and an old shot to a run of new ones), for a cut the detector sees in only one of the two cuts
+  - Why: measuring the first slice (#771) on the Sintel trailer with `tools/recut.py`, a 16-frame black interstitial cut in the old cut was joined to the next shot in the new one (its grade lifts the black): the joined shot matched one old shot, the black part read as a negative trim and the black shot as removed. Matching runs would report those as unchanged; docs/decisions/2026-11-09-shotdetect-diff.md
+  - Status: Open
 
 - save-images `-i/--interval` with `--min-images`/`--max-images` (scenedetect 0.7.3, its #280): images per shot by its length (floor(length / interval) + 1, picked as with `-n`), the HTML page's rows then of differing lengths
   - Why: new in scenedetect 0.7.3, which the default mode now follows (#768); the rest of 0.7.3 that ShotDetector has is reproduced, this option is missing. `ImageOptions` and the CLI's `--num-images`; check the picks against scenedetect's as the thumbnails were (byte-identical names, the same frames)
@@ -46,6 +49,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Status: Waiting (parked by the owner, 2026-11-01; the suggestions for picking it up again are in the decision record's "Parked" section)
 
 ## Maybe
+
+- `shotdetect diff`'s outputs beyond the report: a change EDL, and SRT/WebVTT retimed to the new cut (cues in unchanged or moved shots shifted, in trimmed or removed shots flagged), then a public API
+  - Why: issue #771's later slices, which stay open there: sound editors re-conform to new cuts, subtitlers retime by hand. Unchecked: which change-EDL form editors' tools take, and whether Subtitle Edit or another tool already retimes to a new cut (#633). The public API waits for these, so its shape settles first (docs/decisions/2026-11-09-shotdetect-diff.md)
+  - Status: Maybe
 
 - Frames from the caller in 4:1:1 and 4:4:0 (yuvj411p, yuvj440p): `YuvVideo`/`YuvFrame` and FastYuv converting them as swscale does
   - Why: ManagedCodecs 0.6.0 decodes 4:1:1 MJPEG (DV-era capture cards) and 4:4:0, and shotdetector-web refuses both because ShotDetector's frame source takes only yuv420p/yuvj420p, yuv422p/yuvj422p and yuv420p10le (asked 2026-11-02). Rare formats: the owner put it in Maybe. Samples: shotdetector-web's tools/make-samples.sh makes 320x240 MJPEG AVIs that FFmpeg reads as yuvj411p and yuvj440p, from 4:2:0 and 4:2:2 JPEGs with rewritten SOF sampling factors
@@ -101,7 +108,11 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - ShotDetector as Subtitle Edit's shot-change engine (#633)
   - Why: Subtitlers snap cues to shot changes; Subtitle Edit uses FFmpeg's scene score. Scoping: docs/ideas/subtitle-edit.md (no engine seam in SE; SE5 MIT, SE4 GPL-3.0; 3-5 PRs here plus 1 in SE)
-  - Status: Maybe; first slice done 2026-10-31 (`--save-shotchanges` and `Timeline.ShotChanges`, SE's .shotchanges format); next, machine-readable progress for SE; the SE side waits on the owner
+  - Status: Maybe; first slice done 2026-10-31 (`--save-shotchanges` and `Timeline.ShotChanges`, SE's .shotchanges format); prototype and hand-labelled numbers 2026-11-09 (docs/subtitle-edit-prototype.md): adaptive beats SE's default on clean material, loses on repeated frames, and FFmpeg at 0.2 beats both, so SE waits on the row below and the owner
+
+- Adaptive: ignore repeated frames (pulldown, encodes that drop and repeat frames)
+  - Why: AdaptiveDetector divides a frame's change by its neighbours' mean, and a repeated frame changes by zero, so moving shots next to repeats score past the threshold. On the Subtitle Edit prototype's labels (docs/subtitle-edit-prototype.md) this gave 67 false cuts against FFmpeg scene's 7 at SE's default, all on a telecined film and a frame-repeating encode, while clean material had none. An option (off by default: scenedetect 0.7.2 does the same) that leaves repeated frames out of the neighbour mean, measured again on those labels. Departs from scenedetect, so the owner decides first
+  - Status: Maybe
 
 - `Auto`'s http(s) fallback to an FFmpeg 9 executable
   - Why: when the libraries fail to open an http or https URL (a format FrameReader.Native leaves out, such as DASH), `Auto` reports the failure instead of using the executable (`VideoReader.AutoHttpRefusal`), because the executable didn't check an HLS playlist's https segments. FFmpeg 9 does (docs/decisions/2026-11-03-hls-warning-ffmpeg-9.md), so with an FFmpeg 9 executable the fallback would be as safe as in-process. It would ask the executable's version before falling back, and change what `Auto` does with a URL, so it is the owner's call

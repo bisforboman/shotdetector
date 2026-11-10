@@ -5,6 +5,7 @@ using ShotDetector;
 const string Usage = """
     Usage: shotdetect -i <video> [options]
            shotdetect qc -i <file> [options]   delivery checks (loudness ...): shotdetect qc --help
+           shotdetect diff <old> <new> [options]   what changed between two cuts: shotdetect diff --help
 
       -i, --input <file|url|->           Video file, a URL (http, rtsp, ...), or - for standard input
 
@@ -154,6 +155,10 @@ var split = new SplitOptions();
 // shotdetect qc: the delivery checks, a command of its own (Qc.cs).
 if (args.Length > 0 && args[0] == "qc")
     return Qc.Run(args[1..]);
+
+// shotdetect diff: two cuts of a programme compared shot by shot, a command of its own (Diff.cs).
+if (args.Length > 0 && args[0] == "diff")
+    return Diff.Run(args[1..]);
 
 try
 {

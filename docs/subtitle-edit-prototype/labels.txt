@@ -1,0 +1,440 @@
+# C = hard cut, G = gradual transition (fade/dissolve), N = no shot change (motion, flash, light, flicker)
+sint-001 G fade in from black
+sint-002 C
+sint-003 C from black
+sint-004 C to black
+sint-005 N dark, same shot
+sint-006 N dark, same shot
+sint-007 C
+sint-008 C
+sint-009 C
+sint-010 C to black
+sint-011 N motion
+sint-012 N motion
+sint-013 C through one black frame
+sint-014 N title, background shift
+tear-001 C from black
+tear-002 N light
+tear-003 N light
+tear-004 C
+tear-005 C
+tear-006 C
+tear-007 C
+tear-008 C
+tear-009 C
+tear-010 N hologram flicker
+tear-011 N
+tear-012 C
+tear-013 N
+tear-014 C
+tear-015 C
+tear-016 C
+tear-017 C to black
+tear-018 C
+tear-019 C
+tear-020 C
+tear-021 C
+tear-022 C
+tear-023 C
+tear-024 C
+tear-025 C
+tear-026 C
+tear-027 C
+tear-028 C
+tear-029 C
+tear-030 C
+tear-031 C
+tear-032 C
+tear-033 C
+tear-034 C
+tear-035 C
+tear-036 C
+tear-037 C
+tear-038 C
+tear-039 C
+tear-040 C
+tear-041 C
+tear-042 C
+tear-043 N lasers appear
+tear-044 N light
+tear-045 N light
+tear-046 C
+tear-047 C
+tear-048 C
+tear-049 C
+tear-050 C
+tear-051 C
+tear-052 C
+tear-053 C
+tear-054 C
+tear-055 C
+tear-056 N
+tear-057 C
+tear-058 C
+tear-059 C one frame later (muzzle flash first)
+tear-060 C
+tear-061 C
+tear-062 C
+tear-063 C
+tear-064 N fast motion
+tear-065 N fast motion
+tear-066 C
+tear-067 C
+tear-068 C
+tear-069 C
+tear-070 C
+tear-071 N
+tear-072 C
+tear-073 C
+tear-074 C
+tear-075 C
+tear-076 C
+tear-077 C
+tear-078 C
+tear-079 N muzzle flash
+tear-080 C
+tear-081 C
+tear-082 N
+tear-083 N muzzle flash
+tear-084 C
+tear-085 C
+tear-086 N
+tear-087 C
+tear-088 N explosion light
+tear-089 C
+tear-090 N
+tear-091 C
+tear-092 C
+tear-093 C
+tear-094 C
+tear-095 C
+tear-096 N
+tear-097 C
+tear-098 C
+tear-099 C
+tear-100 C
+tear-101 C
+tear-102 C
+tear-103 C
+tear-104 C
+tear-105 N light flash
+tear-106 N motion
+tear-107 C two frames later
+tear-108 C to black (end of the film; credits after 588.5 s are left out)
+tear-109 X end credits, outside the window
+tear-110 X end credits, outside the window
+tear-111 X end credits, outside the window
+tear-112 X end credits, outside the window
+tear-113 X end credits, outside the window
+tear-114 X end credits, outside the window
+tear-115 X end credits, outside the window
+tear-116 X end credits, outside the window
+tear-117 X end credits, outside the window
+tear-118 X end credits, outside the window
+tear-119 X end credits, outside the window
+tear-120 X end credits, outside the window
+tear-121 X end credits, outside the window
+tear-122 X end credits, outside the window
+elep-001 C
+elep-002 C
+elep-003 N
+elep-004 N
+elep-005 C
+elep-006 C
+elep-007 C
+elep-008 N
+elep-009 N
+elep-010 N
+elep-011 C
+elep-012 C
+elep-013 C
+elep-014 C
+elep-015 C
+elep-016 N
+elep-017 N
+elep-018 N
+elep-019 N
+elep-020 N
+elep-021 N
+elep-022 N
+elep-023 N
+elep-024 N
+elep-025 N
+elep-026 C
+elep-027 N
+elep-028 N
+elep-029 C
+elep-030 N
+elep-031 C
+elep-032 N
+elep-033 N
+elep-034 N
+elep-035 N
+elep-036 N
+elep-037 N
+elep-038 C
+elep-039 N
+elep-040 N
+elep-041 N
+elep-042 N
+elep-043 N
+elep-044 N
+elep-045 N
+elep-046 N
+elep-047 N
+elep-048 C
+elep-049 N
+elep-050 N
+elep-051 N
+elep-052 C
+elep-053 N
+elep-054 C
+elep-055 N
+elep-056 C
+elep-057 C
+elep-058 N
+elep-059 N
+elep-060 N
+elep-061 C
+elep-062 N
+elep-063 N
+elep-064 N
+elep-065 N
+elep-066 C
+elep-067 G
+elep-068 N
+elep-069 G
+elep-070 G
+elep-071 G
+elep-072 N
+elep-073 N
+elep-074 G
+elep-075 C
+elep-076 C
+elep-077 C
+elep-078 C
+elep-079 N
+elep-080 N
+elep-081 C
+elep-082 C
+elep-083 N
+elep-084 N
+elep-085 N
+elep-086 N
+elep-087 N
+elep-088 N
+elep-089 N
+elep-090 C
+elep-091 C
+elep-092 N
+elep-093 N
+elep-094 N
+elep-095 N
+elep-096 N
+elep-097 N
+elep-098 N
+elep-099 N
+elep-100 N
+elep-101 N
+elep-102 N
+elep-103 N
+elep-104 N
+elep-105 N
+elep-106 N
+elep-107 N
+elep-108 N
+elep-109 N
+elep-110 N
+elep-111 C
+elep-112 N
+elep-113 C
+elep-114 C
+elep-115 C
+elep-116 C
+elep-117 C
+elep-118 C
+elep-119 C
+elep-120 C
+elep-121 N
+elep-122 N
+elep-123 C
+elep-124 C
+elep-125 C
+elep-126 C
+elep-127 C
+elep-128 N
+elep-129 C
+elep-130 C
+elep-131 C
+elep-132 C
+elep-133 C
+elep-134 C
+elep-135 C
+elep-136 C
+elep-137 C
+elep-138 N
+elep-139 N
+elep-140 C
+elep-141 N
+elep-142 N
+elep-143 C
+elep-144 N
+elep-145 C
+elep-146 N
+elep-147 N
+elep-148 C
+elep-149 N
+elep-150 C
+elep-151 C
+elep-152 N
+elep-153 C
+duck-001 G
+duck-002 C
+duck-003 C
+duck-004 C
+duck-005 N
+duck-006 G
+duck-007 C
+duck-008 G
+duck-009 C
+duck-010 C
+duck-011 C
+duck-012 C
+duck-013 C
+duck-014 N
+duck-015 N
+duck-016 N
+duck-017 N
+duck-018 N
+duck-019 N
+duck-020 C
+duck-021 C
+duck-022 C
+duck-023 C
+duck-024 N
+duck-025 C
+duck-026 C
+duck-027 N
+duck-028 C
+duck-029 N
+duck-030 N
+duck-031 N
+duck-032 N
+duck-033 N
+duck-034 N
+duck-035 N
+duck-036 N
+duck-037 N
+duck-038 C
+duck-039 N
+duck-040 C
+duck-041 C
+duck-042 C
+duck-043 C
+duck-044 C
+duck-045 C
+duck-046 C
+duck-047 C
+duck-048 C
+duck-049 C
+duck-050 N
+duck-051 C
+duck-052 C
+duck-053 C
+duck-054 N
+duck-055 C
+duck-056 C
+duck-057 C
+duck-058 C
+duck-059 C
+duck-060 C
+duck-061 C
+duck-062 C
+duck-063 C
+duck-064 N
+duck-065 C
+duck-066 C
+duck-067 C
+duck-068 C
+duck-069 N
+duck-070 N
+duck-071 N
+duck-072 C
+duck-073 N
+duck-074 C
+duck-075 N
+duck-076 C
+duck-077 N
+duck-078 N
+duck-079 C
+duck-080 N
+duck-081 N
+duck-082 C
+duck-083 C
+duck-084 G
+duck-085 N
+duck-086 C
+duck-087 C
+duck-088 C
+duck-089 C
+duck-090 C
+duck-091 C
+duck-092 C
+duck-093 C
+duck-094 C
+duck-095 C
+duck-096 C
+duck-097 C
+duck-098 C
+duck-099 N
+duck-100 N
+duck-101 C
+duck-102 N
+duck-103 N
+duck-104 C
+duck-105 C
+duck-106 C
+duck-107 C
+duck-108 C
+duck-109 C
+duck-110 N
+duck-111 N
+duck-112 N
+duck-113 C
+duck-114 C
+duck-115 C
+duck-116 N
+duck-117 N
+duck-118 C
+duck-119 N
+duck-120 N
+duck-121 N
+duck-122 C
+duck-123 G
+duck-124 C
+duck-125 C
+duck-126 C
+duck-127 C
+duck-128 C
+duck-129 N
+duck-130 N
+duck-131 C
+duck-132 N
+duck-133 C
+duck-134 C
+duck-135 C
+duck-136 C
+duck-137 C
+duck-138 N
+duck-139 N
+duck-140 N
+duck-141 C
+duck-142 N
+duck-143 C
+duck-144 C
+duck-145 N
+duck-146 C
+duck-147 N
+duck-148 N
+duck-149 N
+duck-150 N
