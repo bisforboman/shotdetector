@@ -310,9 +310,12 @@ the last frame), and `headTrim` and `tailTrim`, the frames of the old shot missi
 (negative: the new one has more). Exit code 3 when anything changed, 0 when nothing did. Shots are found in both cuts
 by `-d` (adaptive by default, `-t`, `-m`) and matched by a perceptual hash of each frame's middle (the edges, where
 logos, burnt-in timecodes and subtitles sit, left out), so re-encoding, scaling, a new grade or a logo don't count as
-changes; trims come from where the frames' small pictures correlate best. Limits: a shot found as one in one cut and
-as two in the other (a cut the detector sees in only one) is matched to the old shot with most of its frames, the rest
-read as trims; a still shot trimmed at its head reads as trimmed at its tail; bars that vary only across and flat or
+changes; trims come from where the frames' small pictures correlate best. A cut the detector sees in only one of the
+cuts (a black interstitial whose new grade joins it to the next shot, a flash that splits a shot) gives a row for a
+run of shots: `lastShot` beside `shot` (equal to it for a single shot), the run's frames and timecodes, and its trims
+([why](docs/decisions/2026-11-13-shotdetect-diff-runs.md)). Limits: such a run is consecutive shots of the old cut (a
+black joined to a shot that wasn't its neighbour reads as removed, the shot as longer), and a cut that moved a few
+frames reads as trims; a still shot trimmed at its head reads as trimmed at its tail; bars that vary only across and flat or
 graded colour fields hash as noise, so such a shot can read as removed and added. `tools/recut.py` measures it: it
 makes a new cut with known edits from any video and scores the report
 ([why](docs/decisions/2026-11-09-shotdetect-diff.md)). ShotDetector's own, not in scenedetect: the exactness promise

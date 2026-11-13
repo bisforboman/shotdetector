@@ -18,8 +18,11 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 - Find why CI's `build` job failed on main at 9adc283 (run 41849590819, 2026-11-04)
   - Why: that push (#737) changed only docs, and later pushes to main are green, so it looks like a flaky test or step; find which (the job's logs and annotations), then fix it or record it as the VideoWriter flake was (docs/decisions/2026-10-10-videowriter-s-rare-ci-mismatch.md)
   - Status: Open
-- `shotdetect diff`: match a new shot to a run of old ones (and an old shot to a run of new ones), for a cut the detector sees in only one of the two cuts
-  - Why: measuring the first slice (#771) on the Sintel trailer with `tools/recut.py`, a 16-frame black interstitial cut in the old cut was joined to the next shot in the new one (its grade lifts the black): the joined shot matched one old shot, the black part read as a negative trim and the black shot as removed. Matching runs would report those as unchanged; docs/decisions/2026-11-09-shotdetect-diff.md
+- `shotdetect diff`: a join across a move, a new shot whose frames are old shots that weren't neighbours (a black interstitial joined to the shot after it in the new cut, where that shot's old neighbour moved away)
+  - Why: runs of shots (docs/decisions/2026-11-13-shotdetect-diff-runs.md) take in only consecutive old shots; on the Sintel trailer with `tools/recut.py`, seeds 5 and 7 still read the black as removed and the joined shot as 16 frames longer (about 91% of frames mapped right). A row would need an old run that isn't consecutive (the JSON's `a` as more than shot..lastShot), or the new shot reported in parts
+  - Status: Open
+- `shotdetect diff`: a cut that moved, not added or removed (continuous action the detector chops elsewhere, as Elephants Dream's strobe; a cut found a few frames late in the new cut)
+  - Why: the pieces overlap old shots on both sides, which runs of one anchor don't cover, so they read as trims though every frame is there (Sintel seeds 3 and 4: a moved shot 7 frames longer, the next 7 shorter at its head). Contiguous pieces could be merged by where their frames lie in the old cut rather than by shot; docs/decisions/2026-11-13-shotdetect-diff-runs.md
   - Status: Open
 
 - save-images `-i/--interval` with `--min-images`/`--max-images` (scenedetect 0.7.3, its #280): images per shot by its length (floor(length / interval) + 1, picked as with `-n`), the HTML page's rows then of differing lengths

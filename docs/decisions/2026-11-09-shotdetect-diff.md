@@ -81,3 +81,6 @@ What the first measurements showed, and what is left:
 - **Pictures with structure one way only, flat colour, gradients and noise textures** (plain bars, `rgbtestsrc`,
   `gradients`, `cellauto`) hash as noise; such shots read as removed and added. Test sources with structure both ways
   are used for the tests.
+
+Since 2026-11-13 ([2026-11-13-shotdetect-diff-runs.md](2026-11-13-shotdetect-diff-runs.md)) a new shot matches a run of
+old shots and an old shot a run of new ones: the first point above is done, with `lastShot` in the JSON.
