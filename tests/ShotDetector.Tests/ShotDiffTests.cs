@@ -120,6 +120,60 @@ public class ShotDiffTests(RecutClips clips) : IClassFixture<RecutClips>
         Assert.Equal(6, report.Count);
     }
 
+    /// <summary><paramref name="cut"/> with shot <paramref name="index"/> and the next one as one shot: the detector didn't see the cut between them.</summary>
+    static (List<FrameSpan> Shots, CutFrames Frames) Joined((List<FrameSpan> Shots, CutFrames Frames) cut, int index)
+    {
+        var shots = new List<FrameSpan>(cut.Shots);
+        shots[index] = new(shots[index].Start, shots[index + 1].End);
+        shots.RemoveAt(index + 1);
+        return (shots, cut.Frames);
+    }
+
+    // A cut in the old cut only (a black interstitial whose new grade lifts it into the next shot): one new shot, a run
+    // of old ones, unchanged. Old[1] (30 frames) has fewer fingerprint frames than Old[2] (50), which anchors the match.
+    [Fact]
+    public void AJoinedShotIsARunOfOldShots()
+    {
+        var report = Compare(Cut(Old), Joined(NoisyCut(4, Old), 1));
+        Assert.Equal(
+            [
+                new(ShotChange.Unchanged, 0, 0), new(ShotChange.Unchanged, 1, 1, ALast: 2), new(ShotChange.Unchanged, 3, 2),
+                new(ShotChange.Unchanged, 4, 3),
+            ],
+            report);
+        var tail = Compare(Cut(Old), Joined(NoisyCut(4, Old), 2));
+        Assert.Equal(new ShotDiffEntry(ShotChange.Unchanged, 2, 2, ALast: 3), tail[2]);
+        Assert.Equal(4, tail.Count);
+    }
+
+    // The joined run's trims are the run's: the first old shot's head, the last one's tail.
+    [Fact]
+    public void AJoinedRunKeepsItsTrims()
+    {
+        var report = Compare(Cut(Old), Joined(NoisyCut(4, Old[0], new(2, 6, 24), new(3, 0, 45), Old[3], Old[4]), 1));
+        Assert.Equal(new ShotDiffEntry(ShotChange.Trimmed, 1, 1, 6, 5, ALast: 2), report[1]);
+        Assert.Equal(4, report.Count);
+    }
+
+    // Frames the old cut doesn't have before a shot aren't its neighbour's: the neighbour is removed, the shot longer.
+    [Fact]
+    public void ANewHeadIsNotARun()
+    {
+        var report = Compare(Cut(Old), Joined(Cut(Old[0], new(9, 0, 30), Old[2], Old[3], Old[4]), 1));
+        Assert.Equal(new ShotDiffEntry(ShotChange.Removed, 1, null), report[1]);
+        Assert.Equal(new ShotDiffEntry(ShotChange.Trimmed, 2, 1, -30, 0), report[2]);
+    }
+
+    // A cut in the new cut only: an old shot as a run of new ones, each where the one before ends.
+    [Fact]
+    public void ASplitShotWithAllItsFramesIsARunOfNewShots()
+    {
+        var report = Compare(Cut(Old), NoisyCut(4, Old[0], Old[1], new(3, 0, 20), new(3, 20, 30), Old[3], Old[4]));
+        Assert.Equal(new ShotDiffEntry(ShotChange.Unchanged, 2, 2, BLast: 3), report[2]);
+        Assert.Equal(5, report.Count);
+        Assert.All(report, r => Assert.Equal(ShotChange.Unchanged, r.Change));
+    }
+
     // Every frame of a still picture fits anywhere: the shot keeps its head.
     [Fact]
     public void AStillPictureKeepsItsHead()
@@ -218,6 +272,7 @@ public class ShotDiffTests(RecutClips clips) : IClassFixture<RecutClips>
         var shots = root.GetProperty("shots");
         var trimmed = shots[1];
         Assert.Equal("trimmed", trimmed.GetProperty("status").GetString());
+        Assert.Equal(2, trimmed.GetProperty("a").GetProperty("lastShot").GetInt32());
         Assert.Equal(51, trimmed.GetProperty("a").GetProperty("startFrame").GetInt32());
         Assert.Equal(100, trimmed.GetProperty("a").GetProperty("endFrame").GetInt32());
         Assert.Equal("00:00:02.000", trimmed.GetProperty("b").GetProperty("startTimecode").GetString());

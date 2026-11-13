@@ -163,12 +163,26 @@ def frames(report: dict, truth: list) -> dict:
     }
 
 
-def score(report: dict, truth: list, truth_frames: list) -> dict:
-    def key(r):
-        return (r["status"], r["a"]["shot"] if r["a"] else None, r["b"]["startFrame"] if r["b"] else None,
-                r["headTrim"], r["tailTrim"])
+def keys(r: dict, old: list[tuple[int, int]]) -> list:
+    """A report row as the truth's keys: (status, old shot, new start frame, head, tail). A run of old shots (a cut the
+    detector found in the old cut only) is one key per old shot, as the truth has them: the run's head trim on its
+    first, its tail trim on its last, each starting in the new cut where its frames do."""
+    if not r["a"] or not r["b"]:
+        return [(r["status"], r["a"]["shot"] if r["a"] else None, r["b"]["startFrame"] if r["b"] else None,
+                 r["headTrim"], r["tailTrim"])]
+    first, last = r["a"]["shot"], r["a"].get("lastShot", r["a"]["shot"])
+    out = []
+    for n in range(first, last + 1):
+        head = r["headTrim"] if n == first else 0
+        tail = r["tailTrim"] if n == last else 0
+        start = r["b"]["startFrame"] + old[n - 1][0] - old[first - 1][0] + head - r["headTrim"]
+        status = r["status"] if r["status"] == "moved" else "trimmed" if head or tail else "unchanged"
+        out.append((status, n, start, head, tail))
+    return out
 
-    reported = [key(r) for r in report["shots"]]
+
+def score(report: dict, truth: list, truth_frames: list, old: list[tuple[int, int]]) -> dict:
+    reported = [k for r in report["shots"] for k in keys(r, old)]
     out = {}
     for name, cut in (("exact", lambda k: k), ("status", lambda k: k[:3])):
         got = {cut(k) for k in reported if k[0] != "unchanged"}
@@ -211,7 +225,7 @@ def main() -> None:
         new = work / "recut.mp4"
         render(video, old, pieces, new, work, [c for c in a.changes.split(",") if c and c != "none"])
         run([EXE, "diff", video, new, "--json", work / "diff.json"], ok=(0, 3))
-        s = score(json.loads((work / "diff.json").read_text()), truth, mapping(old, pieces))
+        s = score(json.loads((work / "diff.json").read_text()), truth, mapping(old, pieces), old)
         print(f"{video.name}: {len(old)} shots, seed {a.seed}, {sum(k[0] != 'unchanged' for k in truth)} changes")
         for name in ("exact", "status"):
             print(f"  shots, {name:6}      precision {s[name][0]:.3f}  recall {s[name][1]:.3f}")
