@@ -143,17 +143,18 @@ static class Diff
         text.AppendLine($"{"Change",-10} {"Old cut",-36} {"New cut",-36} {"Head",5} {"Tail",5}");
         foreach (var r in report)
         {
-            string Shot(CutPrint cut, int? index)
+            string Shot(CutPrint cut, int? index, int? lastIndex)
             {
-                if (index is not { } i)
+                if (index is not { } i || lastIndex is not { } last)
                     return "-";
-                var s = cut.Result.Shots[i];
-                return $"#{s.Number} {s.Start.Timecode()}-{s.End.Timecode()}";
+                Shot s = cut.Result.Shots[i], e = cut.Result.Shots[last];
+                string number = last == i ? $"#{s.Number}" : $"#{s.Number}-#{e.Number}";
+                return $"{number} {s.Start.Timecode()}-{e.End.Timecode()}";
             }
 
             bool matched = r.A is not null && r.B is not null;
             text.AppendLine(CultureInfo.InvariantCulture,
-                $"{Name(r.Change),-10} {Shot(a, r.A),-36} {Shot(b, r.B),-36} {(matched ? r.Head.ToString(CultureInfo.InvariantCulture) : ""),5} {(matched ? r.Tail.ToString(CultureInfo.InvariantCulture) : ""),5}");
+                $"{Name(r.Change),-10} {Shot(a, r.A, r.LastA),-36} {Shot(b, r.B, r.LastB),-36} {(matched ? r.Head.ToString(CultureInfo.InvariantCulture) : ""),5} {(matched ? r.Tail.ToString(CultureInfo.InvariantCulture) : ""),5}");
         }
 
         return text.ToString();
@@ -162,7 +163,8 @@ static class Diff
     /// <summary>
     /// The report as JSON: each cut, the changes counted, then a row per shot in the new cut's order with removed shots
     /// where they stood; a shot's frames and timecodes as the shot list's JSON gives them (startFrame 1-based, endFrame
-    /// its last frame).
+    /// its last frame). A row for a run of shots (a cut in one cut only) gives its first shot and lastShot, and the
+    /// run's frames and timecodes; lastShot is shot for a single shot.
     /// </summary>
     internal static string Json(string pathA, CutPrint a, string pathB, CutPrint b, List<ShotDiffEntry> report)
     {
@@ -179,21 +181,22 @@ static class Diff
                 j.WriteEndObject();
             }
 
-            void Shot(string name, CutPrint cut, int? index)
+            void Shot(string name, CutPrint cut, int? index, int? lastIndex)
             {
-                if (index is not { } i)
+                if (index is not { } i || lastIndex is not { } last)
                 {
                     j.WriteNull(name);
                     return;
                 }
 
-                var s = cut.Result.Shots[i];
+                Shot s = cut.Result.Shots[i], e = cut.Result.Shots[last];
                 j.WriteStartObject(name);
                 j.WriteNumber("shot", s.Number);
+                j.WriteNumber("lastShot", e.Number);
                 j.WriteNumber("startFrame", s.Start.FrameNum + 1);
-                j.WriteNumber("endFrame", s.End.FrameNum);
+                j.WriteNumber("endFrame", e.End.FrameNum);
                 j.WriteString("startTimecode", s.Start.Timecode());
-                j.WriteString("endTimecode", s.End.Timecode());
+                j.WriteString("endTimecode", e.End.Timecode());
                 j.WriteEndObject();
             }
 
@@ -209,8 +212,8 @@ static class Diff
             {
                 j.WriteStartObject();
                 j.WriteString("status", Name(r.Change));
-                Shot("a", a, r.A);
-                Shot("b", b, r.B);
+                Shot("a", a, r.A, r.LastA);
+                Shot("b", b, r.B, r.LastB);
                 if (r.A is not null && r.B is not null)
                 {
                     j.WriteNumber("headTrim", r.Head);

@@ -67,8 +67,18 @@ internal enum ShotChange
 /// One line of a <see cref="ShotDiff"/> report: the shot's index (0-based) in the old cut <paramref name="A"/> and the new
 /// cut <paramref name="B"/>, null where it isn't; <paramref name="Head"/> and <paramref name="Tail"/>, the frames of the
 /// old shot missing at the new one's head and tail (negative: the new one has that many more).
+/// <paramref name="ALast"/> and <paramref name="BLast"/>: the last shot of a run, where a cut is in one cut only (a run
+/// of old shots joined in one new shot, or an old shot split into a run of new ones); null for a single shot. The
+/// trims are then the run's.
 /// </summary>
-internal readonly record struct ShotDiffEntry(ShotChange Change, int? A, int? B, int Head = 0, int Tail = 0);
+internal readonly record struct ShotDiffEntry(ShotChange Change, int? A, int? B, int Head = 0, int Tail = 0, int? ALast = null, int? BLast = null)
+{
+    /// <summary>The old run's last shot (<see cref="A"/> for a single shot).</summary>
+    public int? LastA => ALast ?? A;
+
+    /// <summary>The new run's last shot (<see cref="B"/> for a single shot).</summary>
+    public int? LastB => BLast ?? B;
+}
 
 /// <summary>
 /// <c>shotdetect diff</c>: which shots of an old cut of a programme are unchanged, moved, trimmed, added or removed in a
@@ -233,12 +243,13 @@ internal static class ShotDiff
                 match[j] = (m.A, Offset(a[m.A], fa, b[j], fb));
         });
 
-        var inOrder = LongestInOrder(match);
+        var runs = Runs(a, fa, b, fb, match);
+        var inOrder = LongestInOrder([.. runs.Select(r => ((int A, int Offset)?)(r.A, r.Head))]);
         var matchedA = new bool[a.Count];
-        foreach (var m in match)
+        foreach (var r in runs)
         {
-            if (m is { } x)
-                matchedA[x.A] = true;
+            for (int i = r.A; i <= r.ALast; i++)
+                matchedA[i] = true;
         }
 
         var report = new List<ShotDiffEntry>();
@@ -252,25 +263,120 @@ internal static class ShotDiff
             }
         }
 
+        int run = 0;
         for (int j = 0; j < b.Count; j++)
         {
             if (b[j].Length == 0)
                 continue;
-            if (match[j] is not { } m)
+            if (match[j] is null)
             {
                 report.Add(new(ShotChange.Added, null, j));
                 continue;
             }
 
-            int head = m.Offset, tail = a[m.A].Length - m.Offset - b[j].Length;
-            if (inOrder[j])
-                RemovedBefore(m.A);
-            var change = !inOrder[j] ? ShotChange.Moved : head == 0 && tail == 0 ? ShotChange.Unchanged : ShotChange.Trimmed;
-            report.Add(new(change, m.A, j, head, tail));
+            while (runs[run].BLast < j)
+                run++;
+            var r = runs[run];
+            if (r.B != j)
+                continue;
+            if (inOrder[run])
+                RemovedBefore(r.A);
+            var change = !inOrder[run] ? ShotChange.Moved : r.Head == 0 && r.Tail == 0 ? ShotChange.Unchanged : ShotChange.Trimmed;
+            report.Add(new(change, r.A, j, r.Head, r.Tail, r.ALast != r.A ? r.ALast : null, r.BLast != j ? r.BLast : null));
         }
 
         RemovedBefore(a.Count);
         return report;
+    }
+
+    /// <summary>
+    /// A run of old shots <see cref="A"/>..<see cref="ALast"/> and new ones <see cref="B"/>..<see cref="BLast"/> that are
+    /// the same frames, though one cut has a cut the other doesn't; mostly one shot each. <see cref="Head"/> and
+    /// <see cref="Tail"/>: the old run's frames missing at the new run's head and tail.
+    /// </summary>
+    readonly record struct Run(int A, int ALast, int B, int BLast, int Head, int Tail);
+
+    /// <summary>
+    /// The matched new shots as runs (docs/decisions/2026-11-13-shotdetect-diff-runs.md): consecutive new shots matched to
+    /// the same old shot, each starting where the one before ends in it, are one run (the new cut has a cut the old
+    /// doesn't); then a run whose frames reach past its old shot's head or tail takes in the old shots there that no new
+    /// shot matched, as far as its frames are theirs (the old cut has a cut the new doesn't).
+    /// </summary>
+    static List<Run> Runs(IReadOnlyList<FrameSpan> a, CutFrames fa, IReadOnlyList<FrameSpan> b, CutFrames fb, (int A, int Offset)?[] match)
+    {
+        var anchored = new bool[a.Count];
+        foreach (var m in match)
+        {
+            if (m is { } x)
+                anchored[x.A] = true;
+        }
+
+        var runs = new List<Run>();
+        for (int j = 0; j < b.Count; j++)
+        {
+            if (match[j] is not { } m)
+                continue;
+            int last = j;
+            while (last + 1 < b.Count && match[last + 1] is { } next && next.A == m.A
+                && next.Offset == match[last]!.Value.Offset + b[last].Length && b[last].End == b[last + 1].Start)
+            {
+                last++;
+            }
+
+            // The new run's frames from b[j].Start lie over the old cut's from start, shot after shot. Once it takes in
+            // other old shots, the offset is found again over all of them: frames the anchor alone doesn't have (a
+            // black interstitial) place it, where the anchor alone may be slow enough to fit offsets a few frames apart.
+            var span = new FrameSpan(b[j].Start, b[last].End);
+            int start = a[m.A].Start + m.Offset;
+            var (first, lastA) = Extend(a, fa, fb, anchored, m.A, span, start);
+            if (first != m.A || lastA != m.A)
+            {
+                start = a[first].Start + Offset(new(a[first].Start, a[lastA].End), fa, span, fb);
+                (first, lastA) = Extend(a, fa, fb, anchored, m.A, span, start);
+            }
+
+            runs.Add(new(first, lastA, j, last, start - a[first].Start, a[lastA].End - start - span.Length));
+            j = last;
+        }
+
+        return runs;
+    }
+
+    /// <summary>
+    /// The old shots before and after <paramref name="anchor"/> that no new shot matched and whose frames are
+    /// <paramref name="span"/>'s, laid from the old cut's frame <paramref name="start"/>: the run's first and last.
+    /// </summary>
+    static (int First, int Last) Extend(
+        IReadOnlyList<FrameSpan> a, CutFrames fa, CutFrames fb, bool[] anchored, int anchor, FrameSpan span, int start)
+    {
+        int end = start + span.Length, shift = span.Start - start, first = anchor, last = anchor;
+        while (first > 0 && start < a[first].Start && !anchored[first - 1] && a[first - 1].End == a[first].Start
+            && Same(fa, Math.Max(start, a[first - 1].Start), a[first - 1].End, fb, shift))
+        {
+            first--;
+        }
+
+        while (last + 1 < a.Count && end > a[last].End && !anchored[last + 1] && a[last + 1].Start == a[last].End
+            && Same(fa, a[last + 1].Start, Math.Min(end, a[last + 1].End), fb, shift))
+        {
+            last++;
+        }
+
+        return (first, last);
+    }
+
+    /// <summary>
+    /// Whether the old cut's frames <paramref name="from"/>..<paramref name="to"/>-1 are the new cut's at
+    /// <paramref name="shift"/> frames on: most of <see cref="Samples"/> of them, spread over the span, within
+    /// <see cref="MaxDistance"/> bits of theirs.
+    /// </summary>
+    static bool Same(CutFrames fa, int from, int to, CutFrames fb, int shift)
+    {
+        var samples = Spread(from, to - from, Samples);
+        if (samples.Count == 0)
+            return false;
+        int found = samples.Count(f => f + shift >= 0 && f + shift < fb.Count && fa.Distance(f, fb, f + shift) <= MaxDistance);
+        return found > samples.Count / 2;
     }
 
     /// <summary>An old shot a new one may be: how many of the new one's fingerprint frames it has, and how near.</summary>
