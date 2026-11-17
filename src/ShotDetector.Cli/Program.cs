@@ -24,6 +24,8 @@ const string Usage = """
       -m, --min-scene-len <time>         Minimum shot length: frames (15), seconds (0.6s, 0.6) or HH:MM:SS.mmm (default 0.6s)
       -c, --min-content-val <n>          adaptive: minimum content_val for a cut (default 15)
           --frame-window <n>             adaptive: frames on each side to average (default 2)
+          --ignore-repeated-frames       adaptive: leave repeated frames (pulldown, encodes that repeat
+                                         frames) out of that average. Not in scenedetect: cuts can differ
       -w, --weights <h> <s> <l> <e>      content/adaptive: weights of hue, saturation, luma and edge
                                          differences in content_val (default 1 1 1 0)
       -k, --kernel-size <n>              content/adaptive: odd size >= 3 to widen edges by
@@ -224,6 +226,9 @@ try
                 break;
             case "--frame-window":
                 options = options with { FrameWindow = NextInt() };
+                break;
+            case "--ignore-repeated-frames":
+                options = options with { IgnoreRepeatedFrames = true };
                 break;
             case "-w" or "--weights":
                 options = options with { Weights = (NextDouble(), NextDouble(), NextDouble(), NextDouble()) };
@@ -956,6 +961,7 @@ DetectorSettings FromConfig(Config c, DetectorSettings d)
         KernelSize = Free("-k", "--kernel-size") && c.Int(section, "kernel-size") is { } ks && ks > 0 ? ks : null,
         MinContentVal = Free("-c", "--min-content-val") ? c.Double(section, "min-content-val") : null,
         FrameWindow = Free("--frame-window") ? c.Int(section, "frame-window") : null,
+        IgnoreRepeatedFrames = Free("--ignore-repeated-frames") ? c.Bool(section, "ignore-repeated-frames") : null,
         Bins = Free("-b", "--bins") ? c.Int(section, "bins") : null,
         HashSize = Free("--hash-size") ? c.Int(section, "size") : null,
         HashLowpass = Free("--hash-lowpass") ? c.Int(section, "lowpass") : null,

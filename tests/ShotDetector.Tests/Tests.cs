@@ -178,9 +178,13 @@ public class DetectorTests
         return scores.Select((s, i) => d.ProcessScore(i, s)).OfType<int>().ToList();
     }
 
-    static List<int> RunAdaptive(double[] scores, int minSceneLen = 15, Func<int, FrameTime>? position = null, bool fromTarget = false)
+    static List<int> RunAdaptive(double[] scores, int minSceneLen = 15, Func<int, FrameTime>? position = null, bool fromTarget = false, bool ignoreRepeats = false)
     {
-        var d = new AdaptiveDetector(new ContentScorer(), position ?? Positions.Cfr(25), minSceneLen: minSceneLen, fromTarget: fromTarget);
+        var d = new AdaptiveDetector(new ContentScorer(),
+            position ?? Positions.Cfr(25),
+            minSceneLen: minSceneLen,
+            fromTarget: fromTarget,
+            repeatedBelow: ignoreRepeats ? AdaptiveDetector.RepeatedFrameScore : 0);
         return scores.Select((s, i) => d.ProcessScore(i, s)).OfType<int>().ToList();
     }
 
@@ -280,6 +284,46 @@ public class DetectorTests
         Assert.Equal([20], RunAdaptive(Scores(80, 1, (20, 40), (40, 40)), position: vfr));
         Assert.Equal([20, 40], RunAdaptive(Scores(80, 1, (20, 40), (40, 40)), position: Positions.Cfr(24)));
     }
+
+    // Motion at 6 a frame with every other frame a repeat (0, or 0.3 in a lossy encode), and 16 at frame 21.
+    static double[] MotionWithRepeats(double repeat)
+    {
+        var a = Scores(40, 6, (21, 16));
+        for (int i = 2; i < a.Length; i += 2)
+            a[i] = repeat;
+        return a;
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(0.3)]
+    public void AdaptiveCountsRepeatedFramesInTheMeanAsScenedetectDoes(double repeat) =>
+        // Neighbours 0, 6, 0, 6: a mean of 3 makes 16 a ratio of 5.3.
+        Assert.Equal([21], RunAdaptive(MotionWithRepeats(repeat)));
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(0.3)]
+    public void AdaptiveCanLeaveRepeatedFramesOutOfTheMean(double repeat) =>
+        // The two 6s alone: a ratio of 2.7, no cut.
+        Assert.Empty(RunAdaptive(MotionWithRepeats(repeat), ignoreRepeats: true));
+
+    [Fact]
+    public void AdaptiveIgnoringRepeatsKeepsMotionAboveTheRepeatScore() =>
+        // A change of 0.6 is slow motion, not a repeat: the mean stays 3.3 (a ratio of 4.8), as without the option.
+        Assert.Equal([21], RunAdaptive(MotionWithRepeats(0.6), ignoreRepeats: true));
+
+    [Fact]
+    public void AdaptiveIgnoringRepeatsChangesNothingWithoutRepeats()
+    {
+        Assert.Equal([20], RunAdaptive(Scores(40, 5, (20, 20)), ignoreRepeats: true));
+        Assert.Empty(RunAdaptive(Scores(40, 10, (20, 29)), ignoreRepeats: true));
+    }
+
+    [Fact]
+    public void AdaptiveIgnoringRepeatsWithOnlyRepeatsAroundCountsAsMaxRatio() =>
+        // A still (repeats only) then a change of 15: no neighbour is left, so the mean is 0, as with a still.
+        Assert.Equal([20], RunAdaptive(Scores(40, 0.2, (20, 15)), ignoreRepeats: true));
 
     [Fact]
     public void DetectorsFindCutInSyntheticFrames()

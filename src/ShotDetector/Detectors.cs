@@ -119,6 +119,8 @@ internal sealed class ContentDetector(
 /// <summary>
 /// Port of PySceneDetect's AdaptiveDetector: compares each frame's content_val against the mean of
 /// the <c>windowWidth</c> frames on either side. Cuts are therefore reported windowWidth frames late.
+/// Differs (off by default): with <c>repeatedBelow</c> above 0, neighbours whose content_val is below it (repeated
+/// frames: pulldown, encodes that repeat frames) are left out of the mean (docs/decisions/2026-11-17-adaptive-repeated-frames.md).
 /// </summary>
 internal sealed class AdaptiveDetector(
     ContentScorer scorer,
@@ -127,8 +129,17 @@ internal sealed class AdaptiveDetector(
     int minSceneLen = 15,
     int windowWidth = 2,
     double minContentVal = 15.0,
-    bool fromTarget = false) : IDetector
+    bool fromTarget = false,
+    double repeatedBelow = 0) : IDetector
 {
+    /// <summary>
+    /// What <see cref="DetectionOptions.IgnoreRepeatedFrames"/> takes as a repeated frame: content_val below this. A
+    /// frame repeated before a lossy encode isn't bit for bit the same after it: in a 24 to 30 fps copy of the Sintel
+    /// trailer made by repeating frames (x264 CRF 18), 0.5 caught 86 % of the repeats, while still frames aside, few
+    /// frames of motion score below it.
+    /// </summary>
+    internal const double RepeatedFrameScore = 0.5;
+
     readonly List<(int Frame, double Score)> _buffer = [];
     readonly string _ratioKey = $"adaptive_ratio{(scorer.IsLumaOnly ? "_lum" : "")} (w={windowWidth})";
     int? _lastCut;
@@ -163,13 +174,19 @@ internal sealed class AdaptiveDetector(
 
         var (targetFrame, targetScore) = _buffer[windowWidth];
         double sum = 0;
+        int neighbours = 0;
         for (int i = 0; i < _buffer.Count; i++)
         {
-            if (i != windowWidth)
+            // A repeated frame's zero change would pull the mean down and make its neighbours' ordinary motion look
+            // like a cut; with the option on it isn't a neighbour. With every neighbour a repeat the mean is 0.
+            if (i != windowWidth && !(_buffer[i].Score < repeatedBelow))
+            {
                 sum += _buffer[i].Score;
+                neighbours++;
+            }
         }
 
-        double average = sum / (2.0 * windowWidth);
+        double average = neighbours == 0 ? 0 : sum / (repeatedBelow > 0 ? neighbours : 2.0 * windowWidth);
 
         double ratio = Math.Abs(average) < 0.00001
             ? (targetScore >= minContentVal ? 255.0 : 0.0)

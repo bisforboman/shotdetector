@@ -200,6 +200,9 @@ public sealed record DetectorSettings(DetectorKind Kind)
     /// <summary>Adaptive: see <see cref="DetectionOptions.FrameWindow"/>.</summary>
     public int? FrameWindow { get; init; }
 
+    /// <summary>Adaptive: see <see cref="DetectionOptions.IgnoreRepeatedFrames"/>.</summary>
+    public bool? IgnoreRepeatedFrames { get; init; }
+
     /// <summary>Content/adaptive: see <see cref="DetectionOptions.Weights"/>.</summary>
     public (double Hue, double Sat, double Lum, double Edges)? Weights { get; init; }
 
@@ -274,6 +277,13 @@ public sealed record DetectionOptions
 
     /// <summary>Adaptive: frames on each side to average.</summary>
     public int FrameWindow { get; init; } = 2;
+
+    /// <summary>
+    /// Adaptive: leave repeated frames (content_val below 0.5: pulldown, encodes that repeat frames) out of the mean of
+    /// the neighbouring frames, so that ordinary motion next to a repeat doesn't score as a cut. Not in scenedetect, so
+    /// off by default; on, results can differ from scenedetect's.
+    /// </summary>
+    public bool IgnoreRepeatedFrames { get; init; }
 
     /// <summary>Content/adaptive: weights of hue, saturation, luma and edge differences.</summary>
     public (double Hue, double Sat, double Lum, double Edges) Weights { get; init; } = (1, 1, 1, 0);
@@ -1960,7 +1970,8 @@ public static partial class ShotDetection
                 min,
                 frameWindow,
                 st.MinContentVal ?? o.MinContentVal,
-                fromTarget: v072),
+                fromTarget: v072,
+                repeatedBelow: st.IgnoreRepeatedFrames ?? o.IgnoreRepeatedFrames ? AdaptiveDetector.RepeatedFrameScore : 0),
         };
         detector.Stats = stats;
         if (detector is HashDetector hash)

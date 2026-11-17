@@ -90,6 +90,13 @@
         # scenedetect 0.7.2: min_scene_len as a frame count (#577), adaptive from the target frame (#408), min_out_length, defaults
         @{ File = 'src/ShotDetector/Detectors.cs'; Find = '? position(frame).Minus(position(since)).FrameNum >= minSceneLen'; Replace = '? position(frame).Minus(position(since)).Seconds >= _minSeconds'; Tests = 'DetectorTests.ContentMinLengthInFramesComparesFrameCountsFrom072' }
         @{ File = 'src/ShotDetector/Detectors.cs'; Find = 'position(fromTarget ? targetFrame : frame)'; Replace = 'position(frame)'; Tests = 'DetectorTests.AdaptiveMinLengthIsMeasuredFromTheTargetFrameFrom072' }
+
+        # Adaptive's IgnoreRepeatedFrames (not in scenedetect, off by default): repeats leave the neighbour mean, which
+        # then averages the frames left; off, the mean is scenedetect's over every neighbour
+        @{ File = 'src/ShotDetector/Detectors.cs'; Find = ' && !(_buffer[i].Score < repeatedBelow)'; Replace = ''; Tests = 'DetectorTests.AdaptiveCanLeaveRepeatedFramesOutOfTheMean' }
+        @{ File = 'src/ShotDetector/Detectors.cs'; Find = 'sum / (repeatedBelow > 0 ? neighbours : 2.0 * windowWidth)'; Replace = 'sum / (2.0 * windowWidth)'; Tests = 'DetectorTests.AdaptiveCanLeaveRepeatedFramesOutOfTheMean' }
+        @{ File = 'src/ShotDetector/Detectors.cs'; Find = 'internal const double RepeatedFrameScore = 0.5;'; Replace = 'internal const double RepeatedFrameScore = 0.7;'; Tests = 'DetectorTests.AdaptiveIgnoringRepeatsKeepsMotionAboveTheRepeatScore' }
+        @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = '? AdaptiveDetector.RepeatedFrameScore : 0),'; Replace = '? 0 : 0),'; Tests = 'FrameInputTests.AdaptiveCanIgnoreRepeatedFrames' }
         @{ File = 'src/ShotDetector/Detectors.cs'; Find = '&& position(frame).Minus(position(_lastFadeFrame)).FrameNum >= minOutLength'; Replace = ''; Tests = 'ThresholdDetectorTests.FadeOutsShorterThanMinOutLengthMakeNoCutFrom072' }
         @{ File = 'src/ShotDetector/Detectors.cs'; Find = '&& end.PlusFrames(1).Minus(position(_lastFadeFrame)).FrameNum >= minOutLength'; Replace = ''; Tests = 'ThresholdDetectorTests.FadeOutsShorterThanMinOutLengthMakeNoCutFrom072' }
         @{ File = 'src/ShotDetector/ShotDetection.cs'; Find = '(value ?? (v072 ? "0.1s" : null))'; Replace = '(value)'; Tests = 'ThresholdDetectorTests.MinOutLengthDefaultsToTheClisFrom072' }
