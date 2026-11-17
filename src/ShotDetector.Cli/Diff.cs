@@ -143,28 +143,43 @@ static class Diff
         text.AppendLine($"{"Change",-10} {"Old cut",-36} {"New cut",-36} {"Head",5} {"Tail",5}");
         foreach (var r in report)
         {
-            string Shot(CutPrint cut, int? index, int? lastIndex)
+            string Shot(CutPrint cut, int? index, int? lastIndex, FrameSpan? frames)
             {
                 if (index is not { } i || lastIndex is not { } last)
                     return "-";
+                var (start, end) = Bounds(cut, i, last, frames);
                 Shot s = cut.Result.Shots[i], e = cut.Result.Shots[last];
                 string number = last == i ? $"#{s.Number}" : $"#{s.Number}-#{e.Number}";
-                return $"{number} {s.Start.Timecode()}-{e.End.Timecode()}";
+                return $"{number} {start.Timecode()}-{end.Timecode()}";
             }
 
             bool matched = r.A is not null && r.B is not null;
             text.AppendLine(CultureInfo.InvariantCulture,
-                $"{Name(r.Change),-10} {Shot(a, r.A, r.LastA),-36} {Shot(b, r.B, r.LastB),-36} {(matched ? r.Head.ToString(CultureInfo.InvariantCulture) : ""),5} {(matched ? r.Tail.ToString(CultureInfo.InvariantCulture) : ""),5}");
+                $"{Name(r.Change),-10} {Shot(a, r.A, r.LastA, null),-36} {Shot(b, r.B, r.LastB, r.BFrames),-36} {(matched ? r.Head.ToString(CultureInfo.InvariantCulture) : ""),5} {(matched ? r.Tail.ToString(CultureInfo.InvariantCulture) : ""),5}");
         }
 
         return text.ToString();
     }
 
     /// <summary>
+    /// Where a row's frames start and end in a cut: shots <paramref name="first"/>..<paramref name="last"/>'s, or
+    /// <paramref name="frames"/> where the row starts or ends inside them.
+    /// </summary>
+    static (FrameTime Start, FrameTime End) Bounds(CutPrint cut, int first, int last, FrameSpan? frames)
+    {
+        Shot s = cut.Result.Shots[first], e = cut.Result.Shots[last];
+        if (frames is not { } f)
+            return (s.Start, e.End);
+        return (f.Start == cut.Shots[first].Start ? s.Start : cut.Result.Video.Position(f.Start),
+            f.End == cut.Shots[last].End ? e.End : cut.Result.Video.Position(f.End));
+    }
+
+    /// <summary>
     /// The report as JSON: each cut, the changes counted, then a row per shot in the new cut's order with removed shots
     /// where they stood; a shot's frames and timecodes as the shot list's JSON gives them (startFrame 1-based, endFrame
     /// its last frame). A row for a run of shots (a cut in one cut only) gives its first shot and lastShot, and the
-    /// run's frames and timecodes; lastShot is shot for a single shot.
+    /// run's frames and timecodes; lastShot is shot for a single shot. In the new cut a row's frames can start or end
+    /// inside the shots it names (a cut found elsewhere, old shots joined across a move): they are the row's own.
     /// </summary>
     internal static string Json(string pathA, CutPrint a, string pathB, CutPrint b, List<ShotDiffEntry> report)
     {
@@ -181,7 +196,7 @@ static class Diff
                 j.WriteEndObject();
             }
 
-            void Shot(string name, CutPrint cut, int? index, int? lastIndex)
+            void Shot(string name, CutPrint cut, int? index, int? lastIndex, FrameSpan? frames)
             {
                 if (index is not { } i || lastIndex is not { } last)
                 {
@@ -189,14 +204,14 @@ static class Diff
                     return;
                 }
 
-                Shot s = cut.Result.Shots[i], e = cut.Result.Shots[last];
+                var (start, end) = Bounds(cut, i, last, frames);
                 j.WriteStartObject(name);
-                j.WriteNumber("shot", s.Number);
-                j.WriteNumber("lastShot", e.Number);
-                j.WriteNumber("startFrame", s.Start.FrameNum + 1);
-                j.WriteNumber("endFrame", e.End.FrameNum);
-                j.WriteString("startTimecode", s.Start.Timecode());
-                j.WriteString("endTimecode", e.End.Timecode());
+                j.WriteNumber("shot", cut.Result.Shots[i].Number);
+                j.WriteNumber("lastShot", cut.Result.Shots[last].Number);
+                j.WriteNumber("startFrame", start.FrameNum + 1);
+                j.WriteNumber("endFrame", end.FrameNum);
+                j.WriteString("startTimecode", start.Timecode());
+                j.WriteString("endTimecode", end.Timecode());
                 j.WriteEndObject();
             }
 
@@ -212,8 +227,8 @@ static class Diff
             {
                 j.WriteStartObject();
                 j.WriteString("status", Name(r.Change));
-                Shot("a", a, r.A, r.LastA);
-                Shot("b", b, r.B, r.LastB);
+                Shot("a", a, r.A, r.LastA, null);
+                Shot("b", b, r.B, r.LastB, r.BFrames);
                 if (r.A is not null && r.B is not null)
                 {
                     j.WriteNumber("headTrim", r.Head);

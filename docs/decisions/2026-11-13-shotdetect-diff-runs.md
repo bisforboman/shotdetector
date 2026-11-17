@@ -49,3 +49,5 @@ Left (backlog):
 - **A cut moved, not added or removed** (continuous action the detector chops elsewhere, as Elephants Dream's strobe,
   or a cut found a few frames late in the new cut): the pieces overlap old shots on both sides, which runs of one
   anchor don't cover; they still read as trims.
+
+Since 2026-11-17 ([2026-11-17-shotdetect-diff-parts.md](2026-11-17-shotdetect-diff-parts.md)) both are done: a row's frames in the new cut can start or end inside a new shot.
