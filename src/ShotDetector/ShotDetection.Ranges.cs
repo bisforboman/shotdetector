@@ -986,7 +986,7 @@ public static partial class ShotDetection
     [
         nameof(DetectionOptions.Compatibility), nameof(DetectionOptions.Detector), nameof(DetectionOptions.Threshold),
         nameof(DetectionOptions.MinSceneLength), nameof(DetectionOptions.MinContentVal), nameof(DetectionOptions.FrameWindow),
-        nameof(DetectionOptions.Weights), nameof(DetectionOptions.LumaOnly), nameof(DetectionOptions.KernelSize),
+        nameof(DetectionOptions.IgnoreRepeatedFrames), nameof(DetectionOptions.Weights), nameof(DetectionOptions.LumaOnly), nameof(DetectionOptions.KernelSize),
         nameof(DetectionOptions.Bins), nameof(DetectionOptions.HashSize), nameof(DetectionOptions.HashLowpass),
         nameof(DetectionOptions.FadeBias), nameof(DetectionOptions.MinOutLength), nameof(DetectionOptions.MinSceneDuration),
         nameof(DetectionOptions.MinOutDuration), nameof(DetectionOptions.Crop), nameof(DetectionOptions.FullFrames),
@@ -1077,6 +1077,8 @@ public static partial class ShotDetection
         Line(nameof(o.MinSceneLength), o.MinSceneLength);
         Line(nameof(o.MinContentVal), o.MinContentVal);
         Line(nameof(o.FrameWindow), o.FrameWindow);
+        if (o.IgnoreRepeatedFrames)
+            Line(nameof(o.IgnoreRepeatedFrames), true); // only when set: older ranges' fingerprints stay as they were
         Line(nameof(o.Weights), Weights(o.Weights));
         Line(nameof(o.LumaOnly), o.LumaOnly);
         Line(nameof(o.KernelSize), o.KernelSize);
@@ -1106,6 +1108,8 @@ public static partial class ShotDetection
             Line(p + nameof(st.FilterMode), st.FilterMode);
             Line(p + nameof(st.MinContentVal), st.MinContentVal);
             Line(p + nameof(st.FrameWindow), st.FrameWindow);
+            if (st.IgnoreRepeatedFrames is { } repeats)
+                Line(p + nameof(st.IgnoreRepeatedFrames), repeats);
             Line(p + nameof(st.Weights), st.Weights is { } w ? Weights(w) : null);
             Line(p + nameof(st.LumaOnly), st.LumaOnly);
             Line(p + nameof(st.KernelSize), st.KernelSize);

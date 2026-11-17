@@ -532,6 +532,30 @@ public class FrameInputTests(Clips clips) : IClassFixture<Clips>
         Assert.Throws<ArgumentException>(() => ShotDetection.Detect(video, Frames(video, 3), new DetectionOptions { Yuv420Converter = new SwscaleYuv420() }));
     }
 
+    // IgnoreRepeatedFrames reaches adaptive (DetectionOptions and DetectorSettings): grey frames stepping 30 levels up and
+    // down with each frame shown twice, and a step of 60 at frame 21. Counting the repeats (scenedetect), the step is 4
+    // times its neighbours' mean, a cut; without them, 2 times.
+    [Fact]
+    public void AdaptiveCanIgnoreRepeatedFrames()
+    {
+        var video = Video();
+        IEnumerable<YuvFrame> Grey()
+        {
+            int w = video.Width, h = video.Height, cw = w / 2, ch = h / 2;
+            for (int i = 0; i < 40; i++)
+            {
+                int level = (i < 21 ? 100 : 160) + (i / 2 % 2 == 0 ? 0 : 30);
+                byte[] Plane(int size, int value) => Enumerable.Repeat((byte)value, size).ToArray();
+                yield return new YuvFrame(Plane(w * h, level), w, Plane(cw * ch, 128), cw, Plane(cw * ch, 128), cw);
+            }
+        }
+
+        var options = new DetectionOptions { Detector = DetectorKind.Adaptive, Yuv420Converter = new SwscaleYuv420() };
+        Assert.Equal([21L], ShotDetection.Detect(video, Grey(), options).Cuts.Select(c => c.FrameNum));
+        Assert.Empty(ShotDetection.Detect(video, Grey(), options with { IgnoreRepeatedFrames = true }).Cuts);
+        Assert.Empty(ShotDetection.Detect(video, Grey(), options with { Detectors = [new(DetectorKind.Adaptive) { IgnoreRepeatedFrames = true }] }).Cuts);
+    }
+
     [Fact]
     public void TurnedFramesAreUpright()
     {

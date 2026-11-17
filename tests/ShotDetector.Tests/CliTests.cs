@@ -37,6 +37,32 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
         Assert.Contains("Scene", output, StringComparison.Ordinal);
     }
 
+    // --ignore-repeated-frames and its config key are taken (the option itself: FrameInputTests.AdaptiveCanIgnoreRepeatedFrames);
+    // the clip's hard cuts stay where they are.
+    [Fact]
+    public void IgnoreRepeatedFramesIsAnOption()
+    {
+        var (exitCode, expected, err) = Run("-i", clips.ThreeShots);
+        Assert.True(exitCode == 0, err);
+        (exitCode, string output, err) = Run("-i", clips.ThreeShots, "--ignore-repeated-frames");
+        Assert.True(exitCode == 0, err);
+        Assert.Equal(expected, output);
+
+        string config = Path.Combine(Path.GetTempPath(), $"repeats-{Guid.NewGuid():N}.cfg");
+        File.WriteAllText(config, "[detect-adaptive]\nignore-repeated-frames = yes\n");
+        try
+        {
+            (exitCode, output, err) = Run("-i", clips.ThreeShots, "--config", config);
+            Assert.True(exitCode == 0, err);
+            Assert.Equal(expected, output);
+            Assert.DoesNotContain("ignore-repeated-frames", err, StringComparison.Ordinal); // not listed as unsupported
+        }
+        finally
+        {
+            File.Delete(config);
+        }
+    }
+
     // --version prints the package's version (the library's: both take ShotDetectorVersion), without the "+commit".
     [Fact]
     public void VersionPrintsTheVersion()

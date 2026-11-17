@@ -819,7 +819,7 @@ public class FrameRangeTests
         // Each fingerprinted one is written (the typed times inside their strings), every YuvVideo property and every
         // detector setting too.
         string text = ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved());
-        foreach (string name in ShotDetection.Fingerprinted.Except(["MinSceneDuration", "MinOutDuration", "Deinterlace", "Yadif", "BlackDetect", "FreezeDetect", "TrimReferenceTone"]))
+        foreach (string name in ShotDetection.Fingerprinted.Except(["MinSceneDuration", "MinOutDuration", "Deinterlace", "Yadif", "BlackDetect", "FreezeDetect", "TrimReferenceTone", "IgnoreRepeatedFrames"]))
             Assert.Contains("\n" + name + "=", "\n" + text);
 
         // Deinterlacing only when it deinterlaces: the ranges scored before it was taken keep their fingerprint.
@@ -844,8 +844,14 @@ public class FrameRangeTests
             Assert.Contains("\n" + p.Name + "=", "\n" + sited);
         Assert.DoesNotContain("\nChromaLocation=", "\n" + text);
         Assert.DoesNotContain("\nFileStartPts=", "\n" + text);
-        foreach (var p in typeof(DetectorSettings).GetProperties().Where(p => p.Name is not ("EqualityContract" or "MinSceneDuration" or "MinOutDuration")))
+        foreach (var p in typeof(DetectorSettings).GetProperties().Where(p => p.Name is not ("EqualityContract" or "MinSceneDuration" or "MinOutDuration" or "IgnoreRepeatedFrames")))
             Assert.Contains("\nDetectors[0]." + p.Name + "=", "\n" + text);
+
+        // IgnoreRepeatedFrames only when set, as black detection: the ranges scored before it existed keep their fingerprint.
+        string repeats = ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Adaptive) { IgnoreRepeatedFrames = false }], IgnoreRepeatedFrames = true }.Resolved());
+        Assert.Contains("\nIgnoreRepeatedFrames=True\n", "\n" + repeats);
+        Assert.Contains("\nDetectors[0].IgnoreRepeatedFrames=False\n", "\n" + repeats);
+        Assert.DoesNotContain("IgnoreRepeatedFrames", text);
         Assert.Equal(text, ShotDetection.Fingerprint(Video(), new DetectionOptions { Detectors = [new(DetectorKind.Content)] }.Resolved()));
         Assert.Equal(
             ShotDetection.Fingerprint(Video(), new DetectionOptions { MinSceneLength = "1.5s" }.Resolved()),

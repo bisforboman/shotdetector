@@ -77,6 +77,7 @@ sealed class Config
         "global.crop", "global.output", "global.backend", "global.default-detector",
         "detect-adaptive.threshold", "detect-adaptive.min-scene-len", "detect-adaptive.weights", "detect-adaptive.luma-only",
         "detect-adaptive.kernel-size", "detect-adaptive.min-content-val", "detect-adaptive.frame-window",
+        "detect-adaptive.ignore-repeated-frames",
         "detect-content.threshold", "detect-content.min-scene-len", "detect-content.weights", "detect-content.luma-only",
         "detect-content.kernel-size", "detect-content.filter-mode",
         "detect-threshold.threshold", "detect-threshold.min-scene-len", "detect-threshold.fade-bias", "detect-threshold.add-last-scene",
