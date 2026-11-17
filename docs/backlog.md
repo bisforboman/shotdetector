@@ -111,10 +111,14 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - ShotDetector as Subtitle Edit's shot-change engine (#633)
   - Why: Subtitlers snap cues to shot changes; Subtitle Edit uses FFmpeg's scene score. Scoping: docs/ideas/subtitle-edit.md (no engine seam in SE; SE5 MIT, SE4 GPL-3.0; 3-5 PRs here plus 1 in SE)
-  - Status: Maybe; first slice done 2026-10-31 (`--save-shotchanges` and `Timeline.ShotChanges`, SE's .shotchanges format); prototype and hand-labelled numbers 2026-11-09 (docs/subtitle-edit-prototype.md): adaptive beats SE's default on clean material, loses on repeated frames, and FFmpeg at 0.2 beats both, so SE waits on the row below (the owner, 2026-11-10: not before that row is done and the numbers are measured again)
+  - Status: Maybe; first slice done 2026-10-31 (`--save-shotchanges` and `Timeline.ShotChanges`, SE's .shotchanges format); prototype and hand-labelled numbers 2026-11-09 (docs/subtitle-edit-prototype.md): adaptive beats SE's default on clean material, loses on repeated frames, and FFmpeg at 0.2 beats both, so SE waits on the row below (the owner, 2026-11-10: not before that row is done and the numbers are measured again); measured again 2026-11-17 (§6 there): the row below's option left adaptive 3 at 47 missed / 67 false of 243 (FFmpeg 0.2: 20 / 28), because the false cuts sit on the encodes' keyframes, not next to repeats, so SE stays parked
 
 - Adaptive: ignore repeated frames (pulldown, encodes that drop and repeat frames)
   - Why: AdaptiveDetector divides a frame's change by its neighbours' mean, and a repeated frame changes by zero, so moving shots next to repeats score past the threshold. On the Subtitle Edit prototype's labels (docs/subtitle-edit-prototype.md) this gave 67 false cuts against FFmpeg scene's 7 at SE's default, all on a telecined film and a frame-repeating encode, while clean material had none. An option (off by default: scenedetect 0.7.2 does the same) that leaves repeated frames out of the neighbour mean, measured again on those labels. Departs from scenedetect, so the owner decides first
+  - Status: In progress; the owner approved the option, off by default (2026-11-17). Built as `--ignore-repeated-frames` in a draft PR (docs/decisions/2026-11-17-adaptive-repeated-frames.md): no gain on the labels (46 / 67 before, 47 / 67 after), a small one on frames that really repeat. Whether to keep the option is the owner's call
+
+- Adaptive: keyframe pulses in low-bitrate encodes
+  - Why: In archive.org's 512 kb/s encodes (Elephants Dream, Duck and Cover; a keyframe every 12 frames) content_val jumps 3 to 4 times at each keyframe of a moving shot, and adaptive calls it a cut: 56 of its 67 false cuts on the Subtitle Edit labels sit exactly on a keyframe (docs/subtitle-edit-prototype.md §6). scenedetect does the same. A remedy would depart from scenedetect (an option, off by default), and real cuts land on keyframes too (16 of the 115 found), so it needs a design the owner approves first, then the labels again
   - Status: Maybe
 
 - `Auto`'s http(s) fallback to an FFmpeg 9 executable

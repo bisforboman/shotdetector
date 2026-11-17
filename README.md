@@ -486,6 +486,13 @@ less CPU); there its point is ARM, where it gives x86's results.
 - **`shotdetect diff`:** scenedetect has nothing like it. Its shots are scenedetect's (the detector's), but which
   shots match and their trims are ShotDetector's own, not covered by the exactness promise.
 
+- **Repeated frames in adaptive:** `IgnoreRepeatedFrames` / `--ignore-repeated-frames` (`ignore-repeated-frames` in
+  `[detect-adaptive]`) leaves frames whose content_val is below 0.5 (repeated frames: pulldown, encodes that repeat
+  frames) out of the neighbour mean adaptive divides by, so motion next to a repeat scores lower. scenedetect counts
+  them, so with it the cuts can differ. Off by default. On the Subtitle Edit prototype's labels it didn't remove the
+  false cuts, which came from keyframes in low-bitrate encodes instead
+  ([docs/decisions/2026-11-17-adaptive-repeated-frames.md](docs/decisions/2026-11-17-adaptive-repeated-frames.md)).
+
 - **Downscaling:** by default ffmpeg sends full-size frames and `CvResize.cs` replicates
   `cv2.resize(INTER_LINEAR)` bit for bit, at the size PySceneDetect picks (`max(w,h)/256`). That's
   slow for big video because a 1080p frame is 6 MB through the pipe. `--ffmpeg-resize` lets
