@@ -69,9 +69,12 @@ internal enum ShotChange
 /// old shot missing at the new one's head and tail (negative: the new one has that many more).
 /// <paramref name="ALast"/> and <paramref name="BLast"/>: the last shot of a run, where a cut is in one cut only (a run
 /// of old shots joined in one new shot, or an old shot split into a run of new ones); null for a single shot. The
-/// trims are then the run's.
+/// trims are then the run's. <paramref name="BFrames"/>: the new cut's frames of the row where they start inside
+/// <paramref name="B"/> or end inside <see cref="LastB"/> (a cut found elsewhere in the new cut, or a new shot holding old
+/// shots that weren't neighbours, so two rows share it); null when they are those shots' frames.
 /// </summary>
-internal readonly record struct ShotDiffEntry(ShotChange Change, int? A, int? B, int Head = 0, int Tail = 0, int? ALast = null, int? BLast = null)
+internal readonly record struct ShotDiffEntry(
+    ShotChange Change, int? A, int? B, int Head = 0, int Tail = 0, int? ALast = null, int? BLast = null, FrameSpan? BFrames = null)
 {
     /// <summary>The old run's last shot (<see cref="A"/> for a single shot).</summary>
     public int? LastA => ALast ?? A;
@@ -244,7 +247,7 @@ internal static class ShotDiff
         });
 
         var runs = Runs(a, fa, b, fb, match);
-        var inOrder = LongestInOrder([.. runs.Select(r => ((int A, int Offset)?)(r.A, r.Head))]);
+        var inOrder = LongestInOrder([.. runs.Select(r => ((int A, int Offset)?)(r.A, r.Start - a[r.A].Start))]);
         var matchedA = new bool[a.Count];
         foreach (var r in runs)
         {
@@ -263,38 +266,55 @@ internal static class ShotDiff
             }
         }
 
+        // The rows in the new cut's order: runs by their first frame, added shots by theirs.
         int run = 0;
-        for (int j = 0; j < b.Count; j++)
+        void RunsBefore(int frame)
         {
-            if (b[j].Length == 0)
-                continue;
-            if (match[j] is null)
+            for (; run < runs.Count && runs[run].Span.Start < frame; run++)
             {
-                report.Add(new(ShotChange.Added, null, j));
-                continue;
+                var r = runs[run];
+                if (inOrder[run])
+                    RemovedBefore(r.A);
+                int head = r.Start - a[r.A].Start, tail = a[r.ALast].End - r.Start - r.Span.Length;
+                var change = !inOrder[run] ? ShotChange.Moved : head == 0 && tail == 0 ? ShotChange.Unchanged : ShotChange.Trimmed;
+                int first = ShotAt(b, r.Span.Start), last = ShotAt(b, r.Span.End - 1);
+                bool whole = b[first].Start == r.Span.Start && b[last].End == r.Span.End;
+                report.Add(new(change, r.A, first, head, tail, r.ALast != r.A ? r.ALast : null, last != first ? last : null, whole ? null : r.Span));
             }
-
-            while (runs[run].BLast < j)
-                run++;
-            var r = runs[run];
-            if (r.B != j)
-                continue;
-            if (inOrder[run])
-                RemovedBefore(r.A);
-            var change = !inOrder[run] ? ShotChange.Moved : r.Head == 0 && r.Tail == 0 ? ShotChange.Unchanged : ShotChange.Trimmed;
-            report.Add(new(change, r.A, j, r.Head, r.Tail, r.ALast != r.A ? r.ALast : null, r.BLast != j ? r.BLast : null));
         }
 
+        for (int j = 0; j < b.Count; j++)
+        {
+            if (b[j].Length == 0 || match[j] is not null)
+                continue;
+            RunsBefore(b[j].Start);
+            report.Add(new(ShotChange.Added, null, j));
+        }
+
+        RunsBefore(int.MaxValue);
         RemovedBefore(a.Count);
         return report;
     }
 
+    /// <summary>The shot with frames that has <paramref name="frame"/>.</summary>
+    static int ShotAt(IReadOnlyList<FrameSpan> shots, int frame)
+    {
+        for (int i = 0; i < shots.Count; i++)
+        {
+            if (shots[i].Start <= frame && frame < shots[i].End)
+                return i;
+        }
+
+        throw new ArgumentOutOfRangeException(nameof(frame));
+    }
+
     /// <summary>
-    /// A run of old shots <see cref="A"/>..<see cref="ALast"/> and new ones <see cref="B"/>..<see cref="BLast"/> that are
-    /// the same frames, though one cut has a cut the other doesn't; mostly one shot each. <see cref="Head"/> and
-    /// <see cref="Tail"/>: the old run's frames missing at the new run's head and tail.
+    /// A run of old shots <see cref="A"/>..<see cref="ALast"/> that are the new cut's frames <see cref="Span"/>, the first
+    /// of which is the old cut's frame <see cref="Start"/>: the same frames, though a cut may be in one cut only or
+    /// elsewhere in the other. Mostly one old shot, and one new shot's frames. The old run's frames missing at the head
+    /// are Start − a[A].Start, at the tail a[ALast].End − Start − Span.Length.
     /// </summary>
-    readonly record struct Run(int A, int ALast, int B, int BLast, int Head, int Tail);
+    readonly record struct Run(int A, int ALast, FrameSpan Span, int Start);
 
     /// <summary>
     /// The matched new shots as runs (docs/decisions/2026-11-13-shotdetect-diff-runs.md): consecutive new shots matched to
@@ -335,11 +355,83 @@ internal static class ShotDiff
                 (first, lastA) = Extend(a, fa, fb, anchored, m.A, span, start);
             }
 
-            runs.Add(new(first, lastA, j, last, start - a[first].Start, a[lastA].End - start - span.Length));
+            runs.Add(new(first, lastA, span, start));
             j = last;
         }
 
+        Overhangs(a, fa, fb, runs);
         return runs;
+    }
+
+    /// <summary>
+    /// Frames of a run past its old shots' head or tail, which aren't the neighbours' there
+    /// (docs/decisions/2026-11-17-shotdetect-diff-parts.md). First, a cut found elsewhere in the new cut: such frames
+    /// that continue the run next to it in the new cut, in its old shot, go to that run. Then a join across a move:
+    /// such frames that are part of an old shot no run has (at least half of it, anywhere in the old cut, nearest
+    /// where the run's old shots expect it; the longest such frames first) are a run of their own. The runs are left in
+    /// the new cut's order.
+    /// </summary>
+    static void Overhangs(IReadOnlyList<FrameSpan> a, CutFrames fa, CutFrames fb, List<Run> runs)
+    {
+        for (int i = 0; i + 1 < runs.Count; i++)
+        {
+            Run r = runs[i], n = runs[i + 1];
+            if (r.Span.End != n.Span.Start)
+                continue;
+            int rEnd = r.Start + r.Span.Length, tail = rEnd - a[r.ALast].End, head = a[n.A].Start - n.Start;
+            if (tail > 0 && tail < r.Span.Length && n.Start - tail >= a[n.A].Start
+                && Same(fa, n.Start - tail, n.Start, fb, n.Span.Start - n.Start))
+            {
+                runs[i] = r with { Span = new(r.Span.Start, r.Span.End - tail) };
+                runs[i + 1] = n with { Span = new(n.Span.Start - tail, n.Span.End), Start = n.Start - tail };
+            }
+            else if (head > 0 && head < n.Span.Length && rEnd + head <= a[r.ALast].End
+                && Same(fa, rEnd, rEnd + head, fb, n.Span.Start - rEnd))
+            {
+                runs[i] = r with { Span = new(r.Span.Start, r.Span.End + head) };
+                runs[i + 1] = n with { Span = new(n.Span.Start + head, n.Span.End), Start = n.Start + head };
+            }
+        }
+
+        var taken = new bool[a.Count];
+        var overhangs = new List<(int Run, bool Head, int Length)>();
+        for (int i = 0; i < runs.Count; i++)
+        {
+            var r = runs[i];
+            for (int k = r.A; k <= r.ALast; k++)
+                taken[k] = true;
+            int head = a[r.A].Start - r.Start, tail = r.Start + r.Span.Length - a[r.ALast].End;
+            if (head > 0)
+                overhangs.Add((i, true, head));
+            if (tail > 0)
+                overhangs.Add((i, false, tail));
+        }
+
+        var found = new List<Run>();
+        foreach (var (i, isHead, length) in overhangs.OrderByDescending(o => o.Length))
+        {
+            var r = runs[i];
+            var part = isHead ? new FrameSpan(r.Span.Start, r.Span.Start + length) : new FrameSpan(r.Span.End - length, r.Span.End);
+            int expected = isHead ? r.A - 1 : r.ALast + 1;
+            var candidates = Enumerable.Range(0, a.Count)
+                .Where(k => !taken[k] && a[k].Length > 0 && length <= a[k].Length && 2 * length >= a[k].Length)
+                .OrderBy(k => Math.Abs(k - expected));
+            foreach (int k in candidates)
+            {
+                int start = a[k].Start + Offset(a[k], fa, part, fb);
+                if (start < a[k].Start || start + length > a[k].End || !Same(fa, start, start + length, fb, part.Start - start))
+                    continue;
+                taken[k] = true;
+                found.Add(new(k, k, part, start));
+                runs[i] = isHead
+                    ? r with { Span = new(part.End, r.Span.End), Start = r.Start + length }
+                    : r with { Span = new(r.Span.Start, part.Start) };
+                break;
+            }
+        }
+
+        runs.AddRange(found);
+        runs.Sort((x, y) => x.Span.Start.CompareTo(y.Span.Start));
     }
 
     /// <summary>

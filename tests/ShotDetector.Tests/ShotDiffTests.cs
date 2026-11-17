@@ -155,6 +155,65 @@ public class ShotDiffTests(RecutClips clips) : IClassFixture<RecutClips>
         Assert.Equal(4, report.Count);
     }
 
+    // A join across a move (docs/decisions/2026-11-17-shotdetect-diff-parts.md): one new shot holds old shots that
+    // weren't neighbours, the one between them moved away. A row each, both in that new shot, each with its frames.
+    [Fact]
+    public void AJoinAcrossAMoveIsARowPerOldShot()
+    {
+        var report = Compare(Cut(Old), Joined(NoisyCut(4, Old[0], Old[1], Old[3], Old[4], Old[2]), 1));
+        Assert.Equal(
+            [
+                new(ShotChange.Unchanged, 0, 0), new(ShotChange.Unchanged, 1, 1, BFrames: new(40, 70)),
+                new(ShotChange.Unchanged, 3, 1, BFrames: new(70, 95)), new(ShotChange.Unchanged, 4, 2), new(ShotChange.Moved, 2, 3),
+            ],
+            report);
+    }
+
+    // A few frames of a shot no run has, past another's end, aren't a row of their own under half that shot: they stay
+    // the other's, which is longer.
+    [Fact]
+    public void AFewFramesDontTakeAnUnmatchedShot()
+    {
+        var report = Compare(Cut(Old), Joined(Cut(Old[0], Old[1], new(4, 0, 10), Old[2], Old[4]), 1));
+        Assert.Equal(new ShotDiffEntry(ShotChange.Trimmed, 1, 1, 0, -10), report[1]);
+        Assert.Equal(new ShotDiffEntry(ShotChange.Removed, 3, null), report[3]);
+    }
+
+    /// <summary><paramref name="cut"/> with the cut before shot <paramref name="index"/> found <paramref name="late"/> frames late (negative: early).</summary>
+    static (List<FrameSpan> Shots, CutFrames Frames) Moved((List<FrameSpan> Shots, CutFrames Frames) cut, int index, int late)
+    {
+        var shots = new List<FrameSpan>(cut.Shots);
+        shots[index - 1] = new(shots[index - 1].Start, shots[index - 1].End + late);
+        shots[index] = new(shots[index].Start + late, shots[index].End);
+        return (shots, cut.Frames);
+    }
+
+    // A cut found elsewhere in the new cut (continuous action, a cut found a few frames late): every frame is there, so
+    // nothing changed; the rows' frames start and end where the old shots' do, inside the new shots.
+    [Fact]
+    public void ACutFoundElsewhereChangesNothing()
+    {
+        var late = Compare(Cut(Old), Moved(NoisyCut(4, Old), 2, 7));
+        Assert.Equal(
+            [
+                new(ShotChange.Unchanged, 0, 0), new(ShotChange.Unchanged, 1, 1, BFrames: new(40, 70)),
+                new(ShotChange.Unchanged, 2, 1, BLast: 2, BFrames: new(70, 120)), new(ShotChange.Unchanged, 3, 3), new(ShotChange.Unchanged, 4, 4),
+            ],
+            late);
+        var early = Compare(Cut(Old), Moved(NoisyCut(4, Old), 2, -7));
+        Assert.Equal(new ShotDiffEntry(ShotChange.Unchanged, 1, 1, BLast: 2, BFrames: new(40, 70)), early[1]);
+        Assert.Equal(new ShotDiffEntry(ShotChange.Unchanged, 2, 2, BFrames: new(70, 120)), early[2]);
+
+        // Across a move: the moved shot's cut found late, into the shot after it.
+        var moved = Compare(Cut(Old), Moved(NoisyCut(4, Old[0], Old[3], Old[1], Old[2], Old[4]), 3, 6));
+        Assert.Equal(
+            [
+                new(ShotChange.Unchanged, 0, 0), new(ShotChange.Moved, 3, 1), new(ShotChange.Unchanged, 1, 2, BFrames: new(65, 95)),
+                new(ShotChange.Unchanged, 2, 2, BLast: 3, BFrames: new(95, 145)), new(ShotChange.Unchanged, 4, 4),
+            ],
+            moved);
+    }
+
     // Frames the old cut doesn't have before a shot aren't its neighbour's: the neighbour is removed, the shot longer.
     [Fact]
     public void ANewHeadIsNotARun()
