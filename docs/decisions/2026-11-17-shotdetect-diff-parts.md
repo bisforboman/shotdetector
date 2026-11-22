@@ -16,7 +16,7 @@ or more whole new shots.
 ## Question, choices and answer
 
 **How a row shows part of a new shot** (put to the owner on the pull request, 2026-11-17; `diff` is not released yet,
-so nothing to keep compatible). Open: the pull request is a draft until the owner answers, built on the first choice.
+so nothing to keep compatible). **Answer (the owner, 2026-11-22): the first choice**, as built (#779).
 
 - **A row per old run, its frames in the new cut where they lie**: `b` keeps its shape (`shot`, `lastShot`,
   `startFrame`, `endFrame`, the timecodes), and its frames and timecodes are the row's own, which can start or end

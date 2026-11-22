@@ -2,7 +2,10 @@
 
 Status: **prototype done, numbers in (2026-11-09); nothing sent to Subtitle Edit.** On 2026-11-10 the owner chose not to
 approach Subtitle Edit yet. Adaptive's repeated-frame weakness comes first, then a new measurement
-([decisions/2026-11-09-subtitle-edit-prototype.md](decisions/2026-11-09-subtitle-edit-prototype.md)).
+([decisions/2026-11-09-subtitle-edit-prototype.md](decisions/2026-11-09-subtitle-edit-prototype.md)). **Measured again
+2026-11-17 (§6):** ignoring repeated frames changed nothing on the labels (adaptive 3: 46 missed / 67 false before, 47 /
+67 after). The false cuts sit on the encodes' keyframes, not next to repeated frames, so the option wasn't kept (the
+owner, 2026-11-22: [decisions/2026-11-17-adaptive-repeated-frames.md](decisions/2026-11-17-adaptive-repeated-frames.md)).
 This follows the scoping note [ideas/subtitle-edit.md](ideas/subtitle-edit.md) (2026-10-31), which shipped
 `--save-shotchanges` and parked the Subtitle Edit (SE) side until numbers showed a gain.
 
@@ -419,7 +422,8 @@ their ends, plus Tears of Steel's muzzle flashes, explosions and hologram flicke
 average doesn't absorb a white-out several frames long either. **The issue's "with the flash filter" overstates what
 adaptive does.**
 
-**Why adaptive fails on repeated frames.** Adaptive divides each frame's content change by the mean change of the
+**Why adaptive fails on repeated frames** (the 2026-11-09 reading; §6 found the cause is the encodes' keyframes
+instead). Adaptive divides each frame's content change by the mean change of the
 frames around it. A repeated frame changes by zero. In a moving shot, the frames next to a repeat therefore get a low
 neighbour mean, and the ratio jumps past 3. mpdecimate keeps 1279 of 1798 frames in Duck and Cover's first minute
 (3:2 pulldown plus still frames) and 1376 of 1440 in Elephants Dream's. The false cuts sit in exactly those stretches:
@@ -463,6 +467,38 @@ is.
    single-file question. Its gaps are in the scoping note (`win-arm64`, `osx-x64`, progress for SE).
 4. **Nothing in SE without the owner's OK**: no issue, discussion, PR or fork. The question is put to the owner.
 
+## 6. Measured again: ignoring repeated frames (2026-11-17)
+
+The backlog row this section waited on built `--ignore-repeated-frames` (`DetectionOptions.IgnoreRepeatedFrames`, off by
+default; not merged: it is on the closed pull request #780, commit 32c91ae): frames whose content_val is below 0.5 are
+left out of adaptive's neighbour mean
+([decisions/2026-11-17-adaptive-repeated-frames.md](decisions/2026-11-17-adaptive-repeated-frames.md)). The same clips,
+labels and scoring as §4 (`shotdetect` built from that branch; its results without the option are §4's, cut for cut):
+
+| Window | Cuts | FFmpeg `scene` 0.4 | Adaptive 3 | Adaptive 3, ignoring repeats | FFmpeg `scene` 0.2 | Adaptive 1.5 | Adaptive 1.5, ignoring repeats |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Sintel trailer | 8 | 5 / 0 | 1 / 0 | 1 / 0 | 2 / 0 | 0 / 3 | 0 / 3 |
+| Tears of Steel, both windows | 87 | 29 / 0 | 12 / 0 | 12 / 0 | 4 / 2 | 1 / 5 | 1 / 5 |
+| Elephants Dream | 59 | 41 / 1 | 8 / 31 | 9 / 31 | 12 / 5 | 6 / 68 | 6 / 68 |
+| Duck and Cover | 89 | 46 / 6 | 25 / 36 | 25 / 36 | 2 / 21 | 10 / 42 | 10 / 42 |
+| **All** | **243** | **121 / 7** | **46 / 67** | **47 / 67** | **20 / 28** | **17 / 118** | **17 / 118** |
+
+**The option doesn't help here, because the cause was misread.** Elephants Dream's and Duck and Cover's files are both
+archive.org 512 kb/s encodes with a keyframe every 12 frames. At each keyframe the picture's detail resets and
+content_val jumps to 3 or 4 times the frames around it in a moving shot, which is a cut to adaptive. Of adaptive 3's 67
+false cuts, 56 sit exactly on a keyframe and 64 within a frame of one; of the 115 cuts it found, 16 do. Elephants
+Dream's crane shot has its false cuts every 24 frames. Frames that change by almost nothing are rare in these files
+(below 0.5: 2.5 % of Duck and Cover's frames, 8 % of Elephants Dream's, stills and black included), so leaving them out
+of the mean changes little. A higher repeat threshold only costs real cuts: 1 gave 49 / 67, 2 gave 65 / 63.
+
+Where frames do repeat (a 24 to 30 fps copy made by repeating every fourth frame, x264 CRF 18), adaptive 3 found the
+original's cuts with or without the option, on the Sintel trailer and on Tears of Steel's first 4 minutes. At 1.5 the
+option halved the cuts the copy added (6 to 3, and 4 to 2).
+
+scenedetect's own `--min-content-val` cuts the keyframe false cuts but loses Duck and Cover's low-contrast real cuts:
+adaptive 3 with 25 gave 70 / 15, 1.5 with 25 gave 47 / 31. **FFmpeg `scene` at 0.2 (20 / 28) still beats every
+ShotDetector setting tried**, so §5's recommendation stands: don't approach SE with these numbers.
+
 ## Reproducing
 
 Everything is in [subtitle-edit-prototype/](subtitle-edit-prototype/), run from the repository root with `shotdetect`
@@ -475,6 +511,9 @@ leaves a cloud session):
 3. `sheets.py <dir>` (with `out/results.json` in it): the pooled candidates, the contact sheets and `candidates.json`.
 4. Label the sheets into `labels.txt` (the one here is this run's), then `score.py <dir>` prints the tables above.
 5. `timing.py <rounds> <scratch file> <clips...>`: the run times.
+6. `repeats.py <out> 3 3:on 1.5 1.5:on 3:-:25`: §6's adaptive runs, with and without `--ignore-repeated-frames` and
+   with `--min-content-val`, scored against the same labels. The `on` configurations need `shotdetect` built from
+   commit 32c91ae (#780), where the option is.
 
 The Duck and Cover file isn't added to tools/realworld.py, which would put it in the nightly comparison. Doing so is
 easy (the SHA-256 is above) if the owner wants a telecined film there.
