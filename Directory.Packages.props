@@ -15,7 +15,7 @@
          takes-the-framereader-package.md). Its FFmpeg libraries, FrameReader.Native.<rid> at the same version, come to
          CI and the release through native-package.yml. FrameReaderPackageVersion builds against another version, such
          as a FrameReader pull request's packed into a local feed (RestoreAdditionalProjectSources). -->
-    <PackageVersion Include="FrameReader" Version="[2.25.0, 3.0.0)" Condition="'$(FrameReaderPackageVersion)' == ''" />
+    <PackageVersion Include="FrameReader" Version="[2.26.0, 3.0.0)" Condition="'$(FrameReaderPackageVersion)' == ''" />
     <PackageVersion Include="FrameReader" Version="[$(FrameReaderPackageVersion), 3.0.0)" Condition="'$(FrameReaderPackageVersion)' != ''" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
