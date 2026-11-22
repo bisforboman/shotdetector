@@ -15,9 +15,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
 
-- Find why CI's `build` job failed on main at 9adc283 (run 41849590819, 2026-11-04)
-  - Why: that push (#737) changed only docs, and later pushes to main are green, so it looks like a flaky test or step; find which (the job's logs and annotations), then fix it or record it as the VideoWriter flake was (docs/decisions/2026-10-10-videowriter-s-rare-ci-mismatch.md)
-  - Status: Open
 - `shotdetect diff`: the offset of a shot that fades in from black or out to black
   - Why: on the Sintel trailer with `tools/recut.py`, seeds 5 and 7, a moved shot that fades in and out reads 3 or 4 frames off (trims of −3 and 3 where it has none). Its dark first and last frames are flat in one cut and not in the other (the grade, re-encoding), and such a pair correlates 0, which outweighs the rest of the offset's score; every offset then fits within a little more than `OffsetTolerance`. Near-flat pictures could count less, or alike in both cuts; docs/decisions/2026-11-17-shotdetect-diff-parts.md
   - Status: Open
@@ -108,10 +105,10 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 - ShotDetector as Subtitle Edit's shot-change engine (#633)
   - Why: Subtitlers snap cues to shot changes; Subtitle Edit uses FFmpeg's scene score. Scoping: docs/ideas/subtitle-edit.md (no engine seam in SE; SE5 MIT, SE4 GPL-3.0; 3-5 PRs here plus 1 in SE)
-  - Status: Maybe; first slice done 2026-10-31 (`--save-shotchanges` and `Timeline.ShotChanges`, SE's .shotchanges format); prototype and hand-labelled numbers 2026-11-09 (docs/subtitle-edit-prototype.md): adaptive beats SE's default on clean material, loses on repeated frames, and FFmpeg at 0.2 beats both, so SE waits on the row below (the owner, 2026-11-10: not before that row is done and the numbers are measured again)
+  - Status: Maybe; first slice done 2026-10-31 (`--save-shotchanges` and `Timeline.ShotChanges`, SE's .shotchanges format); prototype and hand-labelled numbers 2026-11-09 (docs/subtitle-edit-prototype.md): adaptive beats SE's default on clean material, loses on repeated frames, and FFmpeg at 0.2 beats both, so SE waited on adaptive's repeated frames (the owner, 2026-11-10: not before that row is done and the numbers are measured again); measured again 2026-11-17 (§6 there): ignoring repeated frames left adaptive 3 at 47 missed / 67 false of 243 (FFmpeg 0.2: 20 / 28), because the false cuts sit on the encodes' keyframes, not next to repeats; the option was dropped (2026-11-22, the row in backlog-done.md), so SE stays parked; the keyframe pulses are the row below
 
-- Adaptive: ignore repeated frames (pulldown, encodes that drop and repeat frames)
-  - Why: AdaptiveDetector divides a frame's change by its neighbours' mean, and a repeated frame changes by zero, so moving shots next to repeats score past the threshold. On the Subtitle Edit prototype's labels (docs/subtitle-edit-prototype.md) this gave 67 false cuts against FFmpeg scene's 7 at SE's default, all on a telecined film and a frame-repeating encode, while clean material had none. An option (off by default: scenedetect 0.7.2 does the same) that leaves repeated frames out of the neighbour mean, measured again on those labels. Departs from scenedetect, so the owner decides first
+- Adaptive: keyframe pulses in low-bitrate encodes
+  - Why: In archive.org's 512 kb/s encodes (Elephants Dream, Duck and Cover; a keyframe every 12 frames) content_val jumps 3 to 4 times at each keyframe of a moving shot, and adaptive calls it a cut: 56 of its 67 false cuts on the Subtitle Edit labels sit exactly on a keyframe (docs/subtitle-edit-prototype.md §6). scenedetect does the same. A remedy would depart from scenedetect (an option, off by default), and real cuts land on keyframes too (16 of the 115 found), so it needs a design the owner approves first, then the labels again
   - Status: Maybe
 
 - `Auto`'s http(s) fallback to an FFmpeg 9 executable
