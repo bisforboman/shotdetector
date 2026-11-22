@@ -34,11 +34,12 @@ internal static class ContactSheet
             throw new ArgumentException($"The contact sheet is a .png or a .pdf file, not \"{Path.GetFileName(path)}\".", nameof(path));
         if (width < 16)
             throw new ArgumentException("The contact sheet's thumbnails are 16 pixels wide or more.", nameof(width));
-        if (images.NumImages < 1)
+        if (images.Interval is null && images.IntervalDuration is null && images.NumImages < 1)
             throw new ArgumentException("The contact sheet needs one image per shot or more.", nameof(images));
         var shots = result.Shots;
         if (shots.Count == 0)
             throw new InvalidOperationException("No shots for a contact sheet.");
+        int[] counts = images.ImageCounts(shots, result.Video.Reader.Fps);
         bool png = extension == ".png";
         var thumbs = images with
         {
@@ -55,7 +56,7 @@ internal static class ContactSheet
         try
         {
             var files = Export.SaveImages(result, temp, thumbs, cancellationToken);
-            var rows = files.Chunk(thumbs.NumImages)
+            var rows = Export.PerShot(files, counts)
                 .Select((group, i) => new Row(Label(shots[i]), [.. group.Select(File.ReadAllBytes)]))
                 .ToList();
             File.WriteAllBytes(path, png ? Png(rows) : Pdf(rows, Timeline.VideoName(result)));

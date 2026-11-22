@@ -19,10 +19,6 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: on the Sintel trailer with `tools/recut.py`, seeds 5 and 7, a moved shot that fades in and out reads 3 or 4 frames off (trims of −3 and 3 where it has none). Its dark first and last frames are flat in one cut and not in the other (the grade, re-encoding), and such a pair correlates 0, which outweighs the rest of the offset's score; every offset then fits within a little more than `OffsetTolerance`. Near-flat pictures could count less, or alike in both cuts; docs/decisions/2026-11-17-shotdetect-diff-parts.md
   - Status: Open
 
-- save-images `-i/--interval` with `--min-images`/`--max-images` (scenedetect 0.7.3, its #280): images per shot by its length (floor(length / interval) + 1, picked as with `-n`), the HTML page's rows then of differing lengths
-  - Why: new in scenedetect 0.7.3, which the default mode now follows (#768); the rest of 0.7.3 that ShotDetector has is reproduced, this option is missing. `ImageOptions` and the CLI's `--num-images`; check the picks against scenedetect's as the thumbnails were (byte-identical names, the same frames)
-  - Status: Open
-
 ## Waiting
 
 - Optional: the owner times the sequential conversion thread on the 16-thread Ryzen

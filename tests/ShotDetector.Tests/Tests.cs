@@ -551,6 +551,66 @@ public class ExportTests
         Assert.Equal([4.013333333333334, 4.02, 4.026666666666666], times[1]);      // margin capped by the segment
         Assert.Equal([4.04, 4.04, 4.04], times[2]);                                // empty shot: its start
     }
+
+    // save-images -i/--interval (scenedetect 0.7.3): floor(length / interval) + 1 images per shot, at least min-images and
+    // at most max-images. Expected: scenedetect's _get_num_images on the same shots (frames 0, 1, 15, 30, 31, 90, 105,
+    // 405). "0.3s" on the 15-frame shot at 25 fps is the 1e-9 tolerance: 0.6 / 0.3 is 1.9999999999999998, so 3 images.
+    [Theory]
+    [InlineData(25, 1, "1s", 1, null, new[] { 1, 1, 1, 1, 3, 1, 13 })]
+    [InlineData(25, 1, "0.5s", 2, null, new[] { 2, 2, 2, 2, 5, 2, 25 })]
+    [InlineData(25, 1, "0.3s", 1, null, new[] { 1, 2, 3, 1, 8, 3, 41 })]
+    [InlineData(25, 1, "10", 1, 4, new[] { 1, 2, 2, 1, 4, 2, 4 })]
+    [InlineData(25, 1, "00:00:00.600", 3, 5, new[] { 3, 3, 3, 3, 4, 3, 5 })]
+    [InlineData(25, 1, "0.1s", 1, null, new[] { 1, 6, 7, 1, 24, 7, 121 })]
+    [InlineData(30000, 1001, "1s", 1, null, new[] { 1, 1, 1, 1, 2, 1, 11 })]
+    [InlineData(30000, 1001, "0.3s", 1, null, new[] { 1, 2, 2, 1, 7, 2, 34 })]
+    [InlineData(30000, 1001, "10", 1, 4, new[] { 1, 2, 2, 1, 4, 2, 4 })]
+    [InlineData(30000, 1001, "0.1s", 1, null, new[] { 1, 5, 6, 1, 20, 6, 101 })]
+    public void ImageCountsMatchScenedetect(int num, int den, string interval, int min, int? max, int[] expected)
+    {
+        var fps = new Fps(num, den);
+        long[] bounds = [0, 1, 15, 30, 31, 90, 105, 405];
+        var shots = Enumerable.Range(0, bounds.Length - 1)
+            .Select(i => new Shot(i + 1, FrameTime.Frame(bounds[i], fps), FrameTime.Frame(bounds[i + 1], fps)))
+            .ToArray();
+        Assert.Equal(expected, new ImageOptions { Interval = interval, MinImages = min, MaxImages = max }.ImageCounts(shots, fps));
+    }
+
+    // save_images' checks: an interval above 0, min-images 1 or more, max-images at least min-images, both only with an
+    // interval; NumImages without one, the typed interval as the string.
+    [Fact]
+    public void ImageIntervalOptionsAreChecked()
+    {
+        Shot[] shots = [new(1, F(0), F(100))];
+        Assert.Equal([3], new ImageOptions().ImageCounts(shots, Fps25));
+        Assert.Equal([5], new ImageOptions { IntervalDuration = TimeSpan.FromSeconds(1) }.ImageCounts(shots, Fps25)); // 4 s
+        Assert.Equal([5], new ImageOptions { Interval = "1s", NumImages = 7 }.ImageCounts(shots, Fps25));          // NumImages unused
+        Assert.Throws<ArgumentException>(() => new ImageOptions { Interval = "0s" }.ImageCounts(shots, Fps25));
+        Assert.Throws<ArgumentException>(() => new ImageOptions { Interval = "1s", MinImages = 0 }.ImageCounts(shots, Fps25));
+        Assert.Throws<ArgumentException>(() => new ImageOptions { Interval = "1s", MinImages = 3, MaxImages = 2 }.ImageCounts(shots, Fps25));
+        Assert.Throws<ArgumentException>(() => new ImageOptions { MinImages = 2 }.ImageCounts(shots, Fps25));
+        Assert.Throws<ArgumentException>(() => new ImageOptions { MaxImages = 5 }.ImageCounts(shots, Fps25));
+        Assert.Throws<ArgumentException>(() => new ImageOptions { Interval = "1s", IntervalDuration = TimeSpan.FromSeconds(1) }.ImageCounts(shots, Fps25));
+        Assert.Throws<ArgumentException>(() => new ImageOptions { NumImages = 0 }.ImageCounts(shots, Fps25));
+    }
+
+    // The executable's select expression: a balanced sum (a chain stops parsing at about 100 terms), every frame once.
+    [Fact]
+    public void SelectFramesIsABalancedSum()
+    {
+        Assert.Equal("eq(n\\,7)", Export.SelectFrames([7]));
+        Assert.Equal("(eq(n\\,1)+(eq(n\\,2)+eq(n\\,3)))", Export.SelectFrames([1, 2, 3]));
+        string expression = Export.SelectFrames([.. Enumerable.Range(0, 1000)]);
+        int depth = 0, deepest = 0;
+        foreach (char c in expression)
+        {
+            depth += c == '(' ? 1 : c == ')' ? -1 : 0;
+            deepest = Math.Max(deepest, depth);
+        }
+
+        Assert.Equal(11, deepest); // 10 levels of sums for 1000 terms, and eq's own
+        Assert.Equal(1000, System.Text.RegularExpressions.Regex.Count(expression, "eq\\("));
+    }
 }
 
 public class CvResizeTests

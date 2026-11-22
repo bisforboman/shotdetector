@@ -65,6 +65,9 @@ const string Usage = """
           --stats <file>                 Write per-frame metrics as CSV (like scenedetect -s)
           --save-images <dir>            Save JPEG thumbnails per shot (like scenedetect save-images)
           --num-images <n>               Thumbnails per shot (default 3)
+          --image-interval <duration>    One thumbnail per <duration> of each shot instead (save-images -i, 0.7.3):
+                                         floor(length / duration) + 1 per shot; seconds (2s), HH:MM:SS or frames
+          --min-images <n>, --max-images <n>   Fewest and most per shot with --image-interval (max 0: no limit)
           --frame-margin <n>             Frames to keep away from each end of a shot (default 1)
           --image-width <px>, --image-height <px>, --image-scale <factor>, --image-format <jpg|png|webp>
           --image-quality <0-100>        JPEG/WebP quality (default 95 JPEG, 100 WebP; JPEG approximately)
@@ -150,6 +153,8 @@ var detectorList = new List<DetectorSettings>();  // -d ... each with its own -t
 var given = new HashSet<string>();                 // options given on the command line (they beat the config file)
 Config? config = null;
 var images = new ImageOptions();
+int? minImages = null, maxImages = null;           // --min-images, --max-images: checked once the config file's are in
+bool configNumAndInterval = false;                 // the config file sets both save-images num-images and interval
 var split = new SplitOptions();
 
 // shotdetect qc: the delivery checks, a command of its own (Qc.cs).
@@ -400,6 +405,15 @@ try
             case "--num-images":
                 images = images with { NumImages = NextInt() };
                 break;
+            case "--image-interval":
+                images = images with { Interval = Next() };
+                break;
+            case "--min-images":
+                minImages = NextInt();
+                break;
+            case "--max-images":
+                maxImages = NextInt();
+                break;
             case "--frame-margin":
                 images = images with { FrameMargin = NextInt() };
                 break;
@@ -563,6 +577,21 @@ try
 
     if (input is null)
         throw new ArgumentException("Missing -i <video>");
+
+    // save-images' count, as scenedetect 0.7.3: --num-images or --image-interval, not both; either on the command line
+    // beats the config file's (where only one may be set); --min-images and --max-images only with an interval.
+    if (given.Contains("--num-images") && given.Contains("--image-interval"))
+        throw new ArgumentException("Only one of --num-images or --image-interval can be set.");
+    if (given.Contains("--num-images"))
+        images = images with { Interval = null, MinImages = 1, MaxImages = null };
+    else if (!given.Contains("--image-interval") && configNumAndInterval)
+        throw new ArgumentException("Only one of num-images or interval can be set in the config file.");
+    if (images.Interval is null && (minImages is not null || maxImages is not null))
+        throw new ArgumentException("--min-images and --max-images can only be used with --image-interval.");
+    if (minImages is { } fewest)
+        images = images with { MinImages = fewest };
+    if (maxImages is { } most)
+        images = images with { MaxImages = most == 0 ? null : most };
     if (config is not null)
     {
         // The default detector, and each detector's own section for what the command line didn't set.
@@ -776,11 +805,11 @@ try
 
     if (htmlPath is not null)
     {
-        // Image links relative to the page, grouped per shot (SaveImages writes NumImages per shot, in order).
+        // Image links relative to the page, grouped per shot (SaveImages writes each shot's images in order).
         string pageDir = Path.GetDirectoryName(Path.GetFullPath(htmlPath))!;
         var perShot = htmlNoImages || saved is null
             ? null
-            : saved.Select(f => Path.GetRelativePath(pageDir, f)).Chunk(images.NumImages).Select(c => (IReadOnlyList<string>)c).ToList();
+            : Export.PerShot([.. saved.Select(f => Path.GetRelativePath(pageDir, f))], images.ImageCounts(result.Shots, result.Video.Reader.Fps));
         File.WriteAllText(htmlPath, Shots.Html(result.Shots, perShot, htmlWidth, htmlHeight, result.Cuts));
         Console.Error.WriteLine($"Wrote {htmlPath}");
     }
@@ -998,6 +1027,19 @@ void ApplyConfig(Config c)
         Quality = c.Int("save-images", "quality") ?? images.Quality,
         Compression = c.Int("save-images", "compression") ?? images.Compression,
     };
+
+    // An interval (0, the default, is none) brings its min-images and max-images (0: no limit); without one they're ignored.
+    configNumAndInterval = c.Time("save-images", "interval") is not null && c.Get("save-images", "num-images") is not null;
+    if (c.Time("save-images", "interval") is { } interval)
+    {
+        images = images with
+        {
+            Interval = interval,
+            MinImages = c.Int("save-images", "min-images") ?? 1,
+            MaxImages = c.Int("save-images", "max-images") is { } m && m != 0 ? m : null,
+        };
+    }
+
     split = split with
     {
         Copy = c.Bool("split-video", "copy") ?? split.Copy,

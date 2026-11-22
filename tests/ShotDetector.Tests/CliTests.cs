@@ -172,6 +172,61 @@ public class CliTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // --image-interval with --min-images/--max-images (save-images -i, scenedetect 0.7.3): 2 s shots at 0.5 s are 5 images,
+    // at most 4; the HTML page takes each shot's own. --num-images with it, or min/max without it, is refused.
+    [Fact]
+    public void ImageIntervalOnTheCommandLine()
+    {
+        string dir = Directory.CreateTempSubdirectory("shotdetector-cli-").FullName;
+        try
+        {
+            string html = Path.Combine(dir, "page.html");
+            var (exitCode, _, err) = Run("-i",
+                clips.ThreeShots,
+                "-d",
+                "content",
+                "-q",
+                "--save-html",
+                html,
+                "--image-interval",
+                "0.5s",
+                "--max-images",
+                "4",
+                "--image-width",
+                "32");
+            Assert.True(exitCode == 0, err);
+            Assert.Equal(12, Directory.GetFiles(dir, "*.jpg").Length);
+            Assert.Equal(12, System.Text.RegularExpressions.Regex.Count(File.ReadAllText(html), "<img "));
+            string unlimited = Path.Combine(dir, "unlimited");
+            (exitCode, _, err) = Run("-i",
+                clips.ThreeShots,
+                "-d",
+                "content",
+                "-q",
+                "--save-images",
+                unlimited,
+                "--image-interval",
+                "1s",
+                "--max-images",
+                "0",
+                "--image-width",
+                "32"); // 0: no limit, as scenedetect's
+            Assert.True(exitCode == 0, err);
+            Assert.Equal(9, Directory.GetFiles(unlimited).Length);
+
+            (exitCode, _, err) = Run("-i", clips.ThreeShots, "--save-images", dir, "--image-interval", "1s", "--num-images", "2");
+            Assert.Equal(2, exitCode);
+            Assert.Contains("Only one of --num-images or --image-interval", err, StringComparison.Ordinal);
+            (exitCode, _, err) = Run("-i", clips.ThreeShots, "--save-images", dir, "--max-images", "2");
+            Assert.Equal(2, exitCode);
+            Assert.Contains("can only be used with --image-interval", err, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // shotdetect qc: loudness checks against the presets (docs/decisions/2026-11-01-delivery-qc.md), the same ebur128
     // figures as --loudness; exit 3 and the failing checks named when any judged check is out of range. Needs
     // SHOTDETECTOR_FFMPEG_LIBS (in-process only, like --loudness).

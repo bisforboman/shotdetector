@@ -46,8 +46,60 @@ public sealed record SplitOptions
 /// <summary>Settings for <see cref="Export.SaveImages"/>; the defaults are scenedetect's.</summary>
 public sealed record ImageOptions
 {
-    /// <summary>Images per shot.</summary>
+    /// <summary>Images per shot; not used with <see cref="Interval"/>.</summary>
     public int NumImages { get; init; } = 3;
+
+    /// <summary>
+    /// One image per this much of each shot instead of <see cref="NumImages"/> (scenedetect 0.7.3's save-images
+    /// <c>-i/--interval</c>): a shot gets floor(length / interval) + 1 images, at least <see cref="MinImages"/> and at most
+    /// <see cref="MaxImages"/>, picked as with <see cref="NumImages"/>. Seconds ("2s", "1.5"), "HH:MM:SS[.mmm]" or frames
+    /// ("48"). Null (default): <see cref="NumImages"/> per shot.
+    /// </summary>
+    public string? Interval { get; init; }
+
+    /// <summary><see cref="Interval"/> as a time; not both.</summary>
+    public TimeSpan? IntervalDuration { get; init; }
+
+    /// <summary>The fewest images a shot gets with <see cref="Interval"/> (1 or more); only with it.</summary>
+    public int MinImages { get; init; } = 1;
+
+    /// <summary>The most images a shot gets with <see cref="Interval"/>, at least <see cref="MinImages"/>; null: no limit. Only with it.</summary>
+    public int? MaxImages { get; init; }
+
+    /// <summary>Each shot's number of images: port of scenedetect's _get_num_images, with save_images' checks of the options.</summary>
+    internal int[] ImageCounts(IReadOnlyList<Shot> shots, Fps fps)
+    {
+        if (Interval is not null && IntervalDuration is not null)
+            throw new ArgumentException("Interval and IntervalDuration are the same option; set one.");
+        double? interval = IntervalDuration is { } t ? t.TotalSeconds
+            : Interval is { } s ? ShotDetection.TimecodeSeconds(s, fps)
+            : null;
+        if (interval is not { } seconds)
+        {
+            if (MinImages != 1 || MaxImages is not null)
+                throw new ArgumentException("MinImages and MaxImages can only be used with Interval.");
+            if (NumImages < 1)
+                throw new ArgumentException("NumImages must be at least 1.");
+            return [.. Enumerable.Repeat(NumImages, shots.Count)];
+        }
+
+        if (!(seconds > 0))
+            throw new ArgumentException("Interval must be greater than 0.");
+        if (MinImages < 1)
+            throw new ArgumentException("MinImages must be at least 1.");
+        if (MaxImages < MinImages)
+            throw new ArgumentException("MaxImages must be at least MinImages.");
+        return [.. shots.Select(shot =>
+        {
+            // scenedetect adds 1e-9 intervals before rounding down, so a shot a whole number of intervals long keeps
+            // its last image (0.3 / 0.1 is 2.9999999999999996).
+            int count = Math.Max((int)Math.Floor((Math.Max(shot.Duration.Seconds, 0.0) / seconds) + IntervalCountTolerance) + 1, MinImages);
+            return MaxImages is { } max ? Math.Min(count, max) : count;
+        })];
+    }
+
+    /// <summary>scenedetect's _INTERVAL_COUNT_TOLERANCE.</summary>
+    internal const double IntervalCountTolerance = 1e-9;
 
     /// <summary>Frames to keep away from each end of a shot.</summary>
     public int FrameMargin { get; init; } = 1;
@@ -154,8 +206,9 @@ public static partial class Export
         number.ToString(new string('0', Math.Max(3, (int)Math.Floor(Math.Log10(count)) + 1)), CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// save-images: NumImages images per shot (see <see cref="ImageOptions"/>), named
-    /// "{video}-Scene-{NNN}-{II}.jpg". Frames are picked like scenedetect's _generate_timecode_list:
+    /// save-images: NumImages images per shot, or one per <see cref="ImageOptions.Interval"/> of each shot (see
+    /// <see cref="ImageOptions"/>), named "{video}-Scene-{NNN}-{II}.jpg", in shot order. Frames are picked like
+    /// scenedetect's _generate_timecode_list:
     /// the shot is split into equal segments; the first image is FrameMargin
     /// frames in, the last that far from the end, the others mid-segment. Images are full size,
     /// stretched to square pixels if needed.
@@ -178,9 +231,9 @@ public static partial class Export
         var io = options ?? new ImageOptions();
         string[] quality = io.EncoderOptions();
         string filter = io.Filter();
-        int numImages = io.NumImages, frameMargin = io.FrameMargin;
-        if (numImages < 1 || frameMargin < 0)
-            throw new ArgumentException("NumImages must be at least 1 and FrameMargin at least 0.");
+        int frameMargin = io.FrameMargin;
+        if (frameMargin < 0)
+            throw new ArgumentException("FrameMargin must be at least 0.");
         if (io.Format is not ("jpg" or "png" or "webp"))
             throw new ArgumentException("Format must be jpg, png or webp.");
         var (videoPath, video, shots, frameCount) = (result.VideoPath!, result.Video.Reader, result.Shots, result.FrameCount);
@@ -188,17 +241,20 @@ public static partial class Export
             return [];
         Directory.CreateDirectory(outputDir);
         string name = Timeline.FileNameOf(videoPath, video.Compatibility);
-        string imageFormat = new('0', (int)Math.Floor(Math.Log10(numImages)) + 2);
+        int[] counts = io.ImageCounts(shots, video.Fps);
+
+        // Image numbers' digits: from the shot with the most images, as scenedetect's max_scene_images.
+        string imageFormat = new('0', (int)Math.Floor(Math.Log10(counts.Max())) + 2);
 
         // (frame index, file name) for every image; a frame may be wanted twice.
         var wanted = new List<(int Frame, string File)>();
 
         // scenedetect picks times and seeks to them.
-        double[][] times = ImageTimes(shots, video.Fps, numImages, frameMargin);
+        double[][] times = ImageTimes(shots, video.Fps, counts, frameMargin);
         int[][] picked = times.Select(t => t.Select(video.FrameAt).ToArray()).ToArray();
         for (int i = 0; i < shots.Count; i++)
         {
-            for (int j = 0; j < numImages; j++)
+            for (int j = 0; j < counts[i]; j++)
             {
                 double seconds = times[i][j]; // the image's own time: the picked one
                 string file = Substitute(io.FileName, new Dictionary<string, string>
@@ -230,7 +286,7 @@ public static partial class Export
         {
             string filterFile = Path.Combine(temp, "filter.txt");
             File.WriteAllText(filterFile,
-                $"select='{string.Join("+", frames.Select(f => $"eq(n\\,{f})"))}',{filter}");
+                $"select='{SelectFrames(frames)}',{filter}");
             VideoReader.Run(video.FfmpegExe,
                 ["-v", "error", "-nostdin", "-y", .. VideoReader.InputOptions(videoPath), .. VideoReader.MaxPixels,
                     .. VideoReader.IgnoreContainerCropping(video.FfmpegExe, cancellationToken), "-i", videoPath, "-map", "0:v:0", "-/vf", filterFile,
@@ -248,6 +304,28 @@ public static partial class Export
 
         return wanted.Select(w => w.File).ToList();
     }
+
+    /// <summary>SaveImages' files cut into shots: <paramref name="counts"/>[i] for shot i, in order.</summary>
+    internal static List<IReadOnlyList<string>> PerShot(IReadOnlyList<string> files, int[] counts)
+    {
+        var groups = new List<IReadOnlyList<string>>(counts.Length);
+        int at = 0;
+        foreach (int count in counts)
+        {
+            groups.Add([.. files.Skip(at).Take(count)]);
+            at += count;
+        }
+
+        return groups;
+    }
+
+    /// <summary>
+    /// ffmpeg's select expression for these frames: their eq(n,F) summed as a balanced tree. A chain of a+b+c... stops
+    /// parsing at about 100 terms ("Error while parsing expression"), which 34 shots at 3 images each reached.
+    /// </summary>
+    internal static string SelectFrames(ReadOnlySpan<int> frames) => frames.Length == 1
+        ? $"eq(n\\,{frames[0].ToString(CultureInfo.InvariantCulture)})"
+        : $"({SelectFrames(frames[..(frames.Length / 2)])}+{SelectFrames(frames[(frames.Length / 2)..])})";
 
     static bool IsUrl(string path) =>
         Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.Scheme.Length > 1 && uri.Scheme != Uri.UriSchemeFile;
@@ -308,11 +386,16 @@ public static partial class Export
     }
 
     /// <summary>Seconds of each shot's images: port of _generate_timecode_list.</summary>
-    internal static double[][] ImageTimes(IReadOnlyList<Shot> shots, Fps fps, int numImages, int frameMargin)
+    internal static double[][] ImageTimes(IReadOnlyList<Shot> shots, Fps fps, int numImages, int frameMargin) =>
+        ImageTimes(shots, fps, [.. Enumerable.Repeat(numImages, shots.Count)], frameMargin);
+
+    /// <summary>Seconds of each shot's images, <paramref name="counts"/>[i] for shot i: port of _generate_timecode_list.</summary>
+    internal static double[][] ImageTimes(IReadOnlyList<Shot> shots, Fps fps, int[] counts, int frameMargin)
     {
         double marginSecs = FrameTime.Frame(frameMargin, fps).Seconds;
-        return shots.Select(shot =>
+        return shots.Select((shot, i) =>
         {
+            int numImages = counts[i];
             double start = shot.Start.Seconds, duration = shot.Duration.Seconds;
             if (duration <= 0)
                 return Enumerable.Repeat(start, numImages).ToArray();
