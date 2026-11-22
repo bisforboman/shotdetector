@@ -169,7 +169,10 @@ jobs:
       # RTSP input (a live source, so not frame for frame against a file: the reader joins once the probe has started
       # the stream): mediamtx serves a five-shot clip (2 s shots at 25 fps) on demand, published over TCP, and the cuts found
       # over rtsp:// must be exactly 50 frames apart. Then a live source that never ends (the clip looped) with --duration 8s:
-      # 8 s of frames. Each run gets a fresh server: a reader joining an on-demand stream an earlier one used up hangs.
+      # frames up to 8 s, the last frame 200. Frames are labelled from the first packet's time, as a file's from its start
+      # time, and decoding starts at the next keyframe, so a reader that joins between keyframes has fewer rows (176 on
+      # 2026-11-04, its first packet at the clip's frame 27, its first picture at 50): no gaps and frame 200 last, not a
+      # count. Each run gets a fresh server: a reader joining an on-demand stream an earlier one used up hangs.
       - name: RTSP input
         if: needs.changes.outputs.docs_only != 'true'
         timeout-minutes: 10
@@ -202,8 +205,17 @@ jobs:
           timeout 60 dotnet run --project src/ShotDetector.Cli -- -i rtsp://127.0.0.1:8554/shots -d content --ffmpeg-dir "$SHOTDETECTOR_FFMPEG_LIBS" \
             --duration 8s --stats live.csv
           kill -9 $server 2>/dev/null || true; pkill -9 -f shots.mp4 || true
-          rows=$(($(wc -l < live.csv) - 1))   # 200 frames; the first has no score
-          echo "looped source, --duration 8s: $rows stats rows"; test "$rows" -eq 199
+          # Stats rows: every frame but the first seen (it has no score), up to 8 s; at most two GOPs (-g 25) before the
+          # first picture.
+          python3 -c "
+          import csv
+          rows = list(csv.reader(open('live.csv')))[1:]
+          frames = [int(r[0]) for r in rows]
+          print('looped source, --duration 8s:', len(rows), 'stats rows, frames', frames[0], 'to', frames[-1], rows[-1][1])
+          assert frames == list(range(frames[0], frames[-1] + 1)), 'gaps'
+          assert frames[-1] == 200 and rows[-1][1] == '00:00:07.960', rows[-1][:2]
+          assert len(rows) >= 149, len(rows)
+          "
 
       # save-images in-process against the executable's, byte for byte: only with an executable of the libraries' own
       # build (the main test run has BtbN's static ffmpeg beside our libraries, so it skips them), here BtbN's shared
