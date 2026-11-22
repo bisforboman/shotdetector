@@ -793,6 +793,27 @@ public class VideoTests(Clips clips) : IClassFixture<Clips>
         }
     }
 
+    // save-images through the executable with an interval of one frame: 51 images per 2 s shot, 153 frames, past the ~100
+    // terms an a+b+c... select expression could parse; image numbers take 3 digits from the shot with the most.
+    [Fact]
+    public void SaveImagesWithAnIntervalThroughTheExecutable()
+    {
+        var r = ShotDetection.Detect(clips.ThreeShots, new() { Detector = DetectorKind.Content, Decoder = VideoDecoder.FfmpegProcess });
+        string dir = Directory.CreateTempSubdirectory("shotdetector-images-").FullName;
+        try
+        {
+            var files = Export.SaveImages(r, dir, new() { Interval = "1", Width = 32 });
+            Assert.Equal(3 * 51, files.Count);
+            Assert.All(files, f => Assert.True(new FileInfo(f).Length > 0, f));
+            Assert.EndsWith("-Scene-001-001.jpg", files[0], StringComparison.Ordinal);
+            Assert.EndsWith("-Scene-003-051.jpg", files[^1], StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     // WebP through the executable, several images: each its own still image. ffmpeg's default encoder for .webp where
     // it's built, libwebp_anim, wrote one animation of every frame to the first file and none to the others.
     [Fact]

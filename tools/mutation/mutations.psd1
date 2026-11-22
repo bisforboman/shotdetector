@@ -452,6 +452,14 @@
         @{ File = 'src/ShotDetector/Export.cs'; Find = 'while (more && n <= frame)'; Replace = 'while (more && n < frame)'; Tests = 'SaveImagesInProcessTests.SameFilesAsTheExecutable'; Project = 'tests/ShotDetector.Tests' }
         @{ File = 'src/ShotDetector/Export.cs'; Find = '["-c:v", "libwebp", "-quality",'; Replace = '["-quality",'; Tests = 'VideoTests.WebPImagesThroughTheExecutableAreStills'; Project = 'tests/ShotDetector.Tests' }
 
+        # save-images -i/--interval (scenedetect 0.7.3): floor(length / interval + 1e-9) + 1 images a shot, clamped to
+        # min-images..max-images (the CLI's max 0: no limit); image numbers' digits from the shot with the most
+        @{ File = 'src/ShotDetector/Export.cs'; Find = '/ seconds) + IntervalCountTolerance)'; Replace = '/ seconds))'; Tests = 'ExportTests.ImageCountsMatchScenedetect' }
+        @{ File = 'src/ShotDetector/Export.cs'; Find = 'return MaxImages is { } max ? Math.Min(count, max) : count;'; Replace = 'return count;'; Tests = 'ExportTests.ImageCountsMatchScenedetect' }
+        @{ File = 'src/ShotDetector/Export.cs'; Find = '+ IntervalCountTolerance) + 1, MinImages);'; Replace = '+ IntervalCountTolerance) + 1, 1);'; Tests = 'ExportTests.ImageCountsMatchScenedetect' }
+        @{ File = 'src/ShotDetector/Export.cs'; Find = 'Math.Log10(counts.Max())'; Replace = 'Math.Log10(io.NumImages)'; Tests = 'VideoTests.SaveImagesWithAnIntervalThroughTheExecutable' }
+        @{ File = 'src/ShotDetector.Cli/Program.cs'; Find = 'MaxImages = most == 0 ? null : most'; Replace = 'MaxImages = most'; Tests = 'CliTests.ImageIntervalOnTheCommandLine' }
+
         # --loudness: integrated loudness judged on both sides of the target, true peak against its maximum, exit 3 out
         # of range; FrameReader's figures from the filter's own results, which have the last partial 100 ms block's peaks
         @{ File = 'src/ShotDetector.Cli/LoudnessVerdict.cs'; Find = 'Math.Abs(Result.Integrated - Target) <= Tolerance;'; Replace = 'Result.Integrated - Target <= Tolerance;'; Tests = 'CliTests.Loudness' }

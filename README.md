@@ -337,6 +337,12 @@ shotdetect -i video.mp4 --save-images thumbs --save-html thumbs/video-Scenes.htm
   (a JPEG's comment names libavcodec's version), else that executable writes them. `--image-quality <0-100>` (JPEG, WebP) and
   `--image-compression <0-9>` (PNG) are scenedetect's `--quality` and `--compression`: PNG's and WebP's mean the
   same as OpenCV's, JPEG's is mapped onto ffmpeg's scale (`ImageOptions.Quality`, `Compression`).
+  `--image-interval <duration>` is scenedetect 0.7.3's `save-images -i/--interval`: instead of a fixed number, a shot
+  gets one image per duration of its length (floor(length / duration) + 1, picked as with `--num-images`), at least
+  `--min-images` and at most `--max-images` (0: no limit); seconds (`2s`), `HH:MM:SS[.mmm]` or frames (`48`). The
+  file names and frames are scenedetect's, image numbers' digits taken from the shot with the most; `--save-html` and
+  `--contact-sheet` rows then differ in length. In the library: `ImageOptions.Interval` (or `IntervalDuration`),
+  `MinImages`, `MaxImages`; the config file's `interval`, `min-images` and `max-images` in `[save-images]`.
 - `--save-html <file>` writes scenedetect's `save-html` page (cut list and shot table with the
   thumbnails), byte-identical to scenedetect's; `--html-no-images`, `--html-image-width/height`.
   In the library: `Shots.Html`.
