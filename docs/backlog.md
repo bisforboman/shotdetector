@@ -119,5 +119,33 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: drop-frame timecode (29.97/59.94) is only a label; files that carry it per frame and not in a container tag (MPEG-2 GOP headers, H.264/HEVC timecode SEI, DV, MPEG-TS with no `timecode` tag) show it only in the frames: around a minute boundary not divisible by 10 the labels jump `;29` to `;02`. `MediaProbe.ProbeJson`'s `timecode` tag covers MOV/MP4/MXF; today only `ffprobe -show_frames` reads the per-frame ones (checked 2026-11-05 on generated MPEG-2 TS, which has no tag). FFmpeg's `av_timecode_make_smpte_tc_string2` gives the string with the DF flag; asked for by the owner
   - Status: Maybe
 
+- An accuracy benchmark: precision and recall of each detector against hand-labelled cuts on public sets (BBC Planet Earth, RAI, ClipShots, AutoShot), nightly, the numbers in the run's summary
+  - Why: every check today says "same as scenedetect", none says how good that is. The Subtitle Edit prototype's hand labels (docs/subtitle-edit-prototype.md) found adaptive's 67 false cuts, 56 of them on the keyframes of low-bitrate encodes (its §6); a standing measure would be the yardstick for the fast mode, the keyframe-pulse row, Subtitle Edit and the detectors below. Unchecked: each set's licence and whether CI may download it (films pinned by SHA-256, as tools/realworld.py)
+  - Status: Maybe (the owner, 2026-11-21: add as Maybe; suggested as the first of these seven)
+
+- A score timeline page: `--stats-html <file>`, each frame's scores against the threshold, the cuts and the shots' thumbnails, one page with no scripts as `qc --html` (QcHtml.cs)
+  - Why: tuning `-t` and `-m` means reading the stats CSV; a picture shows why a cut was found or missed, and would show the accuracy benchmark's misses too. Small: the stats and the thumbnails exist
+  - Status: Maybe (the owner, 2026-11-21)
+
+- A detector for gradual transitions (dissolves, wipes), opt-in, giving a transition's first and last frame
+  - Why: scenedetect has no detector for them; adaptive and content find some as one cut and miss others, which subtitlers and `shotdetect diff` meet. ShotDetector's own, outside the exactness promise, so the owner decides first; measure on the accuracy benchmark's labels (ClipShots and AutoShot label gradual transitions) before keeping it
+  - Status: Maybe (the owner, 2026-11-21)
+
+- Shots grouped into scenes: consecutive shots that belong together (colour similarity between shots, shot/reverse-shot patterns, silence from FrameReader's `AudioAnalysis`), as a `Timeline` call beside `ChapterStarts`
+  - Why: YouTube chapters, the Jellyfin plugin and shotdetector-videorag's chunks all stand in for scenes with a minimum length. ShotDetector's own, outside the exactness promise; unchecked: which public set labels scene boundaries to measure against
+  - Status: Maybe (the owner, 2026-11-21)
+
+- A neural detector as its own package (TransNetV2 or AutoShot through ONNX Runtime), opt-in, scored on the frames detection already decodes
+  - Why: the published accuracy leaders; decoding is 45-87% of a run's CPU (the 2026-10-21 profile), so a second detector on the same pass costs little beside it. Unchecked: the weights' licences, ONNX Runtime under Native AOT, and the gain over adaptive, which the accuracy benchmark would give; only after that row
+  - Status: Maybe (the owner, 2026-11-21)
+
+- save-images: an opt-in pick of each shot's best frame (sharp, not black, not mid-motion) instead of scenedetect's positions
+  - Why: scenedetect's picks (a frame in from the start, the middle, a frame before the end) land on blur and fades; contact sheets, the Jellyfin plugin and RAG thumbnails want a frame that shows the shot. FrameReader's `PictureMeter` and `BlackPixels` measure most of it. Off by default: the default picks stay scenedetect's
+  - Status: Maybe (the owner, 2026-11-21)
+
+- A shorter README: what it is, install, three examples and the parity claim, the reference (decoders, URLs, frame sources, QC, diff, where it differs) moved to pages under docs/
+  - Why: a newcomer reads about FFmpeg 9's libraries and HLS certificates before a first example; the README is over 600 lines, and it is also the NuGet packages' front page. Alongside: a JSON schema for `--json` outputs, or an MCP server, so agents can call `shotdetect` and `qc`
+  - Status: Maybe (the owner, 2026-11-21)
+
 Finished rows (Done, Released, Dropped, Won't do): [backlog-done.md](backlog-done.md). What the owner decided and
 why: [decisions/](decisions/).
