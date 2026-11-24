@@ -11,6 +11,22 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
 
 ## Next
 
+- Parity with opencv-python-headless 5.1.0.95 (FFmpeg 9 inside): `tools/compare.py` on the samples and the real-world films with it and scenedetect 0.7.3, then move the `opencv-python-headless==` pins (ci.yml, realworld.yml, benchmark.yml, parity-os.yml) once results match
+  - Why: scenedetect's frames come from OpenCV's FFmpeg, and 5.1.0.95's Linux wheel bundles libavcodec 63.1.102 where CI pins 5.0.0.93 (libavcodec 62.28.101), so users on the newest wheel may already get results that differ from ours (#786, from the weekly upstream check). This says whether they do, and is the first step before moving our own libraries to FFmpeg 9
+  - Status: Open
+
+- The Windows OpenCV wheel's FFmpeg in 5.1.0.95: if it is FFmpeg 8 or later (it was 7.1), compare.py's `--always-bt601` on win32 goes
+  - Why: the Windows wheel decoded BT.709 as BT.601 because of its FFmpeg 7.1 (docs/decisions/2026-10-11-the-windows-opencv-wheel-s-bt-709-difference.md); a newer FFmpeg there makes the flag wrong, and parity-os.yml's Windows comparison with it. #786's last checkbox
+  - Status: Open
+
+- Move to FFmpeg 9's libraries (FFmpeg.AutoGen 9, Native packages on 9.0.x) when opencv-python's Linux wheels bundle FFmpeg 9
+  - Why: scenedetect's frames come from OpenCV's FFmpeg; moving earlier risks bytes OpenCV doesn't give, and drops system FFmpeg 8 in-process
+  - Status: Open (2026-11-23: the trigger fired, opencv-python-headless 5.1.0.95's Linux wheel bundles libavcodec 63.1.102, #786; after the parity row above, and once that shows what OpenCV 5.1's frames are)
+
+- An informational CI run of the tests and parity on net11
+  - Why: Most time is in FFmpeg's native code, so .NET 11 promises little speed here (its raised hardware baseline: ReadyToRun at x86-64-v3; faster Native AOT interface dispatch); the risk is a JIT that changes results (the AVX-512 + tiered-JIT VideoWriter flake shows it can). Stay on net10.0 (LTS); run the tests and the parity comparison on net11, informational, then compare the weekly benchmark, and retarget only for a measured gain with identical results (the owner, 2026-10-22)
+  - Status: Open (2026-11-24: .NET 11.0.0 is on nuget.org)
+
 - Fix every divergence the real-world check finds
   - Why: The promise is identical results
   - Status: Open (2026-10-27: on x86 none known: a video whose colour tags change midway is exact on every path since docs/decisions/2026-10-27-per-frame-tags-executable.md (the samples sintel_matrix_change.mkv and sintel_10bit_siting_change.mkv, required in CI), except a stream whose chroma siting changes midway through the executable's default path, which can't be read again and warns; on ARM the default results differ by FFmpeg's conversion rounding, documented in docs/decisions/2026-10-17-arm-results.md, while ShotDetector.FastYuv gives x86's results on 8-bit 4:2:0 and 4:2:2 and 10-bit 4:2:0 of even width, and MPEG-1/2, MJPEG and MPEG-4 Part 2 decode as on x86)
@@ -25,17 +41,9 @@ Status: **Open**, **In progress**, **Maybe**; finished rows (in backlog-done.md)
   - Why: docs/decisions/2026-10-22-decode-split.md made the conversion thread the default for sequential HD from 4-vCPU measurements, "unless [the desktop check] shows a slowdown"; the 2026-10-17 conversion-worker trial there was 1.04-1.07x slower. The commands are in that PR's body. Work on the owner's computer is theirs to start
   - Status: Waiting (on the owner)
 
-- Move to FFmpeg 9's libraries (FFmpeg.AutoGen 9, Native packages on 9.0.x) when opencv-python's Linux wheels bundle FFmpeg 9
-  - Why: scenedetect's frames come from OpenCV's FFmpeg; moving earlier risks bytes OpenCV doesn't give, and drops system FFmpeg 8 in-process
-  - Status: Waiting (2026-10-14: FFmpeg.AutoGen 9.0.1.1 is out; opencv-python 5.0.0.93 and 4.14.0.94 still bundle libavcodec 62, so the trigger hasn't fired; the user: wait for OpenCV)
-
 - The owner files the FFmpeg yadif report (docs/ffmpeg-yadif-16bit-report.md)
   - Why: FFmpeg 8.1's x86 yadif at 9-16 bits races between slice threads, so every run gives another picture; ShotDetector and FrameReader now run it on one thread there (docs/decisions/2026-11-02-deterministic-yadif-at-9-16-bits.md), which a fix upstream would make unneeded. A public post from the owner's account: theirs to file, never a session's
   - Status: Waiting (on the owner)
-
-- After .NET 11's release (November 2026), an informational CI run of the tests and parity on net11
-  - Why: Most time is in FFmpeg's native code, so .NET 11 promises little speed here (its raised hardware baseline: ReadyToRun at x86-64-v3; faster Native AOT interface dispatch); the risk is a JIT that changes results (the AVX-512 + tiered-JIT VideoWriter flake shows it can). Stay on net10.0 (LTS); run the tests and the parity comparison on net11, informational, then compare the weekly benchmark, and retarget only for a measured gain with identical results (the owner, 2026-10-22)
-  - Status: Waiting (on .NET 11's release)
 
 - Explore a clean-room MIT replacement for FastYuv's converter. The first slice is the 8-bit converter: a functional specification, plus a conformance oracle whose expected bytes come from FFmpeg's x86 output, never from FastYuv
   - Why: FastYuv is the only way to get x86's results on ARM and to run without FFmpeg, and it is LGPL because it ports FFmpeg's code. An MIT converter with the same bytes would let the MIT package do this itself (docs/ideas/fastyuv-optional.md; docs/decisions/2026-11-01-fastyuv-clean-room.md). Later slices: 10-bit 4:2:0, then yadif
