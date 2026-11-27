@@ -28,6 +28,7 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
 | What's next | docs/backlog.md, docs/backlog-done.md, the `backlog` skill |
 | What the owner decided and why | docs/decisions/ (its README) |
 | Light PRs, mutation shards, nightly runs | tools/ci-changes.sh, docs/decisions/2026-10-31-ci-time.md |
+| Security: policy, response times, the controls and how adopters check them | SECURITY.md, docs/security.md |
 | The library's decoding gotchas (seek, crop, timestamps, streams) | src/ShotDetector/CLAUDE.md |
 
 ## Release policy
@@ -87,6 +88,10 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
   (Directory.Build.props; `CheckSecurityAnalyzers` in Directory.Build.targets fails a build without them). Fix a
   real finding (the owner decides how); suppress a false positive where it is, with a justification
   (docs/decisions/2026-11-06-security-analyzers.md).
+- **Security fixes**: SECURITY.md's times (acknowledge within 7 days; high and critical fixed within 30, others 90;
+  the newest minor only) bind every vulnerability report; a fix ships with a GitHub security advisory and its CVE in
+  the CHANGELOG entry. One in FrameReader or its FFmpeg build is fixed there, then a ShotDetector patch release
+  carries it to the CLI and binaries.
 - **Dependabot**: patch and minor PRs auto-merge; majors wait for a look. FFmpeg.AutoGen stays on 8.x until the
   native build moves to FFmpeg 9.
 - **Commit messages**: what and why, like the history. Small commits.
@@ -128,6 +133,7 @@ never at the cost of a differing result. Anywhere we deliberately differ is docu
   (PRs: the entries their files concern; nightly: all), `native-package.yml` (our FFmpeg build from the
   FrameReader.Native packages, which the others call), `release.yml`, `benchmark.yml`, `compare.yml` (on demand),
   `parity-os.yml` (Windows and macOS, informational), `upstream.yml`, `codeql.yml`, `dependabot-auto-merge.yml`,
+  `scorecard.yml` (OpenSSF Scorecard: weekly and on pushes to main, the README's badge),
   `vulnerable-packages.yml` (weekly: an issue when main has a package with a NuGet advisory; every restore already
   fails on one). Each header says the rest.
 
