@@ -161,6 +161,36 @@ jobs:
         with:
           subject-path: 'artifacts/*.nupkg, artifacts/*.snupkg'
 
+      # The SBOMs pack writes into each package (Microsoft.Sbom.Targets), out of them for the GitHub release, each
+      # attested against its package: gh attestation verify <nupkg> --repo bisforboman/shotdetector
+      # --predicate-type https://spdx.dev/Document/v2.2. The FFmpeg build's is FrameReader.Native's (in each binary's
+      # archive, and on FrameReader's releases).
+      - name: SBOMs
+        run: |
+          mkdir sbom
+          for p in ShotDetector ShotDetector.FastYuv ShotDetector.Cli; do
+            unzip -p "artifacts/$p.$SD.nupkg" _manifest/spdx_2.2/manifest.spdx.json > "sbom/$p.$SD.spdx.json"
+            jq -e .spdxVersion "sbom/$p.$SD.spdx.json" > /dev/null || { echo "::error::$p's SBOM is missing"; exit 1; }
+          done
+
+      - name: Attest ShotDetector's SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: artifacts/ShotDetector.${{ env.SD }}.nupkg
+          sbom-path: sbom/ShotDetector.${{ env.SD }}.spdx.json
+
+      - name: Attest ShotDetector.FastYuv's SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: artifacts/ShotDetector.FastYuv.${{ env.SD }}.nupkg
+          sbom-path: sbom/ShotDetector.FastYuv.${{ env.SD }}.spdx.json
+
+      - name: Attest ShotDetector.Cli's SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: artifacts/ShotDetector.Cli.${{ env.SD }}.nupkg
+          sbom-path: sbom/ShotDetector.Cli.${{ env.SD }}.spdx.json
+
       # Request the temporary key right before pushing: it is valid for one hour.
       - name: NuGet login
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
@@ -195,12 +225,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         # Its tag on this commit (unless pushed by hand), its CHANGELOG section ("## X.Y.Z – date" up to the next "## ")
-        # as the notes, else GitHub's PR list, and its packages.
+        # as the notes, else GitHub's PR list, and its packages and SBOMs.
         run: |
           prerelease=""; [[ "$SD" == *-* ]] && prerelease="--prerelease"
           awk -v v="## $SD " 'index($0, v) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > notes.md
           if [ -s notes.md ]; then notes=(--notes-file notes.md); else notes=(--generate-notes); fi
-          gh release create "v$SD" artifacts/*.nupkg --target "$GITHUB_SHA" --title "ShotDetector $SD" "${notes[@]}" $prerelease
+          gh release create "v$SD" artifacts/*.nupkg sbom/*.spdx.json --target "$GITHUB_SHA" --title "ShotDetector $SD" "${notes[@]}" $prerelease
 
   # A stable release: an issue to make it the API baseline (Directory.Build.props), once nuget.org serves it, since
   # package validation downloads the baseline. An issue rather than a PR: a PR opened with this token gets no

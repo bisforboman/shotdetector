@@ -9,6 +9,8 @@
     <PackageVersion Include="GitHubActionsTestLogger" Version="3.0.5" />
     <!-- FFmpeg 8's bindings: 9.x binds FFmpeg 9's libraries (other struct layouts), which ours aren't. -->
     <PackageVersion Include="FFmpeg.AutoGen" Version="[8.1.0, 9.0.0)" />
+    <!-- An SPDX SBOM inside each package (_manifest/spdx_2.2/manifest.spdx.json; SECURITY.md). -->
+    <PackageVersion Include="Microsoft.Sbom.Targets" Version="4.1.13" />
     <PackageVersion Include="StyleBro.Analyzers" Version="0.8.0-alpha.1" />
     <!-- FrameReader (github.com/bisforboman/FrameReader), up to its next major: ShotDetector's package declares this
          range, so a FrameReader 3.0 can't replace the 2.x it was built against (docs/decisions/2026-11-07-shotdetector-
