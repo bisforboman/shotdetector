@@ -13,6 +13,9 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
+    <!-- An SPDX SBOM of the package and what it depends on, in the package (_manifest/spdx_2.2/), attached to
+         the GitHub release with a signed attestation (release.yml; settings in Directory.Build.props). -->
+    <GenerateSBOM>true</GenerateSBOM>
     <EnablePackageValidation>true</EnablePackageValidation>
     <!-- Up to 1.4.x the package carried FrameReader.dll, outside semantic versioning; its changes until then are
          accepted in CompatibilitySuppressions.xml (FrameReader.dll entries only; regenerate with
@@ -38,6 +41,7 @@
     <!-- FrameReader, its own product in its own repository since 2026-11-07 (docs/framereader-split.md); the version
          range is in Directory.Packages.props. -->
     <PackageReference Include="FrameReader" />
+    <PackageReference Include="Microsoft.Sbom.Targets" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

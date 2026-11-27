@@ -18,10 +18,14 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
+    <!-- An SPDX SBOM of the package and what it depends on, in the package (_manifest/spdx_2.2/), attached to
+         the GitHub release with a signed attestation (release.yml; settings in Directory.Build.props). -->
+    <GenerateSBOM>true</GenerateSBOM>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ShotDetector\ShotDetector.csproj" />
+    <PackageReference Include="Microsoft.Sbom.Targets" PrivateAssets="all" />
     <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />

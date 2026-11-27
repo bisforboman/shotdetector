@@ -1,0 +1,48 @@
+name: Scorecard
+
+# OpenSSF Scorecard: the repository's supply-chain practices (branch protection, pinned dependencies, token permissions,
+# signed releases, code review, SAST, a security policy...) scored by OpenSSF's checks and published at
+# https://scorecard.dev/viewer/?uri=github.com/bisforboman/shotdetector (the README's badge), so an adopter can look
+# without reading our workflows. Findings also go to the repository's code scanning alerts. Weekly, on pushes to main
+# and when branch protection changes. With publish_results the job may only run these steps (Scorecard checks the
+# workflow), so nothing else goes here.
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: '13 3 * * 3'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analysis:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read   # the CI-Tests and Dangerous-Workflow checks read workflow runs
+      security-events: write   # the SARIF to code scanning
+      id-token: write   # publish the results (signed with the workflow's OIDC identity)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@23f22cd43608bae7a1f1fa2603d7314dee9538a5 # v2.6.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: scorecard
+          path: results.sarif
+          retention-days: 7
+
+      - uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4
+        with:
+          sarif_file: results.sarif

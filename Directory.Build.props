@@ -27,6 +27,9 @@
          (docs/decisions/2026-11-06-vulnerable-packages.md). Fix one by moving the package in Directory.Packages.props,
          never by suppressing it. NU1905 (an audit source that can't be reached) stays a warning.
          vulnerable-packages.yml checks main weekly for new advisories. -->
+    <!-- The packages' SBOMs (GenerateSBOM in their projects, Microsoft.Sbom.Targets): quiet, and named after the repository. -->
+    <SbomGenerationNamespaceBaseUri>https://github.com/bisforboman/shotdetector/spdx</SbomGenerationNamespaceBaseUri>
+    <SbomGenerationVerbosity>Warning</SbomGenerationVerbosity>
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>
     <NuGetAuditLevel>low</NuGetAuditLevel>

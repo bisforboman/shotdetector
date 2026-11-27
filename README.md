@@ -5,6 +5,7 @@
 [![NuGet](https://img.shields.io/nuget/v/ShotDetector.FastYuv.svg?label=ShotDetector.FastYuv)](https://www.nuget.org/packages/ShotDetector.FastYuv)
 [![NuGet](https://img.shields.io/nuget/v/ShotDetector.Cli.svg?label=ShotDetector.Cli)](https://www.nuget.org/packages/ShotDetector.Cli)
 [![NuGet](https://img.shields.io/nuget/v/FrameReader.svg?label=FrameReader)](https://www.nuget.org/packages/FrameReader)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/bisforboman/shotdetector/badge)](https://scorecard.dev/viewer/?uri=github.com/bisforboman/shotdetector)
 
 Shot/cut detection for video in C#: a faithful port of [PySceneDetect](https://github.com/Breakthrough/PySceneDetect)'s
 detectors (scenedetect 0.7.3: adaptive, content, threshold, histogram and hash) that gives identical
@@ -54,7 +55,9 @@ files): other formats (10-bit, 4:2:2, ...) stop with a message asking for 7.1 or
 
 Releases are built by GitHub Actions from the tagged commit: packages carry SourceLink and symbol packages, and
 every package and binary has a signed build attestation (`gh attestation verify <file> --repo bisforboman/shotdetector`,
-the file a package or a binary's archive).
+the file a package or a binary's archive), and every package an SPDX SBOM, inside it and on the release, attested too.
+How vulnerabilities are reported and how fast fixes ship: [SECURITY.md](SECURITY.md); every control and how to check
+it: [docs/security.md](docs/security.md).
 
 ### The release binaries
 
@@ -580,6 +583,9 @@ less CPU); there its point is ARM, where it gives x86's results.
   noise in scenedetect too, a few hash values and the odd cut inside a fade differ.
 
 ## Security
+
+Reporting a vulnerability, the versions that get fixes and how fast: [SECURITY.md](SECURITY.md). Using ShotDetector on
+untrusted input:
 
 - **No shell.** ffmpeg and ffprobe are started with an argument list, never through a shell, so quotes, `;` or `$(...)`
   in a file name stay part of the name.
